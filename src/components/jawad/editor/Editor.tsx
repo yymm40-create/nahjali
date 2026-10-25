@@ -155,12 +155,12 @@ const RAIL: { id: string; label: string; icon: string; tab?: InspectorTab; hint:
   { id: "captions", label: "كابشن", icon: "type", hint: "كابشن تلقائي، مزامنة قصيدة، SRT" },
   { id: "styles", label: "أساليب", icon: "sparkles", hint: "أساليب مونتاج جاهزة بضغطة" },
   { id: "project", label: "المشروع", icon: "ratio", hint: "المقاس، الخلفية، المغناطيس" },
-  { id: "haidara", label: "حيدرة", icon: "sparkles", hint: "حيدرة: قل له وش تبي ويعدّل المونتاج" },
+  { id: "haidara", label: "حيدرا ماكس", icon: "sparkles", hint: "حيدرا ماكس: قل له وش تبي ويعدّل المونتاج" },
 ];
 
 const SAVE_TEXT: Record<SaveState, string> = { saved: "محفوظ", dirty: "تعديلات…", saving: "نحفظ…", error: "ما انحفظ، نعيد…", conflict: "تغيّر من مكان ثاني" };
 
-export default function Editor({ project, initialAssets, exportUrl, backHref, studioPath = null, owner = false, labChat = null }: { project: EditorProjectView; initialAssets: EditorAsset[]; exportUrl: string | null; backHref: string; studioPath?: string | null; /** the site's owner: «🩺 تشخيص» in حيدرة */ owner?: boolean; /** «?lab=»: open «مختبر الموشن» on this conversation */ labChat?: string | null }) {
+export default function Editor({ project, initialAssets, exportUrl, backHref, studioPath = null, owner = false, labChat = null }: { project: EditorProjectView; initialAssets: EditorAsset[]; exportUrl: string | null; backHref: string; studioPath?: string | null; /** the site's owner: «🩺 تشخيص» in حيدرا ماكس */ owner?: boolean; /** «?lab=»: open «مختبر الموشن» on this conversation */ labChat?: string | null }) {
   const readOnly = project.purged;
   const wide = useWide();
   const [tl, setTl] = useState(project.timeline);
@@ -201,11 +201,29 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [picking, setPicking] = useState(false);
   /** the look in use: a workspace's, or one of the four themes */
   const T = ws ? { label: ws.ar, icon: ws.icon, hint: ws.hint, rail: ws.rail, mirror: !!ws.mirror, scale: ws.scale, font: ws.font, swatch: [ws.pal.bg, ws.pal.accent, ws.pal.s1, ws.pal.s3] } : THEMES[theme];
+  // «↔️ اقلب الواجهة»: the menus on the right instead of the left (to try; kept on this device), on top of the look's own side
+  const [flip, setFlip] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => {
+      try {
+        setFlip(localStorage.getItem("jw-editor-flip") === "1");
+      } catch {}
+    }, 0);
+    return () => clearTimeout(id);
+  }, []);
+  const flipUi = () =>
+    setFlip((v) => {
+      try {
+        localStorage.setItem("jw-editor-flip", v ? "0" : "1");
+      } catch {}
+      return !v;
+    });
+  const mirror = T.mirror !== flip;
   // «كبّر الشاشة»: the preview takes the room of the side panels (and of the timeline on a phone) until shrunk again
   const [big, setBig] = useState(false);
   // Claude's width on a computer (dragged by its edge; kept on this device)
   const [chatW, setChatW] = useState(400);
-  // حيدرة's place on a computer: docked beside the preview, the whole side from top to bottom («طول كامل»), or half
+  // حيدرا ماكس's place on a computer: docked beside the preview, the whole side from top to bottom («طول كامل»), or half
   // the screen («نص الشاشة»); kept on this device
   const [chatMode, setChatModeState] = useState<"dock" | "tall" | "half">("dock");
   const setChatMode = (m: "dock" | "tall" | "half") => {
@@ -231,7 +249,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       /* not kept */
     }
   };
-  // «حيدرة فوق التايملاين»: on a computer his conversation sits right over the timeline (instead of a popup) so edits are
+  // «حيدرا ماكس فوق التايملاين»: on a computer his conversation sits right over the timeline (instead of a popup) so edits are
   // asked and seen in the same place; kept on this device
   const [chatDock, setChatDockState] = useState(false);
   const setChatDock = (v: boolean) => {
@@ -253,7 +271,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // «واجهتي»: panels' order, the settings panel's width, and panels floating as windows (a computer)
   const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
   const [layoutOpen, setLayoutOpen] = useState(false);
-  // «🎬 مختبر الموشن»: open, with a brief (from حيدرة's chat or empty)
+  // «🎬 مختبر الموشن»: open, with a brief (from حيدرا ماكس's chat or empty)
   const [lab, setLab] = useState<{ brief: string; seconds?: number; clipId?: string | null; chatId?: string | null; source?: { assetId: string; source: LabSource; params?: Record<string, string>; auto?: boolean } | null } | null>(() => (labChat && !project.purged ? { brief: "", chatId: labChat } : null));
   // the lab's uploads: a picture attached in its conversation (library only), and its finished film (with its scene)
   const labWaits = useRef(new Map<string, { ok: (a: EditorAsset) => void; no: (e: Error) => void; progress?: (p: number) => void }>());
@@ -359,7 +377,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     const sx = e.clientX;
     const w0 = layout.panelW;
     // the panel grows toward the middle: which way that is depends on its side
-    const dir = (layout.order.indexOf("panel") > layout.order.indexOf("preview") ? 1 : -1) * (T.mirror ? -1 : 1);
+    const dir = (layout.order.indexOf("panel") > layout.order.indexOf("preview") ? 1 : -1) * (mirror ? -1 : 1);
     let w = w0;
     const move = (ev: PointerEvent) => {
       w = Math.min(720, Math.max(260, w0 + (ev.clientX - sx) * dir));
@@ -541,7 +559,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     e.preventDefault();
     const startX = e.clientX;
     const startW = chatW;
-    const dir = T.mirror ? 1 : -1;
+    const dir = mirror ? 1 : -1;
     let w = startW;
     const move = (ev: PointerEvent) => {
       w = Math.round(Math.min(Math.max(300, window.innerWidth * 0.6), Math.max(300, startW + dir * (ev.clientX - startX))));
@@ -592,7 +610,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     }
   };
   const openClaude = (on?: boolean) => {
-    // a computer: حيدرة is one of the menus at the top left (his conversation shows under them)
+    // a computer: حيدرا ماكس is one of the menus at the top left (his conversation shows under them)
     if (wideRef.current) {
       const open = on ?? railRef.current !== "haidara";
       if (open) {
@@ -606,7 +624,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     setChat((v) => on ?? !v);
   };
 
-  // Arrived with a request for حيدرة (…?haydara=…, e.g. the film's «قص وعدّل بحسب ملاحظاتي»): sent once, then the
+  // Arrived with a request for حيدرا ماكس (…?haydara=…, e.g. the film's «قص وعدّل بحسب ملاحظاتي»): sent once, then the
   // address is cleaned so a reload doesn't send it again
   useEffect(() => {
     const t = setTimeout(() => {
@@ -1191,7 +1209,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       setCanvasEl(null);
     };
   }, []);
-  // «اصنع لي…»: what حيدرة started making with JAWAD AI, placed when it is ready
+  // «اصنع لي…»: what حيدرا ماكس started making with JAWAD AI, placed when it is ready
   const making = useMaking({ projectId: project.id, run, onAssets: addAssets, flash, readOnly });
   const extendClip = async (clipId: string, edge: "start" | "end", seconds: number, prompt: string, quality: "720p" | "1080p", withSound: boolean) => {
     const found = findClip(tlRef.current, clipId);
@@ -1832,18 +1850,18 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // the settings panel's edge that faces the picture: drag to make it wider
   const panelAfter = layout.order.indexOf("panel") > layout.order.indexOf("preview");
   const panelEdge = !floated("panel") && wide ? (
-    <div role="separator" aria-orientation="vertical" aria-label="غيّر عرض اللوحة" title="اسحب لتعريض اللوحة (ضغطتين: العرض الأصلي)" className={`absolute inset-y-6 z-10 hidden w-2 cursor-col-resize rounded-full hover:bg-jw-accent/40 lg:block ${panelAfter !== T.mirror ? "start-0" : "end-0"}`} onPointerDown={dragPanel} onDoubleClick={() => putLayout({ ...layout, panelW: 320 })} />
+    <div role="separator" aria-orientation="vertical" aria-label="غيّر عرض اللوحة" title="اسحب لتعريض اللوحة (ضغطتين: العرض الأصلي)" className={`absolute inset-y-6 z-10 hidden w-2 cursor-col-resize rounded-full hover:bg-jw-accent/40 lg:block ${panelAfter !== mirror ? "start-0" : "end-0"}`} onPointerDown={dragPanel} onDoubleClick={() => putLayout({ ...layout, panelW: 320 })} />
   ) : null;
 
-  // حيدرة along the whole side (top to bottom): the editor makes room for him on that side
-  // حيدرة is a popup over the work now (never a column beside it)
+  // حيدرا ماكس along the whole side (top to bottom): the editor makes room for him on that side
+  // حيدرا ماكس is a popup over the work now (never a column beside it)
   const sideChat = false as boolean;
   const chatPad = chatMode === "half" ? "50%" : `${chatW + 12}px`;
   const toolBtn = "flex flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-[11px] text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink disabled:opacity-40 lg:flex-row lg:gap-1.5 lg:text-xs";
 
   return (
     <div
-      className={`relative flex h-dvh min-h-[480px] flex-col overflow-hidden lg:h-[calc(100dvh-var(--jw-header-h,56px)-var(--jw-bar-h,0px))] lg:min-h-[520px] ${sideChat ? (T.mirror ? "lg:pe-[var(--jw-chat-pad)]" : "lg:ps-[var(--jw-chat-pad)]") : ""}`}
+      className={`relative flex h-dvh min-h-[480px] flex-col overflow-hidden lg:h-[calc(100dvh-var(--jw-header-h,56px)-var(--jw-bar-h,0px))] lg:min-h-[520px] ${sideChat ? (mirror ? "lg:pe-[var(--jw-chat-pad)]" : "lg:ps-[var(--jw-chat-pad)]") : ""}`}
       data-ed-theme={ws ? "ws" : theme}
       data-ed-page={bigPage ? "big" : undefined}
       data-ed-bars={bars}
@@ -1923,7 +1941,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         )}
         {making.length > 0 && (
           <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-jw-accent/40 bg-jw-accent/10 px-2.5 py-1 text-[11px] font-semibold text-jw-accent" title={making.map((m) => m.name).join("، ")} aria-live="polite">
-            <span className="jw-spinner !h-3 !w-3" /> حيدرة يصنع {making.length === 1 ? `«${making[0].name.slice(0, 24)}»` : `${making.length} أشياء`}
+            <span className="jw-spinner !h-3 !w-3" /> حيدرا ماكس يصنع {making.length === 1 ? `«${making[0].name.slice(0, 24)}»` : `${making.length} أشياء`}
           </span>
         )}
         {/* «⋯ المزيد»: what is used now and then (the shortcuts, the app, the editor's size) — one button instead of four */}
@@ -1944,12 +1962,18 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                   <button type="button" className="grid h-8 w-8 place-items-center rounded-e-xl text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={ui >= 1.4} onClick={() => sizeUi(0.1)} aria-label="كبّر الواجهة"><Icon name="zoomIn" size={15} /></button>
                 </div>
               </div>
+              {wide && (
+                <button type="button" role="menuitem" aria-pressed={flip} className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-start text-sm hover:bg-jw-surface-2" onClick={() => { flipUi(); setPicking(false); }}>
+                  <span>↔️ اقلب الواجهة: القوائم {mirror ? "يسار" : "يمين"}</span>
+                  <span className="text-[11px] text-jw-muted">{flip ? "مقلوبة" : "عادية"}</span>
+                </button>
+              )}
               <div className="border-t border-jw-line pt-2"><InstallApp /></div>
             </div>
           )}
         </div>
-        <span className="lg:hidden"><button type="button" className={`jw-btn jw-3d shrink-0 ${assisting ? "border-jw-accent text-jw-accent" : ""}`} disabled={readOnly} onClick={() => openClaude()} aria-pressed={assisting} title="حيدرة">
-          <span className="jw-orb h-4 w-4" aria-hidden /> حيدرة
+        <span className="lg:hidden"><button type="button" className={`jw-btn jw-3d shrink-0 ${assisting ? "border-jw-accent text-jw-accent" : ""}`} disabled={readOnly} onClick={() => openClaude()} aria-pressed={assisting} title="حيدرا ماكس">
+          <span className="jw-orb h-4 w-4" aria-hidden /> حيدرا ماكس
         </button></span>
         <button type="button" className="jw-btn jw-btn-primary jw-3d shrink-0" disabled={readOnly || !total} onClick={() => setExporting(true)}>
           <Icon name="download" size={16} /> <span className="hidden sm:inline">صدّر</span>
@@ -1972,20 +1996,20 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       {colorRoom && !big && <ClipStrip tl={tl} assets={assetMap} thumbs={thumbs} selected={selected} onPick={pick} player={player} />}
 
       {/* Claude (right) · the preview · the left side: a section and its rail (a computer); sheets on a phone */}
-      <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${T.mirror ? "flex-row-reverse" : ""} ${colorRoom && !big ? "lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:grid-rows-[minmax(0,1fr)_minmax(320px,49%)]" : ""}`}>
+      <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${mirror ? "flex-row-reverse" : ""} ${colorRoom && !big ? "lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:grid-rows-[minmax(0,1fr)_minmax(320px,49%)]" : ""}`}>
         {sheet && <button type="button" aria-label="إغلاق" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSheet(null)} />}
-        {/* حيدرة: a small bubble with his face (dragged anywhere, folded to the side); pressed, his conversation pops up
+        {/* حيدرا ماكس: a small bubble with his face (dragged anywhere, folded to the side); pressed, his conversation pops up
             in his own black-and-lime window over the work, and «صغّر» folds it back to the bubble */}
         {!assisting && !wide && (
-          <MovableBubble id="haidara-chat" corner="left" size={52} label="حيدرة: كلّمني وأعدّل لك المونتاج" gradient="linear-gradient(135deg, #c6ff1a, #3f5a00)" onPress={() => openClaude(true)}>
+          <MovableBubble id="haidara-chat" corner="left" size={52} label="حيدرا ماكس: كلّمني وأعدّل لك المونتاج" gradient="linear-gradient(135deg, #c6ff1a, #3f5a00)" onPress={() => openClaude(true)}>
             <RobotFace id="haidara" size={38} />
           </MovableBubble>
         )}
 
         {assisting && !wide && (
-          <aside className={`hd-pop ${chatBig ? "big" : ""}`} ref={sizeChat} aria-label="حيدرة" dir="rtl">
+          <aside className={`hd-pop ${chatBig ? "big" : ""}`} ref={sizeChat} aria-label="حيدرا ماكس" dir="rtl">
             <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
-              <Guard name="حيدرة"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} onDock={wide ? () => setChatDock(true) : undefined} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => (setChatBig(false), openClaude(false))} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number, clipId?: string | null) => openLab(brief, secs, clipId)} /></Guard>
+              <Guard name="حيدرا ماكس"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} onDock={wide ? () => setChatDock(true) : undefined} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => (setChatBig(false), openClaude(false))} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number, clipId?: string | null) => openLab(brief, secs, clipId)} /></Guard>
             </div>
           </aside>
         )}
@@ -2049,13 +2073,13 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           </div>
         )}
 
-        {/* «كاب كت»: the left column — the menus as tabs at its top, what each opens under them (حيدرة too); on a phone
+        {/* «كاب كت»: the left column — the menus as tabs at its top, what each opens under them (حيدرا ماكس too); on a phone
             its parts stay the bottom sheets they were (display: contents) */}
         <div className={`cut-left ${colorRoom || big ? "contents" : "contents lg:relative lg:my-2 lg:flex lg:min-h-0 lg:shrink-0 lg:flex-col lg:overflow-hidden lg:rounded-2xl jw-glass-lg"}`} style={wide && !colorRoom && !big ? { order: 3, width: layout.panelW } : undefined}>
           {wide && !big && !colorRoom && railNav("tabs")}
           {wide && assisting && !big && !colorRoom && (
-            <div className={`hd-left min-h-0 flex-1 flex-col ${rail === "haidara" ? "flex" : "hidden"}`} aria-label="حيدرة" dir="rtl">
-              <Guard name="حيدرة"><AssistantPanel big={false} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number, clipId?: string | null) => openLab(brief, secs, clipId)} /></Guard>
+            <div className={`hd-left min-h-0 flex-1 flex-col ${rail === "haidara" ? "flex" : "hidden"}`} aria-label="حيدرا ماكس" dir="rtl">
+              <Guard name="حيدرا ماكس"><AssistantPanel big={false} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number, clipId?: string | null) => openLab(brief, secs, clipId)} /></Guard>
             </div>
           )}
         <aside
@@ -2177,7 +2201,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             <Icon name="magnet" size={16} /> كل المسارات
           </button>
         )}
-        <button type="button" className={`${toolBtn} flex ${lab ? "text-jw-accent" : ""} ${labMin ? "animate-pulse" : ""}`} onClick={() => openLab()} disabled={readOnly} title="مختبر الموشن: حيدرة يصمم الموشن ويكتبه بالكود، يراجعه كمخرج، وينزله في التايملاين">
+        <button type="button" className={`${toolBtn} flex ${lab ? "text-jw-accent" : ""} ${labMin ? "animate-pulse" : ""}`} onClick={() => openLab()} disabled={readOnly} title="مختبر الموشن: حيدرا ماكس يصمم الموشن ويكتبه بالكود، يراجعه كمخرج، وينزله في التايملاين">
           🎬 <span className="hidden sm:inline">مختبر الموشن</span>
         </button>
         <div className="flex items-center gap-0.5 rounded-lg border border-violet-500/40 p-0.5" role="group" aria-label="عناصر الموشن: تنضاف عند المؤشر">
@@ -2190,9 +2214,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       </div>
 
       {false && assisting && chatDock && wide && (
-        <aside className="hd-pop dock" ref={sizeChat} aria-label="حيدرة" dir="rtl">
+        <aside className="hd-pop dock" ref={sizeChat} aria-label="حيدرا ماكس" dir="rtl">
           <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
-            <Guard name="حيدرة"><AssistantPanel big={false} docked onDock={() => setChatDock(false)} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number, clipId?: string | null) => openLab(brief, secs, clipId)} /></Guard>
+            <Guard name="حيدرا ماكس"><AssistantPanel big={false} docked onDock={() => setChatDock(false)} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number, clipId?: string | null) => openLab(brief, secs, clipId)} /></Guard>
           </div>
         </aside>
       )}

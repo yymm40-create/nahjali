@@ -1,9 +1,9 @@
-// «موشن جرافيكس» — the layout engine. حيدرة writes the piece as a storyboard (beats: a title, points, a big number,
+// «موشن جرافيكس» — the layout engine. حيدرا ماكس writes the piece as a storyboard (beats: a title, points, a big number,
 // a quote, steps, a comparison, a statement, an outro — the words and the palette); this file turns it into the
 // editor's own commands with the sizes, places, timing, colours and entrances worked out by measure, so nothing ever
 // sits on anything else, every line fits the frame, and the look stays the same piece to piece. «lintMotion» checks
 // any timeline's texts the same way (overlaps, lines too long, out of the safe area, weak contrast, too many fonts).
-// Pure: shared by the server (حيدرة) and the tests.
+// Pure: shared by the server (حيدرا ماكس) and the tests.
 
 import type { Command } from "./commands";
 import { allTracks, clipEnd, type Timeline } from "./model";
@@ -172,18 +172,18 @@ export interface Beat {
   /** the feeling of this beat (over the piece's) and the scene drawn behind it */
   mood?: MotionMood;
   scene?: SceneId;
-  /** shapes حيدرة draws himself behind the words (the engine keeps them off the text) */
+  /** shapes حيدرا ماكس draws himself behind the words (the engine keeps them off the text) */
   shapes?: DrawShape[];
   /** what the voice says over this beat: the beat stays as long as the saying takes */
   say?: string;
-  /** the background حيدرة composed for this beat (fill, layers, grain, vignette): no preset theme is used when it is here */
+  /** the background حيدرا ماكس composed for this beat (fill, layers, grain, vignette): no preset theme is used when it is here */
   bg?: BeatBg;
-  /** the arrivals حيدرة wrote for this beat's texts, in reading order: each text moves the way he drew it, not a preset */
+  /** the arrivals حيدرا ماكس wrote for this beat's texts, in reading order: each text moves the way he drew it, not a preset */
   enter?: Move[];
 }
 
 /**
- * One arrival, written by حيدرة himself and run as motion points (not one of the editor's named entrances): the text
+ * One arrival, written by حيدرا ماكس himself and run as motion points (not one of the editor's named entrances): the text
  * starts shifted by `from` (dx, dy as fractions of the frame; s = scale, r = degrees, o = opacity), travels to its
  * place over `ms` after `delay`, may pass through `over` (a 1.03–1.10 overshoot that then settles), and when `out`
  * is given leaves the same way, faster. Every curve the person can see and edit afterwards on the clip.
@@ -199,7 +199,7 @@ export interface Move {
 
 const MOVE_MS = { min: 80, max: 1200 } as const;
 
-/** One arrival from حيدرة's JSON, clamped (nothing can throw a text off the frame or stall the beat). */
+/** One arrival from حيدرا ماكس's JSON, clamped (nothing can throw a text off the frame or stall the beat). */
 export function readMove(raw: unknown): Move | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -275,7 +275,7 @@ export function retimeMap(fit: Fit, newEnd: number): [number, number][] {
 }
 
 
-/** A storyboard from حيدرة's JSON (anything malformed dropped, at most 24 beats). */
+/** A storyboard from حيدرا ماكس's JSON (anything malformed dropped, at most 24 beats). */
 export function readStoryboard(raw: unknown): Storyboard | null {
   let o: unknown = raw;
   if (typeof raw === "string") {
@@ -358,7 +358,7 @@ export interface Placed {
   start: number;
   end: number;
   anim: { in: string; out: string; inMs: number; outMs: number };
-  /** the arrival حيدرة wrote for this text (motion points); when it is here no named entrance is used */
+  /** the arrival حيدرا ماكس wrote for this text (motion points); when it is here no named entrance is used */
   move?: Move;
 }
 
@@ -406,7 +406,7 @@ interface Spec {
   maxLines: number;
   delay: number;
   anim: { in: string; out: string; inMs: number; outMs: number };
-  /** the arrival حيدرة wrote for this text (it replaces the named entrance) */
+  /** the arrival حيدرا ماكس wrote for this text (it replaces the named entrance) */
   move?: Move;
 }
 
@@ -512,7 +512,7 @@ const TEXT_LEAD = 80;
 /** The texts of one beat, in reading order, with their roles, colours, fonts and entrances. */
 function specsOf(b: Beat, pal: Palette, head: string, body: string, bi = 0, arabicDigits = false, look?: MotionLook): Spec[] {
   const specs: Spec[] = [];
-  // the arrivals حيدرة wrote for this beat, taken in reading order (the last one repeats for any text beyond them)
+  // the arrivals حيدرا ماكس wrote for this beat, taken in reading order (the last one repeats for any text beyond them)
   const moves = b.enter ?? [];
   const headIn = (i: number) => headInOf(i, look);
   const add = (s: Omit<Spec, "maxLines" | "delay"> & { maxLines?: number; delay?: number }) => {
@@ -597,7 +597,7 @@ export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Pl
   const f = frameOf(W, H);
   const base = sizes(f);
   // the named skill's look, under what the person asked for (their palette, fonts and look win). With no skill named,
-  // NO preset background art and no drawn scene: the piece's backgrounds are the ones حيدرة composed himself, beat by
+  // NO preset background art and no drawn scene: the piece's backgrounds are the ones حيدرا ماكس composed himself, beat by
   // beat (the motion skill's way — the engine's old theme library is only for someone who asks for a skill by name).
   const named = lookOf(sb.style, sb.look);
   const composed = !named.style && !sb.look?.theme;
@@ -808,7 +808,7 @@ export function motionPlan(sb: Storyboard, W: number, H: number) {
 const artIn = (b: Beat) => (b.kind === "title" || b.kind === "points" || b.kind === "steps" ? IN.whip : b.kind === "statement" ? IN.right : IN.settle);
 
 /**
- * The motion points of an arrival حيدرة wrote: it starts shifted (and faint), reaches its place at `ms` — through the
+ * The motion points of an arrival حيدرا ماكس wrote: it starts shifted (and faint), reaches its place at `ms` — through the
  * overshoot first when he asked for one, settling after it — holds there, and leaves the way he drew the exit. Every
  * point sits inside the clip, and the last one holds to its end (the player glides between them).
  */
@@ -884,7 +884,7 @@ export function motionCommands(sb: Storyboard, W: number, H: number, base = 0, a
       patch: {
         text: { body: p.body, size: p.size, color: p.color, weight: p.weight, font: p.font, align: p.align, box: p.box, highlight: null },
         transform: { x: p.x, y: p.y, scale: 1, rotate: 0, opacity: 1 },
-        // the arrival حيدرة drew is run as motion points below; only a text without one keeps a named entrance
+        // the arrival حيدرا ماكس drew is run as motion points below; only a text without one keeps a named entrance
         anim: (p.move ? null : p.anim) as never,
       },
     });

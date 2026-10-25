@@ -3,7 +3,7 @@ import { DIRECTOR_SKILL, INTENSITY, VO_BUDGET } from "@/lib/editor/director";
 import { MOTION_TEN_SKILL } from "@/lib/editor/motion-ten";
 import { ANIMS, STILL, animAt, countText, decodeText } from "@/lib/editor/model";
 
-describe("«مخرج الموشن»: what حيدرة learnt from the Motion Video Director skill", () => {
+describe("«مخرج الموشن»: what حيدرا ماكس learnt from the Motion Video Director skill", () => {
   it("covers the craft: structure, intensity, type, colour, safe zones, sound, voice script, reference, QA", () => {
     for (const piece of ["Hook (0–3 s)", "INTENSITY BY VIDEO TYPE", "ANIMATION PRINCIPLES", "60-30-10", "SAFE ZONES", "riser", "ElevenLabs v3", "A REFERENCE VIDEO", "BEFORE YOU SAY IT IS DONE", '"glow"', '"grad"', '"depth"', '"decode"', '"count"', "letterbox"]) expect(DIRECTOR_SKILL, piece).toContain(piece);
     expect(INTENSITY.map((i) => i.level)).toEqual([5, 4, 3, 2, 1]);

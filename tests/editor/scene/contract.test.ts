@@ -5,7 +5,7 @@ import { EXEMPLARS } from "@/lib/editor/scene/exemplars";
 import { SFX_LIBRARY } from "@config/jawad/sfx-library";
 import { readFileSync } from "node:fs";
 
-describe("what the lab accepts from حيدرة", () => {
+describe("what the lab accepts from حيدرا ماكس", () => {
   it("passes the reference scenes", () => {
     for (const e of EXEMPLARS) expect(checkScene(e.code), e.id).toMatchObject({ ok: true, problems: [] });
   });
@@ -63,7 +63,7 @@ describe("what the lab accepts from حيدرة", () => {
   });
 });
 
-describe("حيدرة's training for motion in code", () => {
+describe("حيدرا ماكس's training for motion in code", () => {
   it("scores a piece on twelve criteria, the million-dollar test among them", () => {
     expect(RUBRIC.map((r) => r.id)).toEqual(["hook", "concept", "hero", "motion", "camera", "light", "type", "color", "variety", "sound", "wow", "clean"]);
     expect(PASS).toBe(8);

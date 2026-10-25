@@ -1,7 +1,7 @@
 "use client";
 
-// «حيدرة كت» — talking with حيدرة: the microphone recorded in the browser (stopping by itself when the person goes
-// quiet, in a conversation), what was said written by the server (ElevenLabs Scribe), and حيدرة's reply read aloud
+// «حيدرة كت» — talking with حيدرا ماكس: the microphone recorded in the browser (stopping by itself when the person goes
+// quiet, in a conversation), what was said written by the server (ElevenLabs Scribe), and حيدرا ماكس's reply read aloud
 // (ElevenLabs v4). The recording goes with the request (a short message), never to storage.
 
 import { postJson } from "@/lib/fetch";
@@ -139,8 +139,8 @@ export async function hear(projectId: string, r: Recording) {
 
 let playing: HTMLAudioElement | null = null;
 
-/** حيدرة says `text` aloud; resolves when it has finished (or was stopped with `hush`). */
-/** Who reads حيدرة's replies (kept on this device): a provider, or one of the person's own voices («v:<id>»). */
+/** حيدرا ماكس says `text` aloud; resolves when it has finished (or was stopped with `hush`). */
+/** Who reads حيدرا ماكس's replies (kept on this device): a provider, or one of the person's own voices («v:<id>»). */
 export const REPLY_VOICE_KEY = "jw-haydara-voice";
 export function replyVoice(): string {
   try {
@@ -189,7 +189,7 @@ export async function say(projectId: string, text: string) {
   if (playing === a) playing = null;
 }
 
-/** Stops حيدرة talking. */
+/** Stops حيدرا ماكس talking. */
 export function hush() {
   if (typeof window !== "undefined") window.speechSynthesis?.cancel();
   playing?.pause();

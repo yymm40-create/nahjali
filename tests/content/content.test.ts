@@ -11,7 +11,7 @@ import { ANSWER_SCHEMA } from "@/lib/content/chat";
 describe("«محمد باقر»", () => {
   it("keeps the owner's template verbatim and always adds the platform's rules and tools after it", () => {
     expect(BAQIR_PERSONA.length).toBeGreaterThan(5000);
-    for (const line of ["# R - ROLE | الدور والتخصص", "أنت «محمد باقر»", "المرحلة الرابعة: إذن الإنتاج", "استخدم GPT Image 2 تلقائيًا", "محمد باقر — حيدرة — GPT Image 2.", "# F - FORMAT | شكل التسليم", "وكل حزمة مسلمة إلى حيدرة مكتفية بذاتها."]) {
+    for (const line of ["# R - ROLE | الدور والتخصص", "أنت «محمد باقر»", "المرحلة الرابعة: إذن الإنتاج", "استخدم GPT Image 2 تلقائيًا", "محمد باقر — حيدرا ماكس — GPT Image 2.", "# F - FORMAT | شكل التسليم", "وكل حزمة مسلمة إلى حيدرا ماكس مكتفية بذاتها."]) {
       expect(BAQIR_PERSONA).toContain(line);
     }
     const t = systemText("PERSONA", ["EX"], "REC");
@@ -25,7 +25,7 @@ describe("«محمد باقر»", () => {
     expect(CONTENT_PLATFORM_RULES).toContain("لا تقترح أبدًا أن يترك العميل مساحات فارغة");
   });
 
-  it("answers in the shape the site reads: a reply, the record, a carousel to produce, a package for حيدرة", () => {
+  it("answers in the shape the site reads: a reply, the record, a carousel to produce, a package for حيدرا ماكس", () => {
     expect(ANSWER_SCHEMA.required).toEqual(["reply", "questions", "record", "produce", "generate", "handoff"]);
     expect(ANSWER_SCHEMA.properties.produce.properties.aspect.enum).toEqual(["1:1", "2:3", "9:16", "16:9"]);
     expect(ANSWER_SCHEMA.properties.produce.properties.mode.enum).toEqual(["all", "fix"]);

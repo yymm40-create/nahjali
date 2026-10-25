@@ -1,6 +1,6 @@
 // «مختبر الموشن» — the scene PAGE: a sandboxed iframe (scripts only, no same-origin: it cannot read the site, the
 // person's cookies or storage) with a strict content policy (no network but the pinned three.js and the fonts' CDN),
-// the kit, and a small runtime that loads حيدرة's scene and draws any frame on request. A frame depends only on its
+// the kit, and a small runtime that loads حيدرا ماكس's scene and draws any frame on request. A frame depends only on its
 // time; Math.random and the clocks are replaced by seeded, frozen ones so a preview frame is the final frame.
 // Motion blur: the frame is the average of sub-frames across the shutter. Pure strings (no DOM here).
 

@@ -7,7 +7,7 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn, type ClaudeUsage } from "@/lib/film/anthropic";
 import { SUPER_DIRECTOR } from "@config/film-prompts/director";
-import { DIRECTOR_PRICE_KEY, generatorById } from "@config/jawad/generators";
+import { DIRECTOR_PRICE_KEY, directorOffered, generatorById } from "@config/jawad/generators";
 import type { GeneratorDef, RefKind, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import { DIRECTOR_LIMITS, directorProblems, directorPrompt, salvageDirector, type DirectorOutput } from "../director";
 import { evaluate } from "../engine";
@@ -37,7 +37,7 @@ const WEBSITE_TASK = `
 
 ## WEBSITE TASK — JAWAD AI VIDEO STUDIO (applies on top of the skill above)
 
-You run in the background of the JAWAD AI video studio; the user never sees this exchange. They wrote a prompt for a Seedance video and asked the Super Director to develop it. This message IS the final prompt-delivery stage: deliver the final prompt now. Do not ask questions, do not explain, add no approval gates.
+You run in the background of the JAWAD AI video studio; the user never sees this exchange. They wrote a prompt for an AI video generator (the model is named in the settings: Seedance, Wan…) and asked the Super Director to develop it. This message IS the final prompt-delivery stage: deliver the final prompt now. Do not ask questions, do not explain, add no approval gates.
 
 ${WEBSITE_RULES}
 6. Keep the user's story, characters, actions, camera directions and dialogue (only transliterating Arabic); improve the direction, do not change what happens.`;
@@ -94,7 +94,7 @@ export async function improvePrompt(user: { id: string }, owner: boolean, b: Dir
   const key = String(b.idempotencyKey ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
   const def = generatorById(String(b.generatorId ?? ""));
-  if (!def || def.provider.id !== "byteplus-modelark") throw new UserError("المخرج الخارق متاح في صناعة الفيديو فقط.", 400);
+  if (!def || !directorOffered(def)) throw new UserError("المخرج الخارق متاح لمولدات الفيديو ما عدا Kling.", 400);
   const prompt = typeof b.prompt === "string" ? b.prompt : "";
   if (!prompt.trim()) throw new UserError("اكتب فكرتك في البرومبت أولًا.", 400);
   if (prompt.length > def.prompt.max) throw new UserError(`البرومبت أطول من ${def.prompt.max} حرف.`, 400);

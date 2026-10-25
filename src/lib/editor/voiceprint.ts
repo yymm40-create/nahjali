@@ -1,6 +1,6 @@
 // «حيدرة كت» — «بصمة صوتك» from the edit: a recording (the person's own voice from a clip, or recorded at the
 // microphone) becomes a voice of their JAWAD AI library, at MiniMax (no limit on the number of voices, Arabic) or
-// ElevenLabs. حيدرة can then speak any text with it («اقرأها بصوتي»), and his own replies can use it. Server only.
+// ElevenLabs. حيدرا ماكس can then speak any text with it («اقرأها بصوتي»), and his own replies can use it. Server only.
 
 import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";

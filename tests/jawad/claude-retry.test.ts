@@ -60,7 +60,7 @@ describe("a request that stumbles is tried again, not handed back", () => {
 
   it("the owner always reads the raw reason; a customer reads the robot's words", async () => {
     const e = new Error("Claude 418: a teapot");
-    expect(claudeWhy(e, "ما قدر حيدرة يرد الحين.", "yymm40@gmail.com")).toMatch(/تفصيل للرئيس: Claude 418: a teapot/);
-    expect(claudeWhy(e, "ما قدر حيدرة يرد الحين.", "someone@else.com")).toBe("ما قدر حيدرة يرد الحين.");
+    expect(claudeWhy(e, "ما قدر حيدرا ماكس يرد الحين.", "yymm40@gmail.com")).toMatch(/تفصيل للرئيس: Claude 418: a teapot/);
+    expect(claudeWhy(e, "ما قدر حيدرا ماكس يرد الحين.", "someone@else.com")).toBe("ما قدر حيدرا ماكس يرد الحين.");
   });
 });

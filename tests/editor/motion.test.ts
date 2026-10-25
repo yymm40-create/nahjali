@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MOTION_QUESTIONS, MOTION_SKILL, MOTION_SOURCES } from "@/lib/editor/motion";
 
-describe("حيدرة's motion-graphics skill", () => {
+describe("حيدرا ماكس's motion-graphics skill", () => {
   it("asks the brief first, and knows the channels by name when someone asks for one", () => {
     expect(MOTION_SOURCES.map((s) => s.name)).toEqual(["Kurzgesagt", "Vox", "Ben Marriott", "School of Motion", "Motion Design School"]);
     expect(MOTION_QUESTIONS.map((q) => q.key)).toContain("duration");

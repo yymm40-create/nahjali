@@ -1,4 +1,4 @@
-// «مختبر الموشن» on the server — حيدرة as motion director and creative coder, in three calls to Claude (the person's
+// «مختبر الموشن» on the server — حيدرا ماكس as motion director and creative coder, in three calls to Claude (the person's
 // model; Opus 5.5 by default): PLAN (the idea, the look and the shot list, from the brief, the references and the
 // assets), WRITE (the scene program on the kit), REVIEW (he LOOKS at contact sheets and stills rendered in the
 // person's browser, scores them like a harsh director and, below the bar, rewrites the program). The owner's motion
@@ -160,7 +160,7 @@ type Asked<T> = { data: T; coins: number; model: string; partialRaw?: undefined 
  * makes the model think less.
  */
 async function ask<T>(who: Who, b: Record<string, unknown>, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "low" | "medium" | "high" | "xhigh" = "high", onText?: OnText): Promise<Asked<T>> {
-  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
+  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
   const written = typeof b.partialRaw === "string" ? b.partialRaw : "";
   const level = effortAtMost(effort, b.effortCap);
   const stopAt = (typeof b.__at === "number" ? b.__at : Date.now()) + WINDOW_MS;
@@ -173,7 +173,7 @@ async function ask<T>(who: Who, b: Record<string, unknown>, label: string, parts
     () =>
       callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: turn }], schema, maxTokens, effort: level, fallback: true, resume: { stopAt }, rawText: Boolean(written), onText }).catch((e) => {
         console.error("motion lab", label, e);
-        throw new UserError(claudeWhy(e, "ما قدر حيدرة يكمل الموشن الحين. جرّب مرة ثانية.", who.email), 502);
+        throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يكمل الموشن الحين. جرّب مرة ثانية.", who.email), 502);
       }),
     (x) => claudeCost(x.usage),
     undefined,
@@ -189,7 +189,7 @@ async function ask<T>(who: Who, b: Record<string, unknown>, label: string, parts
     return { data: JSON.parse(whole) as T, coins: r.coins, model: r.model };
   } catch {
     console.error("motion lab", label, "continued reply is not JSON", whole.slice(-200));
-    throw new UserError("ما قدرت أجمع رد حيدرة بعد ما انقطع. جرّب مرة ثانية.", 502);
+    throw new UserError("ما قدرت أجمع رد حيدرا ماكس بعد ما انقطع. جرّب مرة ثانية.", 502);
   }
 }
 
@@ -328,14 +328,14 @@ const CHAT_SCHEMA = {
 
 /**
  * 0 · CHAT: the lab as a conversation. The person writes what they want — a new piece, a change («كبّر الشعار»،
- * «خلّ اللون ذهبي»، «أسرع شوي»), a picture they attached (a logo, a product) — and حيدرة answers and decides: talk only,
+ * «خلّ اللون ذهبي»، «أسرع شوي»), a picture they attached (a logo, a product) — and حيدرا ماكس answers and decides: talk only,
  * (re)plan from a brief he writes out of the whole conversation, or change the program himself (the page runs it,
  * fixes any error with him, and shows it).
  */
 export async function labChat(p: EditorProject, who: Who, b: Record<string, unknown>, onText?: OnText) {
   stillOpen(p);
   const message = text(b.message, 4000);
-  if (!message) throw new UserError("اكتب لحيدرة وش تبي.");
+  if (!message) throw new UserError("اكتب لحيدرا ماكس وش تبي.");
   const assets = assetsOf(b.assets);
   const hasPlan = Boolean(b.plan && typeof b.plan === "object");
   const foot = footageOf(b);
@@ -343,7 +343,7 @@ export async function labChat(p: EditorProject, who: Who, b: Record<string, unkn
   const code = typeof b.code === "string" ? checkScene(b.code).code : "";
   const history = (Array.isArray(b.history) ? b.history : []).slice(-20).map((m) => {
     const o = (m ?? {}) as Record<string, unknown>;
-    return `${o.role === "assistant" ? "حيدرة" : "الشخص"}: ${text(o.text, 1500)}`;
+    return `${o.role === "assistant" ? "حيدرا ماكس" : "الشخص"}: ${text(o.text, 1500)}`;
   });
   const params = (b.params && typeof b.params === "object" ? b.params : {}) as Record<string, unknown>;
   const f = frameOf(p);
@@ -403,8 +403,8 @@ ${code ? `THE CURRENT PROGRAM:\n${code}` : ""}${footagePart(b, Boolean(code))}${
  */
 export async function labSearch(p: EditorProject, who: Who, b: Record<string, unknown>) {
   stillOpen(p);
-  if (!text(b.query, 1500)) throw new UserError("اكتب وش تبي حيدرة يدوّر عليه.");
-  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
+  if (!text(b.query, 1500)) throw new UserError("اكتب وش تبي حيدرا ماكس يدوّر عليه.");
+  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
   const r = await claudeCharged(
     who,
     b.model,
@@ -412,7 +412,7 @@ export async function labSearch(p: EditorProject, who: Who, b: Record<string, un
     () =>
       callClaudeSearch({ system: SEARCH_SYSTEM, prompt: searchPrompt(b), maxUses: 5, maxTokens: 5000 }).catch((e) => {
         console.error("motion lab search", e);
-        throw new UserError(claudeWhy(e, "ما قدر حيدرة يبحث في الإنترنت الحين. جرّب بعد شوي.", who.email), 502);
+        throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يبحث في الإنترنت الحين. جرّب بعد شوي.", who.email), 502);
       }),
     (x) => x.usd,
   );

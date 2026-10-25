@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars -- a one-off build script over loosely typed Wikimedia API answers */
-// Builds «حيدرة»'s grading library: a few hundred high-quality photos from Wikimedia Commons (featured pictures under
+// Builds «حيدرا ماكس»'s grading library: a few hundred high-quality photos from Wikimedia Commons (featured pictures under
 // free licences that allow changes, each credited), and from each one, teaching examples in Haydara's own grade:
 //   · three MISTAKES (a colour cast, wrong exposure, milky or crushed blacks, flat log-like contrast, over/under
 //     saturation, wrong split…) made on purpose, each with the ONE TOUCH that brings it back — found by searching

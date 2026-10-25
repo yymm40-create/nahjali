@@ -1,4 +1,4 @@
-// The scopes a colourist reads, as numbers «حيدرة» can judge a frame by (it sees the picture too, but numbers don't
+// The scopes a colourist reads, as numbers «حيدرا ماكس» can judge a frame by (it sees the picture too, but numbers don't
 // lie about a cast or a clip): the brightness spread like a waveform (IRE 0–100: the darkest, the middle, the
 // brightest), what is crushed or blown, the saturation, the colour cast in the shadows, mid-tones and highlights (where
 // R, G and B should meet on anything neutral), and the skin: how much of the frame looks like skin and its hue (the

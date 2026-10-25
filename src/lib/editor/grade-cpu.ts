@@ -2,7 +2,7 @@
 // not log: exposure, warmth and tint in linear light → lift / gamma / gain / offset → contrast around the pivot →
 // highlights, shadows, whites, blacks → saturation and vibrance → RGB curves → hue / sat / luma curves → split toning
 // → the amount. Not here: log decoding, secondaries, windows, the LUT, halation, grain, vignette and sharpening (they
-// need the GPU or the whole frame). Used to build «حيدرة»'s grading library (its before/after pairs) and to check a
+// need the GPU or the whole frame). Used to build «حيدرا ماكس»'s grading library (its before/after pairs) and to check a
 // grade on a still without a browser. Pure.
 
 import { curveAt, hueCurveAt, type Grade, type Pt } from "./grade";

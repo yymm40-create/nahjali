@@ -20,7 +20,7 @@ const REASON: Record<string, string> = { fund: "شحن من صاحب المسل�
 
 /**
  * «نقود الفريق الذكي»: the team's own wallet. Everything made inside the series (the scenes' replies, pictures,
- * videos, voices, and حيدرة's work in its edits) is paid from here, whoever on the team presses. The owner fills it
+ * videos, voices, and حيدرا ماكس's work in its edits) is paid from here, whoever on the team presses. The owner fills it
  * from their own «النقود الذكية» and can take coins back.
  */
 export default function TeamWallet({ seriesId, owner, balance, ledger }: { seriesId: string; owner: boolean; balance: number; ledger: Row[] }) {

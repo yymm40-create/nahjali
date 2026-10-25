@@ -18,7 +18,7 @@ export interface Layout {
   panelW: number;
 }
 
-export const PANELS: Record<PanelId, string> = { chat: "حيدرة", preview: "المعاينة", panel: "الإعدادات والمكتبة" };
+export const PANELS: Record<PanelId, string> = { chat: "حيدرا ماكس", preview: "المعاينة", panel: "الإعدادات والمكتبة" };
 export const DEFAULT_LAYOUT: Layout = { order: ["chat", "preview", "panel"], float: {}, panelW: 320 };
 const KEY = "jw-editor-layout";
 

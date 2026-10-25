@@ -8,7 +8,7 @@ const panel = readFileSync("src/components/jawad/editor/AssistantPanel.tsx", "ut
 const inspector = readFileSync("src/components/jawad/editor/Inspector.tsx", "utf8");
 
 describe("«رفع الدقة» is reachable, not hidden in one corner", () => {
-  it("حيدرة knows it: the request kind, the target and when not to offer it", () => {
+  it("حيدرا ماكس knows it: the request kind, the target and when not to offer it", () => {
     // the kind is in the schema's enum, and the guide tells him how to send it
     expect(assistant).toMatch(/enum: \["hook_design"[^\]]*"upscale"[^\]]*\]/);
     expect(assistant).toContain('{"kind":"upscale","clipId"');

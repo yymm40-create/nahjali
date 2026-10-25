@@ -122,7 +122,7 @@ export default function ContentAdmin() {
 
       <section className="card space-y-3 p-4">
         <h2 className="text-xl font-extrabold">🧠 قالب «محمد باقر» {d.persona.edited ? "(معدّل)" : "(الافتراضي: برومبتك حرفيًا)"}</h2>
-        <p className="text-sm font-bold text-muted">هذا النص اللي يتصرف على أساسه. قواعد المنصة وربط الأدوات (الإنتاج بـ GPT Image 2 والتسليم لحيدرة) تنضاف بعده دائمًا حتى لو عدّلته.</p>
+        <p className="text-sm font-bold text-muted">هذا النص اللي يتصرف على أساسه. قواعد المنصة وربط الأدوات (الإنتاج بـ GPT Image 2 والتسليم لحيدرا ماكس) تنضاف بعده دائمًا حتى لو عدّلته.</p>
         <textarea className="field min-h-72 w-full text-sm" value={text} onChange={(e) => setText(e.target.value)} dir="auto" />
         <div className="flex flex-wrap gap-2">
           <button className="btn btn-primary" onClick={() => act({ action: "persona_save", text }, "انحفظ القالب")}>احفظ القالب</button>

@@ -6,7 +6,7 @@
 // The rest, as before: (Majed Alzaabi's talking reels): while the person talks, the
 // moment they say a thing it appears — «تاكسي» → the word with its picture, «بروح الرياض» → a line drawn to Riyadh,
 // «انستا» → Instagram's icon — and the person shrinks into a box at the bottom for those seconds, then comes back full
-// screen. حيدرة writes only the cues (which word, what to show) from the transcript; this engine lays them out,
+// screen. حيدرا ماكس writes only the cues (which word, what to show) from the transcript; this engine lays them out,
 // draws the icons/routes (SVG → PNG on the server), keys the shrink on every piece of the talking video, lifts the
 // captions above the box, and picks the sounds. Pure (no I/O): the tests run it on real timelines.
 
@@ -158,7 +158,7 @@ export function spaceCues(cues: TalkCue[], endMs: number): TalkCue[] {
   return out;
 }
 
-/** حيدرة's cues (a JSON string), checked: known kinds, the words written, times inside the piece, in order, spaced. */
+/** حيدرا ماكس's cues (a JSON string), checked: known kinds, the words written, times inside the piece, in order, spaced. */
 export function readTalk(raw: unknown, endMs: number): TalkPlan | null {
   let o: unknown = raw;
   if (typeof raw === "string") {

@@ -121,7 +121,7 @@ describe("the scenes the engine draws behind the words", () => {
   });
 });
 
-describe("the shapes حيدرة draws himself", () => {
+describe("the shapes حيدرا ماكس draws himself", () => {
   it("reads what he writes and clamps it into the frame, dropping what is not a shape", () => {
     const shapes = readShapes([{ t: "circle", x: 3, y: -2, w: 9, h: 0, c: "red", o: 5, r: 999 }, { t: "volcano" }, { t: "icon", icon: "nope" }, { t: "icon", icon: "bulb", x: 0.2, y: 0.2, w: 0.1 }, null, 5]);
     expect(shapes.length).toBe(2);
@@ -238,7 +238,7 @@ describe("GPT Image 2 only on request", () => {
     expect(askedForPicture("سو لي موشن جرافيكس بمهارة الريل السريع عن الصدقة")).toBe(false);
     expect(askedForPicture("خلفية حلوة للموشن")).toBe(false);
   });
-  it("حيدرة is told so, and told how to compose backgrounds himself", () => {
+  it("حيدرا ماكس is told so, and told how to compose backgrounds himself", () => {
     expect(MOTION_SKILL).toContain("WHAT THE EDITOR GIVES YOU");
     expect(MOTION_SKILL).toContain("the background you compose per beat");
     expect(MOTION_SKILL).toMatch(/A generated picture only when the person asks for one in so many words/);

@@ -97,7 +97,7 @@ describe("«مهارات الموشن»: names, looks and the person's wishes", 
     expect(cmds.filter((c) => c.type === "update_clip" && "transition" in c.patch && c.patch.transition)).toEqual([]);
   });
 
-  it("reads the style and the look from حيدرة's JSON, dropping what isn't known", () => {
+  it("reads the style and the look from حيدرا ماكس's JSON, dropping what isn't known", () => {
     const sb = readStoryboard(JSON.stringify({ style: "news", look: { pace: "fast", transitions: ["wipe", "nope"], sfx: "loud", decor: false }, beats: [{ kind: "statement", text: "جملة" }] }))!;
     expect(sb.style).toBe("news");
     expect(sb.look).toEqual({ pace: "fast", transitions: ["wipe"], decor: false });

@@ -7,7 +7,7 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ANY_VOICE, DICTION_USD_PER_K, ELEVEN_PRICE } from "@config/jawad/generators";
-import { mostlyArabic } from "@config/jawad/diction";
+import { DICTION_VALUES, mostlyArabic, type Diction } from "@config/jawad/diction";
 import { keyConfigured } from "@/lib/jawad/server/runtime";
 import { generatorById } from "@config/jawad/generators";
 import { elevenPremadeVoices, elevenSpeech } from "@/lib/jawad/server/providers/elevenlabs";
@@ -183,8 +183,12 @@ export const cleanEmotion = (v: unknown) => String(v ?? "").replace(/[\[\]\n]/g,
 /** ElevenLabs reads a feeling between [ ] (a sound written like "(laughs)" is taken as its word). */
 const elevenFeeling = (e: string) => e.replace(/[()]/g, "").trim();
 
-export async function speakLine(project: FilmProject, user: { id: string; email?: string | null }, key: unknown, idempotencyKey: unknown, emotionRaw?: unknown) {
+/** «طريقة كتابة النطق»: one of the three (precise IPA, spelled out, or as written); anything else is the default «دقيق». */
+export const cleanDiction = (v: unknown): Diction => (DICTION_VALUES.some((d) => d.value === v) ? (v as Diction) : "precise");
+
+export async function speakLine(project: FilmProject, user: { id: string; email?: string | null }, key: unknown, idempotencyKey: unknown, emotionRaw?: unknown, dictionRaw?: unknown) {
   const emotion = cleanEmotion(emotionRaw);
+  const diction = cleanDiction(dictionRaw);
   if (!voicesReady()) throw new UserError("أصوات ElevenLabs غير متاحة حاليًا.", 503);
   const k = String(idempotencyKey ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(k)) throw new UserError("طلب غير صحيح.", 400);
@@ -200,14 +204,14 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
 
   const arabic = mostlyArabic(line.line);
   // (Claude's check costs about the same for a short line as for 1,000 characters: at least that is held)
-  const estimateUsd = (Math.max(1, line.line.length) / 1000) * ELEVEN_PRICE.v4PerKChars + (arabic ? Math.max(1, Math.ceil(line.line.length / 1000)) * DICTION_USD_PER_K : 0);
+  const estimateUsd = (Math.max(1, line.line.length) / 1000) * ELEVEN_PRICE.v4PerKChars + (arabic && diction !== "off" ? Math.max(1, Math.ceil(line.line.length / 1000)) * DICTION_USD_PER_K : 0);
   const { job, created } = await startJob({ projectId: project.id, user, service: "elevenlabs", operation: "voice_line", idempotencyKey: `voice:${project.id}:${k}`, estimateUsd, units: line.line.length, unit: "character" });
   if (!created) return { jobId: job.id, status: job.status };
   try {
     // Who speaks, and the scene's other lines: Claude tells from them who is addressed (أنتَ or أنتِ)
     const scene = lines.filter((l) => l.genId === line.genId).map((l) => `${l.speaker}: ${l.line}`).join("\n");
     // «النطق الدقيق» helps the voice; if it can't run (Claude busy or a rule broken) the line is still spoken as written
-    const spoken = await prepareSpeech(line.line, arabic ? "precise" : "off", `This is one line of a film, said by «${line.speaker}». The scene's lines, in order:\n${scene}`).catch((err) => {
+    const spoken = await prepareSpeech(line.line, arabic ? diction : "off", `This is one line of a film, said by «${line.speaker}». The scene's lines, in order:\n${scene}`).catch((err) => {
       console.error("film voice diction skipped", err);
       return { text: line.line, languageCode: arabic ? "ar" : undefined, fixes: [], usd: 0 };
     });
@@ -228,7 +232,7 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
       mime,
       bytes: audio.length,
       status: "generated",
-      meta: { speaker: line.speaker, text: line.line, voice, ...(emotion ? { emotion } : {}), durationMs: audioDurationMs(audio) ?? null, model, jobId: job.id, ...(spoken.fixes.length ? { spoken: spoken.text, diction: spoken.fixes.map((f) => ({ word: f.word, vocalized: f.vocalized })) } : {}) },
+      meta: { speaker: line.speaker, text: line.line, voice, ...(emotion ? { emotion } : {}), ...(arabic ? { dictionMode: diction } : {}), durationMs: audioDurationMs(audio) ?? null, model, jobId: job.id, ...(spoken.fixes.length ? { spoken: spoken.text, diction: spoken.fixes.map((f) => ({ word: f.word, vocalized: f.vocalized })) } : {}) },
     });
     if (error) throw error;
     await succeedJob(job.id, { costUsd: (spoken.text.length / 1000) * ELEVEN_PRICE.v4PerKChars + spoken.usd, units: spoken.text.length });

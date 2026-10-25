@@ -1,5 +1,5 @@
 // «🎬 مختبر الموشن» · the pictures SHOWN INSIDE a piece that the person does not have (a product, an object, a person or
-// character, an illustration seen as a picture): حيدرة names them in the plan and جواد makes each one with GPT Image 2 —
+// character, an illustration seen as a picture): حيدرا ماكس names them in the plan and جواد makes each one with GPT Image 2 —
 // WITHOUT any writing in it — at the studio's price; it lands in the project's library and the scene draws it like any
 // picture the person gave. The motion and its whole foundation (backgrounds, worlds, type, shapes, transitions) are
 // always code (the owner's order): GPT Image 2 only paints those pictures.

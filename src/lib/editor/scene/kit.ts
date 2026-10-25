@@ -1,4 +1,4 @@
-// «مختبر الموشن» — the KIT: the library حيدرة writes his scenes with, injected into the sandboxed scene page before his
+// «مختبر الموشن» — the KIT: the library حيدرا ماكس writes his scenes with, injected into the sandboxed scene page before his
 // code. Everything here is DETERMINISTIC (a frame depends only on its time `t`): seeded random, seeded noise, no clocks.
 // It holds the moves that make a piece look expensive, so every scene can reach them in one call: easings and springs,
 // time segments and staggers, text that fits and stays readable (Arabic shaped by the browser), particles that
@@ -483,7 +483,7 @@ export const SCENE_KIT_JS = String.raw`
 })();
 `;
 
-/** The kit's functions, one line each — what حيدرة is told he can call (kept next to the code so they never drift). */
+/** The kit's functions, one line each — what حيدرا ماكس is told he can call (kept next to the code so they never drift). */
 export const SCENE_KIT_API = `K (the kit, deterministic — never Math.random, never Date/performance: use K.rng(seed) and t):
 NUMBERS · K.clamp(v,a=0,b=1) · K.lerp(a,b,t) · K.map(v,a,b,c,d,clamp=true) · K.seg(t,start,dur)→0..1 · K.smooth(e0,e1,x) · K.fract(x) · K.TAU
 EASING · K.ease.{linear,inQuad,outQuad,inOutQuad,inCubic,outCubic,inOutCubic,outQuart,inOutQuart,outQuint,inExpo,outExpo,inOutExpo,outCirc,inOutSine,outBack(x,s),inBack(x,s),outElastic,silk (cubic-bezier .16,1,.3,1 — the product-film landing),snap (.34,1.56,.64,1 — fast with a soft overshoot)} · K.bezier(x1,y1,x2,y2)→ease · K.spring(tSeconds,{stiffness=170,damping=26})→0..1 (overshoots when damping is low)

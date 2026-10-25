@@ -14,7 +14,7 @@ type Episode = { id: string; number: number; title: string; scenes: Scene[] };
 
 /**
  * The series' episodes. Each: its scenes as small squares on top (a tap opens the scene; «+» adds one), the scenes'
- * cards below (order with ↑ ↓), and «ركّب الحلقة»: the scenes' saved montages in order in «حيدرة كت», where حيدرة adds
+ * cards below (order with ↑ ↓), and «ركّب الحلقة»: the scenes' saved montages in order in «حيدرة كت», where حيدرا ماكس adds
  * the sound effects and music.
  */
 export default function SeriesBoard({ seriesId, owner, canAssign, team, episodes }: { seriesId: string; owner: boolean; canAssign: boolean; team: Mate[]; episodes: Episode[] }) {
@@ -143,7 +143,7 @@ function EpisodeBlock({ seriesId, ep, busy, send, canAssign, team }: { seriesId:
       )}
 
       <button type="button" className="btn btn-primary min-h-12 w-full" disabled={!!working || busy || !saved} onClick={assemble}>
-        {working === "assemble" ? "نركّب الحلقة…" : "🎞️ ركّب الحلقة من مشاهدها (وحيدرة يضيف المؤثرات والموسيقى)"}
+        {working === "assemble" ? "نركّب الحلقة…" : "🎞️ ركّب الحلقة من مشاهدها (وحيدرا ماكس يضيف المؤثرات والموسيقى)"}
       </button>
       {!saved && ep.scenes.length > 0 && <p className="text-xs font-bold text-muted">الحلقة تتركب من «🏆 المشهد الناجح» لكل مشهد: بعد مونتاج المشهد احفظه من صفحة المونتاج.</p>}
       {error && <p className="error-box text-sm">{error}</p>}

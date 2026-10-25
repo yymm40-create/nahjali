@@ -1,5 +1,5 @@
 /* «مختبر الموشن» — a SOLID studio window: no glass, no see-through, big readable type, one thing at a time.
-   It recolours the editor's tokens inside it only (black-and-lime, like حيدرة's own window), so the site's buttons,
+   It recolours the editor's tokens inside it only (black-and-lime, like حيدرا ماكس's own window), so the site's buttons,
    inputs and chips inside follow. */
 .mlab-overlay {
   position: fixed;

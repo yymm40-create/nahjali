@@ -39,8 +39,9 @@ const clamp = (x: number, y: number) => ({
 
 export default function RobotGuide() {
   const path = usePathname() ?? "";
-  // inside a project of «حيدرة كت» his own chat bubble is there already (Editor.tsx), so no second one
-  const robot = /^\/jawad-ai\/editor\/[^/]+/.test(path) ? null : robotFor(path);
+  // where the robot has its own chat bubble already — «حيدرة كت» inside a project (Editor.tsx) and «سجاد» in the film
+  // maker (SajjadPanel.tsx) — that bubble is the robot's ONE icon (movable, foldable): no second one beside it
+  const robot = /^\/jawad-ai\/editor\/[^/]+/.test(path) || /^\/jawad-ai\/film(\/|$)/.test(path) ? null : robotFor(path);
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [folded, setFolded] = useState(false);

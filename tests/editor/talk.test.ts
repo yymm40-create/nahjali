@@ -28,7 +28,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("talking with حيدرة", () => {
+describe("talking with حيدرا ماكس", () => {
   it("writes what was said", async () => {
     const r = await voiceIn(project, owner, { audio: Buffer.from("voice").toString("base64"), mime: "audio/webm;codecs=opus", seconds: 3 });
     expect(r.text).toBe("قص السكتات،");

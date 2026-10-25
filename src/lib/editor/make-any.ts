@@ -1,4 +1,4 @@
-// «حيدرة» makes anything for the edit with JAWAD AI's own generators: a picture (GPT Image 2), a video (Seedance), a
+// «حيدرا ماكس» makes anything for the edit with JAWAD AI's own generators: a picture (GPT Image 2), a video (Seedance), a
 // voice reading a text (Eleven v4), a sound effect, music. The plan is priced here exactly as JAWAD AI prices it
 // (the owner's prices); the job is then made by JAWAD AI's job system (its checks, its coins, its refunds), the result
 // lands in «أعمالي» and the page brings it into the project and places it. Server only.
@@ -112,7 +112,7 @@ export function makeSettings(s: MakeSpec, projectRatio: number, voice: string | 
 
 /** The speech providers by generator (a voice is spoken only where it lives). */
 const SPEECH_GEN: Record<string, string> = { jawad: "jawad-voice", elevenlabs: "elevenlabs-eleven-v4", minimax: "minimax-speech-2-8", openai: "openai-gpt-4o-mini-tts" };
-/** «openai: calm male» / «minimax: …»: the provider حيدرة asked for, and the rest of the words. */
+/** «openai: calm male» / «minimax: …»: the provider حيدرا ماكس asked for, and the rest of the words. */
 export function speechWish(voice: string): { provider: "jawad" | "elevenlabs" | "minimax" | "openai" | null; want: string } {
   const m = /^\s*(jawad|openai|minimax|elevenlabs|eleven)\s*[:：]\s*/i.exec(voice);
   if (!m) return { provider: null, want: voice };
@@ -154,7 +154,7 @@ async function pickVoice(who: Who, wanted: string): Promise<{ value: string; pro
   return null;
 }
 
-/** The person's own voices (names only), for «حيدرة» to know «بصوتي». */
+/** The person's own voices (names only), for «حيدرا ماكس» to know «بصوتي». */
 export async function ownVoiceNames(userId: string) {
   const { data } = await db().from("jawad_voices").select("name").eq("user_id", userId).order("created_at", { ascending: false }).limit(20);
   return (data ?? []).map((r) => String(r.name));
@@ -164,7 +164,7 @@ export async function ownVoiceNames(userId: string) {
 export async function planMake(who: Who & { email?: string | null }, s: MakeSpec, projectRatio: number): Promise<{ plan: MakePlan } | { error: string }> {
   if (!MAKE_KINDS.includes(s.makeKind)) return { error: "نوع غير معروف." };
   if (!s.prompt.trim()) return { error: "ما وصل وصف اللي أصنعه." };
-  if (!(await can(who.email, "editor_ai"))) return { error: "حيدرة (الذكاء الاصطناعي) مقفل لحسابك الحين." };
+  if (!(await can(who.email, "editor_ai"))) return { error: "حيدرا ماكس (الذكاء الاصطناعي) مقفل لحسابك الحين." };
   const rt = await loadRuntime();
   if (!rt.migrated) return { error: "منصة الجواد AI قيد التجهيز." };
   // speech: the voice's own provider first (a library voice lives at one), else the provider asked for; then the
@@ -223,7 +223,7 @@ export async function planSeedanceExtend(
   who: Who & { email?: string | null },
   b: { clipId?: unknown; edge?: unknown; frame?: unknown; seconds?: unknown; prompt?: unknown; quality?: unknown; withSound?: unknown },
 ): Promise<{ plan: MakePlan }> {
-  if (!(await can(who.email, "editor_ai"))) throw new UserError("حيدرة (الذكاء الاصطناعي) مقفل لحسابك الحين.", 403);
+  if (!(await can(who.email, "editor_ai"))) throw new UserError("حيدرا ماكس (الذكاء الاصطناعي) مقفل لحسابك الحين.", 403);
   const clipId = String(b.clipId ?? "");
   const edge = b.edge === "start" ? "start" : b.edge === "end" ? "end" : null;
   if (!clipId || !edge) throw new UserError("اختر المقطع وجهة التمديد.", 400);
@@ -301,7 +301,7 @@ export async function startMake(user: { id: string; email?: string | null }, own
   }
   if (took && r.kind !== "created") await giveAttempt(team!, user.id).catch(() => {});
   if (r.kind === "issues") throw new UserError(r.issues[0]?.message ?? "الطلب غير صالح.", 422);
-  if (r.kind === "price_changed") throw new UserError(`تغيّر السعر إلى ${coinStr(r.coins)}؛ اطلبه من حيدرة مرة ثانية.`, 409);
+  if (r.kind === "price_changed") throw new UserError(`تغيّر السعر إلى ${coinStr(r.coins)}؛ اطلبه من حيدرا ماكس مرة ثانية.`, 409);
   const [job] = await jobViews([r.job]);
   return { job };
 }

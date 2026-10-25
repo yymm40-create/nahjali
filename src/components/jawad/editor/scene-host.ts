@@ -1,5 +1,5 @@
 // «مختبر الموشن» in the browser — the scene page in a sandboxed iframe (scripts only, no same-origin: the code
-// حيدرة writes can't reach the site, the account or its storage; the page's content policy blocks the network but
+// حيدرا ماكس writes can't reach the site, the account or its storage; the page's content policy blocks the network but
 // three.js and the fonts). The host loads a program with its pictures and fonts, and asks for any frame: the page
 // draws it (with motion blur when asked) and hands back an ImageBitmap.
 

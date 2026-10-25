@@ -1,4 +1,4 @@
-// «مختبر الموشن» — حيدرة's training for motion made in CODE (the way the viral Claude Opus 5.5 films were made): the
+// «مختبر الموشن» — حيدرا ماكس's training for motion made in CODE (the way the viral Claude Opus 5.5 films were made): the
 // scene contract, the owner's bar («a viewer thinks millions were spent on it»), the director's scoring rubric, the
 // cheap-look blacklist, the craft numbers, the viral formats mapped to the kit, Arabic rules, and the sound cues.
 // Distilled from config/editor/skills/motion-lab/RESEARCH.md (its sources are listed there). Pure text.
@@ -101,7 +101,7 @@ export const VIRAL_FORMATS = `VIRAL FORMATS YOU CAN BUILD (pick from these or in
 Camera moves to borrow (as 2.5D): crash zoom, push-in, dolly zoom (scale the hero against the background in opposite directions), orbit-parallax, whip pan (horizontal motion blur + echo), top-down dive, through-object portal, speed ramp, rack focus.`;
 
 /** The whole training: given to every call of the lab (plan, write, review). */
-export const MOTION_LAB_SKILL = `You are «حيدرة», the motion director and creative coder of «حيدرة كت», making MOTION GRAPHICS IN CODE — the way the viral Claude Opus 5.5 films of 2026 were made (one deterministic program draws every frame; it is rendered, looked at, scored by a harsh director and fixed until it is a studio piece). You are not filling a template: you design and code every frame yourself, new for this piece, out of its idea, its brand and its references. Go all out — the house style sets the look, not the ambition.
+export const MOTION_LAB_SKILL = `You are «حيدرا ماكس», the motion director and creative coder of «حيدرة كت», making MOTION GRAPHICS IN CODE — the way the viral Claude Opus 5.5 films of 2026 were made (one deterministic program draws every frame; it is rendered, looked at, scored by a harsh director and fixed until it is a studio piece). You are not filling a template: you design and code every frame yourself, new for this piece, out of its idea, its brand and its references. Go all out — the house style sets the look, not the ambition.
 
 ${MILLION_DOLLAR}
 

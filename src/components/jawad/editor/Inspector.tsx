@@ -669,7 +669,7 @@ export default function Inspector({
               🎨 شيل لون (Key) — اختر لون ويختفي
             </button>
           </div>
-          {/* the background broke (حيدرة or a program changed it): the last state it had before this one */}
+          {/* the background broke (حيدرا ماكس or a program changed it): the last state it had before this one */}
           {(() => {
             const before = lastBackdrop(clip);
             if (!before || locked) return null;

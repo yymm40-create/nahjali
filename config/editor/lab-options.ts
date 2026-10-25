@@ -1,4 +1,4 @@
-// «مختبر الموشن» — the CHOICES the person can make before حيدرة plans: the look, the structure, how the shots connect,
+// «مختبر الموشن» — the CHOICES the person can make before حيدرا ماكس plans: the look, the structure, how the shots connect,
 // the motion feel, the pace, the camera, the type, the finish and the ending. Distilled from ~110 sources (the 70
 // most-watched Claude-made pieces and their prompts, ~90 open motion skills, the owner's two Higgsfield skills — see
 // research_notes/موشن جرافيكس بكلود كود/lab_styles_from_100_sources.md). Every option carries the English "prompt"
@@ -15,11 +15,11 @@ export interface LabOption {
   en: string;
   /** one line under the name */
   tip: string;
-  /** the binding instruction for the plan (English, for حيدرة) */
+  /** the binding instruction for the plan (English, for حيدرا ماكس) */
   prompt: string;
   /** where it comes from (a skill, a viral piece, a measured study) — shown small */
   from: string;
-  /** the colours of its live sample (and, for looks, the palette حيدرة starts from) */
+  /** the colours of its live sample (and, for looks, the palette حيدرا ماكس starts from) */
   swatch?: { bg: string; ink: string; accent: string };
   /** the owner's Higgsfield files to open for it (catalogue ids) */
   refs?: string[];
@@ -49,7 +49,7 @@ export const LAB_GROUPS: LabGroup[] = [
   {
     id: "look",
     ar: "الأسلوب البصري",
-    hint: "الشكل العام: الألوان، المادة، نوع الخط، الكثافة. يبدأ منه حيدرة ويلتزم به.",
+    hint: "الشكل العام: الألوان، المادة، نوع الخط، الكثافة. يبدأ منه حيدرا ماكس ويلتزم به.",
     options: [
       { id: "swiss-editorial", ar: "سويسري تحريري", en: "Swiss editorial", tip: "أبيض/أسود، خط عريض نظيف، مسطرة حمراء واحدة، أرقام ضخمة «01»", prompt: "LOOK: Swiss editorial (K.HFT.theme('swiss-editorial')): flat, sharp, neo-grotesk, asymmetric editorial grid, ONE red accent used as a 4 px rule or a giant index number; no texture, no glow.", from: "مهارة المالك · بريسِت swiss-editorial", swatch: { bg: "#f4f3ef", ink: "#111111", accent: "#e4321b" }, refs: [STYLES(10)], demo: "look-editorial" },
       { id: "luxury-serif", ar: "فخامة سيريف", en: "Luxury serif", tip: "أسود عميق، ذهب/برونز خافت، خط نسخي رفيع، حركة بطيئة", prompt: "LOOK: Luxury serif (K.HFT.theme('luxury-serif')): near-black tonal ground, subtle metallic gold, a tall elegant display face (Arabic: a refined naskh), sparse minimal-centred composition, luxury-slow motion, no texture.", from: "مهارة المالك · بريسِت luxury-serif", swatch: { bg: "#0e0d0b", ink: "#f1ebdd", accent: "#c9ae7c" }, refs: [STYLES(11)], demo: "look-luxury" },
@@ -94,7 +94,7 @@ export const LAB_GROUPS: LabGroup[] = [
   {
     id: "connect",
     ar: "ربط اللقطات",
-    hint: "كيف تنتقل اللقطة للي بعدها (اختر حتى ٣؛ حيدرة يوزّعها).",
+    hint: "كيف تنتقل اللقطة للي بعدها (اختر حتى ٣؛ حيدرا ماكس يوزّعها).",
     multi: true,
     max: 3,
     options: [
@@ -188,7 +188,7 @@ export const LAB_GROUPS: LabGroup[] = [
 
 export const LAB_GROUP_BY_ID = new Map(LAB_GROUPS.map((g) => [g.id, g]));
 
-/** The person's picks, by group (ids); a group left out means «حيدرة يختار». */
+/** The person's picks, by group (ids); a group left out means «حيدرا ماكس يختار». */
 export type LabChoices = Partial<Record<ChoiceKey, string[]>>;
 
 /** Keeps only known ids, within each group's limit; drops empty groups. */

@@ -44,7 +44,7 @@ const TOOL: Record<string, { icon: string; line: string; tint: string }> = {
   "studio:video": { icon: "🎬", line: "فيديو من نص أو صورة، بحركة سينمائية وصوت.", tint: "#22d3ee" },
   "studio:audio": { icon: "🎙️", line: "تعليق صوتي وأصوات وموسيقى ومؤثرات.", tint: "#14b8a6" },
   film: { icon: "🎞️", line: "فيلم أو مسلسل من فكرتك، مشهد بمشهد.", tint: "#e9b546" },
-  editor: { icon: "✂️", line: "مونتاج من الجوال أو الكمبيوتر، مع «حيدرة».", tint: "#b8f53d" },
+  editor: { icon: "✂️", line: "مونتاج من الجوال أو الكمبيوتر، مع «حيدرا ماكس».", tint: "#b8f53d" },
   content: { icon: "✍️", line: "«محمد باقر»: كاروسيل وريلز ومحتوى يبيع.", tint: "#f472b6" },
   designer: { icon: "🎨", line: "«كاظم»: بطاقات وإعلانات بخطوط عربية.", tint: "#a78bfa" },
   photo: { icon: "📸", line: "«زهراء»: تحرير صورك وتصاميمك بلمسة محترف.", tint: "#fb7185" },

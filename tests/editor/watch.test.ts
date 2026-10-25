@@ -5,7 +5,7 @@ import { asksToSee, findCuts, motionPerSecond, pickTimes, readWatch, spansOf, wa
 const clip = (n: number, cutAt: number[] = [], start = 0): FrameStat[] =>
   Array.from({ length: n }, (_, i) => ({ t: Math.round(start + (i * 1000) / 30), luma: 120, diff: i === 0 ? 0 : cutAt.includes(i) ? 60 : 1 + (i % 3) * 0.3 }));
 
-describe("«👁️ حيدرة يشوف المقطع كامل» — what every frame tells", () => {
+describe("«👁️ حيدرا ماكس يشوف المقطع كامل» — what every frame tells", () => {
   it("finds the cuts in all the frames, once each, and nothing in a calm shot", () => {
     expect(findCuts(clip(300, [90, 200]))).toEqual([3000, 6667]);
     expect(findCuts(clip(300))).toEqual([]);

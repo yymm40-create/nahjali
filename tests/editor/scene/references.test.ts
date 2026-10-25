@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { asksToSearch, readRefs, REF_FRAMES_MAX, REFS_MAX, refsParts, refsText, researchText, searchPrompt } from "@/lib/editor/scene/references";
 
-// «مختبر الموشن»: references (pictures and videos, to copy or to be inspired by) reach حيدرة bounded and in order, and a
+// «مختبر الموشن»: references (pictures and videos, to copy or to be inspired by) reach حيدرا ماكس bounded and in order, and a
 // web search is asked when the person asks for one.
 
 const jpg = "QUJD";

@@ -35,6 +35,7 @@ import { ProviderError, providerUserId } from "./providers/common";
 import { openaiImage, openaiSpeech, TTS_MIME } from "./providers/openai";
 import { arkCancelTask, arkCreateTask, arkGetTask, arkImage, arkListTasks, type ArkContent, type ArkTask } from "./providers/modelark";
 import { realFaceCancel, realFaceSubmit, realFaceTask } from "./providers/realface";
+import { omniRequest } from "./gemini-omni";
 import { wanRequest } from "./wan";
 import { falImages, falSubmit, falTask } from "./providers/fal";
 import sharp from "sharp";
@@ -217,7 +218,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
   const def = generatorById(String(b.generatorId ?? ""));
   if (!def) throw new UserError("المولد غير معروف.", 400);
-  // the dashboard's list: this branch (images, video, voices, music) for this person; «حيدرة» makes with its own right,
+  // the dashboard's list: this branch (images, video, voices, music) for this person; «حيدرا ماكس» makes with its own right,
   // and «محمد باقر» makes through جواد's desk (src/lib/content/jawad.ts) with the door he already passed
   // (the owner's switch in /admin/content already decided who gets in there: requireContentUser, before any request reaches the desk;
   // «قنبر» draws a game's pictures through the same desk, behind requireGamesUser)
@@ -388,7 +389,7 @@ export async function runJob(jobId: string) {
     });
     // ModelArk's videos are tasks followed later; its pictures (Seedream) answer at once like the others
     if (def.provider.id === "byteplus-modelark" && def.output === "video") await submitVideo(job, def, rows);
-    else if (def.id === "wan-3-0") await submitWan(job, def, rows);
+    else if (FAL_REQUESTS[def.id]) await submitFalMapped(job, def, rows, FAL_REQUESTS[def.id]);
     else if (def.provider.id === "fal" && def.output === "video") await submitFalVideo(job, def, rows);
     else if (def.provider.id === "realface") await submitRealFace(job, def, rows);
     else await runSync(job, def, rows);
@@ -689,15 +690,19 @@ async function submitFalVideo(job: JobRow, def: GeneratorDef, refs: UploadRow[])
   }
 }
 
+/** The generators on fal's queue whose requests are built by their own pure function (the endpoint follows the mode). */
+const FAL_REQUESTS: Record<string, typeof wanRequest> = { "wan-3-0": wanRequest, "gemini-omni": omniRequest };
+
 /**
- * Wan 3.0 on fal's queue: text, a first frame (and a last), or references (pictures, videos and sounds, named «Image 1»,
- * «Video 1», «Audio 1» in the prompt). The files go as short-lived links; the request is then followed like Kling's.
+ * Wan 3.0 and Gemini Omni on fal's queue: text, a first frame (and a last), or references (Wan: pictures, videos and
+ * sounds, named «Image 1»…; Omni: pictures and videos, «<IMAGE_REF_0>»…). The files go as short-lived links; the request
+ * is then followed like Kling's.
  */
-async function submitWan(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
+async function submitFalMapped(job: JobRow, def: GeneratorDef, refs: UploadRow[], build: typeof wanRequest) {
   const signed = refs.length ? (await storage.from(JAWAD_BUCKET).createSignedUrls(refs.map((r) => r.storage_path), 3 * 3600)).data ?? [] : [];
   const urls = refs.map((_, i) => signed[i]?.signedUrl ?? null);
   if (urls.some((u) => !u)) throw new ProviderError("rejected", "تعذّر تجهيز أحد المراجع.", "no signed url for a reference");
-  const { model, input } = wanRequest({
+  const { model, input } = build({
     modelId: def.model.id,
     settings: job.inputs.settings,
     prompt: job.inputs.modelPrompt ?? job.prompt,

@@ -1,4 +1,4 @@
-// «مختبر الموشن» — reference scenes written to the owner's bar, shown to حيدرة as examples of the craft (never to be
+// «مختبر الموشن» — reference scenes written to the owner's bar, shown to حيدرا ماكس as examples of the craft (never to be
 // copied as they are: each piece is new). Each one is a complete scene program on the kit. They are run in the tests
 // on a recording canvas (no throw, deterministic, cues valid).
 

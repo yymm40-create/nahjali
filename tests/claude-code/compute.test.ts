@@ -102,7 +102,7 @@ describe("«Claude Code» · the compute page", () => {
   });
 });
 
-describe("«Claude Code» · حيدرة executes by program", () => {
+describe("«Claude Code» · حيدرا ماكس executes by program", () => {
   it("writes, runs, fixes, reviews by a rubric, and applies only at the bar", () => {
     expect(CODE_PASS).toBe(8);
     expect(CODE_ROUNDS).toBeGreaterThanOrEqual(2);

@@ -11,7 +11,7 @@ const escaped = text.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g
 writeFileSync(
   OUT,
   `// GENERATED — do not edit by hand. The owner's motion skill, VERBATIM from ${MD}\n` +
-    `// (regenerate with: npx tsx scripts/generate-motion-skill.mts). حيدرة is given these words as they are, never rewritten.\n\n` +
+    `// (regenerate with: npx tsx scripts/generate-motion-skill.mts). حيدرا ماكس is given these words as they are, never rewritten.\n\n` +
     `export const MOTION_DIRECTOR_SKILL_TEXT = \`${escaped}\`;\n`,
 );
 console.log(`${OUT}: ${text.length} chars`);

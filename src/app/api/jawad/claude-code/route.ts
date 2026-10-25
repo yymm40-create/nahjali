@@ -17,7 +17,7 @@ export const POST = handle(async (req: Request) => {
   // the voice: the studio's voices, or «حيدرة كت»'s voiceprint
   if (b.action === "voice_write" || b.action === "voice_review") {
     if (!(await can(user.email, b.from === "editor" ? "editor_ai" : "voice"))) throw new UserError("الأصوات مقفلة لحسابك حاليًا.", 403);
-    const who = b.from === "editor" ? "حيدرة" : "جواد";
+    const who = b.from === "editor" ? "حيدرا ماكس" : "جواد";
     return NextResponse.json(b.action === "voice_write" ? await voiceWrite(user, who, b) : await voiceReview(user, who, b));
   }
   if (!(await canDraw(user.email, b.from))) throw new UserError("صناعة الصور مقفلة لحسابك حاليًا.", 403);

@@ -1,4 +1,4 @@
-// «حيدرة كت» · «Claude Code» — حيدرة EXECUTES cuts, arrangement and colour by writing a program (the Claude Code way,
+// «حيدرة كت» · «Claude Code» — حيدرا ماكس EXECUTES cuts, arrangement and colour by writing a program (the Claude Code way,
 // src/lib/claude-code/skill.ts): WRITE (or FIX after the browser's sandbox ran it and it threw), then REVIEW: for an
 // edit he reads the timeline AFTER the program's commands ran on a copy; for a grade he LOOKS at the clips as filmed and
 // after the program's LUT. Below the bar he rewrites the program; at the bar the page applies it. Paid by real use
@@ -23,7 +23,7 @@ import { assetViews, stillOpen, type EditorProject } from "./server";
 const db = () => createAdminClient();
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 
-const IDENTITY = `You are «حيدرة», the editor and colourist of «حيدرة كت» (never call yourself Claude). Here you are working in your «حيدرا ماكس» mode.
+const IDENTITY = `You are «حيدرا ماكس», the editor and colourist of «حيدرة كت» (never call yourself Claude). Here you are working in your «حيدرا ماكس» mode.
 
 ${CLAUDE_CODE_WAY}`;
 
@@ -52,7 +52,7 @@ const reviewSchema = (kind: ProgramKind) => ({
 });
 
 async function ask<T>(who: Who, model: unknown, kind: ProgramKind, label: string, parts: ClaudePart[], schema: object, maxTokens: number) {
-  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
+  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
   const deadline = AbortSignal.timeout(300_000);
   return claudeCharged(
     who,
@@ -62,7 +62,7 @@ async function ask<T>(who: Who, model: unknown, kind: ProgramKind, label: string
       callClaudeJson<T>({ system: SYSTEM[kind], turns: [{ role: "user", content: parts }], schema, maxTokens, effort: "high", fallback: true, signal: deadline }).catch((e) => {
         console.error("claude code", label, e);
         if (deadline.aborted) throw new UserError("خدمة الذكاء الاصطناعي تأخرت. أعد الطلب.", 504);
-        throw new UserError(claudeWhy(e, "ما قدر حيدرة يكمل الشغل بالكود الحين. جرّب مرة ثانية.", who.email), 502);
+        throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يكمل الشغل بالكود الحين. جرّب مرة ثانية.", who.email), 502);
       }),
     (x) => claudeCost(x.usage),
     undefined,
@@ -70,7 +70,7 @@ async function ask<T>(who: Who, model: unknown, kind: ProgramKind, label: string
   );
 }
 
-/** The timeline's facts as حيدرة (and his edit program) see them: the same JSON his chat gets. */
+/** The timeline's facts as حيدرا ماكس (and his edit program) see them: the same JSON his chat gets. */
 async function factsOf(p: EditorProject, raw: unknown, extra: { playhead?: unknown; selected?: unknown; quiet?: unknown }) {
   const assets = await assetViews(p.id);
   const { data: metas } = await db().from("editor_assets").select("id,meta").eq("project_id", p.id);

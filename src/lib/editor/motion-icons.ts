@@ -1,6 +1,6 @@
 // «موشن جرافيكس» — pictures the engine DRAWS itself (no generator, no emoji): a library of icons as simple strokes
 // and fills in a 24×24 box, coloured from the piece's palette, placed by the layout engine where the words aren't.
-// حيدرة names one per beat («icon»), or «auto» picks it from the beat's own words. Pure.
+// حيدرا ماكس names one per beat («icon»), or «auto» picks it from the beat's own words. Pure.
 
 export interface MotionIcon {
   id: string;
@@ -108,5 +108,5 @@ export function iconSvg(icon: MotionIcon, x: number, y: number, size: number, co
   return `${disc}<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${k.toFixed(4)})">${g}</g>`;
 }
 
-/** One line per icon for حيدرة and محمد باقر (the id and the Arabic words that mean it). */
+/** One line per icon for حيدرا ماكس and محمد باقر (the id and the Arabic words that mean it). */
 export const ICONS_BRIEF = MOTION_ICONS.map((i) => `${i.id} (${i.ar.slice(0, 3).join("، ")})`).join(" · ");

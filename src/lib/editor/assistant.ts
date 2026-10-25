@@ -110,7 +110,7 @@ const SCHEMA = {
   },
 };
 
-const SYSTEM = `You are «حيدرة», the editing assistant inside the «حيدرة كت» video editor (never call yourself Claude; your name is حيدرة). The person tells you what they want and you change their timeline with editing commands. Speak like a friendly Gulf Arabic editor, in short sentences (use the person's language if they write in another one).
+const SYSTEM = `You are «حيدرا ماكس», the editing assistant inside the «حيدرة كت» video editor (never call yourself Claude; your name is حيدرا ماكس). The person tells you what they want and you change their timeline with editing commands. Speak like a friendly Gulf Arabic editor, in short sentences (use the person's language if they write in another one).
 
 THE TIMELINE (sent with every request as JSON): times are whole milliseconds. Each clip shows its source from "in" to "out" starting at "start" on the timeline; its length is (out-in)/speed. Tracks are drawn bottom to top; the first video track is the main one and, when "magnetic" is true, it has no gaps (clips follow each other in order). Audio tracks are heard only. Text tracks hold text and captions. "library" lists the project's media you can place. "quiet" lists the silent parts of clips that have sound (timeline ms). "speech" lists what is said, phrase by phrase, when it was transcribed. A clip's "grades" are its colour grading layers (only what differs from neutral), "crop" its crop, "nest" the timeline a Nest clip holds; "sequences" lists the project's timelines (the open one is the one you edit); "voices" lists the person's own saved voices (for speech).
 
@@ -122,7 +122,7 @@ RULES:
 - Silences (what your code_edit program does): remove the "quiet" spans longer than about 0.7 s, keeping about 0.15 s of air on each side.
 - A full edit from the library (a code_edit request): order the media sensibly (story, then energy), trim long clips to their best part, keep the main track magnetic, add soft transitions, a title at the start when it fits, and duck music under speech.
 - CAPTIONS — do them yourself, never send the person to a button: {"kind":"captions","lang":"ar","captionStyle":...,"clipId":"" (or one clip to caption only it),"poem":"" (or the verses to time on clipId's recitation),"then":[...]}. The page listens to the clips, writes the captions on a new caption track, then runs your "then" commands on it — so one answer does the whole job the person asked for: e.g. «سوّ كابشن وحط لهم دخولية وخروج واختر خط مناسب» → captions with then [{"type":"style_track","trackId":"$CAPTIONS","text":{"font":"<a font id that fits the video's mood>","weight":900,"size":0.06},"y":0.72}, {"type":"update_clip","clipId":"$EACH","patch":{"anim":{"in":"settle","out":"fade","inMs":220,"outMs":160}}}]. Pick fonts, colours, sizes and animations that suit the content (a religious recitation: naskh/amiri, calm fade; a fast reel: bold kufi/cairo, settle or punch (pop bounces: only when asked); words «words» for word-by-word). Say in the reply what you chose and why, briefly. Exporting is the «صدّر» button (the person presses it).
-- «CLAUDE CODE» — YOU ARE CLAUDE CODE. You talk with the person as حيدرة, but when a request is to be EXECUTED on the edit you execute it BY PROGRAM (you write it, the page runs it in a sandbox, you see its errors and its result, you score it and rewrite it until it passes, and only then is it applied):
+- «CLAUDE CODE» — YOU ARE CLAUDE CODE. You talk with the person as حيدرا ماكس, but when a request is to be EXECUTED on the edit you execute it BY PROGRAM (you write it, the page runs it in a sandbox, you see its errors and its result, you score it and rewrite it until it passes, and only then is it applied):
   · CUTTING AND ARRANGING — removing silences, mistakes, repeated takes, "umm"s, shortening to a length, keeping the best parts, trimming, putting the clips in an order, a rough cut from the library → ONE request {"kind":"code_edit","prompt":<the whole job: the person's words and what you understood (the length, what to keep, the order)>} and NO commands for that part;
   · COLOUR — a look, a correction, warmer/cooler, cinematic, matching the shots, «لوّن», «صحّح الألوان» → ONE request {"kind":"code_grade","prompt":<the look in words: mood, references, what to protect>,"clipId":<the clips to grade, ids separated by commas: the selected clip(s), or every picture clip of the main track for "the whole video">} and NO grading commands, checkClipId empty.
   Reply in ONE short line that you are writing the program («أكتب برنامج التقطيع…» / «أكتب برنامج التلوين…»); the page reports the result with your scores. A tiny single change the person points at (one split at the playhead, a volume, one transition, a text, adding a clip, captions, music, a ready look by name) stays a plain command.
@@ -258,7 +258,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   stillOpen(p);
   const message = String(b.message ?? "").trim().slice(0, 2000);
   if (!message) throw new UserError("اكتب وش تبي.", 400);
-  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
+  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
 
   const assets = await assetViews(p.id);
   // the meta's transcripts aren't in the views: read them here
@@ -374,7 +374,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   // the conversation is metered by the route (claudeCharged): the person's model, the real usage + 40%
   const r = await ask(merged).catch((e) => {
     console.error("editor assistant", e);
-    throw new UserError(claudeWhy(e, "ما قدر حيدرة يرد الحين؛ جرّب بعد شوي.", who.email), 502);
+    throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يرد الحين؛ جرّب بعد شوي.", who.email), 502);
   });
 
   const check = (raw: string[]) => checkCommands(tl, raw, infos);
@@ -583,7 +583,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
       .filter((o) => o.label && o.choices.length >= 2)
       .slice(0, 4),
     requests: requests.filter((r) => (r.kind !== "hook_design" || r.design) && (r.kind !== "make" || r.plan)),
-    // the colour changed: the page checks the result with حيدرة before it is called done
+    // the colour changed: the page checks the result with حيدرا ماكس before it is called done
     checkClipId: answer.checkClipId && valid.length && tl.tracks.some((t) => t.clips.some((c) => c.id === answer.checkClipId)) ? answer.checkClipId : null,
     // the pictures the motion engine drew: the page puts them in its library before the commands run
     assets: newAssets,
@@ -608,7 +608,7 @@ export async function designHook(who: Who, h: HookInputs): Promise<{ design: Hoo
   }
   const r = await callClaudeJson<HookDesign>({ system: DESIGN_SYSTEM, turns: [{ role: "user", content: designPrompt(h, research) }], schema: DESIGN_SCHEMA, maxTokens: 16000, effort: "high", fallback: true }).catch((e) => {
     console.error("hook design", e);
-    throw new UserError(claudeWhy(e, "ما قدر حيدرة يصمم الهوك الحين؛ جرّب بعد شوي.", who.email), 502);
+    throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يصمم الهوك الحين؛ جرّب بعد شوي.", who.email), 502);
   });
   usd += claudeCost(r.usage);
   return { design: checkDesign(r.data, h), usd };
@@ -632,7 +632,7 @@ const CHECK_SCHEMA = {
  */
 export async function gradeCheck(p: EditorProject, who: Who, b: { clipId?: unknown; round?: unknown; request?: unknown; timeline?: unknown; look?: unknown; model?: unknown }, origin: string | null = null) {
   stillOpen(p);
-  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
+  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
   const assets = await assetViews(p.id);
   const tl = readTimeline(b.timeline, new Set(assets.map((a) => a.id)));
   const clip = tl.tracks.flatMap((t) => t.clips).find((c) => c.id === b.clipId);
@@ -650,10 +650,10 @@ export async function gradeCheck(p: EditorProject, who: Who, b: { clipId?: unkno
   // the library's two cases most like the result as it is now (to judge it by experience, not only by numbers)
   const after = look.frames.find((f) => f.graded && f.scope)?.scope ?? null;
   const cases = await caseParts(nearestCases(after, String(b.request ?? ""), 2), origin);
-  const r = await claudeCharged(who, b.model, "حيدرة يشيك التلوين في حيدرة كت", () =>
+  const r = await claudeCharged(who, b.model, "حيدرا ماكس يشيك التلوين في حيدرة كت", () =>
     callClaudeJson<{ ok: boolean; verdict: string; commands: string[] }>({ system: SYSTEM, turns: [{ role: "user", content: [{ type: "text", text }, ...lookParts(look), ...cases] }], schema: CHECK_SCHEMA, maxTokens: 12000, effort: "medium", fallback: true }).catch((e) => {
       console.error("grade check", e);
-      throw new UserError(claudeWhy(e, "ما قدر حيدرة يشيك الحين.", who.email), 502);
+      throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يشيك الحين.", who.email), 502);
     }),
     (x) => claudeCost(x.usage),
   );

@@ -1,7 +1,7 @@
 // «مختبر الموشن» on the person's video: is the file there at all? A file kept on the computer (haidara-media://) that was
-// moved or deleted, or a link that stopped opening, is not a bug in the scene, so حيدرة must not be asked to "fix" it.
+// moved or deleted, or a link that stopped opening, is not a bug in the scene, so حيدرا ماكس must not be asked to "fix" it.
 
-/** A step of getting the video ready failed: nothing in the scene can fix it, so حيدرة is not asked to (the message says what to do). */
+/** A step of getting the video ready failed: nothing in the scene can fix it, so حيدرا ماكس is not asked to (the message says what to do). */
 export class LabSetupError extends Error {
   constructor(message: string) {
     super(message);

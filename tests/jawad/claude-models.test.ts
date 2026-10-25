@@ -113,7 +113,7 @@ describe("every robot's chat has the model picker and the microphone", async () 
     it(f, () => {
       const src = readFileSync(f, "utf8");
       expect(src).toContain("<ClaudeModelPicker");
-      // حيدرة already has its own microphone and conversation
+      // حيدرا ماكس already has its own microphone and conversation
       if (!f.endsWith("AssistantPanel.tsx")) expect(src).toContain("<MicButton");
     });
   }

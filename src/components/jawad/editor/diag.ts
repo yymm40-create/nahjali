@@ -1,4 +1,4 @@
-// «🩺 تشخيص» (the owner only): what «حيدرة» needs to find what went wrong in this browser — the errors the page met
+// «🩺 تشخيص» (the owner only): what «حيدرا ماكس» needs to find what went wrong in this browser — the errors the page met
 // (uncaught, rejected, logged), the requests to the server that failed, the notes the editor itself writes, and what
 // this device and browser can do. Kept in memory while the editor is open (the last 200), never sent by itself: only
 // with a diagnosis the owner asks for.

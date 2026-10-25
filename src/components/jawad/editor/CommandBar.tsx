@@ -1,7 +1,7 @@
 "use client";
 
-// «اطلب من حيدرة»: the one box at the top of the pro look — type what to do («شيل السكتات وحط كابشن», «خلي البشرة
-// أدفى») and Enter hands it to حيدرة, who opens and does it. «/» puts the cursor here from anywhere (not while typing).
+// «اطلب من حيدرا ماكس»: the one box at the top of the pro look — type what to do («شيل السكتات وحط كابشن», «خلي البشرة
+// أدفى») and Enter hands it to حيدرا ماكس, who opens and does it. «/» puts the cursor here from anywhere (not while typing).
 
 import { useEffect, useRef, useState } from "react";
 import Icon from "../Icon";
@@ -29,9 +29,9 @@ export default function CommandBar({ onSend, disabled }: { onSend: (text: string
     box.current?.blur();
   };
   return (
-    <label className="pro-cmd" title="اطلب من حيدرة أي شي: يشتغل ويعدّل لك (اضغط / للكتابة)">
+    <label className="pro-cmd" title="اطلب من حيدرا ماكس أي شي: يشتغل ويعدّل لك (اضغط / للكتابة)">
       <Icon name="search" size={14} />
-      <input ref={box} value={text} disabled={disabled} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && send()} placeholder="اطلب من حيدرة… «شيل السكتات وحط كابشن»" maxLength={500} aria-label="اطلب من حيدرة" />
+      <input ref={box} value={text} disabled={disabled} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && send()} placeholder="اطلب من حيدرا ماكس… «شيل السكتات وحط كابشن»" maxLength={500} aria-label="اطلب من حيدرا ماكس" />
       <kbd dir="ltr">/</kbd>
     </label>
   );

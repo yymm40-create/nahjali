@@ -89,7 +89,7 @@ export function context(tl: Timeline, assets: ContextAsset[], transcripts: Map<s
 
 /**
  * The background and the colour key (the green screen, «شيل الخلفية», the blur) are the person's own settings, tuned by
- * hand: حيدرة and his programs never change them unless the request is about them (the owner, 18 October 2026: the
+ * hand: حيدرا ماكس and his programs never change them unless the request is about them (the owner, 18 October 2026: the
  * green background got broken and he doesn't want Claude touching it). Whatever else a command carries stays.
  */
 export const asksAboutBackdrop = (message: string) =>

@@ -656,7 +656,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     // the track's own colour (if the person gave it one): the clip's fill on «بريمير», a tint on «عادي»
     const paint = track.color ?? (pro ? PRO_TONE[k as keyof typeof PRO_TONE] ?? PRO_TONE.video : null);
     const missing = a && (a.status !== "ready" || !a.url);
-    // «التلوين» (the colour page, and what حيدرة grades): a clip that has grading layers on shows it, like the simple filter does
+    // «التلوين» (the colour page, and what حيدرا ماكس grades): a clip that has grading layers on shows it, like the simple filter does
     const graded = c.grades.filter((g) => g.on).length;
     const handle = compact ? 18 : 10;
     return (

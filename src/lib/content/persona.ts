@@ -50,13 +50,13 @@ export function catalogBlock(): string {
 }
 
 /**
- * What حيدرة can do in motion graphics, one line each (the same text every time, so it caches): the skills the client
+ * What حيدرا ماكس can do in motion graphics, one line each (the same text every time, so it caches): the skills the client
  * can choose from (kind="motion"), the feelings (kind="moods"), and the drawing tools he arranges backgrounds with.
  */
 export function motionCatalogBlock(): string {
   const skills = MOTION_STYLES.filter((x) => !x.talk).map((x) => `- ${x.id} — ${x.ar} ${x.icon} — ${x.hint}. لقطاته: ${x.beats.join("، ")}.`).join("\n");
   const moods = MOODS.map((m) => `- ${m.id} — ${m.ar} ${m.icon} — ${m.hint}.`).join("\n");
-  return `مهارات الموشن التي يعرضها الموقع للعميل (معرض kind="motion"؛ يختار واحدة أو يترك الاختيار لحيدرة):\n${skills}\n\nمشاعر الموشن (معرض kind="moods"؛ تغيّر الإيقاع والدخول والمشهد المرسوم خلف الكلام):\n${moods}\n\nأدوات الرسم عند حيدرة: حيدرة يرتب الخلفيات بنفسه بأدوات «حيدرة كت» ولا يطلب خلفية من أي مولّد صور: ${SCENE_IDS.filter((x) => x !== "none").length} مشهدًا مرسومًا (${SCENE_IDS.filter((x) => x !== "none").join("، ")})، ومكتبة من ${MOTION_ICONS.length} أيقونة مرسومة، وأشكال يرسمها بنفسه، وتوقيت يتبع طول التعليق الصوتي. لا تطلب من جواد صورًا لخلفيات الموشن، ولا تطلب «GPT Image 2» للموشن إلا إذا طلب العميل صورة صراحةً.`;
+  return `مهارات الموشن التي يعرضها الموقع للعميل (معرض kind="motion"؛ يختار واحدة أو يترك الاختيار لحيدرا ماكس):\n${skills}\n\nمشاعر الموشن (معرض kind="moods"؛ تغيّر الإيقاع والدخول والمشهد المرسوم خلف الكلام):\n${moods}\n\nأدوات الرسم عند حيدرا ماكس: حيدرا ماكس يرتب الخلفيات بنفسه بأدوات «حيدرة كت» ولا يطلب خلفية من أي مولّد صور: ${SCENE_IDS.filter((x) => x !== "none").length} مشهدًا مرسومًا (${SCENE_IDS.filter((x) => x !== "none").join("، ")})، ومكتبة من ${MOTION_ICONS.length} أيقونة مرسومة، وأشكال يرسمها بنفسه، وتوقيت يتبع طول التعليق الصوتي. لا تطلب من جواد صورًا لخلفيات الموشن، ولا تطلب «GPT Image 2» للموشن إلا إذا طلب العميل صورة صراحةً.`;
 }
 
 const TEMPLATE_MARK = /\[قالب:([a-z0-9-]+)\]/g;
@@ -68,7 +68,7 @@ const MOOD_MARK = /\[مزاج:([a-z0-9-]+)\]/g;
 export interface Chosen {
   template: string | null;
   style: string | null;
-  /** the motion skill and the mood of the piece ("none" = حيدرة chooses) */
+  /** the motion skill and the mood of the piece ("none" = حيدرا ماكس chooses) */
   motion?: string | null;
   mood?: string | null;
 }
@@ -100,7 +100,7 @@ export function chosenBlock(ids: Chosen): string {
   else if (ids.style === "none") out.push('العميل اختار «بدون ستايل كرتوني»: اترك "style_id" فارغًا وصمّم الصور تصميمًا رسوميًا نظيفًا أو بصورًا حسب القالب والموضوع.');
   const sk = ids.motion ? motionStyleOf(ids.motion) : null;
   const md = ids.mood ? moodOf(ids.mood) : null;
-  if (sk) out.push(`مهارة الموشن التي اختارها العميل: ${sk.ar} (${sk.id}) — ${sk.hint}.\nطريقة حيدرة فيها: ${sk.craft}\nضع "style":"${sk.id}" في لوحة القصة (storyboard) التي تسلّمها لحيدرة.`);
+  if (sk) out.push(`مهارة الموشن التي اختارها العميل: ${sk.ar} (${sk.id}) — ${sk.hint}.\nطريقة حيدرا ماكس فيها: ${sk.craft}\nضع "style":"${sk.id}" في لوحة القصة (storyboard) التي تسلّمها لحيدرا ماكس.`);
   else if (ids.motion === "none") out.push('العميل ترك مهارة الموشن لك: اختر الأنسب لهدفه وجمهوره وقل له اسمها بالعربية، وضع معرّفها في "style" في لوحة القصة.');
   if (md) out.push(`مزاج الموشن الذي اختاره العميل: ${md.ar} (${md.id}) — ${md.hint}.\nكيف يُكتب: ${md.craft}\nضع "mood":"${md.id}" في لوحة القصة.`);
   else if (ids.mood === "none") out.push('العميل ترك مزاج الموشن لك: اختر الأنسب للموضوع (فرح، حزن، تعليم، توعية، استعجال، سكينة، فخر، حماس، خشوع) وضعه في "mood".');

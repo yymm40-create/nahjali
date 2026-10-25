@@ -5,7 +5,7 @@
 //   colour under the pointer and a click takes the average of a small square of the picture as it goes into the key
 //   (not the screen's pixels after scaling, grading view or keying) — then the key comes back on.
 // · «🪄 كشف تلقائي»: the screen's colour and the tolerance it needs, found in the frame (key-math.ts).
-// · «🤖 حيدرة يضبط»: Claude sees the frame as filmed, the matte and the result, and corrects the settings, round by
+// · «🤖 حيدرا ماكس يضبط»: Claude sees the frame as filmed, the matte and the result, and corrects the settings, round by
 //   round (key-check.ts) — the pictures made here with the same maths the GPU draws.
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -84,7 +84,7 @@ export default function KeyStudio({ player, canvas, tl, projectId, run, flash }:
     async (clipId: string) => {
       try {
         for (let round = 1; round <= MAX_ROUNDS; round++) {
-          setBusy(round === 1 ? "حيدرة يشوف الكي…" : `حيدرة يعيد يشيك (جولة ${round})…`);
+          setBusy(round === 1 ? "حيدرا ماكس يشوف الكي…" : `حيدرا ماكس يعيد يشيك (جولة ${round})…`);
           const f = findClip(tlRef.current, clipId);
           const key = f?.clip.key;
           if (!key || key.kind !== "chroma") return flash("شغّل الكروما أول.", true);
@@ -94,11 +94,11 @@ export default function KeyStudio({ player, canvas, tl, projectId, run, flash }:
           const { shots, stats } = pictures(shot.data, key);
           const r = await postJson<{ ok: boolean; verdict: string; key: Partial<Keyer> }>(`/api/jawad/editor/projects/${projectId}`, { action: "key_check", clipId, round, key, shots, stats });
           if (r.ok || !Object.keys(r.key).length) return flash(`🤖 ${r.verdict || "الكي تمام."}`);
-          setKey(clipId, r.key, `حيدرة يضبط الكي (${round})`);
+          setKey(clipId, r.key, `حيدرا ماكس يضبط الكي (${round})`);
           if (round === MAX_ROUNDS) flash(`🤖 ${r.verdict}`);
         }
       } catch (e) {
-        flash(e instanceof Error ? e.message : "ما قدر حيدرة يشيك الحين.", true);
+        flash(e instanceof Error ? e.message : "ما قدر حيدرا ماكس يشيك الحين.", true);
       } finally {
         setBusy(null);
       }
@@ -203,7 +203,7 @@ export default function KeyStudio({ player, canvas, tl, projectId, run, flash }:
   );
 }
 
-/** The three pictures for حيدرة (≤ 512 px JPEG, base64) and a few measures of the key on this frame. */
+/** The three pictures for حيدرا ماكس (≤ 512 px JPEG, base64) and a few measures of the key on this frame. */
 function pictures(src: ImageData, key: Keyer) {
   const s = Math.min(1, 512 / Math.max(src.width, src.height));
   const w = Math.max(1, Math.round(src.width * s)),

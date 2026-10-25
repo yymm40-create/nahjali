@@ -1,4 +1,4 @@
-// Every editing command «حيدرة» may send, as Claude reads it (shared by the assistant and the diagnosis, which fixes
+// Every editing command «حيدرا ماكس» may send, as Claude reads it (shared by the assistant and the diagnosis, which fixes
 // the timeline itself with the same commands). The list mirrors lib/editor/commands.ts.
 
 import { GRADE_COMMANDS } from "./assistant-guide";

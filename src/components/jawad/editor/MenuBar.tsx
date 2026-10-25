@@ -24,8 +24,8 @@ const ITEMS: Record<MenuGroup, ([string, MenuAct] | "-")[]> = {
   effects: [["المؤثرات", { page: "fx" }], ["الحركة (كي فريم)", { page: "motion" }], ["أساليب جاهزة", { open: "styles" }]],
   view: [["المونتاج (الواجهة العادية)", { page: "edit" }], ["غرفة التلوين (صفحة كاملة)", { page: "color" }], ["صفحة المؤثرات", { page: "fx" }], ["صفحة الصوت", { page: "audio" }], "-", ["وضع التركيز (الشاشة والتايملاين)", { key: "focus" }], ["المعاينة ملء الشاشة", { key: "full" }], "-", ["كبّر التايملاين", { key: "zoomIn" }], ["صغّر التايملاين", { key: "zoomOut" }], ["كل التايملاين في الشاشة", { key: "zoomFit" }]],
   playback: [["شغّل / وقّف", { key: "play" }], ["فريم لقدّام", { key: "frameFwd" }], ["فريم للورا", { key: "frameBack" }], ["أول الفيديو", { key: "start" }], ["آخر الفيديو", { key: "end" }]],
-  window: [["الوسائط", { open: "media" }], ["حيدرة", { open: "haidara" }], ["حيدرة فوق التايملاين (تعديل مباشر)", { open: "haidaraDock" }], ["رتّب واجهتي…", { open: "layout" }], ["الاختصارات…", { open: "shortcuts" }]],
-  help: [["الاختصارات…", { open: "shortcuts" }], ["اسأل حيدرة", { open: "haidara" }]],
+  window: [["الوسائط", { open: "media" }], ["حيدرا ماكس", { open: "haidara" }], ["حيدرا ماكس فوق التايملاين (تعديل مباشر)", { open: "haidaraDock" }], ["رتّب واجهتي…", { open: "layout" }], ["الاختصارات…", { open: "shortcuts" }]],
+  help: [["الاختصارات…", { open: "shortcuts" }], ["اسأل حيدرا ماكس", { open: "haidara" }]],
 };
 
 const mac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);

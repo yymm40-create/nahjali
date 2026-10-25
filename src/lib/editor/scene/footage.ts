@@ -2,9 +2,9 @@
 // person talks, and the piece is built around them in code: they fill the frame, shrink into a floating card on a
 // designed stage, share the screen with an explainer, sit in a corner, or disappear for a few seconds while a
 // full-screen motion piece shows what they are saying (a grid of tools drawn in code, a timeline, a curve, a number),
-// then come back. Their video plays in sync from the first frame to the last and their voice is the soundtrack; حيدرة
+// then come back. Their video plays in sync from the first frame to the last and their voice is the soundtrack; حيدرا ماكس
 // decides every frame change from their words (their times come from the transcript) without being told how.
-// What the lab sends about the video, read and bounded here, and the texts حيدرة is given. Pure.
+// What the lab sends about the video, read and bounded here, and the texts حيدرا ماكس is given. Pure.
 
 // no ceiling on the video's length (the owner's rule: no limit of the lab's own)
 export const FOOTAGE_MAX = Number.POSITIVE_INFINITY;
@@ -105,7 +105,7 @@ function faceSummary(f: FootageFace[]): string {
   return `the face sits ${side} (centre x ${x.toFixed(2)}, y ${y.toFixed(2)} of the picture), ${size}${moves}`;
 }
 
-/** Everything حيدرة is told about the video in the plan, the code and the review. */
+/** Everything حيدرا ماكس is told about the video in the plan, the code and the review. */
 export function footageText(f: FootageMeta): string {
   const lines = footageLines(f.words);
   // numbered, so a moment is chosen by its words (#i … #j) and its time is read from here — never invented
@@ -137,7 +137,7 @@ THE NON-NEGOTIABLES
 9. One designed world for the whole piece: one stage, one palette (3–5 colours, one accent), the same two fonts, the same UI language on every panel — the variety is in the frames and the motion, not in the style.
 10. Rhythm by intensity: 1–2 → a change every 4–6 s, mostly full/card; 3 → every 3–4 s; 4–5 → every 2–3 s with "away" explainers on the big words.`;
 
-/** The footage part of the kit, told to حيدرة only when the piece has a video. */
+/** The footage part of the kit, told to حيدرا ماكس only when the piece has a video. */
 export const FOOTAGE_KIT_API = `THE PERSON'S VIDEO IN THE KIT — K.footage (null when there is none):
 K.footage.draw(ctx, x, y, w, h, { zoom=1 (1 = cover; >1 punches in on the face), radius=0, circle=false, shadow=false|true|px, shadowColor, alpha=1, border=0, borderColor, cx, cy (0..1: crop centre instead of the face), fit:"cover"|"contain" }) → the face's box where it landed {x,y,w,h} in canvas pixels (keep text out of it). It draws the video's frame of NOW (the runtime hands it in for every frame — you never seek it). Draw it inside ctx.save()/transforms like any picture: rotate, skew or scale the ctx around it for a tilted floating card.
 K.footage.full(ctx, {zoom, cx, cy}) → the same, filling the frame.

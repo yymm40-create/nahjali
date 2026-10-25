@@ -1,5 +1,5 @@
 // «أسلوب ماجد الزعابي» — the reels and motion style of Majed Alzaabi (@majed_alzaabi_, Gulf Arabic video maker),
-// distilled for حيدرة from his own published editing skills (majed-video v4.3, MIT, github.com/majedphotos):
+// distilled for حيدرا ماكس from his own published editing skills (majed-video v4.3, MIT, github.com/majedphotos):
 // motion rules, scene layouts for a talking reel, the information → shape table, the facts list, sound design,
 // generated narration and pace. Written only in what the editor's commands and the layout engine can do. The
 // engine itself already enforces the measurable part (no bounce, 0.15–0.30 s entrances, 60 ms staggers, Western

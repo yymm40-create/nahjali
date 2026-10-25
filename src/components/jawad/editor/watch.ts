@@ -1,4 +1,4 @@
-// «👁️ حيدرة يشوف المقطع كامل» — the browser's part: the clip's video is played (muted, fast) and EVERY frame it shows
+// «👁️ حيدرا ماكس يشوف المقطع كامل» — the browser's part: the clip's video is played (muted, fast) and EVERY frame it shows
 // is copied tiny and measured (brightness, change from the one before); where the browser can't hand over its frames
 // one by one, it is stepped through many times a second instead. Then the frames worth seeing are drawn as numbered
 // tiles on contact sheets with their timeline time. What is measured and picked is src/lib/editor/watch.ts.
@@ -76,7 +76,7 @@ async function measure(v: FrameVideo, clip: Clip, onStep: (s: string) => void, s
         if (signal?.aborted) return end(false);
         const ms = meta.mediaTime * 1000;
         if (ms >= clip.in - 1) take(ms);
-        if (stats.length % 60 === 0) onStep(`حيدرة يشوف كل فريم… (${stats.length})`);
+        if (stats.length % 60 === 0) onStep(`حيدرا ماكس يشوف كل فريم… (${stats.length})`);
         if (ms >= clip.out - 20 || stats.length >= WATCH.measureMax) return end(true);
         v.requestVideoFrameCallback!(tick);
       };
@@ -100,7 +100,7 @@ async function measure(v: FrameVideo, clip: Clip, onStep: (s: string) => void, s
     const ms = clip.in + ((clip.out - clip.in) * i) / Math.max(1, n - 1);
     await seek(v, ms);
     take(ms);
-    if (i % 40 === 0) onStep(`حيدرة يشوف المقطع… (${i}/${n})`);
+    if (i % 40 === 0) onStep(`حيدرا ماكس يشوف المقطع… (${i}/${n})`);
   }
   return stats;
 }
@@ -140,7 +140,7 @@ async function sheetsOf(v: HTMLVideoElement, clip: Clip, times: number[], onStep
       ctx.strokeRect(x + 0.5, y + 0.5, T - 1, T - 1);
     }
     sheets.push({ data: c.toDataURL("image/jpeg", 0.7).split(",")[1], times: part });
-    onStep(`حيدرة يرتّب اللقطات… (${Math.min(times.length, s + WATCH.perSheet)}/${times.length})`);
+    onStep(`حيدرا ماكس يرتّب اللقطات… (${Math.min(times.length, s + WATCH.perSheet)}/${times.length})`);
   }
   return sheets;
 }
@@ -149,7 +149,7 @@ async function sheetsOf(v: HTMLVideoElement, clip: Clip, times: number[], onStep
 export async function watchClip(url: string, clip: Clip, onStep: (s: string) => void, signal?: AbortSignal): Promise<Watch> {
   const v = await open(url);
   try {
-    onStep("حيدرة يشوف كل فريم في المقطع…");
+    onStep("حيدرا ماكس يشوف كل فريم في المقطع…");
     const stats = await measure(v, clip, onStep, signal);
     const from = clip.start;
     const to = Math.round(clip.start + (clip.out - clip.in) / clip.speed);

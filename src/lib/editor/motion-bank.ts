@@ -7,7 +7,7 @@
 //
 //   · pieceAt(n)      → the piece
 //   · auditPiece(p)   → everything wrong with what the engine makes of it (nothing is the goal), and a score out of 10
-//   · nearestMotionExamples → the closest worked pieces to a request, shown to حيدرة as examples
+//   · nearestMotionExamples → the closest worked pieces to a request, shown to حيدرا ماكس as examples
 //
 // Pure: the tests and scripts/motion-million.mjs run it, in batches of 20,000, and report each batch.
 
@@ -45,7 +45,7 @@ export interface BankPiece {
   ratio: Ratio;
   /** the topic's subject (what the words are about) */
   subject: string;
-  /** the storyboard as حيدرة would write it (JSON-able; mistakes included when `noisy`) */
+  /** the storyboard as حيدرا ماكس would write it (JSON-able; mistakes included when `noisy`) */
   raw: Record<string, unknown>;
   noisy: boolean;
 }
@@ -336,7 +336,7 @@ function deepAudit(p: BankPiece, sb: NonNullable<ReturnType<typeof readStoryboar
   }
 }
 
-// ───────────── the examples حيدرة is shown ─────────────
+// ───────────── the examples حيدرا ماكس is shown ─────────────
 
 const tokens = (t: string) => new Set(t.toLowerCase().split(/[\s،.؛:!؟?«»"()]+/u).filter((w) => w.length >= 3));
 
@@ -363,7 +363,7 @@ export function nearestMotionExamples(message: string, o: { mood?: MotionMood; s
     .map((x) => pieceAt(x.n, { clean: true }));
 }
 
-/** The examples as a block for حيدرة's request: each a whole, working storyboard. */
+/** The examples as a block for حيدرا ماكس's request: each a whole, working storyboard. */
 export function motionExamplesBrief(pieces: BankPiece[]): string {
   if (!pieces.length) return "";
   return `WORKED EXAMPLES of motion pieces (from the site's bank of a million; each came out clean through the layout engine — copy their craft, not their words):\n${pieces

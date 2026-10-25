@@ -1,4 +1,4 @@
-// «حيدرة كت» — what «حيدرة» is taught beyond the basic commands: the colour grading (the model, its numbers and how
+// «حيدرة كت» — what «حيدرا ماكس» is taught beyond the basic commands: the colour grading (the model, its numbers and how
 // a colourist uses them), the crop, the timelines and Nest. Pure text, built from the editor's own lists so it never
 // names a log, a look or a field that doesn't exist.
 

@@ -8,7 +8,7 @@ const whole = <T>(r: T): Exclude<T, { partialRaw: string }> => {
   return r as Exclude<T, { partialRaw: string }>;
 };
 
-// The lab's three calls with a made-up model: what حيدرة is told, and how his answers are checked.
+// The lab's three calls with a made-up model: what حيدرا ماكس is told, and how his answers are checked.
 const s = vi.hoisted(() => ({ calls: [] as { system: string; text: string; images: number; maxTokens: number }[], reply: {} as unknown }));
 vi.mock("@/lib/film/anthropic", () => ({
   callClaudeJson: async (a: { system: string; turns: { content: { type: string; text?: string }[] }[]; maxTokens: number }) => {

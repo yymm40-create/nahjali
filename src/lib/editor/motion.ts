@@ -1,14 +1,14 @@
-// «موشن جرافيكس» — حيدرة's method is the owner's own skill file, «Motion Video Director», kept WORD FOR WORD in
+// «موشن جرافيكس» — حيدرا ماكس's method is the owner's own skill file, «Motion Video Director», kept WORD FOR WORD in
 // config/editor/skills/motion-video-director/SKILL.md and given to him exactly as it is (motion-director-text.ts, a
 // generated copy of that file; the test proves they are the same text). Nothing in it is rewritten, shortened or
 // "adapted": it is the method. What this file adds around it is only the delivery — how the craft the skill teaches
 // becomes the editor's own clips — and the owner's order that the engine's old look is finished: no named theme, no
-// drawn scene, no preset entrance. حيدرة composes every background himself and draws every arrival himself.
+// drawn scene, no preset entrance. حيدرا ماكس composes every background himself and draws every arrival himself.
 
 import { MOTION_DIRECTOR_SKILL_TEXT } from "./motion-director-text";
 import { HF_SKILLS } from "./higgsfield-skills-text";
 
-/** The brief حيدرة needs before making a motion-graphics piece (asked in ONE grouped question, only what's missing). */
+/** The brief حيدرا ماكس needs before making a motion-graphics piece (asked in ONE grouped question, only what's missing). */
 export const MOTION_QUESTIONS = [
   { key: "topic", ar: "الموضوع والرسالة الواحدة اللي تبيها توصل" },
   { key: "goal", ar: "الهدف (توعية، شرح، إعلان، تدريب، بيع)" },
@@ -16,13 +16,13 @@ export const MOTION_QUESTIONS = [
   { key: "duration", ar: "المدة بالثواني" },
   { key: "tone", ar: "النبرة بكلمتين أو ثلاث (جدّي، مرح، فخم، علمي…)" },
   { key: "language", ar: "اللغة (عربي فصيح أو لهجة، إنجليزي)" },
-  { key: "brand", ar: "ألوان وخطوط العلامة لو فيه (أو أخلّي حيدرة يختار)" },
+  { key: "brand", ar: "ألوان وخطوط العلامة لو فيه (أو أخلّي حيدرا ماكس يختار)" },
   { key: "voice", ar: "تعليق صوتي (صوت مين أو وصفه) أو نص فقط" },
   { key: "music", ar: "مزاج الموسيقى، أو بدون" },
   { key: "cta", ar: "النداء في النهاية (شنو يسوي المشاهد، رابط أو حساب)" },
 ] as const;
 
-/** The five channels and what each one is known for (a reference حيدرة can name; the method is the skill). */
+/** The five channels and what each one is known for (a reference حيدرا ماكس can name; the method is the skill). */
 export const MOTION_SOURCES = [
   { name: "Kurzgesagt", look: "flat rounded vectors on deep dark gradients, one accent family per scene, ~200 panels per 12 minutes, every move eased with a soft overshoot, the voice sets the timing" },
   { name: "Vox", look: "journalistic explainers: paper and black backgrounds, a yellow highlighter sweep over quotes, 2.5D photo parallax, textured lower thirds, charts that build on sentence boundaries" },

@@ -1,7 +1,7 @@
 // «صانع المحتوى» — one message in a conversation: the persona (the owner's edit or the template), the platform's
 // rules and tools, the closest worked examples, the project's record, the person's attachments (pictures seen),
 // then «محمد باقر»'s structured answer: the reply, the record, and — on an explicit request — a carousel to produce
-// (made by GPT Image 2 in the produce step) or a package handed to «حيدرة» (an edit room opened in «حيدرة كت»).
+// (made by GPT Image 2 in the produce step) or a package handed to «حيدرا ماكس» (an edit room opened in «حيدرة كت»).
 // Server only.
 
 import { isSalesAsk, nearestSalesExamples, SALES_METHOD, salesExamplesBrief } from "@config/content-sales";
@@ -43,7 +43,7 @@ export const ANSWER_SCHEMA = {
         required: ["label", "kind", "options", "multi"],
         properties: {
           label: { type: "string", description: "نص السؤال القصير" },
-          kind: { type: "string", enum: ["choice", "templates", "styles", "motion", "moods"], description: "choice: خيارات نصية؛ templates: معرض قوالب الكاروسيل؛ styles: خريطة الستايلات (١٠٠ ستايل في ١٤ عائلة)؛ motion: معرض مهارات الموشن عند حيدرة؛ moods: معرض مشاعر الموشن" },
+          kind: { type: "string", enum: ["choice", "templates", "styles", "motion", "moods"], description: "choice: خيارات نصية؛ templates: معرض قوالب الكاروسيل؛ styles: خريطة الستايلات (١٠٠ ستايل في ١٤ عائلة)؛ motion: معرض مهارات الموشن عند حيدرا ماكس؛ moods: معرض مشاعر الموشن" },
           options: { type: "array", items: { type: "string" }, description: "إجابات قصيرة (٢–٧) لـ choice، وفارغة للمعارض" },
           multi: { type: "boolean", description: "يجوز اختيار أكثر من إجابة" },
         },
@@ -110,13 +110,13 @@ export const ANSWER_SCHEMA = {
       type: "object",
       additionalProperties: false,
       required: ["on", "title", "shape", "package", "storyboard"],
-      description: "تسليم ريل منتج أو موشن جرافيكس إلى حيدرة، فقط بعد طلب صريح. on=false بدون تسليم.",
+      description: "تسليم ريل منتج أو موشن جرافيكس إلى حيدرا ماكس، فقط بعد طلب صريح. on=false بدون تسليم.",
       properties: {
         on: { type: "boolean" },
         title: { type: "string", description: "اسم المشروع (قصير)" },
         shape: { type: "string", enum: ["9:16", "16:9"] },
         package: { type: "string", description: "الحزمة الكاملة المكتفية بذاتها بالعربية (المرحلة الخامسة)" },
-        storyboard: { type: "string", description: "للموشن جرافيكس فقط: لوحة القصة كنص JSON (style وmood وpalette وbeats… كما يقرؤها حيدرة)؛ الموقع يفحصها ويسلّمها لحيدرة. فارغ لغير الموشن." },
+        storyboard: { type: "string", description: "للموشن جرافيكس فقط: لوحة القصة كنص JSON (style وmood وpalette وbeats… كما يقرؤها حيدرا ماكس)؛ الموقع يفحصها ويسلّمها لحيدرا ماكس. فارغ لغير الموشن." },
       },
     },
   },
@@ -270,15 +270,15 @@ export async function say(userId: string, chatId: string | null, message: string
     }
   }
 
-  // a package for «حيدرة»: an edit room in «حيدرة كت», the package first in its conversation, the files in its library
+  // a package for «حيدرا ماكس»: an edit room in «حيدرة كت», the package first in its conversation, the files in its library
   let editor: { id: string; title: string; lab?: string } | null = null;
   if (a.handoff?.on && typeof a.handoff.package === "string" && a.handoff.package.trim()) {
     try {
       editor = await openEditRoom(userId, a.handoff, history);
       reply.editor = editor;
       reply.text += editor.lab
-        ? `\n\n🎬 فتحت «${editor.title}» في «مختبر الموشن» داخل «حيدرة كت»: محادثة جاهزة فيها الحزمة كاملة، يكتب فيها حيدرة السيناريو أول ما تفتحها، وتعتمده ويبنيه بالكود قدامك. ونقلت ملفاتك المرفقة إلى مكتبتها.`
-        : `\n\n🎬 فتحت غرفة مونتاج باسم «${editor.title}» في «حيدرة كت»، ووضعت الحزمة الكاملة أول المحادثة مع حيدرة، ونقلت ملفاتك المرفقة إلى مكتبتها.`;
+        ? `\n\n🎬 فتحت «${editor.title}» في «مختبر الموشن» داخل «حيدرة كت»: محادثة جاهزة فيها الحزمة كاملة، يكتب فيها حيدرا ماكس السيناريو أول ما تفتحها، وتعتمده ويبنيه بالكود قدامك. ونقلت ملفاتك المرفقة إلى مكتبتها.`
+        : `\n\n🎬 فتحت غرفة مونتاج باسم «${editor.title}» في «حيدرة كت»، ووضعت الحزمة الكاملة أول المحادثة مع حيدرا ماكس، ونقلت ملفاتك المرفقة إلى مكتبتها.`;
     } catch (e) {
       console.error("content handoff", e);
       reply.text += `\n\n⚠️ لم أتمكن من فتح غرفة المونتاج في «حيدرة كت» الآن (${e instanceof UserError ? e.message : "خطأ في الخادم"}). الحزمة جاهزة أعلاه؛ اطلب التسليم مرة ثانية بعد قليل.`;
@@ -300,12 +300,12 @@ async function openEditRoom(userId: string, h: Answer["handoff"], history: Turn[
   const id = await createEditorProject(userId, { title, kind });
   const p = await requireEditorProject(id, userId);
   const pkg = h.package.trim().slice(0, 7900);
-  // a motion piece: the storyboard Baqir wrote, checked by the same reader حيدرة's engine uses (what it can't read is left out), with the choices the client made
+  // a motion piece: the storyboard Baqir wrote, checked by the same reader حيدرا ماكس's engine uses (what it can't read is left out), with the choices the client made
   const sb = typeof h.storyboard === "string" && h.storyboard.trim() ? readStoryboard(h.storyboard) : null;
   const motion = sb
     ? `\n\nلوحة القصة (storyboard) للموشن جرافيكس، فحصها الموقع وهي جاهزة للبناء كما هي (مهارة: ${motionStyleOf(sb.style)?.ar ?? "من اختيارك"}، مزاج: ${moodOf(sb.look?.mood)?.ar ?? "من اختيارك"}): استخدمها في الحقل "motion" كما هي أو عدّل عليها بحسب طلب العميل.\n${JSON.stringify(sb).slice(0, 12000)}\nالخلفيات والأيقونات والمشاهد ترسمها أنت بأدوات المحرر (لا تطلب خلفية من GPT Image 2 إلا إذا طلب العميل صورة صراحةً).`
     : "";
-  // the handoff is what حيدرة reads first at every answer; the message is what the person sees
+  // the handoff is what حيدرا ماكس reads first at every answer; the message is what the person sees
   const { error } = await db().from("editor_chats").upsert({ project_id: p.id, user_id: p.user_id, messages: [], handoff: `من محمد باقر (صانع المحتوى) — حزمة المشروع الكاملة:\n${pkg}${motion}`, chats: 1, updated_at: new Date().toISOString() });
   if (error) console.error("content handoff chat", error.message);
   // the files the person attached in this conversation (the latest of each), pointed at from the room's library
@@ -336,7 +336,7 @@ async function openEditRoom(userId: string, h: Answer["handoff"], history: Turn[
   }
   await appendChat(p, [{ role: "assistant", text: `📨 محمد باقر سلّمني حزمة «${title}» كاملة: الهدف والجمهور، السكربت المعتمد، المشاهد والنصوص الظاهرة، قرارات الصوت والموسيقى، والقيود${seen.size ? `، ومعها ${seen.size} ملفات في المكتبة` : ""}. قول لي «ابدأ» وأنفّذها، أو اسألني عن أي جزء منها.` }]).catch(() => {});
   // a motion piece goes straight to «مختبر الموشن»: a conversation of its own with the package as its brief, which
-  // writes the scenario by itself when it is opened (before migration 0087 the package stays with حيدرة, as before)
+  // writes the scenario by itself when it is opened (before migration 0087 the package stays with حيدرا ماكس, as before)
   let lab: string | undefined;
   if (sb || /موشن|motion/i.test(pkg)) {
     const r = await saveLabChat(p, userId, { title, state: { brief: pkg.slice(0, 6000), seconds: 15, chat: [{ role: "user", text: `📨 من محمد باقر — «${title}»:\n${pkg.slice(0, 1800)}` }], autoPlan: true } }).catch((e: unknown) => (console.error("content handoff lab", e), null));

@@ -35,7 +35,7 @@ describe("مختبر الموشن · كتالوج الخيارات", () => {
     expect(readChoices({ look: ["nope"] })).toEqual({});
   });
 
-  it("turns picks into binding lines for the plan, with the look's palette and what is left to حيدرة", () => {
+  it("turns picks into binding lines for the plan, with the look's palette and what is left to حيدرا ماكس", () => {
     expect(choicesText({})).toBe("");
     const c = readChoices({ look: ["gulf-gold"], connect: ["object-carry"], ending: ["loop"] });
     const t = choicesText(c);

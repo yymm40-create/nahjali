@@ -8,8 +8,8 @@ type Cut = { genId: string; name: string; videoId: string | null; note: string }
 
 /**
  * The montage, the way the person wants it: «رتّبها كما هي» (the takes in the director's order, as they are) or «قص
- * وعدّل بحسب ملاحظاتي» — then «حيدرة» opens with the person's notes on each take (what they didn't like, from where to
- * where) and cuts, trims, reorders and overlaps to remove the visible flaws and fix the flow. Before that, حيدرة asks
+ * وعدّل بحسب ملاحظاتي» — then «حيدرا ماكس» opens with the person's notes on each take (what they didn't like, from where to
+ * where) and cuts, trims, reorders and overlaps to remove the visible flaws and fix the flow. Before that, حيدرا ماكس asks
  * about the notes; nothing written means the take is fine as it is.
  */
 export default function OpenEdit({ filmId, exists, disabled, cut, filmTitle }: { filmId: string; exists: boolean; disabled: boolean; cut: Cut[]; filmTitle: string }) {
@@ -61,7 +61,7 @@ export default function OpenEdit({ filmId, exists, disabled, cut, filmTitle }: {
               {busy ? "لحظة…" : exists ? "✂️ افتح المونتاج كما هو" : "🎞️ رتّبها كما هي (بترتيب المخرج)"}
             </button>
             <button type="button" className="btn btn-primary min-h-14" disabled={disabled || busy} onClick={() => open(true)}>
-              {busy ? "لحظة…" : "🪄 قص وعدّل بحسب ملاحظاتي (حيدرة)"}
+              {busy ? "لحظة…" : "🪄 قص وعدّل بحسب ملاحظاتي (حيدرا ماكس)"}
             </button>
           </div>
         </div>

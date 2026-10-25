@@ -1,4 +1,4 @@
-// «مخرج الموشن» — حيدرة as director, producer, motion designer, editor and sound designer in one: the craft of the
+// «مخرج الموشن» — حيدرا ماكس as director, producer, motion designer, editor and sound designer in one: the craft of the
 // "Motion Video Director" skill the owner gave him (v3.1, Miftahul Islam Efaz — distilled here in our own words, not
 // copied), rewritten ONLY in terms of what حيدرة كت can do: text clips laid out by the engine, its entrances and the new
 // finishes (glow, two-colour gradient, 3D depth, «فك الشفرة», «عدّاد»), the 100 transitions and 100 clip effects

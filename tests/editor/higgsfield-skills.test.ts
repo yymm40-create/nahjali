@@ -67,7 +67,7 @@ describe("the owner's two Higgsfield skills, installed verbatim", () => {
     expect(all.skipped.length).toBeGreaterThan(0);
   });
 
-  it("حيدرة carries both skills in his motion method too", () => {
+  it("حيدرا ماكس carries both skills in his motion method too", () => {
     for (const s of HF_SKILLS) expect(MOTION_SKILL).toContain(s.text);
   });
 });

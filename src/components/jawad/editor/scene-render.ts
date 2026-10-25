@@ -1,5 +1,5 @@
 // «مختبر الموشن» — what the browser makes from a loaded scene: a probe (frames across the whole piece, to catch a
-// bug before حيدرة reviews it), contact sheets and stills for his review, and the final MP4 (WebCodecs through
+// bug before حيدرا ماكس reviews it), contact sheets and stills for his review, and the final MP4 (WebCodecs through
 // Mediabunny, the same encoder as the export, with motion blur from sub-frames).
 
 import { AudioBufferSource, BufferTarget, CanvasSource, canEncodeVideo, getFirstEncodableVideoCodec, Mp4OutputFormat, Output, WebMOutputFormat } from "mediabunny";

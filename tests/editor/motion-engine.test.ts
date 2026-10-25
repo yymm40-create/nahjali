@@ -72,7 +72,7 @@ describe("palettes and the check itself", () => {
     expect(kinds).toContain("overlap");
     expect(kinds).toContain("contrast");
   });
-  it("reads حيدرة's storyboard and drops what is malformed", () => {
+  it("reads حيدرا ماكس's storyboard and drops what is malformed", () => {
     expect(readStoryboard("not json")).toBeNull();
     expect(readStoryboard({ beats: [{ kind: "nope" }] })).toBeNull();
     const sb = readStoryboard(JSON.stringify({ palette: "majlis", beats: [{ kind: "title", title: "فضل الصدقة", text: "دقيقة تغيّر يومك" }, { kind: "stat", value: "٧٠٪", label: "من الناس" }] }));

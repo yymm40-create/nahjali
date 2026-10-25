@@ -1,7 +1,7 @@
 // «مختبر الموشن» + the owner's two Higgsfield skills (config/editor/skills/higgsfield-motion and higgsfield-motion-saas),
 // installed the way a skill is used: each SKILL.md is given WORD FOR WORD in the lab's system prompt, and every other
 // file of each skill (references, the Russian handbook split at its headings, templates, reference films, scripts) is
-// listed in a catalogue that حيدرة opens ON DEMAND — the skills' own rule ("never read the handbook whole, open only the
+// listed in a catalogue that حيدرا ماكس opens ON DEMAND — the skills' own rule ("never read the handbook whole, open only the
 // part you need"). The client-taste files, which both skills say to read before designing, are always open at the plan.
 // The skills' own code runs in the scene page: K.HFT (hf-tokens.js) and K.HF (hf-motion.js). Server only (large).
 
@@ -40,7 +40,7 @@ export function knownRefs(ids: unknown): string[] {
   return out;
 }
 
-/** The files opened word for word, inside the budget (what does not fit is named so حيدرة knows it was not given). */
+/** The files opened word for word, inside the budget (what does not fit is named so حيدرا ماكس knows it was not given). */
 export function openRefs(ids: string[], budget = OPEN_BUDGET): { text: string; opened: string[]; skipped: string[] } {
   const opened: string[] = [];
   const skipped: string[] = [];

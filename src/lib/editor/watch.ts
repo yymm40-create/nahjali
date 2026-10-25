@@ -1,8 +1,8 @@
-// «👁️ حيدرة يشوف المقطع كامل» — the selected clip WATCHED, not glanced at: the person's browser goes through every
+// «👁️ حيدرا ماكس يشوف المقطع كامل» — the selected clip WATCHED, not glanced at: the person's browser goes through every
 // frame it plays (a tiny copy of each, src/components/jawad/editor/watch.ts) and measures it — how bright, how much it
 // changed from the one before — so the cuts, the black and the frozen moments and the motion are found in all of them;
 // then the frames worth seeing (every cut, and the rest evenly, many a second for a short clip) are drawn as numbered
-// tiles on contact sheets, each with its time on the timeline. حيدرة gets the sheets and the measured summary.
+// tiles on contact sheets, each with its time on the timeline. حيدرا ماكس gets the sheets and the measured summary.
 // Pure: the reading of the measurements and of what the page sends.
 
 /** One measured frame: its time on the timeline, its brightness (0–255) and how much it changed from the one before. */

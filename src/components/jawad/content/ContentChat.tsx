@@ -55,8 +55,8 @@ const GALLERY: Record<GalleryKind, { open: string; none: string; line: (p: { id:
 const STARTS = [
   { ic: "🖼️", t: "كاروسيل", d: "من فكرة أو نص إلى شرائح جاهزة بالصور", m: "أبي كاروسيل. اسألني عن اللي تحتاجه عشان نبدأ.", c: "#f6b73c" },
   { ic: "🎬", t: "سكربت ريل", d: "هوك قوي ونص منطوق وتوجيهات تصوير", m: "أبي سكربت ريل. اسألني عن اللي تحتاجه.", c: "#ff7a59" },
-  { ic: "✂️", t: "ريل منتج", d: "من مقاطعي إلى ريل جاهز مع حيدرة", m: "أبي ريل منتج من مقاطعي. اسألني عن اللي تحتاجه، وبرفع لك الملفات هنا.", c: "#35c4b5" },
-  { ic: "✨", t: "موشن جرافيكس", d: "مشاهد وحركة وصوت، ينفّذها حيدرة", m: "أبي موشن جرافيكس. اسألني عن اللي تحتاجه.", c: "#a78bfa" },
+  { ic: "✂️", t: "ريل منتج", d: "من مقاطعي إلى ريل جاهز مع حيدرا ماكس", m: "أبي ريل منتج من مقاطعي. اسألني عن اللي تحتاجه، وبرفع لك الملفات هنا.", c: "#35c4b5" },
+  { ic: "✨", t: "موشن جرافيكس", d: "مشاهد وحركة وصوت، ينفّذها حيدرا ماكس", m: "أبي موشن جرافيكس. اسألني عن اللي تحتاجه.", c: "#a78bfa" },
   { ic: "🔁", t: "أعد توظيف محتوى", d: "محتوى واحد إلى عدة مخرجات مترابطة", m: "عندي محتوى وأبي أعيد توظيفه في أكثر من مخرج. اسألني عن اللي تحتاجه.", c: "#fbbf24" },
 ];
 
@@ -647,7 +647,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
               <>
                 <div className="ct-msg bot">
                   <h3>أهلًا، أنا {persona} ✍️</h3>
-                  <p>أرافقك من الفكرة أو النص إلى محتوى جاهز: كاروسيل بالصور، سكربت ريل، ريل منتج أو موشن جرافيكس مع حيدرة، وعناوين وكابشن. اختر نقطة بداية أو اكتب لي مباشرة، وارفق ملفاتك بزر 📎.</p>
+                  <p>أرافقك من الفكرة أو النص إلى محتوى جاهز: كاروسيل بالصور، سكربت ريل، ريل منتج أو موشن جرافيكس مع حيدرا ماكس، وعناوين وكابشن. اختر نقطة بداية أو اكتب لي مباشرة، وارفق ملفاتك بزر 📎.</p>
                 </div>
                 <div className="ct-start">
                   {STARTS.map((s, i) => (
@@ -686,7 +686,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                   {m.media && <MediaBox items={m.media.items} busy={!!busy} owner={!!owner} onRetry={(ids) => chatId && void runMedia(chatId, ids)} />}
                   {m.editor && (
                     <div className="ct-actions">
-                      <Link className="ct-mini" href={`/jawad-ai/editor/${m.editor.id}${m.editor.lab ? `?lab=${m.editor.lab}` : ""}`}>{m.editor.lab ? `🎬 افتح «${m.editor.title}» في مختبر الموشن` : `🎬 افتح غرفة المونتاج «${m.editor.title}» مع حيدرة`}</Link>
+                      <Link className="ct-mini" href={`/jawad-ai/editor/${m.editor.id}${m.editor.lab ? `?lab=${m.editor.lab}` : ""}`}>{m.editor.lab ? `🎬 افتح «${m.editor.title}» في مختبر الموشن` : `🎬 افتح غرفة المونتاج «${m.editor.title}» مع حيدرا ماكس`}</Link>
                     </div>
                   )}
                   {i === lastAssistant && !busy && !loginHref && m.questions?.length ? (
