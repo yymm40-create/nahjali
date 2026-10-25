@@ -14,7 +14,7 @@ import { openaiImage } from "@/lib/jawad/server/providers/openai";
 import { resolveVoice } from "@/lib/jawad/server/voices";
 import { UserError } from "@/lib/api";
 import { checkMp3, joinMp3, splitForSpeech, stripTashkeel } from "./audio";
-import { askJson, claudeCeilingUsd } from "./claude";
+import { askJson, claudeCeilingUsd, tokenRatioOf, withTokenRatio } from "./claude";
 import { allChars, allText, basedOn, levelLine, loadCtx, researchText, scopeRules, segText, understandingText, type Ctx } from "./context";
 import { getFile, getOutput, joinText, putFile, saveOutput, sdb, sources, type Output } from "./db";
 import type { Handler, Job, StepResult } from "./jobs";
@@ -110,17 +110,21 @@ export async function estimate(userId: string, o: Output, action: string, chapte
 
 /** The estimate split by kind, so each part is charged its own profit (Claude 40٪, GPT Image 2 pictures 30٪, sound the general). */
 export async function estimateParts(userId: string, o: Output, action: string, chapter = -1): Promise<StepParts> {
-  const base = await estimateBase(userId, o, action, chapter);
-  // «حيدرا ماكس»: the pages' design and check come on top of what the output costs to write (slides count it themselves)
-  if (isMax(o) && o.kind !== "slides" && (action === "final" || action === "revise")) {
-    return { ...base, claude: base.claude + (action === "revise" && chapter >= 0 ? deckSlideUsd(o.kind === "quiz" ? "a4" : "a4l") : maxUsd(o, 0)) };
-  }
-  return base;
-}
-
-async function estimateBase(userId: string, o: Output, action: string, chapter = -1): Promise<StepParts> {
   if (o.kind === "transcript") return parts();
   const c = await loadCtx(userId, o.project_id);
+  // every ceiling below is made from the REAL tokens-per-character of this student's material (Anthropic's counter),
+  // not a guess of one token for two characters: Arabic reads cheaper than that
+  return withTokenRatio(await tokenRatioOf(allText(c)), async () => {
+    const base = await estimateBase(c, o, action, chapter);
+    // «حيدرا ماكس»: the pages' design and check come on top of what the output costs to write (slides count it themselves)
+    if (isMax(o) && o.kind !== "slides" && (action === "final" || action === "revise")) {
+      return { ...base, claude: base.claude + (action === "revise" && chapter >= 0 ? deckSlideUsd(o.kind === "quiz" ? "a4" : "a4l") : maxUsd(o, 0)) };
+    }
+    return base;
+  });
+}
+
+async function estimateBase(c: Ctx, o: Output, action: string, chapter = -1): Promise<StepParts> {
   const chars = allChars(c) + (c.research ? 20_000 : 0);
   // «خطبة المنبر»: the verse's tafsir read from the book and put in plain words
   if (action === "tafsir") return parts(tafsirCeilingUsd());
