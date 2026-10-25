@@ -201,6 +201,24 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [picking, setPicking] = useState(false);
   /** the look in use: a workspace's, or one of the four themes */
   const T = ws ? { label: ws.ar, icon: ws.icon, hint: ws.hint, rail: ws.rail, mirror: !!ws.mirror, scale: ws.scale, font: ws.font, swatch: [ws.pal.bg, ws.pal.accent, ws.pal.s1, ws.pal.s3] } : THEMES[theme];
+  // «↔️ اقلب الواجهة»: the menus on the right instead of the left (to try; kept on this device), on top of the look's own side
+  const [flip, setFlip] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => {
+      try {
+        setFlip(localStorage.getItem("jw-editor-flip") === "1");
+      } catch {}
+    }, 0);
+    return () => clearTimeout(id);
+  }, []);
+  const flipUi = () =>
+    setFlip((v) => {
+      try {
+        localStorage.setItem("jw-editor-flip", v ? "0" : "1");
+      } catch {}
+      return !v;
+    });
+  const mirror = T.mirror !== flip;
   // «كبّر الشاشة»: the preview takes the room of the side panels (and of the timeline on a phone) until shrunk again
   const [big, setBig] = useState(false);
   // Claude's width on a computer (dragged by its edge; kept on this device)
@@ -359,7 +377,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     const sx = e.clientX;
     const w0 = layout.panelW;
     // the panel grows toward the middle: which way that is depends on its side
-    const dir = (layout.order.indexOf("panel") > layout.order.indexOf("preview") ? 1 : -1) * (T.mirror ? -1 : 1);
+    const dir = (layout.order.indexOf("panel") > layout.order.indexOf("preview") ? 1 : -1) * (mirror ? -1 : 1);
     let w = w0;
     const move = (ev: PointerEvent) => {
       w = Math.min(720, Math.max(260, w0 + (ev.clientX - sx) * dir));
@@ -541,7 +559,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     e.preventDefault();
     const startX = e.clientX;
     const startW = chatW;
-    const dir = T.mirror ? 1 : -1;
+    const dir = mirror ? 1 : -1;
     let w = startW;
     const move = (ev: PointerEvent) => {
       w = Math.round(Math.min(Math.max(300, window.innerWidth * 0.6), Math.max(300, startW + dir * (ev.clientX - startX))));
@@ -1832,7 +1850,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // the settings panel's edge that faces the picture: drag to make it wider
   const panelAfter = layout.order.indexOf("panel") > layout.order.indexOf("preview");
   const panelEdge = !floated("panel") && wide ? (
-    <div role="separator" aria-orientation="vertical" aria-label="غيّر عرض اللوحة" title="اسحب لتعريض اللوحة (ضغطتين: العرض الأصلي)" className={`absolute inset-y-6 z-10 hidden w-2 cursor-col-resize rounded-full hover:bg-jw-accent/40 lg:block ${panelAfter !== T.mirror ? "start-0" : "end-0"}`} onPointerDown={dragPanel} onDoubleClick={() => putLayout({ ...layout, panelW: 320 })} />
+    <div role="separator" aria-orientation="vertical" aria-label="غيّر عرض اللوحة" title="اسحب لتعريض اللوحة (ضغطتين: العرض الأصلي)" className={`absolute inset-y-6 z-10 hidden w-2 cursor-col-resize rounded-full hover:bg-jw-accent/40 lg:block ${panelAfter !== mirror ? "start-0" : "end-0"}`} onPointerDown={dragPanel} onDoubleClick={() => putLayout({ ...layout, panelW: 320 })} />
   ) : null;
 
   // حيدرة along the whole side (top to bottom): the editor makes room for him on that side
@@ -1843,7 +1861,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
   return (
     <div
-      className={`relative flex h-dvh min-h-[480px] flex-col overflow-hidden lg:h-[calc(100dvh-var(--jw-header-h,56px)-var(--jw-bar-h,0px))] lg:min-h-[520px] ${sideChat ? (T.mirror ? "lg:pe-[var(--jw-chat-pad)]" : "lg:ps-[var(--jw-chat-pad)]") : ""}`}
+      className={`relative flex h-dvh min-h-[480px] flex-col overflow-hidden lg:h-[calc(100dvh-var(--jw-header-h,56px)-var(--jw-bar-h,0px))] lg:min-h-[520px] ${sideChat ? (mirror ? "lg:pe-[var(--jw-chat-pad)]" : "lg:ps-[var(--jw-chat-pad)]") : ""}`}
       data-ed-theme={ws ? "ws" : theme}
       data-ed-page={bigPage ? "big" : undefined}
       data-ed-bars={bars}
@@ -1944,6 +1962,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                   <button type="button" className="grid h-8 w-8 place-items-center rounded-e-xl text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={ui >= 1.4} onClick={() => sizeUi(0.1)} aria-label="كبّر الواجهة"><Icon name="zoomIn" size={15} /></button>
                 </div>
               </div>
+              {wide && (
+                <button type="button" role="menuitem" aria-pressed={flip} className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-start text-sm hover:bg-jw-surface-2" onClick={() => { flipUi(); setPicking(false); }}>
+                  <span>↔️ اقلب الواجهة: القوائم {mirror ? "يسار" : "يمين"}</span>
+                  <span className="text-[11px] text-jw-muted">{flip ? "مقلوبة" : "عادية"}</span>
+                </button>
+              )}
               <div className="border-t border-jw-line pt-2"><InstallApp /></div>
             </div>
           )}
@@ -1972,7 +1996,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       {colorRoom && !big && <ClipStrip tl={tl} assets={assetMap} thumbs={thumbs} selected={selected} onPick={pick} player={player} />}
 
       {/* Claude (right) · the preview · the left side: a section and its rail (a computer); sheets on a phone */}
-      <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${T.mirror ? "flex-row-reverse" : ""} ${colorRoom && !big ? "lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:grid-rows-[minmax(0,1fr)_minmax(320px,49%)]" : ""}`}>
+      <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${mirror ? "flex-row-reverse" : ""} ${colorRoom && !big ? "lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:grid-rows-[minmax(0,1fr)_minmax(320px,49%)]" : ""}`}>
         {sheet && <button type="button" aria-label="إغلاق" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSheet(null)} />}
         {/* حيدرة: a small bubble with his face (dragged anywhere, folded to the side); pressed, his conversation pops up
             in his own black-and-lime window over the work, and «صغّر» folds it back to the bubble */}
