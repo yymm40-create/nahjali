@@ -311,6 +311,7 @@ export function simpleImage(spec: SimpleImageSpec): GeneratorDef {
 const NB_ASPECTS = ["1:1", "16:9", "9:16", "3:2", "2:3", "4:3", "3:4", "4:5", "5:4", "21:9"];
 const FAL_CHECKED = "2026-10-10";
 const WAN_CHECKED = "2026-10-23";
+const OMNI_CHECKED = "2026-10-25";
 const falSources = (slug: string) => [
   { label: `fal.ai — ${slug} (schema, endpoints)`, url: `https://fal.ai/models/${slug}/api`, checked: FAL_CHECKED },
   { label: `fal.ai — ${slug} (price)`, url: `https://fal.ai/models/${slug}`, checked: FAL_CHECKED },
@@ -852,6 +853,106 @@ const wan3: GeneratorDef = {
     { item: "النسب", status: "verified", note: "16:9 · 4:3 · 1:1 · 3:4 · 9:16 (و adaptive في الإطارات)." },
     { item: "الصوت المرجعي", status: "unverified", note: "التوثيق يذكر الحقل وحدوده فقط، لا يقول هل يطابق الشفاه أو يستخدم الصوت إيقاعًا؛ تُجرَّب أولًا." },
     { item: "السعر", status: "verified", note: "$0.05 · $0.10 · $0.20 للثانية (480p · 720p · 1080p)، وثواني الفيديو المرجعي تُحسب زيادة (صفحة fal)." },
+    { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
+  ],
+  notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
+};
+
+// ───────────────────────────── Google · Gemini Omni Flash 1.1 (on fal.ai) ─────────────────────────────
+// Checked on 2026-10-25: fal's schemas of google/gemini-omni-flash/v1.1/{text,image,reference}-to-video. Priced per second
+// of output by resolution ($0.03 · $0.10 · $0.15 · $0.30), the same as Google's own API at 720p (~$0.10, 5,792 tokens a
+// second at $17.50 per million) — fal publishes every resolution and is already our provider for Kling and Wan. Its
+// sound is native and always on. A task on fal's queue, followed like Kling's. Hidden until the owner enables it.
+
+export const OMNI_SECOND_USD: Record<string, number> = { "360p": 0.03, "720p": 0.1, "1080p": 0.15, "4k": 0.3 };
+const OMNI_RES_LABEL: Record<string, string> = { "360p": "360p", "720p": "720p", "1080p": "1080p", "4k": "4K" };
+const omniSec = (d: { settings: Settings }) => Math.max(3, Math.min(10, Math.round(Number(d.settings.duration) || 8)));
+
+const omniModes: ModeDef[] = [
+  { id: "text_to_video", label: "من النص", refStyle: "none", refs: {}, promptRequired: true },
+  { id: "first_frame", label: "إطار أول", refStyle: "frames", refs: { image: { min: 1, max: 1 } }, roles: ["first_frame"], promptRequired: false },
+  { id: "first_last_frame", label: "إطار أول وأخير", refStyle: "frames", refs: { image: { min: 2, max: 2 } }, roles: ["first_frame", "last_frame"], promptRequired: false },
+  {
+    id: "omni_reference",
+    label: "مراجع (صور وفيديو)",
+    refStyle: "references",
+    refs: { image: { min: 0, max: 10 }, video: { min: 0, max: 3 } },
+    needsOneOf: ["image", "video"],
+    promptRequired: true,
+  },
+];
+
+const geminiOmni: GeneratorDef = {
+  id: "gemini-omni",
+  name: "Gemini Omni",
+  output: "video",
+  defaultSection: "video",
+  provider: { id: "fal", label: "Google Gemini Omni (fal.ai)" },
+  model: { id: "google/gemini-omni-flash/v1.1/text-to-video", family: "Gemini Omni Flash", version: "1.1" },
+  api: { name: "fal.ai queue", endpoint: "POST google/gemini-omni-flash/v1.1/text-to-video · image-to-video · reference-to-video", tracking: "async", progress: "none", cancel: "none" },
+  modes: omniModes,
+  options: [
+    { key: "ratio", label: "نسبة الأبعاد", kind: "choice", ltr: true, default: "16:9", values: RATIO_VALUES.filter((r) => ["16:9", "9:16"].includes(r.value)) },
+    { key: "resolution", label: "الدقة", kind: "choice", ltr: true, default: "720p", values: ["360p", "720p", "1080p", "4k"].map((r) => ({ value: r, label: OMNI_RES_LABEL[r], ...(r === "360p" ? { hint: "مسودة سريعة" } : {}) })) },
+    { key: "duration", label: "المدة", kind: "int", min: 3, max: 10, default: 8, unit: "ثانية" },
+  ],
+  files: {
+    image: { mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 10 * MB, minSide: 300, maxSide: 8192, minAspect: 0.4, maxAspect: 2.5 },
+    video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 100 * MB, minSide: 300, maxSide: 6000, minAspect: 0.4, maxAspect: 2.5, minMs: 1000, maxMs: 3000 },
+  },
+  prompt: {
+    label: "البرومبت",
+    placeholder: "Describe the scene, the motion, the camera and the sound… (with references: «the person in <IMAGE_REF_0> walks past <VIDEO_REF_0>»)",
+    max: 4000,
+    arabic: true,
+  },
+  priceKeys: [
+    ...["360p", "720p", "1080p", "4k"].map((r) => ({
+      key: `sec:${r}`,
+      label: `كل ثانية · ${OMNI_RES_LABEL[r]}`,
+      defaultCenti: centiFor(OMNI_SECOND_USD[r]),
+      basis: `سعر fal المنشور: ${OMNI_SECOND_USD[r]} للثانية (${r})، والصوت بلا رسوم إضافية`,
+    })),
+    DIRECTOR_PRICE_LINE,
+  ],
+  modeFor(style, refs) {
+    if (!refs.length) return omniModes[0];
+    if (style === "references") return omniModes[3];
+    return refs.length >= 2 ? omniModes[2] : omniModes[1];
+  },
+  rules(d, mode) {
+    const notes: string[] = ["الصوت مدمج وشغّال دايمًا (ما فيه زر لإيقافه): اكتب في البرومبت «no music» أو «no voice» لو ما تبيه."];
+    const states: Partial<Record<string, Partial<OptionState>>> = {};
+    if (mode.refStyle === "frames") notes.push("في وضع الإطارات يتبع الفيديو صورتك: النسبة تُرسل مع الطلب.");
+    if (mode.id === "omni_reference") notes.push("في المراجع، اكتب في البرومبت <IMAGE_REF_0> و<VIDEO_REF_0> بترتيب رفعها (تبدأ من صفر) لتحدد دور كل مرجع. الفيديو المرجعي حتى ٣ ثواني.");
+    return { options: opt(geminiOmni.options, states), issues: [], notes };
+  },
+  price(d, mode, table) {
+    const res = String(d.settings.resolution);
+    const per = table[`sec:${res}`];
+    if (per == null) return { ok: false, reason: "سعر هذه الدقة غير محدد بعد." };
+    const sec = omniSec(d);
+    return total([{ label: `${sec} ث · ${OMNI_RES_LABEL[res] ?? res}`, centi: per * sec }], geminiOmni.costUsd(d, mode));
+  },
+  costUsd(d) {
+    return omniSec(d) * (OMNI_SECOND_USD[String(d.settings.resolution)] ?? OMNI_SECOND_USD["720p"]);
+  },
+  // the model reads the references by their place in each list, from zero
+  refLabel: (kind, n) => `<${kind.toUpperCase()}_REF_${n - 1}>`,
+  sources: [
+    ...falSources("google/gemini-omni-flash/v1.1/text-to-video"),
+    { label: "fal.ai — google/gemini-omni-flash/v1.1/image-to-video (schema)", url: "https://fal.ai/models/google/gemini-omni-flash/v1.1/image-to-video/api", checked: OMNI_CHECKED },
+    { label: "fal.ai — google/gemini-omni-flash/v1.1/reference-to-video (schema)", url: "https://fal.ai/models/google/gemini-omni-flash/v1.1/reference-to-video/api", checked: OMNI_CHECKED },
+    { label: "Google AI for developers — Gemini API pricing (Omni Flash)", url: "https://ai.google.dev/gemini-api/docs/pricing", checked: OMNI_CHECKED },
+  ],
+  verification: [
+    { item: "الأوضاع", status: "verified", note: "نص · إطار أول (image_url) · أول وأخير (+ end_image_url) · مراجع (image_urls، reference_video_urls ≤ 3 كل واحد ≤ 3 ثواني)." },
+    { item: "الدقة", status: "verified", note: "360p · 720p · 1080p · 4K." },
+    { item: "النسب", status: "verified", note: "16:9 · 9:16 فقط." },
+    { item: "المدة", status: "unverified", note: "التوثيق يذكر الافتراضي 8 ثوان وأمثلته حتى 10؛ ما يذكر حدًا أقصى، فالحد هنا 3–10 وتُراجع بالتجربة." },
+    { item: "الصوت", status: "verified", note: "صوت مدمج متزامن بلا رسوم إضافية، وما فيه خيار لإيقافه." },
+    { item: "السعر", status: "verified", note: "$0.03 · $0.10 · $0.15 · $0.30 للثانية (360p · 720p · 1080p · 4K) من صفحة fal؛ وعند Google مباشرة تقريبًا $0.10 للثانية بـ720p." },
+    { item: "الوجوه الحقيقية", status: "unverified", note: "التوثيق ما يذكر قيودًا على وجوه الأشخاص؛ تُجرَّب أولًا." },
     { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
   ],
   notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
@@ -1544,7 +1645,7 @@ const jawadVoice: GeneratorDef = {
   notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي.", "لا تُؤخذ بصمة صوت شخص إلا بإذنه."],
 };
 
-export const GENERATORS: GeneratorDef[] = [gptImage2, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, wan3, miniTts, elevenV4, minimaxSpeech, jawadVoice, elevenSfx, elevenMusic, smartSplit];
+export const GENERATORS: GeneratorDef[] = [gptImage2, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, wan3, geminiOmni, miniTts, elevenV4, minimaxSpeech, jawadVoice, elevenSfx, elevenMusic, smartSplit];
 export const generatorById = (id: string) => GENERATORS.find((g) => g.id === id);
 
 /** The settings a generator starts with. */
