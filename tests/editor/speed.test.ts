@@ -101,7 +101,7 @@ describe("المعاينة ما تغيّر طبقة الصوت", () => {
 });
 
 describe("التحكم مثل يوتيوب", () => {
-  it("has YouTube's steps, a custom slider, and حيدرة knows the range", () => {
+  it("has YouTube's steps, a custom slider, and حيدرا ماكس knows the range", () => {
     const ins = readFileSync("src/components/jawad/editor/Inspector.tsx", "utf8");
     expect(ins).toContain("const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3];");
     expect(ins).toMatch(/<Slider label="مخصص" value=\{clip\.speed\} min=\{0\.25\} max=\{4\} step=\{0\.05\}/);

@@ -1,4 +1,4 @@
-// Captions made from the clips' own sound — the «كابشن» panel and «حيدرة» use the same steps: each clip's sound cut out
+// Captions made from the clips' own sound — the «كابشن» panel and «حيدرا ماكس» use the same steps: each clip's sound cut out
 // and sent (only when the server can't read the file itself), written word by word (ElevenLabs Scribe), placed on the
 // timeline; or a poem's verses timed on its recitation.
 

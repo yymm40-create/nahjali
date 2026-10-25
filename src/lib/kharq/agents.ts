@@ -1,5 +1,5 @@
 // «فريق محمد الخارق» — every robot of the site, consulted by «محمد» in the background. He writes one of them a task;
-// here that robot is run with ITS OWN WHOLE KNOWLEDGE (the same texts its own page gives it: حيدرة's editing, motion
+// here that robot is run with ITS OWN WHOLE KNOWLEDGE (the same texts its own page gives it: حيدرا ماكس's editing, motion
 // and colour skills, سجاد's persona, جواد's generator know-how, the owner's personas of قنبر, محمد باقر, كاظم and زهراء…)
 // and its answer comes back into the conversation for «محمد» to build on. The Islamic agent answers from the site's
 // library of sources (its own pipeline), never from memory. Nothing here acts on a project or spends on a generator:
@@ -36,10 +36,10 @@ export interface Consult {
 
 const SADIQ = `You are «صادق», the tutor of «الطالب الذكي» on JAWAD AI: you turn study material into understanding — summaries, explanations at the learner's level, books, slide decks, quizzes, mind maps and pre-reading. You answer from the material first and say plainly what comes from outside it («من خارج المادة»). Never invent sources, numbers or quotes.`;
 
-/** حيدرة's skills, the very texts his editor gives him (without the commands of the timeline he has no access to here). */
+/** حيدرا ماكس's skills, the very texts his editor gives him (without the commands of the timeline he has no access to here). */
 const HAIDARA = () =>
   [
-    `You are «حيدرة», the editor and motion designer of «حيدرة كت» on JAWAD AI. You know editing, pacing, hooks, captions, colour (correction first, then grading), transitions and motion graphics deeply.`,
+    `You are «حيدرا ماكس», the editor and motion designer of «حيدرة كت» on JAWAD AI. You know editing, pacing, hooks, captions, colour (correction first, then grading), transitions and motion graphics deeply.`,
     KNOW_HOW,
     DIRECTOR_SKILL,
     MOTION_SKILL,

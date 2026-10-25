@@ -1,4 +1,4 @@
-// «مختبر الموشن» — what the lab accepts: the plan حيدرة writes (read and bounded), the scene program (checked before it
+// «مختبر الموشن» — what the lab accepts: the plan حيدرا ماكس writes (read and bounded), the scene program (checked before it
 // ever reaches the scene page), and the cues and scores that come back. Pure.
 
 import { FONT_BY_ID, FONT_LIST } from "@/lib/editor/fonts";
@@ -8,7 +8,7 @@ import { FRAMES, type FootageFrame } from "./footage";
 
 export const SECONDS = { min: 3, max: Number.POSITIVE_INFINITY } as const;
 
-/** Things a scene program must never contain (the page blocks them anyway; this tells حيدرة before it runs). */
+/** Things a scene program must never contain (the page blocks them anyway; this tells حيدرا ماكس before it runs). */
 const FORBIDDEN: [RegExp, string][] = [
   [/\bfetch\s*\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon/, "network access"],
   [/\bimport\s*\(|\brequire\s*\(|\bimportScripts\b/, "loading code (use K.THREE / K.addon)"],
@@ -79,7 +79,7 @@ export interface LabPlan {
   shots: Shot[];
   assets: { id: string; use: string }[];
   music: string;
-  /** the files of the owner's Higgsfield skills حيدرة asked to have open while writing and reviewing (catalogue ids) */
+  /** the files of the owner's Higgsfield skills حيدرا ماكس asked to have open while writing and reviewing (catalogue ids) */
   skillRefs: string[];
   /** the person's picks from the lab's gallery (look, structure, connections, feel, pace, camera, type, finish, ending) — binding */
   choices: LabChoices;
@@ -102,7 +102,7 @@ const PIC_ASPECTS = ["1:1", "9:16", "16:9", "4:5", "3:4", "4:3", "2:3", "3:2"];
 export const LAB_FONTS = FONT_LIST.filter((f) => ["sans", "display", "kufi", "naskh"].includes(f.kind)).map((f) => f.id);
 const font = (v: unknown, d: string) => (typeof v === "string" && FONT_BY_ID.has(v) ? v : d);
 
-/** حيدرة's plan made safe (every field bounded; unknown fonts fall back to good ones). A piece on the person's video
+/** حيدرا ماكس's plan made safe (every field bounded; unknown fonts fall back to good ones). A piece on the person's video
  * (`fixed`) lasts exactly the video's length, whatever the plan says. */
 export function readPlan(raw: unknown, seconds: number, assetIds: string[] = [], fixed?: number): LabPlan {
   const o = (raw ?? {}) as Record<string, unknown>;

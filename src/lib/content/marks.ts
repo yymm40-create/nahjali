@@ -17,7 +17,7 @@ export const templateLine = (p: Pick) => (p.id === "none" ? "• القالب: �
 /** A cartoon-style pick as a line of a message (id "none" = no cartoon style). */
 export const styleLine = (p: Pick) => (p.id === "none" ? "• الستايل الكرتوني للصور: بدون ستايل كرتوني [ستايل:none]" : `• الستايل الكرتوني للصور: «${p.name}» [ستايل:${p.id}]`);
 
-/** A motion-skill pick («مهارات الموشن» of حيدرة) as a line of a message (id "none" = he chooses). */
+/** A motion-skill pick («مهارات الموشن» of حيدرا ماكس) as a line of a message (id "none" = he chooses). */
 export const motionLine = (p: Pick) => (p.id === "none" ? "• مهارة الموشن: اختر لي الأنسب [موشن:none]" : `• مهارة الموشن: «${p.name}» [موشن:${p.id}]`);
 
 /** A mood pick (the feeling of the motion piece) as a line of a message (id "none" = he chooses). */

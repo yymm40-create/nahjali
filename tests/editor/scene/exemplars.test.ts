@@ -3,7 +3,7 @@ import { EXEMPLARS } from "@/lib/editor/scene/exemplars";
 import { CUE_SFX } from "@/lib/editor/scene/skill";
 import { runScene } from "./harness";
 
-// The reference scenes حيدرة learns from must themselves be flawless: they load, draw at every moment of their
+// The reference scenes حيدرا ماكس learns from must themselves be flawless: they load, draw at every moment of their
 // length in portrait and landscape, draw the same frame for the same time, and cue only real sounds.
 describe("the reference scenes", () => {
   for (const ex of EXEMPLARS) {

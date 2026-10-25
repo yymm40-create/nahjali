@@ -1,4 +1,4 @@
-// «حيدرة»'s grading library, always with him. Built once by scripts/grading-library/build.mts from featured photos
+// «حيدرا ماكس»'s grading library, always with him. Built once by scripts/grading-library/build.mts from featured photos
 // of Wikimedia Commons (credited in config/grading-library/CREDITS.md): for each photo, mistakes made on purpose in
 // Haydara's own grade (casts, exposure, milky/crushed blacks, flat log-like contrast, saturation, an overdone split)
 // with the ONE TOUCH that brings each back — found by searching his own controls until the picture matched the
@@ -92,7 +92,7 @@ function lessons() {
   return lines.join("\n");
 }
 
-/** What the library taught, in words: part of every request («حيدرة» always has it). */
+/** What the library taught, in words: part of every request («حيدرا ماكس» always has it). */
 export const GRADING_LESSONS = `YOUR GRADING LIBRARY (${LIB.sources.length} professional photographs, ${LIB.examples.filter((e) => e.kind === "flaw").length} mistakes made on purpose and fixed in your own controls, ${LIB.examples.filter((e) => e.kind === "look").length} cinematic looks). What it teaches:
 ${lessons()}
 Principles the library confirms (and real colourists work by):

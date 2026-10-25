@@ -176,7 +176,7 @@ describe("the motion choices", () => {
     expect(block).toContain('"mood":"faith"');
     expect(chosenBlock({ template: null, style: null, motion: "none", mood: "none" })).toContain("اختر الأنسب");
   });
-  it("he knows every skill and mood حيدرة has, and that حيدرة draws the backgrounds himself", () => {
+  it("he knows every skill and mood حيدرا ماكس has, and that حيدرا ماكس draws the backgrounds himself", () => {
     const text = motionCatalogBlock();
     for (const s of MOTION_STYLES.filter((x) => !x.talk)) expect(text).toContain(s.ar);
     for (const m of MOODS) expect(text).toContain(m.ar);

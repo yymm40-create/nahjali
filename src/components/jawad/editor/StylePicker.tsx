@@ -2,8 +2,8 @@
 
 // «🎬 أساليب الموشن» — the one place the person picks a motion style: ten cards, each a picture the engine draws of
 // its look, a name, one line and its energy. Press a card: it opens with what it is for, a box for the topic and
-// «ابدأ» — and حيدرة gets one clear sentence. It replaced four tabs of forty skills, looks and feelings that repeated
-// each other (the owner: «عفسة وفيه تكرارات»). Works inside حيدرة's popup and on a phone.
+// «ابدأ» — and حيدرا ماكس gets one clear sentence. It replaced four tabs of forty skills, looks and feelings that repeated
+// each other (the owner: «عفسة وفيه تكرارات»). Works inside حيدرا ماكس's popup and on a phone.
 
 import { useMemo, useState } from "react";
 import { MOTION_TEN, askForTen, type MotionTen } from "@/lib/editor/motion-ten";
@@ -88,7 +88,7 @@ export default function StylePicker({ open, onClose, onSend, disabled }: { open:
               </div>
             </div>
             <label className="sp-field">
-              <span>{sel.talk ? "شي تبي حيدرة ينتبه له؟ (اختياري)" : "عن وش الفيديو؟"}</span>
+              <span>{sel.talk ? "شي تبي حيدرا ماكس ينتبه له؟ (اختياري)" : "عن وش الفيديو؟"}</span>
               <textarea
                 rows={2}
                 value={topic}
@@ -106,7 +106,7 @@ export default function StylePicker({ open, onClose, onSend, disabled }: { open:
             <button type="button" className="sp-go" disabled={disabled || (!sel.talk && !topic.trim())} onClick={go}>
               ✨ ابدأ بهالأسلوب
             </button>
-            <p className="sp-hint">حيدرة يسألك بس اللي ناقصه، وكل شي يطلع قابل للتعديل.</p>
+            <p className="sp-hint">حيدرا ماكس يسألك بس اللي ناقصه، وكل شي يطلع قابل للتعديل.</p>
           </div>
         )}
       </div>

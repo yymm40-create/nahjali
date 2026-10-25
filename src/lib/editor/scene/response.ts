@@ -4,7 +4,7 @@ import type { OnText } from "@/lib/film/anthropic";
 /**
  * A lab step's answer, written as it is made so the platform never drops a long request. Two shapes:
  * - plain (the default): a space now and then (keeps the line open), then the JSON result — read with `res.json()`;
- * - watched (`watch`): one JSON object a line (NDJSON) — `{"w": "…"}` for each piece حيدرة writes (gathered every
+ * - watched (`watch`): one JSON object a line (NDJSON) — `{"w": "…"}` for each piece حيدرا ماكس writes (gathered every
  *   ~200 ms), `{}` to keep the line open, and last `{"r": result}` (or `{"r": {"error": …}}`) — so the page shows the
  *   program being written while it is written.
  */

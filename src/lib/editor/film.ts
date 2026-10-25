@@ -75,7 +75,7 @@ export async function openFilmEdit(film: FilmProject, user: User) {
       p = await requireEditorProject(id, user.id);
     }
   }
-  // سجاد hands حيدرة the scene (he reads it fresh at every answer); the person sees it happened
+  // سجاد hands حيدرا ماكس the scene (he reads it fresh at every answer); the person sees it happened
   if (fresh) await appendChat(p, [{ role: "assistant", text: `📨 سجاد سلّمني كل تفاصيل «${film.title}»: القصة والسيناريو والشخصيات وكل مقطع مثل ما خطّط له المخرج بحواره وملاحظاتك (${cut.length} مقاطع). رتّبت لك النسخة الأولى؛ قول لي وش تبي وأكمّل على روح القصة.` }]).catch(() => {});
   return p.id;
 }

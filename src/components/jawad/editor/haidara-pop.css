@@ -1,4 +1,4 @@
-/* حيدرة's conversation as a popup over the editor: the black-and-lime window of the site's robot chats. It recolours
+/* حيدرا ماكس's conversation as a popup over the editor: the black-and-lime window of the site's robot chats. It recolours
    the editor's tokens inside it only, so everything in the conversation follows. */
 .hd-pop {
   --jw-surface: #0f1216;
@@ -52,7 +52,7 @@
   .hd-pop { inset-inline: 8px; width: auto; height: min(78dvh, calc(100dvh - 70px)); }
 }
 
-/* «🎬 أساليب الموشن»: ten cards, then the chosen one with its topic — black and lime like حيدرة's window */
+/* «🎬 أساليب الموشن»: ten cards, then the chosen one with its topic — black and lime like حيدرا ماكس's window */
 .sp-back {
   position: fixed;
   inset: 0;
@@ -117,7 +117,7 @@
   .sp-pic.big { width: 90px; }
 }
 
-/* the message box (and any field) inside حيدرة's window: white with black writing, whatever the editor's theme
+/* the message box (and any field) inside حيدرا ماكس's window: white with black writing, whatever the editor's theme
    (a light editor theme made the box white while the window's ink was white — the words vanished) */
 .hd-pop .jw-textarea,
 .hd-pop .jw-input,

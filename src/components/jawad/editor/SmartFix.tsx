@@ -252,7 +252,7 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
     run({ type: "split", at: Math.round(player.ms), clipIds: [sel.clip.id] });
   };
   const counts = { all: pieces.length, making: making.length, done: pieces.filter((c) => c.fix?.state === "done").length };
-  // a film's video: once حيدرة is happy with the joins, the version goes to سجاد, who puts it in its place
+  // a film's video: once حيدرا ماكس is happy with the joins, the version goes to سجاد, who puts it in its place
   const donePieces = pieces.filter((c) => c.fix?.state === "done");
   const filmAsset = donePieces.map((c) => (c.assetId ? assets.get(c.assetId) : undefined)).find((a) => a?.origin === "film");
   const approve = async () => {

@@ -1,4 +1,4 @@
-// «🎬 مختبر الموشن» · watching حيدرة write: a lab step asked with `watch` answers one JSON object a line (NDJSON) —
+// «🎬 مختبر الموشن» · watching حيدرا ماكس write: a lab step asked with `watch` answers one JSON object a line (NDJSON) —
 // `{"w": "…"}` for each piece of his reply as he writes it, `{}` to keep the line open, and last `{"r": result}` — so
 // the conversation shows the program growing line by line. Pure helpers plus the reader.
 

@@ -72,7 +72,7 @@ export async function startUpscale(p: EditorProject, who: Who, b: { assetId?: un
   const target: UpscaleTarget = b.target === "1080p" ? "1080p" : "4k";
   const src = await sourceRow(p, b.assetId);
   if (!src || src.kind !== "video" || src.status !== "ready") throw new UserError("اختر فيديو جاهز من المشروع.", 400);
-  if (src.meta?.local) throw new UserError("هذا الفيديو محفوظ على جهازك بس (برنامج حيدرة)، وما يوصل لخادم رفع الدقة؛ ارفعه للمشروع من المتصفح وارفع دقته.", 400);
+  if (src.meta?.local) throw new UserError("هذا الفيديو محفوظ على جهازك بس (برنامج حيدرا ماكس)، وما يوصل لخادم رفع الدقة؛ ارفعه للمشروع من المتصفح وارفع دقته.", 400);
   // a file without its size (or length) on record: the page's measurement is kept, once
   if (!src.width || !src.height || !src.duration_ms) {
     const fill: Record<string, number> = {};

@@ -398,11 +398,11 @@ export async function directorAction(project: FilmProject, user: User, input: Di
         mime: String(file.metadata?.mimetype ?? "video/mp4"), bytes: size, status: "approved", meta: { uploaded: true, edited: true, ...(input.by === "haidara" ? { by: "haidara", pieces } : {}) },
       });
       if (error) throw error;
-      // the loop closes at سجاد: حيدرة approved the edits and the version goes into its place, the changed seconds named
+      // the loop closes at سجاد: حيدرا ماكس approved the edits and the version goes into its place, the changed seconds named
       await tellSajjad(
         project.id,
         input.by === "haidara"
-          ? `حيدرة اعتمد التعديل الذكي على ${input.genId} وأرسل النسخة المعتمدة؛ وضعتها مكان القديمة. اللي تغيّر: ${pieces.length ? pieces.map((x) => `${x.from.toFixed(1)}–${x.to.toFixed(1)} ث (${x.mode === "whole" ? "كامل" : "جزء"})${x.note ? `: ${x.note}` : ""}`).join(" · ") : "—"}.`
+          ? `حيدرا ماكس اعتمد التعديل الذكي على ${input.genId} وأرسل النسخة المعتمدة؛ وضعتها مكان القديمة. اللي تغيّر: ${pieces.length ? pieces.map((x) => `${x.from.toFixed(1)}–${x.to.toFixed(1)} ث (${x.mode === "whole" ? "كامل" : "جزء"})${x.note ? `: ${x.note}` : ""}`).join(" · ") : "—"}.`
           : `${input.genId} رجع للفيلم بنسخة معدّلة رفعها الشخص بنفسه (مكان القديمة).`,
       );
       await maybeFinish(project, versions, await directorVideos(project.id));

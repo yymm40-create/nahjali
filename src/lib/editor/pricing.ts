@@ -46,7 +46,7 @@ export async function charged<T>(who: Who, price: Extract<LimitKey, `editor_pric
 }
 
 /**
- * A Claude conversation of حيدرة: the person's chosen model answers, a balance that covers a typical reply of it is needed
+ * A Claude conversation of حيدرا ماكس: the person's chosen model answers, a balance that covers a typical reply of it is needed
  * first, and afterwards the reply's real usage + its profit is taken (the owner and unlimited accounts pay nothing). A
  * failed call takes nothing. `usdOf` reads the real cost from what `run` returned. `kind` "max": «حيدرا ماكس»'s
  * programs (the cut and colour programs, the motion lab), at their own profit.
@@ -55,7 +55,7 @@ export async function claudeCharged<T>(who: Who, modelId: unknown, label: string
   // a code may cap the model (the owner's «الأكواد»): a dearer pick is served by the ceiling's model
   const model = claudeModelOf(await claudeFor(who.email, modelId));
   const bill = await claudeMeter(who, model, label, kind);
-  // the person's memory («ذاكرتي») is read by حيدرة too, and learns from the turn
+  // the person's memory («ذاكرتي») is read by حيدرا ماكس too, and learns from the turn
   const out = await withClaude(model.id, () => remembering(who.id, run, memo));
   const coins = await bill.settle(usdOf(out)).catch((e) => {
     console.error("claude settle failed", e);

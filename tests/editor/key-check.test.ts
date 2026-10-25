@@ -3,7 +3,7 @@ import { cleanChange } from "@/lib/editor/key-check";
 import { NEW_KEY, readKey } from "@/lib/editor/model";
 import { detectKey, keyParams, sampleAt } from "@/lib/editor/key-math";
 
-describe("«🤖 حيدرة يضبط الكي»", () => {
+describe("«🤖 حيدرا ماكس يضبط الكي»", () => {
   it("keeps only the settings he may change, inside their bounds", () => {
     expect(cleanChange({ color: "#3F9A52", tolerance: 2, clean: -1, spill: 0.7, show: true, kind: "luma", choke: "x" })).toEqual({ color: "#3f9a52", tolerance: 0.85, clean: 0, spill: 0.7 });
     expect(cleanChange({ color: "green" })).toEqual({});

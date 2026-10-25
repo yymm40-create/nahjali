@@ -39,7 +39,7 @@ export function branchOf(label: string | null | undefined): Branch {
     const out = GEN_OUTPUT.get(l.replace(/^JAWAD AI\s*·\s*/, ""));
     return out === "video" ? "صناعة الفيديو" : out === "audio" ? "صناعة الصوت" : "صناعة الصور";
   }
-  if (/حيدرة/.test(l)) return "حيدرة كت";
+  if (/حيدرا ماكس/.test(l)) return "حيدرة كت";
   if (/الطالب الذكي|صادق|الخطيب/.test(l)) return "الطالب الذكي";
   if (/محادثة جواد/.test(l)) return "محادثة جواد";
   if (/السيناريست|شيت|رد المخرج|^فيديو$|صوت جملة|سجاد|سجّاد|الفيلم|المسلسل/.test(l)) return "الفيلم السينمائي";

@@ -1,6 +1,6 @@
 "use client";
 
-// «🎙️ بصوتي» in «مختبر الموشن»: the person reads the narration حيدرة wrote, in their own voice (recorded here or a
+// «🎙️ بصوتي» in «مختبر الموشن»: the person reads the narration حيدرا ماكس wrote, in their own voice (recorded here or a
 // file of theirs) — Claude Code cleans it (its silences, hum and level, the same program-and-review as «بصمة صوتك»),
 // and the page measures WHEN each line is said, so the motion is built on the words. Nothing else touches the voice:
 // no text-to-speech, no clone; it is the person's own recording in the film.
@@ -142,7 +142,7 @@ export default function LabVoice({ script, model, value, onChange, disabled }: {
         </div>
       )}
       {error && <p className="mlab-error m-0">{error}</p>}
-      <p className="mlab-tip m-0">صوتك نفسه يدخل الفيلم، ما فيه صوت مولّد ولا نسخة من صوتك. وحيدرة يبني الحركة على كلامك: كل فكرة تطلع وقت ما تقولها.</p>
+      <p className="mlab-tip m-0">صوتك نفسه يدخل الفيلم، ما فيه صوت مولّد ولا نسخة من صوتك. وحيدرا ماكس يبني الحركة على كلامك: كل فكرة تطلع وقت ما تقولها.</p>
     </div>
   );
 }

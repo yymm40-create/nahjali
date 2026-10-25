@@ -66,7 +66,7 @@ export async function assembleEpisode(series: FilmSeries, ep: FilmEpisode, userI
       p = await requireEditorProject(id, userId);
     }
   }
-  // سجاد hands حيدرة the episode (he reads it fresh at every answer)
+  // سجاد hands حيدرا ماكس the episode (he reads it fresh at every answer)
   if (!had) await appendChat(p, [{ role: "assistant", text: `📨 سجاد سلّمني كل تفاصيل الحلقة ${ep.number}: المسلسل وشخصياته، وكل مشهد بقصته ومقاطعه وحواراته. ركّبت المشاهد المحفوظة بالترتيب؛ قول لي وش تبي وأضيف المؤثرات والموسيقى على روح القصة.` }]).catch(() => {});
   return { id: p.id, waiting: scenes.filter((s) => !s.videoId).map((s) => ({ number: s.number, title: s.title })) };
 }

@@ -1,6 +1,6 @@
 // «مختبر الموشن» on the person's own video, in the browser: the video read for the scene (one decoder walking
 // forward frame by frame while the film renders, and seeking only when the preview or the review jumps), and what the
-// lab learns about it before حيدرة plans: what they say with every word's time (ElevenLabs Scribe), where the face is
+// lab learns about it before حيدرا ماكس plans: what they say with every word's time (ElevenLabs Scribe), where the face is
 // as it moves (MediaPipe, here in the browser), a few frames for his eyes, and its sound for the mix.
 
 import { ALL_FORMATS, CanvasSink, Input, UrlSource, type WrappedCanvas } from "mediabunny";
@@ -104,10 +104,10 @@ export class FootageReader {
   }
 }
 
-/** Everything the lab learns about the video before حيدرة plans on it. */
+/** Everything the lab learns about the video before حيدرا ماكس plans on it. */
 export interface FootageInfo {
   meta: FootageMeta;
-  /** a few frames (JPEG, base64) for حيدرة's eyes */
+  /** a few frames (JPEG, base64) for حيدرا ماكس's eyes */
   frames: string[];
 }
 
@@ -146,7 +146,7 @@ async function learnOne(projectId: string, s: FootageSource, a: EditorAsset, lab
       const heard = await spokenWords(projectId, { clip: { id: s.clipId, in: s.in, out: s.out } as Clip, asset: a }, "ar", label, onStep);
       words = heard.filter((w) => w.s >= s.in && w.s < s.out).map((w) => ({ w: w.w, s: toPiece(w.s), e: toPiece(Math.min(w.e, s.out)) })).filter((w) => w.s < seconds);
     } catch (e) {
-      onStep(`⚠️ ${label}: ما قدرت أكتب الكلام (${e instanceof Error ? e.message : e}) — حيدرة يبني على الصورة.`);
+      onStep(`⚠️ ${label}: ما قدرت أكتب الكلام (${e instanceof Error ? e.message : e}) — حيدرا ماكس يبني على الصورة.`);
     }
   }
   onStep(`🙂 ${label}: أتتبّع الوجه عشان ما ينقص في أي إطار…`);
@@ -160,9 +160,9 @@ async function learnOne(projectId: string, s: FootageSource, a: EditorAsset, lab
     const found = await facesIn(shots);
     face = found.flatMap((f, i) => (f ? [{ t: Math.round(times[i] * 1000) / 1000, ...f }] : []));
     shots.forEach((b) => b.close());
-    if (!face.length) onStep(`⚠️ ${label}: ما لقيت وجه واضح؛ حيدرة يأطّر من الصور.`);
+    if (!face.length) onStep(`⚠️ ${label}: ما لقيت وجه واضح؛ حيدرا ماكس يأطّر من الصور.`);
   } catch (e) {
-    onStep(`⚠️ ${label}: ما قدرت أتتبّع الوجه (${e instanceof Error ? e.message : e})؛ حيدرة يأطّر من الصور.`);
+    onStep(`⚠️ ${label}: ما قدرت أتتبّع الوجه (${e instanceof Error ? e.message : e})؛ حيدرا ماكس يأطّر من الصور.`);
   }
   return { seconds, words, face, w, h };
 }
@@ -180,7 +180,7 @@ export async function prepareFootage(projectId: string, list: FootageSource[], a
     if (!w) [w, h] = [one.w, one.h];
     at += one.seconds;
   }
-  onStep("🖼️ ألقط صور من الفيديو لحيدرة…");
+  onStep("🖼️ ألقط صور من الفيديو لحيدرا ماكس…");
   const frames = await footageFrames(list).catch(() => []);
   return { meta: { name: list.map((s) => s.name).join(" + ").slice(0, 120), seconds: Math.round(Math.min(FOOTAGE_MAX, at) * 1000) / 1000, w, h, words, face }, frames };
 }
@@ -205,7 +205,7 @@ export async function footageSound(list: FootageSource[]): Promise<{ blob: Blob;
   return out;
 }
 
-/** A few frames of the video(s) for حيدرة's eyes (JPEG, base64), spread over the whole piece. */
+/** A few frames of the video(s) for حيدرا ماكس's eyes (JPEG, base64), spread over the whole piece. */
 export async function footageFrames(list: FootageSource[]): Promise<string[]> {
   const out: string[] = [];
   const per = Math.max(1, Math.ceil(4 / list.length));

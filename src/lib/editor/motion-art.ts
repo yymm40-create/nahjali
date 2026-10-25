@@ -11,7 +11,7 @@ import { iconById, iconSvg } from "./motion-icons";
 import { sceneSvg } from "./motion-scenes";
 import { moodOf, type MotionLook, type MotionTheme, type SceneId } from "./motion-styles";
 
-// ───────────── shapes حيدرة draws himself (the drawing tool) ─────────────
+// ───────────── shapes حيدرا ماكس draws himself (the drawing tool) ─────────────
 
 export type ShapeType = "rect" | "circle" | "ring" | "line" | "arrow" | "star" | "blob" | "wave" | "dots" | "icon";
 export const SHAPE_TYPES: ShapeType[] = ["rect", "circle", "ring", "line", "arrow", "star", "blob", "wave", "dots", "icon"];
@@ -31,7 +31,7 @@ export interface DrawShape {
 const COLOR_WORDS = ["accent", "second", "text", "pill", "bg"];
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/** Shapes from حيدرة's JSON: unknown kinds and colours dropped, everything clamped into the frame. */
+/** Shapes from حيدرا ماكس's JSON: unknown kinds and colours dropped, everything clamped into the frame. */
 export function readShapes(raw: unknown): DrawShape[] {
   if (!Array.isArray(raw)) return [];
   const out: DrawShape[] = [];
@@ -768,7 +768,7 @@ export function decorationSvg(b: Beat, i: number, pal: Palette, a: Anchors, w: n
       break;
     }
   }
-  // the beat's own drawing: the shapes حيدرة placed (kept faint where they would cross the words), then the icon above the words
+  // the beat's own drawing: the shapes حيدرا ماكس placed (kept faint where they would cross the words), then the icon above the words
   if (b.shapes?.length) parts.push(shapesSvg(b.shapes, pal, w, h, a));
   const picked = a.icon ? iconById(a.icon.id) : undefined;
   if (a.icon && picked) {
@@ -855,7 +855,7 @@ export function shapesSvg(shapes: DrawShape[], pal: Palette, w: number, h: numbe
   return out.join("");
 }
 
-// ───────────── the background حيدرة composes himself (the motion skill's way: no preset theme) ─────────────
+// ───────────── the background حيدرا ماكس composes himself (the motion skill's way: no preset theme) ─────────────
 
 /** What a background layer can be: soft masses and lines, not a canned "theme". Blur makes glows, light and depth. */
 export type BgLayerType = "blob" | "circle" | "ring" | "rect" | "line" | "wave" | "dots" | "grid" | "rays" | "arc" | "tri" | "streak";
@@ -878,7 +878,7 @@ export interface BgLayer {
   sw: number;
 }
 
-/** A beat's whole background, written by حيدرة: the field it sits on, its layers, and the finish over them. */
+/** A beat's whole background, written by حيدرا ماكس: the field it sits on, its layers, and the finish over them. */
 export interface BeatBg {
   /** one colour, or a gradient: {from,to,deg} linear, or {from,to,radial:true,cx,cy} */
   fill: string | { from: string; to: string; deg?: number; radial?: boolean; cx?: number; cy?: number };
@@ -893,7 +893,7 @@ export interface BeatBg {
 
 const colorWord = (c: string) => COLOR_WORDS.includes(c) || /^#[0-9a-f]{6}$/i.test(c);
 
-/** A background from حيدرة's JSON: unknown kinds dropped, everything clamped; null when he wrote none. */
+/** A background from حيدرا ماكس's JSON: unknown kinds dropped, everything clamped; null when he wrote none. */
 export function readBeatBg(raw: unknown): BeatBg | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -928,7 +928,7 @@ export function readBeatBg(raw: unknown): BeatBg | null {
 }
 
 /**
- * The background حيدرة composed for one beat, drawn full-bleed: the field (a colour or a gradient), his layers in
+ * The background حيدرا ماكس composed for one beat, drawn full-bleed: the field (a colour or a gradient), his layers in
  * order (each with its own softness), then the finish — scan lines, grain, vignette. A layer that crosses the words'
  * zone is held faint, so nothing he draws can ever eat the text.
  */
@@ -1057,10 +1057,10 @@ export function pieceArt(beats: Beat[], pal: Palette, anchors: Anchors[], W: num
     // «steady»: one background for the whole piece (the same colour every beat)
     // the scene behind the words: the beat's own, then its feeling's, then the piece's own, then the piece's feeling's
     const scene = b.scene ?? moodOf(b.mood)?.scene ?? look?.scene ?? moodOf(look?.mood)?.scene;
-    // the background حيدرة composed himself for this beat wins over every preset look (the motion skill's way)
+    // the background حيدرا ماكس composed himself for this beat wins over every preset look (the motion skill's way)
     out.push({ key: `bg-${i}`, svg: b.bg ? beatBgSvg(b.bg, pal, w, h, anchors[i]) : backgroundSvg(pal, look?.background === "steady" ? 0 : i, w, h, theme, scene), w, h });
     // the decoration; or, when the skill draws none, only what the beat itself asked for (an icon, its own shapes).
-    // With no theme at all (a piece حيدرة composes himself) there is nothing to draw unless the beat asked for it.
+    // With no theme at all (a piece حيدرا ماكس composes himself) there is nothing to draw unless the beat asked for it.
     const mine = Boolean(anchors[i]?.icon) || Boolean(b.shapes?.length);
     const draws = theme !== "none" && look?.decor !== false;
     if (draws || mine) out.push({ key: `art-${i}`, svg: decorationSvg(b, i, pal, anchors[i] ?? { top: 0.2, bottom: 0.8 }, w, h, theme, !draws), w, h });

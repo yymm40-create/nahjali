@@ -1,4 +1,4 @@
-// «مختبر الموشن» — what the person hands حيدرة beside the brief: REFERENCES (pictures and videos to take from or be
+// «مختبر الموشن» — what the person hands حيدرا ماكس beside the brief: REFERENCES (pictures and videos to take from or be
 // inspired by; a video reaches him as frames in order, with their times, so he reads its pacing and moves) and WEB
 // RESEARCH (a real search, like Claude's own, when they ask him to look something up or the answer needs fresh facts).
 
@@ -65,7 +65,7 @@ export function refsParts(refs: LabRef[]): ClaudePart[] {
   );
 }
 
-/** The web research the page brings with a request (found by `lab_search`), as it is told to حيدرة. */
+/** The web research the page brings with a request (found by `lab_search`), as it is told to حيدرا ماكس. */
 export function researchText(b: Record<string, unknown>) {
   const r = clean(b.research, 7000);
   return r ? `WEB RESEARCH (a real web search, done just now because the person asked for it or the answer needed fresh facts — use what it found, and never invent beyond it):\n${r}` : "";
@@ -75,7 +75,7 @@ export function researchText(b: Record<string, unknown>) {
 export const asksToSearch = (message: string) =>
   /(^|\s)(ابحث|إبحث|دوّ?ر(لي)?|فتّ?ش|بحث|قوقل|جوجل|google|search)(\s|$)|ترند|الرائج|الأشهر الحين|أحدث|آخر (الأخبار|الإحصائيات|الأرقام)|وش (يقولون|صار)|من النت|في النت|بالنت|الإنترنت/i.test(message);
 
-export const SEARCH_SYSTEM = `You are the web researcher of حيدرة, a motion designer in a video editor. The person asked something that needs the web (a fact, a number, a trend, how a brand or a style looks, what is viral now, a reference to find). Search, then answer in Gulf Arabic, short and concrete (at most ~220 words): the facts, numbers and names that matter for the motion piece, each from what you actually found; when it is about a look or a style, describe it so a designer can build it (colours, type, layout, moves). Never invent a fact, a number or a source. If the search found nothing useful, say so in one line.`;
+export const SEARCH_SYSTEM = `You are the web researcher of حيدرا ماكس, a motion designer in a video editor. The person asked something that needs the web (a fact, a number, a trend, how a brand or a style looks, what is viral now, a reference to find). Search, then answer in Gulf Arabic, short and concrete (at most ~220 words): the facts, numbers and names that matter for the motion piece, each from what you actually found; when it is about a look or a style, describe it so a designer can build it (colours, type, layout, moves). Never invent a fact, a number or a source. If the search found nothing useful, say so in one line.`;
 
 /** What is searched for: the person's words, with the piece in hand so the search fits it. */
 export function searchPrompt(b: Record<string, unknown>) {

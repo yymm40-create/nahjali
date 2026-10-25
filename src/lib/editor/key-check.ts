@@ -1,4 +1,4 @@
-// «🤖 حيدرة يضبط الكي»: Claude in the background of the green-screen key. The page sends three small pictures of the
+// «🤖 حيدرا ماكس يضبط الكي»: Claude in the background of the green-screen key. The page sends three small pictures of the
 // clip's current frame — as filmed, the matte (white kept, black removed) and the result over a checkerboard — with
 // the key's settings and a few measures; Claude looks and answers with corrected settings (or «تمام»). The page
 // applies them, makes the pictures again and asks once more, up to MAX_KEY_CHECKS rounds. Charged like his chat.
@@ -11,7 +11,7 @@ import { stillOpen, type EditorProject } from "./server";
 
 export const MAX_KEY_CHECKS = 3;
 
-const SYSTEM = `You are حيدرة, the editor robot of «حيدرة كت», tuning a CHROMA KEY (removing a green/blue screen or a plain coloured wall) like a senior compositor who knows Keylight, Ultra Key, Primatte and Resolve's 3D keyer.
+const SYSTEM = `You are حيدرا ماكس, the editor robot of «حيدرة كت», tuning a CHROMA KEY (removing a green/blue screen or a plain coloured wall) like a senior compositor who knows Keylight, Ultra Key, Primatte and Resolve's 3D keyer.
 
 The keyer: a pixel is the screen when its HUE is within the tolerance of the key colour's hue, its SATURATION is close to the key's, and its colour strength (max−min) is not much weaker than the key's (so the screen's shadows go but a dark shirt with a little green glow stays). Settings, all 0–1:
 - color "#rrggbb": the screen's colour. If the pictures show the screen is clearly another shade than the key colour (e.g. a darker or bluer green), correct it to the screen's real colour as filmed.
@@ -58,7 +58,7 @@ const jpeg = (v: unknown) => (typeof v === "string" && /^[A-Za-z0-9+/=]+$/.test(
 
 export async function keyCheck(p: EditorProject, who: Who, b: { clipId?: unknown; round?: unknown; key?: unknown; shots?: unknown; stats?: unknown; model?: unknown }) {
   stillOpen(p);
-  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
+  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
   const key = readKey(b.key);
   const shots = (b.shots ?? {}) as Record<string, unknown>;
   const orig = jpeg(shots.orig),
@@ -84,11 +84,11 @@ MEASURES: kept ${pct(st.kept)} of the frame · left (screen-like but kept) ${pct
   const r = await claudeCharged(
     who,
     b.model,
-    "حيدرة يضبط الكي في حيدرة كت",
+    "حيدرا ماكس يضبط الكي في حيدرة كت",
     () =>
       callClaudeJson<{ ok: boolean; verdict: string; key: Record<string, unknown> }>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema: SCHEMA, maxTokens: 2000, effort: "low", fallback: true }).catch((e) => {
         console.error("key check", e);
-        throw new UserError(claudeWhy(e, "ما قدر حيدرة يشيك الكي الحين.", who.email), 502);
+        throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يشيك الكي الحين.", who.email), 502);
       }),
     (x) => claudeCost(x.usage),
   );

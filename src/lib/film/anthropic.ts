@@ -174,7 +174,7 @@ export async function claudeStream(url: string, init: RequestInit & { body: stri
 export interface ResumeOpts {
   stopAt?: number;
 }
-/** Each piece of the reply's text as it is written (a page watching حيدرة write his program). Never changes the reply. */
+/** Each piece of the reply's text as it is written (a page watching حيدرا ماكس write his program). Never changes the reply. */
 export type OnText = (piece: string) => void;
 
 export async function readStream(stream: ReadableStream<Uint8Array>, alive: () => void = () => {}, resume?: ResumeOpts, onText?: OnText): Promise<StreamBody> {
@@ -332,7 +332,7 @@ export async function callClaudeJson<T>({
   fallback?: boolean;
   /** the owner is talking: the robot greets «القائد» and opens every detail of the platform to him */
   leader?: boolean;
-  /** the longest one attempt may take (default CLAUDE_TIMEOUT_MS); a long conversation like حيدرة's asks for more */
+  /** the longest one attempt may take (default CLAUDE_TIMEOUT_MS); a long conversation like حيدرا ماكس's asks for more */
   timeoutMs?: number;
   signal?: AbortSignal;
   /** a long reply that is continued rather than started again: read until `stopAt`, and what was written is returned (`partial`) */

@@ -69,7 +69,7 @@ export default function MontagePanel({ filmId, filmTitle, takes, editExists, sce
 
       <section className="card space-y-3 p-4">
         <h2 className="font-extrabold">✂️ القص الحقيقي في «حيدرة كت»</h2>
-        <p className="text-sm font-bold text-muted">يفتح مشروع هذا المشهد في برنامج المونتاج بلقطاته مرتّبة (بأصواتها)، وتقص وترتّب وتضيف نصوصًا وتصدّر. اكتب ملاحظتك على أي لقطة أول لو تبي حيدرة يعدّلها لك.</p>
+        <p className="text-sm font-bold text-muted">يفتح مشروع هذا المشهد في برنامج المونتاج بلقطاته مرتّبة (بأصواتها)، وتقص وترتّب وتضيف نصوصًا وتصدّر. اكتب ملاحظتك على أي لقطة أول لو تبي حيدرا ماكس يعدّلها لك.</p>
         {takes.some((t) => !t.url) && (
           <p className="text-xs font-bold text-muted">لقطات بلا فيديو بعد: {takes.filter((t) => !t.url).map((t) => (t.removed ? `${t.genId} (انحذف بعد ٧ أيام)` : t.genId)).join("، ")}</p>
         )}

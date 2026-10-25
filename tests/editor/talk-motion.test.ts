@@ -72,7 +72,7 @@ describe("«موشن على كلامه»: 100 talking videos", () => {
 });
 
 describe("the cues themselves", () => {
-  it("reads حيدرة's cues and drops what can't be shown", () => {
+  it("reads حيدرا ماكس's cues and drops what can't be shown", () => {
     expect(readTalk("nope", 10_000)).toBeNull();
     const p = readTalk({ cues: [{ kind: "brand", at: 1000, brand: "Instagram" }, { kind: "brand", at: 3000, brand: "myspace" }, { kind: "route", at: 3500, to: "الرياض" }, { kind: "word", at: 3900, text: "قريب جدا" }, { kind: "stat", at: 9000 }, { kind: "word", at: 20_000, text: "بعيد" }] }, 10_000)!;
     expect(p.cues.map((c) => c.kind)).toEqual(["brand", "route"]);

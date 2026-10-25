@@ -65,7 +65,7 @@ export default function OpacityPanel({ clip, opacity, locked, set, onOpacity, me
 
 /**
  * «الكي»: a colour (green/blue screen, or any colour) or the dark/bright parts made see-through. Turning the chroma on
- * finds the screen by itself (🪄); «🎯 اختر من الشاشة» shows the clip's natural colours to click on; «🤖 حيدرة
+ * finds the screen by itself (🪄); «🎯 اختر من الشاشة» shows the clip's natural colours to click on; «🤖 حيدرا ماكس
  * يضبط» lets him look at the matte and correct it (KeyStudio.tsx).
  */
 export function KeyControls({ clip, locked, set }: { clip: Clip; locked: boolean; set: (p: ClipPatch, key: string) => void }) {
@@ -109,8 +109,8 @@ export function KeyControls({ clip, locked, set }: { clip: Clip; locked: boolean
                 <button type="button" disabled={locked} className={btn} onClick={() => ask("pick")} title="تطلع ألوان الفيديو الأصلية؛ اضغط على الشاشة">
                   🎯 اختر من الشاشة
                 </button>
-                <button type="button" disabled={locked} className={`${btn} border-jw-accent/60`} onClick={() => ask("ai")} title="حيدرة يشوف الماسك والنتيجة ويصلّح الإعدادات (من رصيدك مثل محادثته)">
-                  🤖 حيدرة يضبط الكي
+                <button type="button" disabled={locked} className={`${btn} border-jw-accent/60`} onClick={() => ask("ai")} title="حيدرا ماكس يشوف الماسك والنتيجة ويصلّح الإعدادات (من رصيدك مثل محادثته)">
+                  🤖 حيدرا ماكس يضبط الكي
                 </button>
                 <button
                   type="button"

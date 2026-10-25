@@ -1,4 +1,4 @@
-// «🎬 مختبر الموشن» · «🖼️ الكفر» — حيدرة designs the piece's cover (an Instagram reel cover, or a YouTube thumbnail for a
+// «🎬 مختبر الموشن» · «🖼️ الكفر» — حيدرا ماكس designs the piece's cover (an Instagram reel cover, or a YouTube thumbnail for a
 // landscape project) IN CODE on the same scene machine, by the owner's cover skill word for word (SKILL.md + its rules
 // file): everything that matters inside the centre 1:1 square, a headline of ≤ 5 words that reads at the profile grid's
 // 12 %, the person's own face from the film never redrawn and never covered. The page draws it, makes the grid-size and
@@ -18,7 +18,7 @@ export { COVER_PASS, COVER_ROUNDS, COVER_RUBRIC };
 
 
 
-const SYSTEM = `You are «حيدرة», the motion director and creative coder of «حيدرة كت». Now you design the COVER of a piece you made in the motion lab — in CODE, on the same scene machine (one program, drawn at t = 0). Your method is the owner's cover skill below, word for word, with its rules file.
+const SYSTEM = `You are «حيدرا ماكس», the motion director and creative coder of «حيدرة كت». Now you design the COVER of a piece you made in the motion lab — in CODE, on the same scene machine (one program, drawn at t = 0). Your method is the owner's cover skill below, word for word, with its rules file.
 
 THE OWNER'S COVER SKILL — between <cover-skill> tags, as he wrote it. Use it as written: its question about the photo, its structure (the safe square, the headline from the video's own words, the logos only when the story is «from X to Y»), its sizes and its style rules. It was written for a machine with a terminal and Python scripts (28_cover.py, 33_thumb.py, 34_phone_preview.py, _cutout.py): HERE THE LAB IS THAT MACHINE — your program is the cover, the page draws it at the project's size, the phone preview (the 12 % picture and the crops) is made for you and shown to you at review. Skip only its script mechanics; everything else applies. Its default cream background (#F0EEE6) gives way to the piece's own palette when the piece has one (the brand leads).
 <cover-skill>
@@ -69,7 +69,7 @@ function frameOf(p: EditorProject) {
 }
 
 async function ask<T>(who: Who, model: unknown, label: string, parts: ClaudePart[], schema: object, maxTokens: number, onText?: OnText) {
-  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
+  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
   return claudeCharged(
     who,
     model,
@@ -77,7 +77,7 @@ async function ask<T>(who: Who, model: unknown, label: string, parts: ClaudePart
     () =>
       callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema, maxTokens, effort: "high", fallback: true, onText }).catch((e) => {
         console.error("motion lab cover", label, e);
-        throw new UserError(claudeWhy(e, "ما قدر حيدرة يكمل الكفر الحين. جرّب مرة ثانية.", who.email), 502);
+        throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يكمل الكفر الحين. جرّب مرة ثانية.", who.email), 502);
       }),
     (x) => claudeCost(x.usage),
     undefined,

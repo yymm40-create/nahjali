@@ -27,7 +27,7 @@ export interface TalkStyle {
   id: TalkStyleId;
   ar: string;
   icon: string;
-  /** what it looks like, for حيدرة and the person */
+  /** what it looks like, for حيدرا ماكس and the person */
   hint: string;
   /** the panels' colours, used in turn (each moment a different one) */
   panels: string[];
@@ -292,5 +292,5 @@ export function dividerSvg(st: TalkStyle, w: number): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="24" viewBox="0 0 ${w} 24"><rect x="0" y="4" width="${w}" height="16" fill="${st.accent}"/><rect x="0" y="4" width="${w}" height="4" fill="#ffffff" fill-opacity="0.5"/></svg>`;
 }
 
-/** What حيدرة is told about the looks (the ids and what each looks like). */
+/** What حيدرا ماكس is told about the looks (the ids and what each looks like). */
 export const TALK_STYLES_SKILL = TALK_STYLES.map((s) => `"${s.id}" ${s.icon} «${s.ar}» — ${s.hint}`).join("; ");

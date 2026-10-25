@@ -1,4 +1,4 @@
-// «🩺 تشخيص» — the owner asks «حيدرة» what went wrong («ليش صار كذا؟») and it looks inside: what the browser
+// «🩺 تشخيص» — the owner asks «حيدرا ماكس» what went wrong («ليش صار كذا؟») and it looks inside: what the browser
 // recorded (errors, failed requests, media that didn't load, the device), the project as the server keeps it (its
 // files and their state, the last saves, the generation jobs), which services are set up, and the preview as it looks.
 // It answers in Arabic (what happened, the likely cause, what to try now) and writes a message in English for the
@@ -27,7 +27,7 @@ src/components/jawad/editor/GradePanel.tsx — the colour panel (layers, section
 src/components/jawad/editor/export.ts — in-browser export (WebCodecs via Mediabunny)
 src/components/jawad/editor/media.ts, parts.ts, useUploads.ts — reading files, uploads (multipart for large files)
 src/components/jawad/editor/audio.ts, voice.ts, stretch.ts, peaks.ts — sound decoding, voice work, time-stretch, waveforms
-src/components/jawad/editor/AssistantPanel.tsx — «حيدرة» chat UI, what it sends, making requested assets
+src/components/jawad/editor/AssistantPanel.tsx — «حيدرا ماكس» chat UI, what it sends, making requested assets
 src/components/jawad/editor/Inspector.tsx, FxPanel.tsx, TransitionPanel.tsx, CaptionsPanel.tsx — the settings panels
 src/components/jawad/editor/SmartFix.tsx — «التعديل الذكي» (red/green tracks, jobs)
 src/components/jawad/editor/package.ts — project .zip save/open
@@ -35,7 +35,7 @@ src/lib/editor/model.ts — the timeline document, readers, sequences, flatten (
 src/lib/editor/commands.ts — every timeline change (pure apply)
 src/lib/editor/grade.ts — the grade model, logs, looks, LUTs
 src/lib/editor/server.ts — projects, assets, saves (Supabase + R2 storage)
-src/lib/editor/assistant.ts, assistant-core.ts, assistant-guide.ts — «حيدرة»'s prompt, context and checks
+src/lib/editor/assistant.ts, assistant-core.ts, assistant-guide.ts — «حيدرا ماكس»'s prompt, context and checks
 src/lib/editor/generate.ts — hook picture, music, sfx, sound separation (OpenAI, ElevenLabs, fal)
 src/lib/editor/speech.ts — captions (ElevenLabs Scribe), poem alignment
 src/lib/jawad/server/jobs.ts — JAWAD AI generation jobs
@@ -52,13 +52,13 @@ const SCHEMA = {
   },
 };
 
-const SYSTEM = `You are «حيدرة», the assistant inside the «حيدرة كت» video editor, now in DIAGNOSIS mode for the site's owner (who also builds the site with a developer). The owner describes something that went wrong or looks wrong; you get a technical report of what really happened and must find the cause like a senior engineer.
+const SYSTEM = `You are «حيدرا ماكس», the assistant inside the «حيدرة كت» video editor, now in DIAGNOSIS mode for the site's owner (who also builds the site with a developer). The owner describes something that went wrong or looks wrong; you get a technical report of what really happened and must find the cause like a senior engineer.
 
-You receive: the owner's words; the browser report (device and browser abilities, the editor's state, its media elements, and a log of errors, rejected promises, console errors/warnings, failed server requests with status and body, media that failed to load, and the editor's own notes, each with ms since the editor opened); the server's view (the project, its files and their status, the last saves, the latest generation jobs with their errors, which services are configured, the deployment — compare it with the browser report's «pageBuild»: when they differ, the open page runs older code than the server, and anything fixed since does not reach it until the page is reloaded; say so first); the timeline as JSON (the context format «حيدرة» uses) with a few computed checks; and, when available, a picture of the preview right now.
+You receive: the owner's words; the browser report (device and browser abilities, the editor's state, its media elements, and a log of errors, rejected promises, console errors/warnings, failed server requests with status and body, media that failed to load, and the editor's own notes, each with ms since the editor opened); the server's view (the project, its files and their status, the last saves, the latest generation jobs with their errors, which services are configured, the deployment — compare it with the browser report's «pageBuild»: when they differ, the open page runs older code than the server, and anything fixed since does not reach it until the page is reloaded; say so first); the timeline as JSON (the context format «حيدرا ماكس» uses) with a few computed checks; and, when available, a picture of the preview right now.
 
 Work from evidence: quote the log lines and numbers that point to the cause; separate what you know from what you guess. Typical causes: a file still uploading or failed (status), an expired link (403 from storage), a browser without WebCodecs/WebGL2 (export or grading), a codec the browser can't decode (HEVC/ProRes on Chrome/Windows), memory, a 401 (signed out), a 409 (saved from another tab), a provider error (jobs), a timeline that points to a missing file, a wrong log/gamut setting making footage look glowing or flat, a muted/hidden track, a clip out of its source range. When the report has no trace of the problem, say exactly how to catch it: do the thing again, then press «تشخيص» right away.
 
-FIX IT YOURSELF: when the cause lives in the timeline — a muted or hidden track, a clip that plays past its file, overlapping clips, a wrong log/gamut/range on a grade (glowing or flat footage), a text off the safe area or too small, a missing transition, a clip pointing to a file that is gone (delete it), a volume at 0, a sound track without ducking under speech — put the commands that fix it in "commands" (the same editing commands «حيدرة» uses, listed below; use only ids that appear in the timeline) and tell the owner in "reply" what you fixed. When the cause is a file, a service, the browser or the code, send no commands and say what to do instead. Never pretend a change was made.
+FIX IT YOURSELF: when the cause lives in the timeline — a muted or hidden track, a clip that plays past its file, overlapping clips, a wrong log/gamut/range on a grade (glowing or flat footage), a text off the safe area or too small, a missing transition, a clip pointing to a file that is gone (delete it), a volume at 0, a sound track without ducking under speech — put the commands that fix it in "commands" (the same editing commands «حيدرا ماكس» uses, listed below; use only ids that appear in the timeline) and tell the owner in "reply" what you fixed. When the cause is a file, a service, the browser or the code, send no commands and say what to do instead. Never pretend a change was made.
 
 ${COMMANDS_GUIDE}
 
@@ -97,7 +97,7 @@ export async function diagnose(p: EditorProject, who: Who, b: { message?: unknow
   if (!who.owner) throw new UserError("التشخيص لصاحب الموقع فقط.", 403);
   stillOpen(p);
   const message = String(b.message ?? "").trim().slice(0, 2000) || "شنو المشكلة هنا؟";
-  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
+  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
 
   const assets = await assetViews(p.id);
   const { data: rows } = await db().from("editor_assets").select("id,kind,name,status,mime,bytes,duration_ms,width,height,origin,meta,created_at").eq("project_id", p.id);
@@ -141,7 +141,7 @@ export async function diagnose(p: EditorProject, who: Who, b: { message?: unknow
 
   const r = await callClaudeJson<{ reply: string; commands: string[]; developerMessage: string }>({ system: SYSTEM, turns: [{ role: "user", content }], schema: SCHEMA, maxTokens: 16000, effort: "high", fallback: true }).catch((e) => {
     console.error("editor diagnose", e);
-    throw new UserError(claudeWhy(e, "ما قدر حيدرة يشخّص الحين؛ جرّب بعد شوي.", who.email), 502);
+    throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يشخّص الحين؛ جرّب بعد شوي.", who.email), 502);
   });
   const dev = r.data.developerMessage.trim();
   // the fixes he proposes are tried on the timeline first; a broken one is dropped and said so

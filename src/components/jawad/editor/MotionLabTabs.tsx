@@ -233,7 +233,7 @@ export default function MotionLabTabs({
           {!list ? (
             <p className="mlab-tip m-0">…</p>
           ) : !list.length ? (
-            <p className="mlab-tip m-0">ما فيه محادثات محفوظة بعد. اكتب لحيدرة وتنحفظ بروحها.</p>
+            <p className="mlab-tip m-0">ما فيه محادثات محفوظة بعد. اكتب لحيدرا ماكس وتنحفظ بروحها.</p>
           ) : (
             <ul className="m-0 flex list-none flex-col gap-1 p-0">
               {list.map((c) => (

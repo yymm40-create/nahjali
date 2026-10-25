@@ -1,5 +1,5 @@
 // GENERATED — do not edit by hand. The owner's motion skill, VERBATIM from config/editor/skills/motion-video-director/SKILL.md
-// (regenerate with: npx tsx scripts/generate-motion-skill.mts). حيدرة is given these words as they are, never rewritten.
+// (regenerate with: npx tsx scripts/generate-motion-skill.mts). حيدرا ماكس is given these words as they are, never rewritten.
 
 export const MOTION_DIRECTOR_SKILL_TEXT = `---
 name: motion-video-director

@@ -1,4 +1,4 @@
-// «ماسك ذكي»: the person (or «حيدرة») names what to select — «الوجه», «السماء», «الشخص اللي يمين» — and Meta's SAM 3
+// «ماسك ذكي»: the person (or «حيدرا ماكس») names what to select — «الوجه», «السماء», «الشخص اللي يمين» — and Meta's SAM 3
 // (on fal) finds it in a few moments of the clip. Claude turns the Arabic words into the short English name SAM
 // understands; each moment comes back as small black-and-white masks (every match), which the page turns into the
 // outline it tracks. Server only.

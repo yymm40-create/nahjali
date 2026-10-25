@@ -5,7 +5,7 @@ import { SCENE_RUNTIME_JS } from "@/lib/editor/scene/runtime";
 import { FOOTAGE_KIT_API, FOOTAGE_SKILL, footageLines, footageText, readFootage } from "@/lib/editor/scene/footage";
 import { readPlan } from "@/lib/editor/scene/contract";
 
-// «مختبر الموشن» on the person's own video: what the browser sends is bounded, the face stays in every crop, and حيدرة is
+// «مختبر الموشن» on the person's own video: what the browser sends is bounded, the face stays in every crop, and حيدرا ماكس is
 // told the craft, the words with their times and the kit's calls.
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -127,7 +127,7 @@ vi.mock("@/lib/film/anthropic", () => ({
 vi.mock("@/lib/editor/pricing", () => ({ claudeCharged: async (_w: unknown, _m: unknown, _l: string, run: () => Promise<object>) => ({ ...(await run()), coins: 1, model: "claude-opus-5-5" }) }));
 vi.mock("@/lib/editor/server", () => ({ stillOpen: () => {} }));
 
-describe("حيدرة on the person's video", () => {
+describe("حيدرا ماكس on the person's video", () => {
   const project = { id: "p1", user_id: "u1", timeline: { width: 1080, height: 1920 } } as never;
   const who = { id: "u1", owner: false };
   const footage = { name: "كلامي", seconds: 12.5, w: 1280, h: 720, words: [{ w: "الأدوات", s: 1.2, e: 1.8 }, { w: "كلها", s: 1.9, e: 2.3 }], face: [{ t: 0, x: 0.5, y: 0.3, w: 0.15, h: 0.35 }] };

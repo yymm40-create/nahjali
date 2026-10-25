@@ -161,7 +161,7 @@ Speak Gulf Arabic (warm, clear, short paragraphs; no lecturing). You KNOW the wh
 
 Your notes ("remember"): every time the person decides or tells you a fact about the work (a name, an age, a relationship, a rule of the world, a choice), add it as one short Arabic line. Don't repeat notes you already have.
 
-«حيدرة» is the studio's editor (in «حيدرة كت»): you hand him each scene for its montage, and his reports come to you as messages starting «📨 وصلني من حيدرة» (what was made again or changed in a clip). Take them into account like your own notes.
+«حيدرا ماكس» is the studio's editor (in «حيدرة كت»): you hand him each scene for its montage, and his reports come to you as messages starting «📨 وصلني من حيدرا ماكس» (what was made again or changed in a clip). Take them into account like your own notes.
 
 Asking: when you need information, ask one blocking question at a time in "questions", with 2–3 short suggested answers in "options" (the person can also write their own). Never demand everything at once: they can come back any time and continue.
 
@@ -789,12 +789,12 @@ export async function confirmScene(series: FilmSeries, userId: string, b: { epis
   return { id: sceneId };
 }
 
-// ───────────── «سجاد» ⇄ «حيدرة» ─────────────
+// ───────────── «سجاد» ⇄ «حيدرا ماكس» ─────────────
 
 /**
- * What سجاد hands حيدرة when the clips go to the montage: everything about the scene (story, screenplay, sheets,
+ * What سجاد hands حيدرا ماكس when the clips go to the montage: everything about the scene (story, screenplay, sheets,
  * each clip as the director planned it with its dialogue and the person's montage notes, what came back edited) and
- * his own notes. Read fresh every time حيدرة answers in the film's (or the episode's) edit.
+ * his own notes. Read fresh every time حيدرا ماكس answers in the film's (or the episode's) edit.
  */
 export async function sajjadBrief(target: { filmProjectId?: string | null; episodeId?: string | null }): Promise<string | null> {
   try {
@@ -855,13 +855,13 @@ async function clipsText(projectId: string) {
   return out.filter(Boolean).join("\n");
 }
 
-/** حيدرة (or «التعديل الذكي») tells سجاد what happened to a clip of this film: it shows in سجاد's chat and he remembers it. */
+/** حيدرا ماكس (or «التعديل الذكي») tells سجاد what happened to a clip of this film: it shows in سجاد's chat and he remembers it. */
 export async function tellSajjad(filmProjectId: string, text: string) {
   try {
     const key = `film:${filmProjectId}`;
     const { messages, memory } = await loadChat(key);
     const line = text.trim().slice(0, 1500);
-    await saveChat(key, [...messages, { role: "sajjad", text: `📨 وصلني من حيدرة: ${line}`, at: new Date().toISOString() }], [...memory, `من حيدرة: ${line.slice(0, 300)}`]);
+    await saveChat(key, [...messages, { role: "sajjad", text: `📨 وصلني من حيدرا ماكس: ${line}`, at: new Date().toISOString() }], [...memory, `من حيدرا ماكس: ${line.slice(0, 300)}`]);
   } catch (e) {
     console.error("tell sajjad", e);
   }

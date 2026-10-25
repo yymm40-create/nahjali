@@ -1,6 +1,6 @@
 "use client";
 
-// «🎬 مختبر الموشن» — حيدرة makes a motion piece in CODE, and the lab is ONE CONVERSATION (the owner's way, the way his
+// «🎬 مختبر الموشن» — حيدرا ماكس makes a motion piece in CODE, and the lab is ONE CONVERSATION (the owner's way, the way his
 // own reels were made): the person says what they want → the SCENARIO comes as a card (idea, hook, look, the shot table)
 // and waits for «اعتمد وابنِ» → the pictures it needs that nobody gave are made by GPT Image 2 (no writing in them) →
 // حيدرا ماكس writes the program while the person watches it being written → the browser runs it in a sandbox and every
@@ -139,7 +139,7 @@ export interface LabSource {
 const FRAME_AR: Record<FootageFrame, string> = { full: "🧍 ملء الشاشة", card: "🪟 بطاقة عائمة", split: "◧ شاشة مقسومة", corner: "⭕ بالزاوية", away: "✨ موشن كامل", over: "🔤 كلام بجنبك" };
 type MusicMode = "code" | "eleven" | "none";
 const MUSIC_MODES: { id: MusicMode; ar: string; tip: string }[] = [
-  { id: "code", ar: "🎹 موسيقى بالكود", tip: "حيدرة يكتبها بالكود على إيقاع المشهد (مجانًا)" },
+  { id: "code", ar: "🎹 موسيقى بالكود", tip: "حيدرا ماكس يكتبها بالكود على إيقاع المشهد (مجانًا)" },
   { id: "eleven", ar: "🎵 موسيقى ElevenLabs", tip: "تنصنع وقت التصدير وتنحسب بسعرها" },
   { id: "none", ar: "🔇 بدون موسيقى", tip: "مؤثرات (وصوتك) فقط" },
 ];
@@ -200,7 +200,7 @@ const INTENSITY: [number, string][] = [[1, "هادئ وفخم"], [3, "متواز
 const mmss = (ms: number) => `${Math.floor(Math.max(0, ms) / 60_000)}:${String(Math.round((Math.max(0, ms) % 60_000) / 1000)).padStart(2, "0")}`;
 const subscribeToClient = () => () => undefined;
 
-/** A picture from the device, made small for حيدرة's eyes (long side 768, JPEG). */
+/** A picture from the device, made small for حيدرا ماكس's eyes (long side 768, JPEG). */
 async function refOf(file: File): Promise<string> {
   const bm = await createImageBitmap(file);
   const s = Math.min(1, 768 / Math.max(bm.width, bm.height));
@@ -214,7 +214,7 @@ async function refOf(file: File): Promise<string> {
 }
 
 /** A reference video from the device, read here (never uploaded): its length and frames spread over it, in order,
- * so حيدرة reads its rhythm, its moves and its cuts (6 frames, 8 for a long one; long side 640). */
+ * so حيدرا ماكس reads its rhythm, its moves and its cuts (6 frames, 8 for a long one; long side 640). */
 async function videoRefOf(file: File): Promise<{ seconds: number; frames: { t: number; data: string }[] }> {
   const url = URL.createObjectURL(file);
   const v = document.createElement("video");
@@ -251,7 +251,7 @@ async function videoRefOf(file: File): Promise<{ seconds: number; frames: { t: n
   }
 }
 
-/** A picture as base64 JPEG (for حيدرة's eyes), drawn from a part of a bitmap at a given width. */
+/** A picture as base64 JPEG (for حيدرا ماكس's eyes), drawn from a part of a bitmap at a given width. */
 async function jpegOf(bm: ImageBitmap, sx: number, sy: number, sw: number, sh: number, w: number, quality = 0.86): Promise<string> {
   const c = new OffscreenCanvas(Math.max(1, Math.round(w)), Math.max(1, Math.round((w * sh) / sw)));
   const x = c.getContext("2d")!;
@@ -262,7 +262,7 @@ async function jpegOf(bm: ImageBitmap, sx: number, sy: number, sw: number, sh: n
   for (let i = 0; i < b.length; i += 0x8000) str += String.fromCharCode(...b.subarray(i, i + 0x8000));
   return btoa(str);
 }
-/** What حيدرة looks at to judge a cover: full size, the SAME cover at the profile grid's 12 % (the cover skill's
+/** What حيدرا ماكس looks at to judge a cover: full size, the SAME cover at the profile grid's 12 % (the cover skill's
  * number), and its 1:1 and 3:4 crops from the centre (a landscape thumbnail: full and its small side-bar size). */
 async function coverViews(bm: ImageBitmap, w: number, h: number): Promise<string[]> {
   const full = await jpegOf(bm, 0, 0, w, h, Math.min(w, 1080));
@@ -299,7 +299,7 @@ function Demo({ kind, swatch }: { kind: string; swatch: Swatch }) {
   return <canvas ref={ref} width={200} height={150} aria-hidden />;
 }
 
-/** The gallery: the nine groups, one open at a time; each card a live sample; «خلّه لحيدرة» leaves the group to him. */
+/** The gallery: the nine groups, one open at a time; each card a live sample; «خلّه لحيدرا ماكس» leaves the group to him. */
 function Gallery({ choices, onChange, disabled }: { choices: LabChoices; onChange: (c: LabChoices) => void; disabled: boolean }) {
   const [open, setOpen] = useState<ChoiceKey>("look");
   const toggle = (g: LabGroup, id: string) => {
@@ -322,12 +322,12 @@ function Gallery({ choices, onChange, disabled }: { choices: LabChoices; onChang
               <span>
                 {g.ar} <span className="mlab-tip">· {g.hint}</span>
               </span>
-              {picked.length ? <span className="picked">✓ {picked.join(" · ")}</span> : <span className="free">خلّه لحيدرة</span>}
+              {picked.length ? <span className="picked">✓ {picked.join(" · ")}</span> : <span className="free">خلّه لحيدرا ماكس</span>}
             </summary>
             {open === g.id && (
               <div className="mlab-grid">
                 <button type="button" className="mlab-opt free" aria-pressed={!picked.length} disabled={disabled} onClick={() => onChange(Object.fromEntries(Object.entries(choices).filter(([k]) => k !== g.id)) as LabChoices)}>
-                  <span className="name">خلّه لحيدرة</span>
+                  <span className="name">خلّه لحيدرا ماكس</span>
                   <span className="tip">يختار من الفكرة</span>
                 </button>
                 {g.options.map((o) => (
@@ -394,7 +394,7 @@ export default function MotionLab({
   onTitle?: (t: string) => void;
   /** «🎥 على فيديوك»: the video clips on the timeline the piece can be built on */
   footageClips?: FootageSource[];
-  /** opened by حيدرة on one of them */
+  /** opened by حيدرا ماكس on one of them */
   initialFootage?: string | null;
   /** a film of the timeline opened again: its scene, the values to apply, and whether to render it straight away */
   initialSource?: { assetId: string; source: LabSource; params?: Record<string, string>; auto?: boolean } | null;
@@ -502,7 +502,7 @@ export default function MotionLab({
   /** a line that keeps changing (a percentage): it takes the place of the one before it when that is a ⬆️ line */
   const sayLive = (s: string) => setLog((l) => (l.length && l[l.length - 1].startsWith("⬆️") ? [...l.slice(0, -1), s] : [...l.slice(-30), s]));
 
-  // pictures from the library the scene may use, with short ids حيدرة writes in his code (a1, a2…)
+  // pictures from the library the scene may use, with short ids حيدرا ماكس writes in his code (a1, a2…)
   const images = useMemo(() => {
     const all = [...extra.filter((x) => !assets.some((a) => a.id === x.id)), ...assets];
     return all.filter((a) => a.kind === "image" && a.url && a.status === "ready").slice(0, 40);
@@ -510,7 +510,7 @@ export default function MotionLab({
   const chosen = useMemo(() => picks.map((id, i) => ({ short: `a${i + 1}`, asset: images.find((a) => a.id === id)! })).filter((x) => x.asset), [picks, images]);
   const assetList = chosen.map((c) => ({ id: c.short, name: c.asset.name, w: c.asset.width ?? 0, h: c.asset.height ?? 0 }));
   const chosenCards = useMemo(() => chosenOptions(choices), [choices]);
-  /** the references as they go to حيدرة (their frames; the ids stay here) */
+  /** the references as they go to حيدرا ماكس (their frames; the ids stay here) */
   const refsBody = refs.map(({ kind, name, seconds, use, frames }) => ({ kind, name, seconds, use, frames }));
   // the clip the piece is built on (only while it is still on the timeline as it was)
   // (a film opened again from the timeline keeps the clip it was built on, even if that clip has moved since)
@@ -671,7 +671,7 @@ export default function MotionLab({
     serverIdRef.current = serverId;
   }, [serverId]);
   useEffect(() => () => (host.current?.destroy(), abort.current?.abort(), preview.current?.close(), reader.current?.r.close(), matte.current?.r?.close()), []);
-  // حيدرة opened the lab (again) on one of the person's clips: that clip is the one, learnt afresh
+  // حيدرا ماكس opened the lab (again) on one of the person's clips: that clip is the one, learnt afresh
   useEffect(() => {
     if (!initialFootage) return;
     const tm = setTimeout(() => {
@@ -733,7 +733,7 @@ export default function MotionLab({
             }
           }
         } catch (e) {
-          // the cut-out failed (not the scene): said as it is, and حيدرة is not asked to fix a scene for it
+          // the cut-out failed (not the scene): said as it is, and حيدرا ماكس is not asked to fix a scene for it
           if (stop(e) || e instanceof LabSetupError) throw e;
           throw new LabSetupError(`قص الشخص ما تم: ${e instanceof Error ? e.message : e}`);
         }
@@ -793,7 +793,7 @@ export default function MotionLab({
     const sig = hashOf(JSON.stringify({ action, body }));
     let partialRaw = readPart(store, sig), cap: string | undefined, stuck = 0;
     for (;;) {
-      if (partialRaw) say1(`⏳ انتهى وقت الطلب عند المنصة قبل ما يكمل حيدرة؛ أكمل من نفس النقطة (وصل ${Math.round(partialRaw.length / 1000)} ألف حرف) — ما أبدأ من جديد.`);
+      if (partialRaw) say1(`⏳ انتهى وقت الطلب عند المنصة قبل ما يكمل حيدرا ماكس؛ أكمل من نفس النقطة (وصل ${Math.round(partialRaw.length / 1000)} ألف حرف) — ما أبدأ من جديد.`);
       const url = `/api/jawad/editor/projects/${projectId}`;
       const payload = { action, model: claude.id, ...body, stream: true, ...(partialRaw ? { partialRaw } : {}), ...(cap ? { effortCap: cap } : {}) };
       // watched: every piece he writes reaches the page as he writes it (the program grows in the conversation)
@@ -812,13 +812,13 @@ export default function MotionLab({
       }
       stuck = result.partialRaw.length > partialRaw.length ? 0 : stuck + 1;
       if (result.noProgress) cap = lowerEffort(result.effortUsed ?? cap ?? "high");
-      if (stuck >= 3) throw new Error("حيدرة ما تقدّم في آخر ثلاث طلبات (كل طلب انقضى وقته بدون ما يكتب). جرّب مرة ثانية.");
+      if (stuck >= 3) throw new Error("حيدرا ماكس ما تقدّم في آخر ثلاث طلبات (كل طلب انقضى وقته بدون ما يكتب). جرّب مرة ثانية.");
       partialRaw = result.partialRaw;
       savePart(store, sig, partialRaw);
     }
   }, [projectId, claude.id, store]);
 
-  /** A card in the conversation from حيدرة (the lab's steps are told there, one card each). */
+  /** A card in the conversation from حيدرا ماكس (the lab's steps are told there, one card each). */
   const post = (card: Card, text = "", options?: string[]) => setChat((c) => [...c, { role: "assistant", text, card, ...(options?.length ? { options } : {}) }]);
   /** The live card of the work running now: its lines (the last card of that kind is the one that grows). */
   const workLine = (line: string) =>
@@ -830,7 +830,7 @@ export default function MotionLab({
       }
       return [...c, { role: "assistant", text: "", card: { k: "work", title: "الشغل", lines: [line] } }];
     });
-  /** The pictures the scene may draw (library picks, plus any made just now), with the short ids حيدرة writes. */
+  /** The pictures the scene may draw (library picks, plus any made just now), with the short ids حيدرا ماكس writes. */
   type Chosen = { short: string; asset: EditorAsset };
   const listOf = (use: Chosen[]) => use.map((c) => ({ id: c.short, name: c.asset.name, w: c.asset.width ?? 0, h: c.asset.height ?? 0 }));
 
@@ -867,7 +867,7 @@ export default function MotionLab({
    * watches it being written: the program grows in the conversation's work card as حيدرا ماكس writes it. */
   const buildRunning = async (p: LabPlan, previous = "", errors = "", use: Chosen[] = chosen) => {
     let program = previous, why = errors;
-    // no count of its own (the owner's rule): حيدرة fixes until the scene runs, and «إلغاء» is what stops it
+    // no count of its own (the owner's rule): حيدرا ماكس fixes until the scene runs, and «إلغاء» is what stops it
     for (let attempt = 0; ; attempt++) {
       if (!program || why) {
         const line = attempt === 0 && !previous ? "✍️ حيدرا ماكس يكتب المشهد بالكود…" : `🛠️ يصلّح خطأ في المشهد (المحاولة ${attempt})…`;
@@ -894,7 +894,7 @@ export default function MotionLab({
         const got = await loadCode(program, p, params, use);
         return { program, got };
       } catch (e) {
-        // the person's video is gone: no change to the scene can bring it back, so حيدرة is not asked to fix it
+        // the person's video is gone: no change to the scene can bring it back, so حيدرا ماكس is not asked to fix it
         if (e instanceof LabSetupError) throw e;
         const se = e instanceof SceneError ? e : new SceneError(String(e), "load");
         why = `${se.where === "frame" ? `At t = ${se.t?.toFixed(2)} s the frame threw` : "Loading the scene threw"}: ${se.message}\n${se.stack2}`;
@@ -916,7 +916,7 @@ export default function MotionLab({
       let meta: FootageMeta | null = footMeta, frames = foot?.frames ?? [];
       if (source && !meta) {
         for (const s of sources) await checkFootage(s.url, abort.current?.signal);
-        say1(sources.length > 1 ? `🎥 أجهّز مقاطعك الـ${sources.length} لحيدرة (ورا بعض بالترتيب)…` : "🎥 أجهّز فيديوك لحيدرة…");
+        say1(sources.length > 1 ? `🎥 أجهّز مقاطعك الـ${sources.length} لحيدرا ماكس (ورا بعض بالترتيب)…` : "🎥 أجهّز فيديوك لحيدرا ماكس…");
         const info = await prepareFootage(projectId, sources, [...extra, ...assets], say1);
         setFoot(info);
         meta = { ...info.meta, person: personOn };
@@ -1011,7 +1011,7 @@ export default function MotionLab({
     const plan = given ?? planNow;
     if (!plan) return false;
     if (voiceOn && !take && !source) {
-      setError("سجّل صوتك أول (في بطاقة السيناريو)، وبعدها حيدرة يبني الحركة على كلامك.");
+      setError("سجّل صوتك أول (في بطاقة السيناريو)، وبعدها حيدرا ماكس يبني الحركة على كلامك.");
       return false;
     }
     const built = sized(plan);
@@ -1054,7 +1054,7 @@ export default function MotionLab({
         if (cuts.length) sheets.push(await sheetAt(h, cuts, 3));
         const times = shotTimes;
         const shots = await stills(h, times, got.duration);
-        workLine("🧐 حيدرة يراجع كمخرج قاسي…");
+        workLine("🧐 حيدرا ماكس يراجع كمخرج قاسي…");
         const r = await call<{ review: Review; code: string; problems: string[] }>("lab_review", { plan: built, seconds: built.seconds, assets: listOf(use), code: program, sheets, stills: shots, times, round, maxRounds: rounds, reviewOnly: true, ...soundBody() });
         stop();
         done.push(r.review);
@@ -1179,7 +1179,7 @@ export default function MotionLab({
             workLine(`⚠️ ${e instanceof Error ? e.message.slice(0, 160) : e}`);
           }
         }
-        if (why) throw new Error("ما قدر حيدرة يرسم الكفر بدون خطأ. جرّب مرة ثانية.");
+        if (why) throw new Error("ما قدر حيدرا ماكس يرسم الكفر بدون خطأ. جرّب مرة ثانية.");
         if (mine.aborted) throw new DOMException("cancelled", "AbortError");
         // what he looks at: the cover full size, at the grid's 12 % and in its crops
         const bm = await draw(program);
@@ -1432,7 +1432,7 @@ export default function MotionLab({
       );
     } catch (e) {
       if (abort.current?.signal.aborted) throw new DOMException("cancelled", "AbortError");
-      // a search that failed never stops the conversation: حيدرة answers without it
+      // a search that failed never stops the conversation: حيدرا ماكس answers without it
       workLine(`⚠️ ما قدرت أبحث الحين (${e instanceof Error ? e.message : e}) — أكمل بدون البحث.`);
       return "";
     }
@@ -1441,7 +1441,7 @@ export default function MotionLab({
     setResearch(found);
     return found;
   };
-  /** The quick replies that are the lab's own buttons (pressed: the step runs here, no question to حيدرة needed). */
+  /** The quick replies that are the lab's own buttons (pressed: the step runs here, no question to حيدرا ماكس needed). */
   const direct = (message: string): (() => Promise<unknown>) | null => {
     if (/^اعتمد( الخطة)?( و)?ابن/.test(message) && plan && !busy) return () => build(plan, { fresh: true });
     if (/^صدّ?ره|^رندر|^نزّ?له في التايملاين/.test(message) && info && !busy) return exportFilm;
@@ -1449,7 +1449,7 @@ export default function MotionLab({
     if (/^نزّ?ل الكفر$/.test(message) && coverUrl) return async () => download(await (await fetch(coverUrl)).blob(), `كفر - ${(plan?.title || "موشن").slice(0, 40)}.png`);
     return null;
   };
-  /** «💬»: one message of the conversation — حيدرة answers and decides: the scenario, a change (a new version), the
+  /** «💬»: one message of the conversation — حيدرا ماكس answers and decides: the scenario, a change (a new version), the
    * cover or the final render. */
   const send = async (raw?: string) => {
     const message = (raw ?? chatText).trim();
@@ -1465,7 +1465,7 @@ export default function MotionLab({
     setStage("planning");
     setNow(0);
     try {
-      // «🌐»: asked to search (the button, or «ابحث…» in the message) — the web first, then حيدرة answers with it
+      // «🌐»: asked to search (the button, or «ابحث…» in the message) — the web first, then حيدرا ماكس answers with it
       let found = searchOn || asksToSearch(message) ? await searchWeb(message) : "";
       setSearchOn(false);
       type ChatReply = { reply: string; action: "none" | "plan" | "code" | "cover" | "render"; brief: string; code: string; problems: string[]; options?: string[]; search?: string };
@@ -1514,7 +1514,7 @@ export default function MotionLab({
     }
   };
 
-  // opened by حيدرة (or the editor) with a brief: it is the person's first message, and the scenario is written by itself
+  // opened by حيدرا ماكس (or the editor) with a brief: it is the person's first message, and the scenario is written by itself
   // (scenario first: nothing is built before «اعتمد وابنِ»)
   const opened = useRef(false);
   useEffect(() => {
@@ -1558,7 +1558,7 @@ export default function MotionLab({
     }
   };
   // the videos the piece is built on are told in the conversation the moment they are loaded (from the timeline, the
-  // device, or حيدرة's opening on a clip), so the person sees what حيدرة has in front of him
+  // device, or حيدرا ماكس's opening on a clip), so the person sees what حيدرا ماكس has in front of him
   const told = useRef(new Set<string>());
   useEffect(() => {
     const fresh = sources.filter((s) => !told.current.has(s.clipId));
@@ -1899,7 +1899,7 @@ export default function MotionLab({
                 </span>
               )}
             </h2>
-            <p className="mlab-tip hidden sm:block">{busy ? "الشغل ماشي. صغّر النافذة وارجع للمونتاج — يكمل في الخلفية، وترجّعه من زر «مختبر الموشن»." : "قل لحيدرة وش تبي: يكتب لك السيناريو، يبنيه بالكود قدامك، يرسل لك مسودة فيديو، يعدّل على ملاحظاتك، ويصمم الكفر."}</p>
+            <p className="mlab-tip hidden sm:block">{busy ? "الشغل ماشي. صغّر النافذة وارجع للمونتاج — يكمل في الخلفية، وترجّعه من زر «مختبر الموشن»." : "قل لحيدرا ماكس وش تبي: يكتب لك السيناريو، يبنيه بالكود قدامك، يرسل لك مسودة فيديو، يعدّل على ملاحظاتك، ويصمم الكفر."}</p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             <ClaudeModelPicker disabled={busy} />
@@ -1916,7 +1916,7 @@ export default function MotionLab({
 
         {encodes === false && (
           <p role="alert" className="mlab-error m-0">
-            ⚠️ متصفحك ما يقدر يصدّر فيديو بمقاس {width}×{height} (غالبًا Safari على الآيفون أو الآيباد). تقدر تتكلم مع حيدرة وتشوف المعاينة، لكن المسودة والتصدير يحتاجون Chrome أو Edge على كمبيوتر.
+            ⚠️ متصفحك ما يقدر يصدّر فيديو بمقاس {width}×{height} (غالبًا Safari على الآيفون أو الآيباد). تقدر تتكلم مع حيدرا ماكس وتشوف المعاينة، لكن المسودة والتصدير يحتاجون Chrome أو Edge على كمبيوتر.
           </p>
         )}
         {serverMissing && <p className="mlab-tip m-0 px-4">ℹ️ المحادثات تنحفظ على هالجهاز بس لين يتحدّث الموقع (ملف 0087).</p>}
@@ -1939,7 +1939,7 @@ export default function MotionLab({
                 ))}
                 {busy && lastWork < 0 && (
                   <div className="mlab-bubble him flex items-center gap-2">
-                    <span className="jw-spinner !h-3.5 !w-3.5" aria-hidden /> {log[log.length - 1] ?? `حيدرة ${stageAr}…`} {elapsed}
+                    <span className="jw-spinner !h-3.5 !w-3.5" aria-hidden /> {log[log.length - 1] ?? `حيدرا ماكس ${stageAr}…`} {elapsed}
                   </div>
                 )}
                 <div ref={chatEnd} />
@@ -1964,7 +1964,7 @@ export default function MotionLab({
               )}
               {drawer && (
                 <div className="flex flex-col gap-3 rounded-xl border border-white/10 p-3">
-                  <b>⚙️ التجهيزات (اختيارية — حيدرة يفهم كل هذا من كلامك بعد)</b>
+                  <b>⚙️ التجهيزات (اختيارية — حيدرا ماكس يفهم كل هذا من كلامك بعد)</b>
                   {!!footageClips.length && (
                     <div className="flex flex-col gap-2">
                       <span className="mlab-label">🎥 على فيديوك</span>
@@ -2021,7 +2021,7 @@ export default function MotionLab({
                     <label className="flex items-start gap-3" hidden={!!source}>
                       <input type="checkbox" className="mt-1.5 h-4 w-4" checked={voiceOn} onChange={(e) => setVoiceOn(e.target.checked)} disabled={busy} />
                       <span>
-                        <b>🎙️ بصوتي</b> <span className="mlab-tip block">حيدرة يكتب لك نص قصير في السيناريو، تسجّله، حيدرا ماكس ينظّفه، والحركة تنبني على كلامك.</span>
+                        <b>🎙️ بصوتي</b> <span className="mlab-tip block">حيدرا ماكس يكتب لك نص قصير في السيناريو، تسجّله، حيدرا ماكس ينظّفه، والحركة تنبني على كلامك.</span>
                       </span>
                     </label>
                     <div className="mlab-pills">
@@ -2050,7 +2050,7 @@ export default function MotionLab({
                   <details className="mlab-group">
                     <summary>
                       <span>🎨 الأسلوب من العينات</span>
-                      {chosenCards.length ? <span className="picked">✓ {chosenCards.length}</span> : <span className="free">خلّه لحيدرة</span>}
+                      {chosenCards.length ? <span className="picked">✓ {chosenCards.length}</span> : <span className="free">خلّه لحيدرا ماكس</span>}
                     </summary>
                     <div className="mt-2">
                       <Gallery choices={choices} onChange={setChoices} disabled={busy} />
@@ -2080,7 +2080,7 @@ export default function MotionLab({
                       <input type="file" accept="video/*" multiple hidden disabled={busy} onChange={(e) => (void attachVideos([...(e.target.files ?? [])]), setAttachOpen(false), (e.target.value = ""))} />
                     </label>
                   )}
-                  <span className="mlab-label">✨ مراجع: صور أو فيديوهات تعجبك (ما تدخل في الموشن، حيدرة يتعلّم منها)</span>
+                  <span className="mlab-label">✨ مراجع: صور أو فيديوهات تعجبك (ما تدخل في الموشن، حيدرا ماكس يتعلّم منها)</span>
                   <div className="flex flex-wrap gap-2">
                     <label className="jw-btn !min-h-10 cursor-pointer" title="ياخذ منها الألوان والخط والإيقاع والحركة، مو محتواها">
                       ✨ استلهم منها
@@ -2138,7 +2138,7 @@ export default function MotionLab({
                 <button type="button" className="jw-btn !min-h-12 !px-3" aria-label="ارفق فيديو أو صورة" title="فيديو من التايملاين أو من جهازك، وصور (شعار، منتج…)" disabled={busy} onClick={() => setAttachOpen((v) => !v)}>
                   📎
                 </button>
-                <button type="button" className="jw-btn !min-h-12 !px-3" aria-label="ابحث في الإنترنت" title="🌐 حيدرة يبحث في الإنترنت قبل ما يرد (مثل Claude). يبحث بنفسه بعد لما تكتب «ابحث…» أو لما يحتاج معلومة جديدة." aria-pressed={searchOn} disabled={busy} onClick={() => setSearchOn((v) => !v)}>
+                <button type="button" className="jw-btn !min-h-12 !px-3" aria-label="ابحث في الإنترنت" title="🌐 حيدرا ماكس يبحث في الإنترنت قبل ما يرد (مثل Claude). يبحث بنفسه بعد لما تكتب «ابحث…» أو لما يحتاج معلومة جديدة." aria-pressed={searchOn} disabled={busy} onClick={() => setSearchOn((v) => !v)}>
                   🌐
                 </button>
                 <textarea
@@ -2152,7 +2152,7 @@ export default function MotionLab({
                       void send();
                     }
                   }}
-                  placeholder={searchOn ? "🌐 وش تبي حيدرة يدوّر عليه في الإنترنت؟" : code ? "ملاحظتك: «خلّ اللون ذهبي»، «حط الشعار في النهاية»، «أسرع شوي»… (يغيّر اللي تقوله بس)" : "وش الموشن اللي تبيه؟"}
+                  placeholder={searchOn ? "🌐 وش تبي حيدرا ماكس يدوّر عليه في الإنترنت؟" : code ? "ملاحظتك: «خلّ اللون ذهبي»، «حط الشعار في النهاية»، «أسرع شوي»… (يغيّر اللي تقوله بس)" : "وش الموشن اللي تبيه؟"}
                   disabled={busy}
                 />
                 {busy ? (
@@ -2175,7 +2175,7 @@ export default function MotionLab({
 
           <aside className="mlab-side">
             <div className="mlab-preview aspect-[9/16] max-h-[56vh] w-full lg:aspect-auto lg:h-[56vh]" style={width > height ? { aspectRatio: `${width} / ${height}`, height: "auto" } : undefined}>
-              {info ? <canvas ref={viewCanvas} /> : <span className="mlab-tip px-6 text-center">{busy ? `حيدرة ${stageAr}… ${elapsed}` : code ? "اضغط «شغّل المشهد المحفوظ» تحت." : "المعاينة تطلع هنا بعد ما يبني حيدرة المشهد."}</span>}
+              {info ? <canvas ref={viewCanvas} /> : <span className="mlab-tip px-6 text-center">{busy ? `حيدرا ماكس ${stageAr}… ${elapsed}` : code ? "اضغط «شغّل المشهد المحفوظ» تحت." : "المعاينة تطلع هنا بعد ما يبني حيدرا ماكس المشهد."}</span>}
             </div>
             {info && (
               <div className="flex items-center gap-2" dir="ltr">
@@ -2221,7 +2221,7 @@ export default function MotionLab({
               <div className="mlab-card flex flex-col gap-3">
                 <h3>⬇️ الرندر النهائي</h3>
                 <p className="m-0 font-bold" role="status">
-                  {soundBusy ? "🔊 أجهّز الصوت…" : soundtrack ? `🔊 الصوت يطلع مع الفيديو: مؤثرات بالكود${source ? " + صوتك من الفيديو" : take ? " + صوتك" : ""}${musicMode === "code" ? " + موسيقى بالكود" : musicMode === "eleven" ? " (وموسيقى ElevenLabs تنصنع وقت التصدير)" : ""}.` : "🔇 المشهد ما كتب له صوت. قل لحيدرة «أضف صوت»."}
+                  {soundBusy ? "🔊 أجهّز الصوت…" : soundtrack ? `🔊 الصوت يطلع مع الفيديو: مؤثرات بالكود${source ? " + صوتك من الفيديو" : take ? " + صوتك" : ""}${musicMode === "code" ? " + موسيقى بالكود" : musicMode === "eleven" ? " (وموسيقى ElevenLabs تنصنع وقت التصدير)" : ""}.` : "🔇 المشهد ما كتب له صوت. قل لحيدرا ماكس «أضف صوت»."}
                 </p>
                 <div className="mlab-pills">
                   {MUSIC_MODES.map((m) => (

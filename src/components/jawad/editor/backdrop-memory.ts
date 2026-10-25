@@ -1,4 +1,4 @@
-// «ذاكرة الخلفية» — the background and the colour key are the person's own settings, tuned by hand. Before حيدرة (or one
+// «ذاكرة الخلفية» — the background and the colour key are the person's own settings, tuned by hand. Before حيدرا ماكس (or one
 // of his programs) applies anything, each video clip's backdrop (bg + key) is remembered on this device; if a clip's
 // background ever comes out broken, «↩️ رجّع الخلفية لما كانت» in its backdrop tab puts back the last state that differs
 // from the one it has now. Browser only; a convenience (storage may be blocked: then nothing is remembered).

@@ -3,7 +3,7 @@ import { applyAll } from "@/lib/editor/commands";
 import { emptyTimeline, transformAt, type AssetInfo } from "@/lib/editor/model";
 import { lintMotion, motionCommands, motionPlan, readStoryboard, type Storyboard } from "@/lib/editor/motion-build";
 
-/** A piece the way حيدرة writes it now: he composes the background of every beat and draws every arrival himself. */
+/** A piece the way حيدرا ماكس writes it now: he composes the background of every beat and draws every arrival himself. */
 const composed: Storyboard = {
   palette: "night",
   beats: [
@@ -27,7 +27,7 @@ const composed: Storyboard = {
   ],
 };
 
-describe("«موشن جرافيكس»: the look حيدرة composes himself", () => {
+describe("«موشن جرافيكس»: the look حيدرا ماكس composes himself", () => {
   it("reads his background and his arrivals, and clamps anything out of range", () => {
     const sb = readStoryboard({
       beats: [

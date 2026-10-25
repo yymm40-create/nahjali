@@ -12,7 +12,7 @@ describe("the owner's motion skill, as it is", () => {
     expect(MOTION_DIRECTOR_SKILL_TEXT.length).toBeGreaterThan(20_000);
   });
 
-  it("reaches حيدرة whole, inside its tags", () => {
+  it("reaches حيدرا ماكس whole, inside its tags", () => {
     expect(MOTION_SKILL).toContain(`<motion-skill>\n${MOTION_DIRECTOR_SKILL_TEXT}\n</motion-skill>`);
     // the parts that are his craft, named in the skill itself
     for (const w of ["Motion graphics catalogue", "Animation principles", "Typography & kinetic type", "QA checklist", "Reverse-engineered reference recipes"]) expect(MOTION_DIRECTOR_SKILL_TEXT).toContain(w);

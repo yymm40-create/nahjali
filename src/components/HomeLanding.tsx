@@ -21,7 +21,7 @@ interface Branch {
 }
 
 /**
- * Home: نهج علي's two branches, big. «الجواد للذكاء الاصطناعي» holds the making (images, video, voice, the film, حيدرة
+ * Home: نهج علي's two branches, big. «الجواد للذكاء الاصطناعي» holds the making (images, video, voice, the film, حيدرا ماكس
  * كت, the smart student, the children's booklet); «لأجل المهدي» is the daily path. Each says what is inside.
  */
 export default async function Home() {

@@ -5,7 +5,7 @@ import { MAJED_SKILL } from "@/lib/editor/majed";
 import { MOTION_SKILL } from "@/lib/editor/motion";
 import { BOUNCY, brandPalette, capCues, motionPlan, SFX_PER_MINUTE, contrast, IN, layoutMotion, lintMotion, lintPlaced, motionCommands, PALETTES, readStoryboard, STAGGER_MS, storyboardNumbers, westernDigits } from "@/lib/editor/motion-build";
 
-// 100 pieces in «أسلوب ماجد الزعابي»: written as حيدرة writes them (a JSON string, Eastern digits, brand colours
+// 100 pieces in «أسلوب ماجد الزعابي»: written as حيدرا ماكس writes them (a JSON string, Eastern digits, brand colours
 // that don't always read, kinetic hooks), then held to Majed's rules on top of the layout check.
 const WORDS = "خلاص قصّ السكتات وخل الكابشن يطلع بوقته والرقم يخبط على الكلمة والحركة لها سبب دايم بدون ارتداد ولا توهج".split(" ");
 const pick = (seed: number, n: number) => Array.from({ length: n }, (_, i) => WORDS[(seed * 5 + i * 3) % WORDS.length]).join(" ");
@@ -146,7 +146,7 @@ describe("the rules themselves", () => {
     expect(f.all).toEqual(["70", "963007", "3"]);
     expect(f.unsourced).toEqual(["70", "3"]);
   });
-  it("حيدرة learns it: the skill carries Majed's rules and the engine's means", () => {
+  it("حيدرا ماكس learns it: the skill carries Majed's rules and the engine's means", () => {
     for (const w of ["MAJED ALZAABI", "settle", "kinetic", "colors", "Western digits", "FACTS LIST", "15 sound events", "fully diacritized", "never typed from memory", "opacity 0 for 4–8 s"]) expect(MAJED_SKILL).toContain(w);
     for (const w of ["\"kind\":\"kinetic\"", "\"colors\"", "settle"]) expect(MOTION_SKILL).toContain(w);
   });

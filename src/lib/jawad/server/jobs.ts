@@ -218,7 +218,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
   const def = generatorById(String(b.generatorId ?? ""));
   if (!def) throw new UserError("المولد غير معروف.", 400);
-  // the dashboard's list: this branch (images, video, voices, music) for this person; «حيدرة» makes with its own right,
+  // the dashboard's list: this branch (images, video, voices, music) for this person; «حيدرا ماكس» makes with its own right,
   // and «محمد باقر» makes through جواد's desk (src/lib/content/jawad.ts) with the door he already passed
   // (the owner's switch in /admin/content already decided who gets in there: requireContentUser, before any request reaches the desk;
   // «قنبر» draws a game's pictures through the same desk, behind requireGamesUser)

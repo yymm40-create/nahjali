@@ -1,4 +1,4 @@
-// «مختبر الموشن» on the person's video: a missing file stops with a plain message instead of being handed to حيدرة as a
+// «مختبر الموشن» on the person's video: a missing file stops with a plain message instead of being handed to حيدرا ماكس as a
 // scene bug (the desktop program answers 404 for a file that moved or was deleted).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { checkFootage, FootageUnavailable, LabSetupError, onDeviceOnly } from "@/components/jawad/editor/footage-check";
@@ -37,7 +37,7 @@ describe("checkFootage", () => {
     expect(vi.mocked(fetch).mock.calls[0][1]).toMatchObject({ headers: { Range: "bytes=0-0" } });
   });
 
-  it("what stops the build without asking حيدرة to fix a scene, and the video that lives only on the computer", async () => {
+  it("what stops the build without asking حيدرا ماكس to fix a scene, and the video that lives only on the computer", async () => {
     answer(404);
     const e = await checkFootage("https://example.com/v.mp4").catch((x: unknown) => x);
     expect(e).toBeInstanceOf(LabSetupError);

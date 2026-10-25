@@ -1,6 +1,6 @@
 // «موشن جرافيكس» — what the motion pieces say, by feeling: for each of the nine moods a set of subjects and the
 // phrases a good piece of that feeling uses (titles, statements, points, numbers, quotes, comparisons, kinetic words,
-// closings). The bank (motion-bank.ts) builds its million pieces from these, so every example حيدرة sees speaks the
+// closings). The bank (motion-bank.ts) builds its million pieces from these, so every example حيدرا ماكس sees speaks the
 // way its feeling speaks: sadness plain and slow, joy bright and short, teaching one idea at a time, urgency in
 // commands. Subjects avoid people's pictures entirely. Pure.
 

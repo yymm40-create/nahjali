@@ -1,6 +1,6 @@
-// «اصنع لي…»: what «حيدرة» started making with JAWAD AI for this project (kept on this device, so leaving and coming
+// «اصنع لي…»: what «حيدرا ماكس» started making with JAWAD AI for this project (kept on this device, so leaving and coming
 // back keeps waiting for it). The editor checks the jobs every few seconds; a finished one is brought into the
-// project's files and placed where حيدرة said, a failed one is reported (JAWAD AI gives the coins back).
+// project's files and placed where حيدرا ماكس said, a failed one is reported (JAWAD AI gives the coins back).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { postJson } from "@/lib/fetch";
@@ -126,7 +126,7 @@ export function useMaking(o: { projectId: string; run: (c: Command[], opts: { la
             ? [{ type: "insert_adjacent" as const, assetId: res.assets[0].id, clipId: m.extend.clipId, edge: m.extend.edge }]
             : placeMade(m.kind, res.assets[0].id, m.place, m.at, { alsoAt: m.alsoAt, volume: m.volume })
           : [];
-        if (cmds.length) run(cmds, { label: `حيدرة صنع: ${m.name.slice(0, 30)}` });
+        if (cmds.length) run(cmds, { label: `حيدرا ماكس صنع: ${m.name.slice(0, 30)}` });
         // the narration of a motion piece: the piece ends when the voice does (each beat keeps its share of the saying)
         const dur = res.assets[0]?.durationMs;
         if (m.kind === "speech" && m.fit && dur && cmds.length) {

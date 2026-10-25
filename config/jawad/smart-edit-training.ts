@@ -5,11 +5,11 @@
 // and the tests.
 //
 // The loop around it (who talks to whom):
-//   • A film's clip: سجاد hands it to حيدرة (it opens in «حيدرة كت»); حيدرة marks the seconds and writes what to
+//   • A film's clip: سجاد hands it to حيدرا ماكس (it opens in «حيدرة كت»); حيدرا ماكس marks the seconds and writes what to
 //     change; the pieces go to جواد, who makes them (a JAWAD AI job with the continuity references) and returns them
-//     to حيدرة on the green track; حيدرة checks the joins and APPROVES; the approved version goes to سجاد, who puts it
+//     to حيدرا ماكس on the green track; حيدرا ماكس checks the joins and APPROVES; the approved version goes to سجاد, who puts it
 //     in its place in the film (the generation's video, with the seconds that changed written to him).
-//   • A video made directly in the studio: the same loop between حيدرة and جواد only.
+//   • A video made directly in the studio: the same loop between حيدرا ماكس and جواد only.
 
 import { CONTINUITY, continuityRanges, cutRange, type ContinuityRange } from "@/lib/jawad/smart-edit";
 
@@ -25,8 +25,8 @@ export const CONTINUITY_METHOD = `CONTINUITY METHOD (a part made again — the j
 5. POSITIVE ONLY: a fresh generation that never hears of the old one — never "previous", "again", "this time", "instead of", "unlike", "no longer", "don't", "doesn't", "avoid", "fix", "mistake", "error", "wrong", "correct the…"; never describe the unwanted result, not even to forbid it (naming it brings it back): write only what happens, concretely (contact points, directions, speeds, positions).
 6. The clip's length in the prompt is the cut's seconds exactly; the other references are the original's characters and places by their @names, nothing invented.`;
 
-/** The text of the flow for the people's assistants (حيدرة and سجاد) and for the knowledge text. */
-export const EDIT_FLOW_AR = `مسار «التعديل الذكي»: مقطع من فيلم → سجاد يسلّمه لحيدرة في «حيدرة كت» → حيدرة يحدد الثواني ويكتب التعديلات → يرسلها لجواد فيصنعها (عمل في «الجواد الذكي!» مع مراجع الاستمرارية) ويرجّعها لحيدرة على المسار الأخضر → حيدرة يراجع الوصلات ويعتمد → النسخة المعتمدة تروح لسجاد فيحطها مكانها في الفيلم (مع ذكر الثواني اللي تغيّرت). فيديو من قسم الفيديو مباشرة: نفس المسار بين حيدرة وجواد فقط.`;
+/** The text of the flow for the people's assistants (حيدرا ماكس and سجاد) and for the knowledge text. */
+export const EDIT_FLOW_AR = `مسار «التعديل الذكي»: مقطع من فيلم → سجاد يسلّمه لحيدرا ماكس في «حيدرة كت» → حيدرا ماكس يحدد الثواني ويكتب التعديلات → يرسلها لجواد فيصنعها (عمل في «الجواد الذكي!» مع مراجع الاستمرارية) ويرجّعها لحيدرا ماكس على المسار الأخضر → حيدرا ماكس يراجع الوصلات ويعتمد → النسخة المعتمدة تروح لسجاد فيحطها مكانها في الفيلم (مع ذكر الثواني اللي تغيّرت). فيديو من قسم الفيديو مباشرة: نفس المسار بين حيدرا ماكس وجواد فقط.`;
 
 // ───────────────────────────── one edit, in numbers ─────────────────────────────
 
@@ -274,7 +274,7 @@ const NOTES_AR = ["يده دخلت في الكوب", "عينه راحت بعيد
 
 export interface EditTrainingModel {
   id: string;
-  /** what حيدرة wrote (Gulf Arabic) */
+  /** what حيدرا ماكس wrote (Gulf Arabic) */
   note: string;
   model: EditModel;
   scene: EditScene;

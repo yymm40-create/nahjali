@@ -7,7 +7,7 @@ describe("the robots introducing themselves", () => {
     expect(robotFor("/jawad-ai")).toBeNull();
     expect(robotFor("/jawad-ai/images")?.name).toBe("جواد");
     expect(robotFor("/jawad-ai/film/abc/sheets")?.name).toBe("سجاد");
-    expect(robotFor("/jawad-ai/editor/123")?.name).toBe("حيدرة");
+    expect(robotFor("/jawad-ai/editor/123")?.name).toBe("حيدرا ماكس");
     expect(robotFor("/jawad-ai/student")?.name).toBe("صادق");
     expect(robotFor("/jawad-ai/games")?.name).toBe("قنبر");
     expect(robotFor("/jawad-ai/booklet/x/upload")?.name).toBe("عباس وزينب");

@@ -122,7 +122,7 @@ export default function ExportPanel({
   const picture = what === "video" || what === "mute" || what === "alpha";
   // whole-video upscale: only for the video with sound, made by the site (not the desktop program's local files), up to 5 minutes, and when it isn't 4K already
   const longSide = Math.max(plan.width, plan.height);
-  const upWhy = !onUpscaleExport ? null : desktop() ? "برنامج حيدرة على الكمبيوتر يحفظ الملفات عندك بس، وما تروح لخادم رفع الدقة؛ استخدم المتصفح." : total > UPSCALE_EXPORT_MAX_MS ? "رفع الدقة لفيديو حتى ٥ دقائق؛ حدّد منطقة أقصر (In و Out)." : longSide >= 3800 ? "التصدير الحين 4K أصلًا؛ اختر دقة أقل (مثل 1080p) وارفعها بعدين." : null;
+  const upWhy = !onUpscaleExport ? null : desktop() ? "برنامج حيدرا ماكس على الكمبيوتر يحفظ الملفات عندك بس، وما تروح لخادم رفع الدقة؛ استخدم المتصفح." : total > UPSCALE_EXPORT_MAX_MS ? "رفع الدقة لفيديو حتى ٥ دقائق؛ حدّد منطقة أقصر (In و Out)." : longSide >= 3800 ? "التصدير الحين 4K أصلًا؛ اختر دقة أقل (مثل 1080p) وارفعها بعدين." : null;
   const upOn = !!onUpscaleExport && what === "video" && !upWhy && upTarget !== null && (upTarget === "4k" || longSide < 1800);
   // the file's own frame rate and bitrate, read from the file itself (only when «نفس المصدر» is wanted)
   const matchSource = async () => {

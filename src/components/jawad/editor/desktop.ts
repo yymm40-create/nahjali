@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 // «حيدرة كت» on the desktop (desktop/ in the repository): files from the computer are not uploaded. The program
 // keeps where each one is on the disk and serves it to the editor itself (haidara-media://), so a 10 GB video is on
-// the timeline at once; only the timeline and what is asked of حيدرة go over the internet.
+// the timeline at once; only the timeline and what is asked of حيدرا ماكس go over the internet.
 
 export interface DesktopBridge {
   platform: string;

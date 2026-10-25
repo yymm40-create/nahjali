@@ -117,13 +117,13 @@ export async function align(p: EditorProject, who: Who, b: { assetId?: unknown; 
   return { words: words.map((w) => ({ s: from + Math.round(w.start * 1000), e: from + Math.round(w.end * 1000), w: w.text })) };
 }
 
-// ───────────────────────────── talking with حيدرة ─────────────────────────────
+// ───────────────────────────── talking with حيدرا ماكس ─────────────────────────────
 
 /** A spoken message is short: up to two minutes, sent with the request (no upload). */
 const VOICE_MAX_BYTES = 3_000_000;
 const VOICE_TYPES: Record<string, string> = { "audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav" };
 
-/** What the person said to حيدرة (ElevenLabs Scribe): `{ audio: base64, mime, seconds }` → `{ text }`. */
+/** What the person said to حيدرا ماكس (ElevenLabs Scribe): `{ audio: base64, mime, seconds }` → `{ text }`. */
 export async function voiceIn(p: EditorProject, who: Who, b: { audio?: unknown; mime?: unknown; seconds?: unknown }) {
   stillOpen(p);
   const mime = String(b.mime ?? "").split(";")[0];
@@ -133,7 +133,7 @@ export async function voiceIn(p: EditorProject, who: Who, b: { audio?: unknown; 
   if (!buf.length) throw new UserError("ما وصل صوت.", 400);
   if (buf.length > VOICE_MAX_BYTES) throw new UserError("التسجيل طويل؛ خلّه أقل من دقيقتين.", 400);
   const minutes = Math.min(2, Math.max(0.05, Number(b.seconds) / 60 || 0.5));
-  const text = await charged(who, "editor_price_caption", Math.ceil(minutes), "رسالة صوتية لحيدرة", async () => {
+  const text = await charged(who, "editor_price_caption", Math.ceil(minutes), "رسالة صوتية لحيدرا ماكس", async () => {
     const heard = await elevenTranscribe({ file: new Blob([new Uint8Array(buf)], { type: mime }), name: `voice.${ext}` }).catch(providerError);
     const said = heard.words.map((w) => w.text).join(" ").replace(/\s+([،,.؟?!:])/g, "$1").trim();
     // nothing understood: said plainly, and the coins come back (charged() releases them when this throws)
@@ -145,11 +145,11 @@ export async function voiceIn(p: EditorProject, who: Who, b: { audio?: unknown; 
   return { text };
 }
 
-/** Who speaks حيدرة's replies: a provider, or one of the person's own voices («v:<id>», a voiceprint included). */
+/** Who speaks حيدرا ماكس's replies: a provider, or one of the person's own voices («v:<id>», a voiceprint included). */
 export type ReplyVoice = "auto" | "openai" | "minimax" | "elevenlabs" | "jawad" | `v:${string}`;
 
 /**
- * حيدرة's reply said aloud: `{ text, voice? }` → `{ audio: base64 mp3, by }`. Claude writes the words but has no voice
+ * حيدرا ماكس's reply said aloud: `{ text, voice? }` → `{ audio: base64 mp3, by }`. Claude writes the words but has no voice
  * of its own, so a speech provider reads them: the one chosen (or the person's own voice where it lives), then the
  * others in turn if it fails — never only ElevenLabs. Markdown, code and links are left out.
  */
@@ -201,7 +201,7 @@ export async function voiceOut(p: EditorProject, who: Who, b: { text?: unknown; 
   const first = own ? own.provider : want === "auto" || !(want in readers) ? "openai" : want;
   const order = [first, ...["openai", "minimax", "elevenlabs"].filter((x) => x !== first)];
   const mimeOf = (by: string) => (by === "jawad" ? "audio/wav" : "audio/mpeg");
-  const audio = await charged(who, "editor_price_voice", 1, "رد حيدرة بالصوت", async () => {
+  const audio = await charged(who, "editor_price_voice", 1, "رد حيدرا ماكس بالصوت", async () => {
     let last: unknown = null;
     for (const name of order) {
       try {

@@ -42,7 +42,7 @@ describe("«اصنع لي…» placing", () => {
   });
 });
 
-describe("captions by «حيدرة»", () => {
+describe("captions by «حيدرا ماكس»", () => {
   it("its follow-ups land on the new caption track and on every caption", async () => {
     const { expandThen } = await import("@/lib/editor/make");
     const cmds = expandThen(

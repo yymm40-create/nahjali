@@ -1,4 +1,4 @@
-# «مختبر الموشن» — the research behind حيدرة's code-made motion (2026-10-12)
+# «مختبر الموشن» — the research behind حيدرا ماكس's code-made motion (2026-10-12)
 
 Four research passes made for the owner's bar: **"a viewer thinks millions were spent on this clip."** This file is
 the evidence; `src/lib/editor/scene/skill.ts` is the training drawn from it. Numbers marked *claim* are reported by

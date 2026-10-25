@@ -30,7 +30,7 @@ export const getPreviewScale = () => (exporting ? 1 : previewScale);
 /**
  * «الكي» seen from outside: while a clip's key is tuned, the render keeps a copy of that clip's picture as it goes
  * INTO the key (after its grade) and where it was drawn on the canvas, so «🎯 اختر من الشاشة» can take the true
- * colour under a click and «🪄 كشف تلقائي» / «🤖 حيدرة» can study the frame. `bypass` shows the clip without its key
+ * colour under a click and «🪄 كشف تلقائي» / «🤖 حيدرا ماكس» can study the frame. `bypass` shows the clip without its key
  * (the natural colours on the screen while picking).
  */
 export const keyTap: { id: string | null; bypass: boolean; img: HTMLCanvasElement | null; m: DOMMatrix | null; w: number; h: number } = { id: null, bypass: false, img: null, m: null, w: 0, h: 0 };

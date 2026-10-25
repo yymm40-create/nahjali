@@ -71,7 +71,7 @@ export function placeHookDesign(
 }
 
 /**
- * Something «حيدرة» made with JAWAD AI («اصنع لي…»), once it is in the library: a picture or video over the video
+ * Something «حيدرا ماكس» made with JAWAD AI («اصنع لي…»), once it is in the library: a picture or video over the video
  * (a new track) or into the main track, a sound on a new sound track (music a little lower, ducking under talking).
  */
 export function placeMade(kind: "image" | "video" | "speech" | "sfx" | "music", assetId: string, place: "over" | "main" | "audio" | "library", at: number, more: { alsoAt?: number[]; volume?: number } = {}): Command[] {
@@ -102,7 +102,7 @@ export function placeMade(kind: "image" | "video" | "speech" | "sfx" | "music", 
 }
 
 /**
- * «حيدرة» on the captions it just made: its follow-up commands with "$CAPTIONS" as the new caption track and a
+ * «حيدرا ماكس» on the captions it just made: its follow-up commands with "$CAPTIONS" as the new caption track and a
  * command on clipId "$EACH" repeated for every caption. Unreadable commands are left out.
  */
 export function expandThen(raw: string[], trackId: string, clipIds: string[]): Command[] {

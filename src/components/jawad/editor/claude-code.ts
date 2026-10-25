@@ -1,4 +1,4 @@
-// «حيدرة كت» · «Claude Code» in the page — حيدرة executes by PROGRAM (src/lib/claude-code/skill.ts):
+// «حيدرة كت» · «Claude Code» in the page — حيدرا ماكس executes by PROGRAM (src/lib/claude-code/skill.ts):
 //   EDIT  (cut, trim, reorder, remove silences or mistakes): he writes edit(T, K) → it runs here in a sandbox on the
 //         timeline's facts → its commands are checked on a copy (a bug or a bad command goes back to him to fix) →
 //         he reads the timeline AFTER and scores it → below the bar he rewrites it → at the bar it is applied (one undo).
@@ -71,7 +71,7 @@ export async function codeEdit(d: CodeDeps, request: string): Promise<CodeOutcom
   d.busy("نسمع الصوت ونلقى السكتات…");
   const quiet = await d.quiet();
   stopped(d);
-  d.busy("حيدرة يكتب برنامج التقطيع…");
+  d.busy("حيدرا ماكس يكتب برنامج التقطيع…");
   let w = await api<Wrote>(d, "code_edit_write", { request, timeline: start, quiet, playhead: d.playhead, selected: d.selected });
   let code = w.code;
   let problems = w.problems;
@@ -84,7 +84,7 @@ export async function codeEdit(d: CodeDeps, request: string): Promise<CodeOutcom
       stopped(d);
       try {
         if (problems.length) throw new ProgramError(problems.join("; "));
-        d.busy(`أشغّل برنامج حيدرة على نسخة من التايملاين${round > 1 ? ` (جولة ${round})` : ""}…`);
+        d.busy(`أشغّل برنامج حيدرا ماكس على نسخة من التايملاين${round > 1 ? ` (جولة ${round})` : ""}…`);
         const raw = await runEdit(code, facts);
         if (!raw.length) throw new ProgramError("edit(T, K) returned no commands");
         const chk = checkCommands(start, raw.map((c) => JSON.stringify(c)), d.infos());
@@ -93,7 +93,7 @@ export async function codeEdit(d: CodeDeps, request: string): Promise<CodeOutcom
         break;
       } catch (e) {
         if (!(e instanceof ProgramError) || fix >= CODE_FIXES) throw e instanceof ProgramError ? new Error(`برنامج التقطيع ما اشتغل بعد ${fix + 1} محاولات: ${e.message}`) : e;
-        d.busy("البرنامج طلع فيه خطأ — حيدرة يصلّحه…");
+        d.busy("البرنامج طلع فيه خطأ — حيدرا ماكس يصلّحه…");
         w = await api<Wrote>(d, "code_edit_write", { request, timeline: start, quiet, code, errors: `${e.message}\n${e.stack2}` });
         code = w.code;
         problems = w.problems;
@@ -101,7 +101,7 @@ export async function codeEdit(d: CodeDeps, request: string): Promise<CodeOutcom
     }
     const after = applyAll(start, cmds, d.infos()).timeline;
     const summary = `${cmds.length} commands (${[...new Set(cmds.map((c) => c.type))].join(", ")}); length ${sec(duration(start))} → ${sec(duration(after))}; clips ${start.tracks.reduce((n, t) => n + t.clips.length, 0)} → ${after.tracks.reduce((n, t) => n + t.clips.length, 0)}`;
-    d.busy(`حيدرة يراجع التايملاين بعد البرنامج (جولة ${round} من ${CODE_ROUNDS})…`);
+    d.busy(`حيدرا ماكس يراجع التايملاين بعد البرنامج (جولة ${round} من ${CODE_ROUNDS})…`);
     const r = await api<{ review: Review; code: string; problems: string[] }>(d, "code_edit_review", { request, timeline: start, after, quiet, code, round, summary });
     last = { cmds, after, review: r.review };
     if (r.review.pass || !r.code) break;
@@ -130,7 +130,7 @@ export async function codeGrade(d: CodeDeps, request: string, clipIds: string[])
   const start = d.timeline();
   const clips = [...new Set(clipIds)].map((id) => findClip(start, id)?.clip).filter((c): c is NonNullable<typeof c> => !!c && !c.text).slice(0, 3);
   if (!clips.length) throw new Error("اختر مقطع فيديو أو صورة ألوّنه.");
-  d.busy("حيدرة يشوف المقاطع قبل التلوين…");
+  d.busy("حيدرا ماكس يشوف المقاطع قبل التلوين…");
   // the moments as the person sees them now (graded when they are); the program grades on top of that
   const before: Look[] = [];
   for (const c of clips) {
@@ -141,7 +141,7 @@ export async function codeGrade(d: CodeDeps, request: string, clipIds: string[])
   }
   if (!before.length) throw new Error("ما قدرت أشوف المقاطع.");
   stopped(d);
-  d.busy("حيدرة يكتب برنامج التلوين…");
+  d.busy("حيدرا ماكس يكتب برنامج التلوين…");
   let w = await api<Wrote>(d, "code_grade_write", { request, timeline: start, looks: before });
   let code = w.code;
   let problems = w.problems;
@@ -157,7 +157,7 @@ export async function codeGrade(d: CodeDeps, request: string, clipIds: string[])
         break;
       } catch (e) {
         if (!(e instanceof ProgramError) || fix >= CODE_FIXES) throw e instanceof ProgramError ? new Error(`برنامج التلوين ما اشتغل بعد ${fix + 1} محاولات: ${e.message}`) : e;
-        d.busy("البرنامج طلع فيه خطأ — حيدرة يصلّحه…");
+        d.busy("البرنامج طلع فيه خطأ — حيدرا ماكس يصلّحه…");
         w = await api<Wrote>(d, "code_grade_write", { request, timeline: start, looks: before, code, errors: `${e.message}\n${e.stack2}` });
         code = w.code;
         problems = w.problems;
@@ -168,7 +168,7 @@ export async function codeGrade(d: CodeDeps, request: string, clipIds: string[])
     const looks: Look[] = [];
     for (const b of before) looks.push({ clipId: b.clipId, frames: [...b.frames, ...(await d.graded(b.frames, [layer], () => 0))] });
     stopped(d);
-    d.busy(`حيدرة يشوف النتيجة ويقيّمها (جولة ${round} من ${CODE_ROUNDS})…`);
+    d.busy(`حيدرا ماكس يشوف النتيجة ويقيّمها (جولة ${round} من ${CODE_ROUNDS})…`);
     const r = await api<{ review: Review; code: string; problems: string[] }>(d, "code_grade_review", { request, timeline: start, looks, code, round });
     last = { lut, review: r.review };
     if (r.review.pass || !r.code) break;
@@ -179,6 +179,6 @@ export async function codeGrade(d: CodeDeps, request: string, clipIds: string[])
   if (!last) throw new Error("ما طلع من البرنامج شي.");
   const data = toBase64(last.lut);
   const cmds: Command[] = clips.map((c) => ({ type: "update_clip", clipId: c.id, patch: { grade: { layer: codeLayer(findClip(d.timeline(), c.id)?.clip.grades ?? c.grades), on: true, name: CODE_LAYER_NAME, lut: { name: CODE_LAYER_NAME, size: GRADE_LUT_SIZE, data }, lutAmount: 1 } } }));
-  if (!d.run(cmds, { label: `حيدرة يلوّن: ${request.slice(0, 40)}` })) throw new Error("ما قدرت أحط التلوين على المقاطع.");
+  if (!d.run(cmds, { label: `حيدرا ماكس يلوّن: ${request.slice(0, 40)}` })) throw new Error("ما قدرت أحط التلوين على المقاطع.");
   return { text: `${last.review.pass ? "✅" : "⚠️"} ${last.review.verdict}\n🧑‍💻 حيدرا ماكس · LUT ${GRADE_LUT_SIZE}³ على ${clips.length} مقطع (طبقة «${CODE_LAYER_NAME}»)\n${scoreLine(GRADE_RUBRIC, last.review.scores)}`, done: cmds.length };
 }

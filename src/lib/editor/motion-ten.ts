@@ -4,7 +4,7 @@
 // launch, a beat-synced brand promo); six cover what those don't (teaching, numbers, devotion, quiet luxury, playful,
 // neon hype). Each one rides on a look the engine already draws (`base`, a MOTION_STYLES id) and adds its direction:
 // intensity, structure, type, colour, motion and sound — so the older looks keep working for old projects.
-// Pure: shared by the page (the picker) and حيدرة (his system prompt).
+// Pure: shared by the page (the picker) and حيدرا ماكس (his system prompt).
 
 export interface MotionTen {
   id: string;
@@ -22,7 +22,7 @@ export interface MotionTen {
   /** the engine look it is built on (a MOTION_STYLES id) */
   base: string;
   aliases: string[];
-  /** how حيدرة builds it */
+  /** how حيدرا ماكس builds it */
   craft: string;
 }
 
@@ -182,6 +182,6 @@ export function tenInText(text: string): MotionTen | undefined {
 export const askForTen = (s: MotionTen, topic: string) =>
   s.talk ? `ركّب على فيديو كلامي بأسلوب «${s.ar}»${topic.trim() ? ` — ${topic.trim()}` : ""}` : `موشن جرافيكس بأسلوب «${s.ar}» عن: ${topic.trim()}`;
 
-/** حيدرة's list of the ten (in his system prompt). */
+/** حيدرا ماكس's list of the ten (in his system prompt). */
 export const MOTION_TEN_SKILL = `THE TEN MOTION STYLES («أساليب الموشن») — the only styles the person picks from, each completely different. When the person names one (or picks it in the picker), build in it: set "style" in the storyboard to its BASE look (in brackets) and follow its direction below; for the talking-video one, use "talk" with its layout. The person's own wishes beyond the name (colours, pace, fonts, no sounds…) always win. If they ask for "a motion" with NO style named, do not reach for one of these and do not offer them: compose the piece from the owner's motion skill — its own background per beat and its own arrivals — as that skill orders. Older style names they may still write (from the engine's looks) keep working.
 ${MOTION_TEN.map((s) => `${s.n}. «${s.ar}» [base "${s.base}"${s.talk ? ", on the talking video" : ""}, intensity ${s.energy}] — for: ${s.when}. ${s.craft}`).join("\n")}`;

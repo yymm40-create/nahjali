@@ -91,7 +91,7 @@ const readPieces = (v: unknown) =>
   });
 
 /**
- * حيدرة approved the edits: the exported version goes to سجاد, who puts it in its place in the film. Step one gives
+ * حيدرا ماكس approved the edits: the exported version goes to سجاد, who puts it in its place in the film. Step one gives
  * the upload; step two confirms it (with the pieces that changed, so سجاد knows which seconds).
  */
 export async function approveFixesUrl(p: EditorProject, user: User, b: { assetId?: unknown; mime?: unknown }) {

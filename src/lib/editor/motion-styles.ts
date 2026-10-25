@@ -1,9 +1,9 @@
 // «مهارات الموشن» — the motion-graphics skills by name. Each one is a look the layout engine knows (pace, entrances,
 // transitions between beats, the background, the drawn decorations, the sounds, the palette and fonts) plus the craft
-// حيدرة follows when it is asked for (which beats, how long, the structure). The person writes its name («الريل
-// السريع»، «الرقم الصادم»…) and حيدرة builds the piece in it; anything the person asks for beyond the name wins
-// (another colour, slower, no sounds…), and every clip stays editable. Shown as chips in حيدرة's panel.
-// Pure: shared by the server (حيدرة, the engine) and the page.
+// حيدرا ماكس follows when it is asked for (which beats, how long, the structure). The person writes its name («الريل
+// السريع»، «الرقم الصادم»…) and حيدرا ماكس builds the piece in it; anything the person asks for beyond the name wins
+// (another colour, slower, no sounds…), and every clip stays editable. Shown as chips in حيدرا ماكس's panel.
+// Pure: shared by the server (حيدرا ماكس, the engine) and the page.
 
 import type { BeatKind } from "./motion-build";
 import type { TalkLayout } from "./talk-motion";
@@ -73,7 +73,7 @@ export interface MotionStyle {
   /** the beats it is built from, mostly */
   beats: BeatKind[];
   look: Partial<MotionLook>;
-  /** how حيدرة builds it (for Claude) */
+  /** how حيدرا ماكس builds it (for Claude) */
   craft: string;
   /** a skill for a TALKING video (motion on the person's words, «talk»), with its layout — not a storyboard piece */
   talk?: TalkLayout;
@@ -524,7 +524,7 @@ export interface MoodDef {
   scene: SceneId;
   /** the palette it starts from when the piece has no skill and no palette of its own */
   palette: string;
-  /** how حيدرة writes for it (for Claude and محمد باقر) */
+  /** how حيدرا ماكس writes for it (for Claude and محمد باقر) */
   craft: string;
 }
 
@@ -553,7 +553,7 @@ const PACES: MotionPace[] = ["fast", "normal", "calm"];
 export const THEMES: MotionTheme[] = ["glow", "paper", "bold", "flat", "chart", "rail", "split", "frame", "arabesque", "confetti", "badge", "none", "grid", "film"];
 const ENTRANCES: MotionEntrance[] = ["mixed", "whip", "rise", "right", "fade", "settle", "punch", "blur", "glitch", "flash", "wipe"];
 
-/** A look from حيدرة's JSON (what the person asked to change), unknown values dropped. */
+/** A look from حيدرا ماكس's JSON (what the person asked to change), unknown values dropped. */
 export function readLook(raw: unknown, transitionIds: ReadonlySet<string>): Partial<MotionLook> {
   if (!raw || typeof raw !== "object") return {};
   const o = raw as Record<string, unknown>;
@@ -583,10 +583,10 @@ export function lookOf(style: string | undefined, own: Partial<MotionLook> | und
 /** The person asked for a generated picture in so many words (otherwise a motion piece draws everything itself). */
 export const askedForPicture = (message: string) => /(?:ارسم|ولّد|ولد|اصنع|سوّ|سو|ابي|أبي|أبغى|ابغى|اعمل)\s+(?:لي\s+)?(?:صور[ةه]|رسم[ةه]?|illustration|image)|جي\s*بي\s*تي|gpt\s*image|بصور[ةه] (?:من|مولد)|generate (?:an? )?(?:image|picture)/i.test(message);
 
-/** What حيدرة knows about the feelings (in his system prompt). */
+/** What حيدرا ماكس knows about the feelings (in his system prompt). */
 export const MOODS_SKILL = `MOODS («المشاعر») — the feeling the piece carries; the engine changes tempo, entrances, sounds and draws a scene behind the words for it. When the person says the feeling (or it is plain from the topic), set "mood" in the storyboard (and a beat can carry its own "mood" when the piece changes feeling: a sad beat, then a hopeful one). The person's own words about pace or colour still win.
 ${MOODS.map((m) => `- «${m.ar}» (mood "${m.id}"; also: ${m.aliases.slice(0, 3).join("، ")}) — ${m.craft} Scene: ${m.scene}.`).join("\n")}`;
 
-/** What حيدرة knows about the named skills (in his system prompt). */
+/** What حيدرا ماكس knows about the named skills (in his system prompt). */
 export const MOTION_STYLES_SKILL = `NAMED MOTION SKILLS («مهارات الموشن») — each one a look the engine knows. When the person writes one of these names (or asks for "a motion in the style of …"), build the storyboard in it: set "style":"<id>" and follow its craft. THE PERSON'S OWN WISHES COME FIRST: anything they ask beyond the name (another colour or palette, slower, other fonts, no sounds, no decorations, a different transition, other beats) goes in the storyboard and wins over the skill — "palette"/"colors"/"head"/"body" for colours and fonts, and "look" for the rest: {"pace":"fast"|"normal"|"calm","entrance":"mixed"|"whip"|"rise"|"right"|"fade"|"settle"|"punch"|"blur"|"glitch"|"flash"|"wipe","transitions":["<transition id>",…] ([] = hard cuts),"background":"beat"|"steady","decor":true|false,"sfx":"full"|"soft"|"none","drift":true|false,"align":"center"|"right","theme":<one of the art languages: glow, paper, bold, flat, chart, rail, split, frame, arabesque, confetti, badge, none, grid, film>}. Only write "palette"/"look" fields the person asked for (the skill sets the rest). Say in your reply which skill you used and that they can change anything in it.
 ${MOTION_STYLES.map((s) => (s.talk ? `- «${s.ar}» (also: ${s.aliases.slice(0, 3).join("، ")}) — ${s.craft} Not a storyboard: write "talk" with "layout":"${s.talk}" (or the talk_motion request first when the clip has no "speech").` : `- «${s.ar}» (style "${s.id}"; also: ${s.aliases.slice(0, 3).join("، ")}) — ${s.craft} Beats: ${s.beats.join(", ")}.`)).join("\n")}`;

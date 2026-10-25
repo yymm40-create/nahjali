@@ -3,7 +3,7 @@ import type { Chat, Turn } from "@/lib/content/chats";
 
 // One message to «محمد باقر» end to end, with Claude, the database and the editor replaced by stand-ins: what he is
 // given (the catalogues, what the person picked, the state of an earlier carousel) and what the site does with his
-// answer (the buttons, the carousel to draw, drawing slides again, the hand-over to حيدرة).
+// answer (the buttons, the carousel to draw, drawing slides again, the hand-over to حيدرا ماكس).
 const claude = vi.hoisted(() => ({ answer: null as unknown, calls: [] as { system: string; turns: { role: string; content: unknown }[] }[] }));
 const db = vi.hoisted(() => ({ chat: null as unknown, editorProjects: [] as unknown[], editorChats: [] as unknown[], assets: [] as unknown[] }));
 

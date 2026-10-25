@@ -197,7 +197,7 @@ describe("grading layers", () => {
   });
 });
 
-describe("grading by «حيدرة»", () => {
+describe("grading by «حيدرا ماكس»", () => {
   const assets = lib(video("a", 5000));
   const start = () => applyAll(emptyTimeline("16:9"), [{ type: "add_clip", assetId: "a" }], assets).timeline;
   const clipOf = (t: ReturnType<typeof start>) => t.tracks.find((x) => x.kind === "video")!.clips[0];

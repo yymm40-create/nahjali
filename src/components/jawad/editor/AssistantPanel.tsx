@@ -49,7 +49,7 @@ interface Msg {
   text: string;
   done?: number;
   suggestions?: { prompt: string; why: string }[];
-  /** clickable answers under حيدرة's last reply (with «✍️ اكتب إجابة مختلفة») */
+  /** clickable answers under حيدرا ماكس's last reply (with «✍️ اكتب إجابة مختلفة») */
   quick?: string[];
   options?: { label: string; choices: string[]; multi: boolean }[];
   /** «اصنع لي…» that cost coins: shown with their price, started by a tap */
@@ -128,7 +128,7 @@ export default function AssistantPanel({
   diag,
   onLab,
 }: {
-  /** «🎬 مختبر الموشن»: opens the lab with a brief حيدرة wrote */
+  /** «🎬 مختبر الموشن»: opens the lab with a brief حيدرا ماكس wrote */
   onLab?: (brief: string, seconds: number, clipId?: string | null) => void;
   /** a request sent from a button (sent once per `n`) */
   ask?: { text: string; n: number } | null;
@@ -152,7 +152,7 @@ export default function AssistantPanel({
   /** the conversation over the whole editor (a computer) */
   big?: boolean;
   onBig?: () => void;
-  /** حيدرة's place on a computer: beside the preview, the whole side, or half the screen */
+  /** حيدرا ماكس's place on a computer: beside the preview, the whole side, or half the screen */
   mode?: "dock" | "tall" | "half";
   onMode?: (m: "dock" | "tall" | "half") => void;
   /** «فوق التايملاين»: he sits over the timeline (docked), and this button puts him there / back to the popup */
@@ -188,14 +188,14 @@ export default function AssistantPanel({
     busyRef.current = v;
     setBusyState(v);
   };
-  // «📎 مراجع»: files attached to the next message (uploaded to the library, seen by حيدرة with the message)
+  // «📎 مراجع»: files attached to the next message (uploaded to the library, seen by حيدرا ماكس with the message)
   const [pending, setPending] = useState<EditorAsset[]>([]);
   const refUploads = useUploads(projectId, (a) => {
     onAssets([a]);
     setPending((x) => (x.some((y) => y.id === a.id) ? x : [...x, a].slice(-6)));
   });
   const fileRef = useRef<HTMLInputElement>(null);
-  // who reads حيدرة's spoken replies (this device): any provider, or one of the person's own voices
+  // who reads حيدرا ماكس's spoken replies (this device): any provider, or one of the person's own voices
   const [voicePick, setVoicePick] = useState("auto");
   useEffect(() => setVoicePick(replyVoice()), []);
   // the timeline as it is now (what was made arrives after Claude's own steps were applied)
@@ -203,13 +203,13 @@ export default function AssistantPanel({
   useEffect(() => {
     tlRef.current = tl;
   }, [tl]);
-  // everything حيدرة applies goes through here: each clip's background and colour key are remembered first, so
+  // everything حيدرا ماكس applies goes through here: each clip's background and colour key are remembered first, so
   // «↩️ رجّع الخلفية لما كانت» (its backdrop tab) can put them back if they ever come out broken
   const run: Run = (c, o) => {
     rememberBackdrops(tlRef.current);
     return runEditor(c, o);
   };
-  // «🩺 تشخيص»: the next message asks حيدرة to find what went wrong (the owner only)
+  // «🩺 تشخيص»: the next message asks حيدرا ماكس to find what went wrong (the owner only)
   const [diagOn, setDiagOn] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => end.current?.scrollIntoView({ block: "end" }), [msgs, busy]);
@@ -251,7 +251,7 @@ export default function AssistantPanel({
   const long = msgs.length >= LONG.messages || msgs.reduce((n, m) => n + m.text.length, 0) >= LONG.chars;
   const handOff = async () => {
     if (busy || !msgs.length) return;
-    setBusy("حيدرة يكتب الهاندوف ويبدأ محادثة جديدة…");
+    setBusy("حيدرا ماكس يكتب الهاندوف ويبدأ محادثة جديدة…");
     try {
       const c = await postJson<Chat>(`/api/jawad/editor/projects/${projectId}`, { action: "handoff", messages: msgs.filter((m) => !m.error), handoff: chat.handoff, model: claude.id });
       setMsgs([]);
@@ -292,7 +292,7 @@ export default function AssistantPanel({
   };
   const lookAt = async () => {
     if (selected.length !== 1) return null;
-    if (!seenFrames.current.size) setBusy("حيدرة يشوف المقطع المحدد…");
+    if (!seenFrames.current.size) setBusy("حيدرا ماكس يشوف المقطع المحدد…");
     return lookAtClip(tl, selected[0]);
   };
   /** What «Claude Code» needs from the panel: the timeline now, the files, the way to apply, and the eyes. */
@@ -310,12 +310,12 @@ export default function AssistantPanel({
     look: lookAtClip,
     graded: gradedFrames,
   });
-  /** «يشيك التلوين»: rounds of look → judge → correct, the result told only when حيدرة is satisfied (or out of rounds). */
+  /** «يشيك التلوين»: rounds of look → judge → correct, the result told only when حيدرا ماكس is satisfied (or out of rounds). */
   const checkColour = async (clipId: string, request: string, start: Timeline) => {
     let at = start;
     let steps = 0;
     for (let round = 1; round <= MAX_CHECKS; round++) {
-      setBusy(round === 1 ? "حيدرة يشيك نتيجة التلوين (الصورة والسكوبات)…" : `حيدرة يعيد يشيك بعد التعديل (جولة ${round})…`);
+      setBusy(round === 1 ? "حيدرا ماكس يشيك نتيجة التلوين (الصورة والسكوبات)…" : `حيدرا ماكس يعيد يشيك بعد التعديل (جولة ${round})…`);
       const look = await lookAtClip(at, clipId);
       if (!look) return;
       const c = await postJson<{ ok: boolean; verdict: string; commands: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "grade_check", clipId, round, request, timeline: at, look, model: claude.id });
@@ -323,21 +323,21 @@ export default function AssistantPanel({
         setMsgs((m) => [...m, { role: "assistant", text: `✅ ${c.verdict}`, done: steps || undefined }]);
         return;
       }
-      const applied = run(c.commands, { label: `حيدرة يضبط التلوين (${round})` });
+      const applied = run(c.commands, { label: `حيدرا ماكس يضبط التلوين (${round})` });
       if (!applied) return;
       at = (applied as { timeline: Timeline }).timeline;
       steps += c.commands.length;
       if (round === MAX_CHECKS) setMsgs((m) => [...m, { role: "assistant", text: c.verdict, done: steps }]);
     }
   };
-  /** Sends a request; resolves with حيدرة's reply (null when nothing was answered). `spoken`: said by voice. */
+  /** Sends a request; resolves with حيدرا ماكس's reply (null when nothing was answered). `spoken`: said by voice. */
   // one request at a time: a second Enter (or a click) before the page shows «busy» used to send it twice
   const sendingRef = useRef(false);
   // «⏹️ وقّف»: the request in flight is dropped (nothing it answers is applied or made)
   const abortRef = useRef<AbortController | null>(null);
   // a request that continues by itself once this one is done (the captions written → the motion on the words)
   const followUp = useRef<string | null>(null);
-  /** «👁️»: the clip حيدرة asked to watch whole before he goes on (his next request carries it) */
+  /** «👁️»: the clip حيدرا ماكس asked to watch whole before he goes on (his next request carries it) */
   const watchNext = useRef<string | null>(null);
   /** clips already watched whole (kept while the clip's part stays the same) */
   const watched = useRef(new Map<string, Watch>());
@@ -359,7 +359,7 @@ export default function AssistantPanel({
     }
   };
   const [canStop, setCanStop] = useState(false);
-  // the person's own voices made here (a voiceprint): offered for حيدرة's spoken replies
+  // the person's own voices made here (a voiceprint): offered for حيدرا ماكس's spoken replies
   const [ownVoices, setOwnVoices] = useState<{ value: string; name: string }[]>([]);
   const stop = () => {
     abortRef.current?.abort();
@@ -404,7 +404,7 @@ export default function AssistantPanel({
     setMsgs((m) => [...m, { role: "assistant", text: `✅ صار عندك صوت «${r.voice.name}» في مكتبتك. قل لي «اقرأ هالنص بصوت ${r.voice.name}»، أو اختره لردودي من 🔊 وقت المكالمة.` }]);
   };
   // «المربع الصغير» / «فوق كلامي»: the face in the talking video (found once per file, here in the browser), the
-  // talking clips moved so a crop never cuts it, and its place on the frame sent to حيدرة (the box follows it, the
+  // talking clips moved so a crop never cuts it, and its place on the frame sent to حيدرا ماكس (the box follows it, the
   // cues keep off it)
   const faces = useRef(new Map<string, { face: FaceBox; width: number; height: number } | null>());
   const talkFace = async (message: string): Promise<{ face: FaceBox; timeline: Timeline | null } | null> => {
@@ -436,7 +436,7 @@ export default function AssistantPanel({
     const message = words.trim() || (pending.length ? "شوف المراجع اللي أرفقتها" : "");
     if (!message || readOnly) return null;
     if (busyRef.current || sendingRef.current) {
-      diagNote(`حيدرة: طلب ما انرسل لأن طلب ثاني شغّال («${message.slice(0, 40)}»)`, "note");
+      diagNote(`حيدرا ماكس: طلب ما انرسل لأن طلب ثاني شغّال («${message.slice(0, 40)}»)`, "note");
       return null;
     }
     sendingRef.current = true;
@@ -460,11 +460,11 @@ export default function AssistantPanel({
     setMsgs((m) => [...m, { role: "user", text: `${diag && diagOn ? `🩺 ${message}` : message}${pending.length ? `\n📎 ${pending.map((a) => a.name).join("، ")}` : ""}` }]);
     if (diag && diagOn) {
       try {
-        setBusy("حيدرة يفحص المحرر والملفات والسجل…");
+        setBusy("حيدرا ماكس يفحص المحرر والملفات والسجل…");
         const report = await diagReport(diag());
         const r = await postJson<{ reply: string; commands?: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "diagnose", message, report, timeline: tl, selected, playhead: player?.ms ?? 0, shot: previewShot() }, signal);
         // what he diagnosed in the timeline, he fixes now
-        if (r.commands?.length) run(r.commands, { label: "حيدرة يعالج" });
+        if (r.commands?.length) run(r.commands, { label: "حيدرا ماكس يعالج" });
         setMsgs((m) => [...m, { role: "assistant", text: r.reply }]);
         reply = r.reply;
       } catch (e) {
@@ -477,22 +477,22 @@ export default function AssistantPanel({
     try {
       setBusy("نسمع الصوت ونلقى السكتات…");
       const quiet = await quietParts(tl, assets);
-      // the clip the person chose: watched whole when the request is about what happens in it (or حيدرة asked to),
+      // the clip the person chose: watched whole when the request is about what happens in it (or حيدرا ماكس asked to),
       // else a few of its moments
       const toWatch = watchNext.current ?? (selected.length === 1 && asksToSee(message) ? selected[0] : null);
       watchNext.current = null;
       const watch = toWatch ? await watchWhole(tl, toWatch, signal) : null;
       const look = watch ? null : await lookAt();
       if (signal.aborted) throw Object.assign(new Error("⏹️ وقّفت الطلب."), { name: "AbortError" });
-      // the attached videos: a few of their moments, so حيدرة sees what is in them (pictures go as they are)
+      // the attached videos: a few of their moments, so حيدرا ماكس sees what is in them (pictures go as they are)
       const refLooks: { id: string; frames: { t: number; data: string }[] }[] = [];
       for (const a of pending.filter((x) => x.kind === "video" && x.url)) {
-        setBusy(`حيدرة يشوف المرجع «${a.name}»…`);
+        setBusy(`حيدرا ماكس يشوف المرجع «${a.name}»…`);
         const frames = await framesOf(a.url!, "video", 0, a.durationMs ?? 3000, 3).catch(() => []);
         if (frames.length) refLooks.push({ id: a.id, frames: frames.map((f) => ({ t: f.t, data: f.data })) });
       }
       const found = await talkFace(message).catch(() => null);
-      setBusy("حيدرة يشتغل على التايملاين…");
+      setBusy("حيدرا ماكس يشتغل على التايملاين…");
       const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; quick?: string[]; options?: { label: string; choices: string[]; multi: boolean }[]; requests?: MakeRequest[]; checkClipId?: string | null; assets?: EditorAsset[] }>(`/api/jawad/editor/projects/${projectId}`, {
         action: "assistant",
         model: claude.id,
@@ -518,12 +518,12 @@ export default function AssistantPanel({
       // the art a motion piece drew for itself: in the library before the commands that place it
       if (r.assets?.length) onAssets(r.assets);
       if (r.commands.length) {
-        const applied = run(r.commands, { label: `حيدرة: ${message.slice(0, 40)}` });
+        const applied = run(r.commands, { label: `حيدرا ماكس: ${message.slice(0, 40)}` });
         done = applied ? r.commands.length : 0;
         if (applied) now = (applied as { timeline: Timeline }).timeline;
       }
       setMsgs((m) => [...m, { role: "assistant", text: r.reply?.trim() || (done ? `تم ✓ نفذت ${done} خطوة.` : "ما وصلني رد هالمرة؛ أعد رسالتك وأنا أكمل."), done, suggestions: r.suggestions, ...(r.quick?.length ? { quick: r.quick } : {}), ...(r.options?.length ? { options: r.options } : {}) }]);
-      // a colour change: حيدرة looks at the result (pictures and scopes) and corrects it until it is right
+      // a colour change: حيدرا ماكس looks at the result (pictures and scopes) and corrects it until it is right
       if (r.checkClipId && done) await checkColour(r.checkClipId, message, now);
       // what Claude asked to be made: made one by one, then placed (each its own undo)
       for (const q of r.requests ?? []) {
@@ -549,7 +549,7 @@ export default function AssistantPanel({
             run(placeMusic(a.id, q.at), { label: "موسيقى" });
           } else if (q.kind === "make" && q.plan) {
             const plan = q.plan;
-            // حيدرة → جواد: what the robot asks جواد to make is made at once, with no permission step (the price is
+            // حيدرا ماكس → جواد: what the robot asks جواد to make is made at once, with no permission step (the price is
             // told after). Only what the person asks جواد for directly, in his own form, waits for their «توليد».
             setBusy(`أبدأ أصنع «${plan.name}»…`);
             await startMaking(projectId, plan);
@@ -567,7 +567,7 @@ export default function AssistantPanel({
               run([{ type: "update_clip", clipId: q.clipId, patch: { grade: { layer, mask: { ...mask, invert } } } }], { label: `ماسك ذكي: ${q.prompt.slice(0, 30)}` });
             }
           } else if (q.kind === "captions") {
-            // listened to and written here, then حيدرة's own follow-ups (font, place, entrance…) on the new captions
+            // listened to and written here, then حيدرا ماكس's own follow-ups (font, place, entrance…) on the new captions
             const now = tlRef.current;
             const all = captionSources(now, assets);
             const sources = q.clipId ? all.filter((x) => x.clip.id === q.clipId) : all;
@@ -575,17 +575,17 @@ export default function AssistantPanel({
             const items = q.poem?.trim() ? await poemCaptions(projectId, sources[0], q.poem, setBusy) : (await spokenCaptions(projectId, now, sources, q.lang ?? "ar", setBusy)).items;
             const before = new Set(now.tracks.map((t) => t.id));
             const style = (["karaoke", "classic", "box", "neon", "poem"] as const).find((k) => k === q.captionStyle) ?? (q.poem?.trim() ? "poem" : "karaoke");
-            const made = run({ type: "add_captions", items, style, name: q.poem?.trim() ? "الأبيات" : "كابشن" }, { label: `كابشن من حيدرة (${items.length})` }) as { timeline: Timeline } | null;
+            const made = run({ type: "add_captions", items, style, name: q.poem?.trim() ? "الأبيات" : "كابشن" }, { label: `كابشن من حيدرا ماكس (${items.length})` }) as { timeline: Timeline } | null;
             const track = made?.timeline.tracks.find((t) => t.kind === "text" && !before.has(t.id));
             const more = track ? expandThen(q.then ?? [], track.id, track.clips.map((c) => c.id)) : [];
             // all together (one undo); if one of them can't run, the others still do, one by one
-            if (track && more.length && !run(more, { label: "حيدرة يكمّل على الكابشن" })) for (const c of more) run(c, { label: "حيدرة يكمّل على الكابشن" });
+            if (track && more.length && !run(more, { label: "حيدرا ماكس يكمّل على الكابشن" })) for (const c of more) run(c, { label: "حيدرا ماكس يكمّل على الكابشن" });
           } else if (q.kind === "code_edit" || q.kind === "code_grade") {
-            // «Claude Code»: حيدرة's program runs here, he checks what it did, and only then is it applied
+            // «Claude Code»: حيدرا ماكس's program runs here, he checks what it did, and only then is it applied
             const out = q.kind === "code_edit" ? await codeEdit(codeDeps(signal), q.prompt) : await codeGrade(codeDeps(signal), q.prompt, q.clipId.split(",").map((x) => x.trim()).filter(Boolean));
             setMsgs((m) => [...m, { role: "assistant", text: out.text, done: out.done }]);
           } else if (q.kind === "motion_lab") {
-            // «🎬 مختبر الموشن»: the lab opens on its conversation with حيدرة's brief and writes the scenario by itself, on their filmed clip when he named one
+            // «🎬 مختبر الموشن»: the lab opens on its conversation with حيدرا ماكس's brief and writes the scenario by itself, on their filmed clip when he named one
             const onClip = q.clipId && findClip(tlRef.current, q.clipId) ? q.clipId : null;
             onLab?.(q.prompt, Number(q.seconds) || 15, onClip);
           } else if (q.kind === "watch") {
@@ -593,7 +593,7 @@ export default function AssistantPanel({
             watchNext.current = q.clipId;
             followUp.current = `👁️ شفت المقطع كامل الحين. كمّل طلبي: ${message}`;
           } else if (q.kind === "talk_motion") {
-            // the words with their times first (the captions of the talking video), then حيدرة is asked again by itself
+            // the words with their times first (the captions of the talking video), then حيدرا ماكس is asked again by itself
             const now = tlRef.current;
             const f = findClip(now, q.clipId);
             const sources = captionSources(now, assets).filter((x) => !f?.clip.assetId || x.clip.assetId === f.clip.assetId);
@@ -632,7 +632,7 @@ export default function AssistantPanel({
     return reply;
   };
 
-  // ───────── talking with حيدرة ─────────
+  // ───────── talking with حيدرا ماكس ─────────
   const [recording, setRecording] = useState(false);
   const [talk, setTalk] = useState<null | "listening" | "hearing" | "thinking" | "speaking">(null);
   const [level, setLevel] = useState(0);
@@ -687,7 +687,7 @@ export default function AssistantPanel({
       voiceError(e);
     }
   };
-  /** 🎧 a conversation: حيدرة listens, does it, answers aloud, and listens again — until it is turned off. */
+  /** 🎧 a conversation: حيدرا ماكس listens, does it, answers aloud, and listens again — until it is turned off. */
   const conversation = async () => {
     if (talkRef.current) {
       talkRef.current = false;
@@ -743,14 +743,14 @@ export default function AssistantPanel({
       <div className="flex items-center gap-2.5 border-b border-jw-line px-3 py-2.5">
         <span className="jw-orb h-9 w-9 shrink-0" data-busy={!!busy} aria-hidden />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-bold">حيدرة · مساعدك في المونتاج</span>
+          <span className="block truncate text-sm font-bold">حيدرا ماكس · مساعدك في المونتاج</span>
           <span className="flex items-center gap-1 text-[11px] text-jw-muted" aria-live="polite">
             <span className={`h-1.5 w-1.5 rounded-full ${busy ? "animate-pulse bg-jw-warn" : "bg-jw-ok"}`} />
             {busy ? "يشتغل…" : "جاهز يخدمك"}
           </span>
         </span>
         {msgs.length > 0 && (
-          <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${long ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} disabled={!!busy || readOnly} onClick={handOff} title="حيدرة يلخّص المحادثة (هاندوف) ويبدأ محادثة جديدة منها">
+          <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${long ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} disabled={!!busy || readOnly} onClick={handOff} title="حيدرا ماكس يلخّص المحادثة (هاندوف) ويبدأ محادثة جديدة منها">
             <Icon name="retry" size={13} /> محادثة جديدة
           </button>
         )}
@@ -765,7 +765,7 @@ export default function AssistantPanel({
           </span>
         )}
         {onMode && !big && (
-          <span className="hidden items-center rounded-full border border-jw-line p-0.5 lg:flex" role="radiogroup" aria-label="مكان حيدرة">
+          <span className="hidden items-center rounded-full border border-jw-line p-0.5 lg:flex" role="radiogroup" aria-label="مكان حيدرا ماكس">
             {(
               [
                 ["dock", "عادي", "جنب المعاينة"],
@@ -781,7 +781,7 @@ export default function AssistantPanel({
         )}
         {onDock && (
           <span className="hidden lg:contents">
-            <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${docked ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} onClick={onDock} aria-pressed={!!docked} title={docked ? "رجّع حيدرة نافذة عائمة" : "حط حيدرة فوق التايملاين وعدّل عليه مباشرة"}>
+            <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${docked ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} onClick={onDock} aria-pressed={!!docked} title={docked ? "رجّع حيدرا ماكس نافذة عائمة" : "حط حيدرا ماكس فوق التايملاين وعدّل عليه مباشرة"}>
               <Icon name="frames" size={14} /> {docked ? "نافذة" : "فوق التايملاين"}
             </button>
           </span>
@@ -822,7 +822,7 @@ export default function AssistantPanel({
         {!msgs.length && chat.loaded && (
           <div className="space-y-3">
             <div className="jw-select-text max-w-[92%] rounded-2xl rounded-ss-sm bg-jw-surface-2 px-3 py-2 text-sm leading-6">
-              هلا! أنا حيدرة، مساعدك في المونتاج 👋
+              هلا! أنا حيدرا ماكس، مساعدك في المونتاج 👋
               <span className="mt-1 block text-xs leading-6 text-jw-muted">قل لي وش تبي بكلامك وأنا أعدّل التايملاين: أقص السكتات، أرتّب، أحط انتقالات ونصوص وكابشن، وأنظّف الصوت. كل اللي أسويه تتراجع عنه بضغطة.</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -909,7 +909,7 @@ export default function AssistantPanel({
         ))}
         {long && !busy && (
           <div className="rounded-xl border border-jw-warn/40 bg-jw-warn/10 p-2.5 text-xs">
-            المحادثة طوّلت. خلّ حيدرة يكتب هاندوف لكل اللي اتفقنا عليه ويبدأ محادثة جديدة منه — يتذكّر ذوقك وقراراتك ويرد أسرع.
+            المحادثة طوّلت. خلّ حيدرا ماكس يكتب هاندوف لكل اللي اتفقنا عليه ويبدأ محادثة جديدة منه — يتذكّر ذوقك وقراراتك ويرد أسرع.
             <button type="button" className="jw-btn jw-btn-primary mt-2 !min-h-8 w-full text-xs" disabled={readOnly} onClick={handOff}>
               سوّ هاندوف وابدأ محادثة جديدة
             </button>
@@ -927,7 +927,7 @@ export default function AssistantPanel({
         const as = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
         return as && as.kind !== "audio" && f!.track.kind !== "audio" ? (
           <p className="flex items-center gap-1.5 border-t border-jw-line px-3 pt-1.5 text-[11px] text-jw-muted">
-            <Icon name="eye" size={13} className="text-jw-accent" /> حيدرة بيشوف المقطع المحدد «{as.name}» مع رسالتك
+            <Icon name="eye" size={13} className="text-jw-accent" /> حيدرا ماكس بيشوف المقطع المحدد «{as.name}» مع رسالتك
           </p>
         ) : null;
       })()}
@@ -946,8 +946,8 @@ export default function AssistantPanel({
                 : talk === "hearing"
                   ? "أكتب كلامك…"
                   : talk === "thinking"
-                    ? "حيدرة يشتغل…"
-                    : "🔊 حيدرة يتكلم…"}
+                    ? "حيدرا ماكس يشتغل…"
+                    : "🔊 حيدرا ماكس يتكلم…"}
           </span>
           {talk === "speaking" && (
             <button type="button" className="jw-btn jw-btn-quiet !min-h-7 !px-2 text-[11px]" onClick={hush}>
@@ -957,8 +957,8 @@ export default function AssistantPanel({
           <select
             className="jw-select !min-h-7 !py-0 text-[11px]"
             value={voicePick}
-            aria-label="صوت ردود حيدرة"
-            title="🔊 مين يقرأ ردود حيدرة (كلاود يكتب الرد، ومزوّد الصوت يقرأه)"
+            aria-label="صوت ردود حيدرا ماكس"
+            title="🔊 مين يقرأ ردود حيدرا ماكس (كلاود يكتب الرد، ومزوّد الصوت يقرأه)"
             onChange={(e) => {
               setVoicePick(e.target.value);
               try {
@@ -1029,7 +1029,7 @@ export default function AssistantPanel({
             e.target.value = "";
           }}
         />
-        <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon shrink-0" disabled={readOnly} onClick={() => fileRef.current?.click()} aria-label="أرفق مراجع" title="📎 أرفق صور أو فيديو أو صوت مع رسالتك: حيدرة يشوفها ويستخدمها">
+        <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon shrink-0" disabled={readOnly} onClick={() => fileRef.current?.click()} aria-label="أرفق مراجع" title="📎 أرفق صور أو فيديو أو صوت مع رسالتك: حيدرا ماكس يشوفها ويستخدمها">
           📎
         </button>
         <textarea
@@ -1067,15 +1067,15 @@ export default function AssistantPanel({
               disabled={readOnly || recording || (!!busy && !talk)}
               onClick={() => void conversation()}
               aria-pressed={!!talk}
-              aria-label={talk ? "أنهِ المكالمة" : "كلّم حيدرة بالصوت"}
-              title="🎧 كلّم حيدرة: تتكلم ويرد عليك بصوته وينفذ طلبك، لين توقفه"
+              aria-label={talk ? "أنهِ المكالمة" : "كلّم حيدرا ماكس بالصوت"}
+              title="🎧 كلّم حيدرا ماكس: تتكلم ويرد عليك بصوته وينفذ طلبك، لين توقفه"
             >
               {talk ? <Icon name="stop" /> : <span aria-hidden>🎧</span>}
             </button>
           </>
         )}
         {diag && (
-          <button type="button" className={`jw-btn jw-btn-icon shrink-0 ${diagOn ? "!border-jw-accent bg-jw-accent/15 text-jw-accent" : "jw-btn-quiet"}`} onClick={() => setDiagOn((v) => !v)} aria-pressed={diagOn} aria-label="تشخيص" title="🩺 تشخيص (لك بس): حيدرة يفحص السجل والملفات والجهاز ويقول وش المشكلة، ويكتب رسالة للمطوّر">
+          <button type="button" className={`jw-btn jw-btn-icon shrink-0 ${diagOn ? "!border-jw-accent bg-jw-accent/15 text-jw-accent" : "jw-btn-quiet"}`} onClick={() => setDiagOn((v) => !v)} aria-pressed={diagOn} aria-label="تشخيص" title="🩺 تشخيص (لك بس): حيدرا ماكس يفحص السجل والملفات والجهاز ويقول وش المشكلة، ويكتب رسالة للمطوّر">
             🩺
           </button>
         )}
@@ -1097,7 +1097,7 @@ const noSubscribe = () => () => {};
 
 /** A reply as written: **bold**, and ```blocks``` (the designer's prompts) shown as copyable English blocks. */
 /**
- * «الخيارات» — the groups حيدرة asks with: each a short question and its choices as buttons (several at once when it
+ * «الخيارات» — the groups حيدرا ماكس asks with: each a short question and its choices as buttons (several at once when it
  * says so). The person's picks go back as ONE message, so a whole brief is answered with presses, not typing.
  */
 function OptionGroups({ groups, disabled, onSend }: { groups: { label: string; choices: string[]; multi: boolean }[]; disabled?: boolean; onSend: (words: string) => void }) {
