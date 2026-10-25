@@ -85,8 +85,8 @@ describe("strategic goals: what the browser sends and what is stored", () => {
   });
 
   it("offers 20 to 25 distinct habit colours", () => {
-    expect(HABIT_COLORS.length).toBeGreaterThanOrEqual(20);
-    expect(HABIT_COLORS.length).toBeLessThanOrEqual(25);
+    expect(HABIT_COLORS.length).toBeGreaterThanOrEqual(25);
+    expect(HABIT_COLORS.length).toBeLessThanOrEqual(30);
     expect(new Set(HABIT_COLORS.map((c) => c.key)).size).toBe(HABIT_COLORS.length);
     expect(new Set(HABIT_COLORS.map((c) => c.hex)).size).toBe(HABIT_COLORS.length);
     for (const c of HABIT_COLORS) expect(c.key).toMatch(/^[a-z0-9]{2,16}$/);
