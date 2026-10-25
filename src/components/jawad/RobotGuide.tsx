@@ -73,8 +73,13 @@ export default function RobotGuide() {
   useEffect(() => {
     if (!open) return;
     const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const away = (e: PointerEvent) => !(e.target as Element | null)?.closest?.(".rg-bubble, .rg-pop") && setOpen(false);
     window.addEventListener("keydown", esc);
-    return () => window.removeEventListener("keydown", esc);
+    window.addEventListener("pointerdown", away);
+    return () => {
+      window.removeEventListener("keydown", esc);
+      window.removeEventListener("pointerdown", away);
+    };
   }, [open]);
 
   if (!robot || !pos) return null;
@@ -96,13 +101,21 @@ export default function RobotGuide() {
     drag.current = null;
     if (!d) return;
     if (d.moved) write(POS, JSON.stringify(pos));
-    else setOpen(true);
+    else setOpen((v) => !v);
   };
   const fold = (v: boolean) => {
     setFolded(v);
+    if (v) setOpen(false);
     write(FOLD, v ? "1" : "0");
   };
   const leftSide = pos.x < window.innerWidth / 2;
+  // the intro is part of the icon: a small card attached to it (above it low on the screen, below it high), on its side
+  const POP_W = Math.min(264, window.innerWidth - 24);
+  const popAt: React.CSSProperties = {
+    width: POP_W,
+    left: Math.min(Math.max(8, leftSide ? pos.x : pos.x + SIZE - POP_W), window.innerWidth - POP_W - 8),
+    ...(pos.y > window.innerHeight / 2 ? { bottom: window.innerHeight - pos.y + 8 } : { top: pos.y + SIZE + 24 }),
+  };
   const style = { ["--rg-a" as string]: robot.tint[0], ["--rg-b" as string]: robot.tint[1] } as React.CSSProperties;
 
   return (
@@ -132,37 +145,19 @@ export default function RobotGuide() {
         </div>
       )}
 
-      {open && (
-        <div className="rg-back" role="dialog" aria-modal="true" aria-label={`تعرّف على ${robot.name}`} dir="rtl" onClick={() => setOpen(false)}>
-          <div className="rg-card" style={style} onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="rg-x" onClick={() => setOpen(false)} aria-label="إغلاق">✕</button>
-            <div className="rg-hero">
-              <span className="rg-big" aria-hidden><RobotFace id={robot.id} size={60} /></span>
-              <div>
-                <h2>هلا! أنا {robot.name}</h2>
-                <p>{robot.role}</p>
-              </div>
-            </div>
-            <h3>وش أسوي لك؟</h3>
-            <ul>
-              {robot.does.map((d) => (
-                <li key={d}>{d}</li>
-              ))}
-            </ul>
-            <h3>كيف نبدأ؟</h3>
-            <ol>
-              {robot.start.map((s, i) => (
-                <li key={s}>
-                  <b>{i + 1}</b>
-                  <span>{s}</span>
-                </li>
-              ))}
-            </ol>
-            <button type="button" className="rg-go" onClick={() => setOpen(false)}>
-              يلا نبدأ
-            </button>
-            <p className="rg-hint">تلقاني في الزر الصغير بوجهي، اسحبه لأي مكان أو صغّره على الجنب.</p>
-          </div>
+      {open && !folded && (
+        <div className="rg-pop" style={{ ...style, ...popAt }} role="dialog" aria-label={`تعرّف على ${robot.name}`} dir="rtl">
+          <button type="button" className="rg-x" onClick={() => setOpen(false)} aria-label="إغلاق">✕</button>
+          <h2>هلا! أنا {robot.name}</h2>
+          <p className="rg-role">{robot.role}</p>
+          <ul>
+            {robot.does.map((d) => (
+              <li key={d}>{d}</li>
+            ))}
+          </ul>
+          <p className="rg-start">
+            <b>نبدأ؟</b> {robot.start.join(" ← ")}
+          </p>
         </div>
       )}
     </>

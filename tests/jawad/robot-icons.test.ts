@@ -18,4 +18,11 @@ describe("one icon per robot", () => {
     expect(guide).toMatch(/read\(FOLD\) !== "0"/);
     expect(read("src/components/MovableBubble.tsx")).toMatch(/jw-bubble-fold:\$\{id\}`\) !== "0"/);
   });
+
+  it("the introduction is one small card attached to the icon, not a full-screen window", () => {
+    const guide = read("src/components/jawad/RobotGuide.tsx");
+    expect(guide).toMatch(/className="rg-pop"/);
+    expect(guide).not.toMatch(/rg-back|rg-card|aria-modal/);
+    expect(read("src/components/jawad/robot-guide.css")).not.toMatch(/\.rg-back/);
+  });
 });
