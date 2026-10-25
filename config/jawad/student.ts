@@ -8,6 +8,11 @@ export const STUDENT = {
   bucket: "student",
   /** A project is deleted this many days after its last activity (the owner's choice). */
   keepDays: 30,
+  /**
+   * The Claude model of every step of «الطالب الذكي» (the owner's choice, 25 October 2026: «الرشيق» as the default, because a
+   * 4-page project cost ~40 riyals on «الأصيل»). Its steps carry no site knowledge either (see `lightSystem`).
+   */
+  model: "claude-sonnet-5-5",
   /** No product limit on size, pages or pictures (the owner's choice); these are only how work is cut into steps. */
   pdfPagesPerCall: 4,
   understandingChunkChars: 40_000,

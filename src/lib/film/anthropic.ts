@@ -62,11 +62,22 @@ export const siteSystem = (task: string, cache = true, leader = false) => {
   // the person's memory («ذاكرتي»), inside a robot's turn: after the cached task, so the cache still holds
   const memory = currentMemory();
   return [
-    { type: "text", text: JAWAD_KNOWLEDGE },
+    // its own cache mark: the site's text is ~60k tokens and the same in every call, so a call with a DIFFERENT task still
+    // reads it from the cache (cheap) instead of writing it again with the task
+    { type: "text", text: JAWAD_KNOWLEDGE, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) },
     ...(leader ? [{ type: "text", text: LEADER_BLOCK }] : []),
     { type: "text", text: task, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) },
     ...(memory ? [{ type: "text", text: memoryBlock(memory) }] : []),
   ];
+};
+
+/**
+ * A system prompt WITHOUT the site's knowledge: for the work that never needs to know the platform (a student's material
+ * read, understood, planned, written or designed). The knowledge is ~60k tokens a call; leaving it out is the biggest saving.
+ */
+export const lightSystem = (task: string, cache = true) => {
+  const memory = currentMemory();
+  return [{ type: "text", text: task, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) }, ...(memory ? [{ type: "text", text: memoryBlock(memory) }] : [])];
 };
 
 /** Whether this e-mail is the owner's (the robots then read the leader block). */

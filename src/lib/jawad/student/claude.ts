@@ -1,10 +1,15 @@
 // «الطالب الذكي» — Claude calls. Server only. Same model and price table as the rest of the site (lib/film/anthropic),
 // plus what the branch needs: PDF pages as documents, and Anthropic's web search tool for research.
 
-import { CLAUDE_MODEL, claudeCost, siteSystem, type ClaudeUsage } from "@/lib/film/anthropic";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { claudeCost, lightSystem, siteSystem, withModel, type ClaudeUsage } from "@/lib/film/anthropic";
 import { STUDENT } from "@config/jawad/student";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
+import { claudeModelOf, type ClaudeModel } from "@config/claude-models";
 import { fitImages } from "@/lib/claude-images";
+
+/** The model of the branch (config/jawad/student.ts): «الرشيق». Every step is priced by the model that really answered. */
+export const studentModel = (): ClaudeModel => claudeModelOf(STUDENT.model);
 
 export type StudentPart =
   | { type: "text"; text: string }
@@ -36,13 +41,16 @@ async function post(body: Record<string, unknown>, beta?: string) {
       "content-type": "application/json",
       ...(beta ? { "anthropic-beta": beta } : {}),
     },
-    body: JSON.stringify({ model: CLAUDE_MODEL, ...body }),
+    body: JSON.stringify({ model: studentModel().id, ...body }),
     signal: AbortSignal.timeout(280_000),
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`Claude ${res.status}: ${json?.error?.message ?? "request failed"}`);
-  return json as { content: Record<string, unknown>[]; stop_reason: string; usage: ClaudeUsage & { server_tool_use?: { web_search_requests?: number } } };
+  return json as { model?: string; content: Record<string, unknown>[]; stop_reason: string; usage: ClaudeUsage & { server_tool_use?: { web_search_requests?: number } } };
 }
+
+/** A reply's cost in USD, at the rates of the model that answered (a server-side fallback may have answered). */
+const costOf = (body: { model?: string; usage: ClaudeUsage }) => claudeCost(withModel(body.usage, body.model, studentModel()));
 
 /** One call with a JSON-schema answer. Returns the data and its cost in USD. */
 export async function askJson<T>(o: {
@@ -51,14 +59,15 @@ export async function askJson<T>(o: {
   schema: object;
   maxTokens?: number;
   effort?: "low" | "medium" | "high";
-  /** the owner is talking: صادق greets «القائد» and opens every detail of the platform to him */
+  /** the owner is talking: صادق greets «القائد» and opens every detail of the platform to him (the only case that carries the site's knowledge) */
   leader?: boolean;
 }): Promise<{ data: T; usd: number }> {
   const call = (maxTokens: number, effort: "low" | "medium" | "high") =>
     post(
       {
         max_tokens: maxTokens,
-        system: siteSystem(`${MATERIAL_RULE}\n\n${o.system}`, true, o.leader),
+        // a student's material needs no knowledge of the platform: without it each call is ~60k tokens lighter
+        system: o.leader ? siteSystem(`${MATERIAL_RULE}\n\n${o.system}`, true, true) : lightSystem(`${MATERIAL_RULE}\n\n${o.system}`),
         messages: [{ role: "user", content: o.parts.map(toBlock) }],
         output_config: { effort, format: { type: "json_schema", schema: o.schema } },
         fallbacks: "default",
@@ -67,12 +76,12 @@ export async function askJson<T>(o: {
     );
   const asked = o.maxTokens ?? 16000;
   let body = await call(asked, o.effort ?? "medium");
-  let usd = claudeCost(body.usage);
+  let usd = costOf(body);
   // the thinking shares the answer's budget, so a long answer (a designed page, a long chapter) can run out before it
   // ends: once more with twice the room and less thinking, before giving up
   if (body.stop_reason === "max_tokens") {
     body = await call(Math.min(32_000, asked * 2), "low");
-    usd += claudeCost(body.usage);
+    usd += costOf(body);
   }
   if (body.stop_reason === "max_tokens") throw new Error("Claude reply was cut off (max_tokens)");
   if (body.stop_reason === "refusal") throw new Error("Claude declined this request");
@@ -95,8 +104,8 @@ export interface ResearchParagraph {
 /** Pages read in full for one research (links the student gave), and the most of each that is read (tokens). */
 export const FETCH_PAGES = 3;
 export const FETCH_TOKENS = 25_000;
-/** What reading those pages can add to a research's cost (input tokens at Opus 5.5's $4 per million). */
-export const fetchCeilingUsd = () => (FETCH_PAGES * FETCH_TOKENS * 4 * 2) / 1e6;
+/** What reading those pages can add to a research's cost (input tokens at the branch model's rate, read twice). */
+export const fetchCeilingUsd = () => (FETCH_PAGES * FETCH_TOKENS * studentModel().rates.input * 2) / 1e6;
 
 /**
  * Real web research with Anthropic's web search tool: the answer's paragraphs with their cited sources, and every
@@ -119,14 +128,14 @@ export async function webResearch(o: {
   for (let round = 0; round < 5; round++) {
     const body = await post({
       max_tokens: 12000,
-      system: siteSystem(`${MATERIAL_RULE}\n\n${o.system}`, false),
+      system: lightSystem(`${MATERIAL_RULE}\n\n${o.system}`, false),
       messages,
       tools: [
         { type: "web_search_20260209", name: "web_search", max_uses: STUDENT.maxSearches, ...(o.allowedDomains?.length ? { allowed_domains: o.allowedDomains.slice(0, 20) } : {}) },
         ...(o.fetch ? [{ type: "web_fetch_20260209", name: "web_fetch", max_uses: FETCH_PAGES, max_content_tokens: FETCH_TOKENS, citations: { enabled: true } }] : []),
       ],
     });
-    usd += claudeCost(body.usage);
+    usd += costOf(body);
     const n = body.usage.server_tool_use?.web_search_requests ?? 0;
     searches += n;
     usd += n * STUDENT.webSearchUsd;
@@ -172,10 +181,56 @@ export async function webResearch(o: {
   return { paragraphs: paragraphs.map((p) => ({ ...p, text: p.text.trim() })).filter((p) => p.text), sources, searches, usd };
 }
 
+// ───────────────────────────── estimates ─────────────────────────────
+
+/** Before anything is measured: a token for every 2 characters (safe for Arabic and Latin alike). */
+export const TOKENS_PER_CHAR = 0.5;
+const ratios = new AsyncLocalStorage<number>();
+
+/** Runs `fn` with the student's real tokens-per-character, so every ceiling inside is made from it (see `tokenRatioOf`). */
+export const withTokenRatio = <T>(ratio: number, fn: () => Promise<T>): Promise<T> => ratios.run(ratio, fn);
+
+const measured = new Map<string, number>();
+
 /**
- * USD ceiling of one call: input tokens (≤ characters/2 for Arabic/Latin text, plus images/pages, plus the site
- * knowledge every call carries) and output tokens.
+ * Tokens per character of THIS text, from Anthropic's token counter (free; it counts what the model will really read), taken
+ * on a sample so it is one short call. Any failure (no key, no network, a slow answer) is the safe default.
  */
-export function claudeCeilingUsd(inputChars: number, maxOut: number, extraInputTokens = 0) {
-  return ((inputChars / 2 + JAWAD_KNOWLEDGE.length / 2 + extraInputTokens + 3000) * 4 + maxOut * 20) / 1e6;
+export async function tokenRatioOf(text: string): Promise<number> {
+  const sample = text.length > 12_000 ? `${text.slice(0, 6000)}\n${text.slice(Math.floor(text.length / 2), Math.floor(text.length / 2) + 6000)}` : text;
+  if (sample.trim().length < 200) return TOKENS_PER_CHAR;
+  const key = `${sample.length}:${sample.slice(0, 40)}:${sample.slice(-40)}`;
+  const known = measured.get(key);
+  if (known) return known;
+  try {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return TOKENS_PER_CHAR;
+    const res = await fetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages/count_tokens`, {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: studentModel().id, messages: [{ role: "user", content: sample }] }),
+      signal: AbortSignal.timeout(4000),
+    });
+    const json = (await res.json().catch(() => ({}))) as { input_tokens?: number };
+    if (!res.ok || !(Number(json.input_tokens) > 0)) return TOKENS_PER_CHAR;
+    // a little over what was counted (the text of a project grows with notes), never below 0.2 or above the safe default
+    const ratio = Math.min(TOKENS_PER_CHAR, Math.max(0.2, (Number(json.input_tokens) / sample.length) * 1.1));
+    if (measured.size > 200) measured.clear();
+    measured.set(key, ratio);
+    return ratio;
+  } catch {
+    return TOKENS_PER_CHAR;
+  }
+}
+
+/**
+ * USD ceiling of one call: input tokens (the text at the measured tokens-per-character, else 1 per 2 characters; plus
+ * images/pages and the step's own instructions) and output tokens, at the rates of the branch's model. Calls that carry
+ * the site's knowledge (`knowledge: true`, the owner's chat or «الذكاء الإسلامي») add it, written to the cache once.
+ */
+export function claudeCeilingUsd(inputChars: number, maxOut: number, extraInputTokens = 0, o: { knowledge?: boolean; model?: ClaudeModel } = {}) {
+  const m = o.model ?? studentModel();
+  const perChar = ratios.getStore() ?? TOKENS_PER_CHAR;
+  const knowledge = o.knowledge ? JAWAD_KNOWLEDGE.length * TOKENS_PER_CHAR * m.rates.cacheWrite5m : 0;
+  return (knowledge + (inputChars * perChar + extraInputTokens + 3000) * m.rates.input + maxOut * m.rates.output) / 1e6;
 }

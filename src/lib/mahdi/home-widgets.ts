@@ -6,7 +6,7 @@
 // how far am I in today's habits, how far in today's reading goal, and what is left to tap. Everything else can be
 // added, removed and moved by the person.
 
-export type WidgetId = "habits" | "reading" | "quick" | "priorities" | "tasks" | "week" | "book" | "phrase" | "projects" | "health" | "khatma" | "booklet" | "stories";
+export type WidgetId = "habits" | "reading" | "quick" | "priorities" | "tasks" | "week" | "book" | "phrase" | "projects" | "health" | "khatma" | "booklet" | "stories" | "daily";
 
 export interface WidgetDef {
   id: WidgetId;
@@ -19,6 +19,7 @@ export interface WidgetDef {
 export const WIDGETS: readonly WidgetDef[] = [
   { id: "habits", name: "هدف العادات اليومي", hint: "كم أنجزت من عادات اليوم، وسلسلة أيامك", size: "half" },
   { id: "reading", name: "هدف القراءة اليومي", hint: "كم قرأت اليوم من هدفك", size: "half" },
+  { id: "daily", name: "آية اليوم ورواية اليوم", hint: "آية ورواية من الثقلين لكل يوم من السنة، بمصدرهما", size: "full" },
   { id: "quick", name: "اضغط وأنجز", hint: "عادات اليوم أزرار كبيرة: ضغطة وحدة وتكتمل", size: "full" },
   { id: "priorities", name: "أولويات اليوم", hint: "أهم ثلاث أشياء اليوم", size: "full" },
   { id: "tasks", name: "مهام اليوم", hint: "قائمة المهام السريعة", size: "full" },
@@ -33,7 +34,7 @@ export const WIDGETS: readonly WidgetDef[] = [
 ];
 
 /** The standard home: the two goals side by side, the habits to tap, then the day's plan. */
-export const DEFAULT_WIDGETS: readonly WidgetId[] = ["habits", "reading", "quick", "priorities", "tasks", "week", "book", "phrase"];
+export const DEFAULT_WIDGETS: readonly WidgetId[] = ["habits", "reading", "quick", "daily", "priorities", "tasks", "week", "book", "phrase"];
 
 const IDS = new Set<string>(WIDGETS.map((w) => w.id));
 
