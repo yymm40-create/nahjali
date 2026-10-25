@@ -15,6 +15,7 @@ import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
 import { WIDGETS, homeWidgets, moveWidget, widgetDef, type WidgetId } from "@/lib/mahdi/home-widgets";
 import type { Profile, Project } from "@/lib/mahdi/types";
 import BookletCard from "./BookletCard";
+import DailyCard from "./DailyCard";
 import DayBars from "./DayBars";
 import DayPriorities from "./DayPriorities";
 import DayTasks from "./DayTasks";
@@ -174,6 +175,8 @@ function Widget({ id, list }: { id: WidgetId; list: WidgetId[] }) {
         return <BookletCard />;
       case "stories":
         return <StoriesBar />;
+      case "daily":
+        return <DailyCard />;
     }
   })();
   if (!body) return null;
