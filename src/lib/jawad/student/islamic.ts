@@ -15,12 +15,17 @@ import { UserError } from "@/lib/api";
 import { ask, type Answer } from "@/lib/islamic/ask";
 import { isIslamicMode, type IslamicMode } from "@/lib/islamic/text";
 import { ISLAMIC_PREFIX } from "@config/jawad/student";
+import { currentClaude } from "@/lib/film/claude-model";
 import { claudeCeilingUsd } from "./claude";
 import { sdb, sources, touch } from "./db";
 import type { Handler, Job } from "./jobs";
 
 /** What one ask of «الذكاء الإسلامي» may cost us at most (a deep research is the dearest way it answers). */
-export const islamicCeiling = (mode: IslamicMode) => (mode === "research" ? claudeCeilingUsd(90_000, 16000) * 2 : claudeCeilingUsd(40_000, 8000));
+// «الذكاء الإسلامي» keeps the site's knowledge and the mind the person chose (the default one when none)
+export const islamicCeiling = (mode: IslamicMode) => {
+  const o = { knowledge: true, model: currentClaude() };
+  return mode === "research" ? claudeCeilingUsd(90_000, 16000, 0, o) * 2 : claudeCeilingUsd(40_000, 8000, 0, o);
+};
 
 /** The question as it is sent over, and how it is answered. */
 export function islamicAsk(b: Record<string, unknown>): { question: string; mode: IslamicMode } {

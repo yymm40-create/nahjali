@@ -28,10 +28,11 @@ describe("site knowledge for Claude", () => {
     expect(siteSystem("a")[0].text).toBe(siteSystem("b", false)[0].text);
   });
 
-  it("comes first, and the task after it keeps the cache mark", () => {
+  it("comes first with its own cache mark, and the task after it keeps one too", () => {
     const s = siteSystem("TASK");
-    expect(s[0]).toEqual({ type: "text", text: JAWAD_KNOWLEDGE });
+    expect(s[0]).toEqual({ type: "text", text: JAWAD_KNOWLEDGE, cache_control: { type: "ephemeral" } });
     expect(s[1]).toEqual({ type: "text", text: "TASK", cache_control: { type: "ephemeral" } });
+    expect(siteSystem("TASK", false)[0]).toEqual({ type: "text", text: JAWAD_KNOWLEDGE });
     expect(siteSystem("TASK", false)[1]).toEqual({ type: "text", text: "TASK" });
   });
 });

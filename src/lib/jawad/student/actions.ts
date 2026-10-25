@@ -8,7 +8,7 @@ import { coinsFor } from "@config/coins";
 import { unlimitedFor } from "@/lib/access";
 import { FONTS, OUTPUT_KINDS, PURPOSES, isDoc, maxAvailable, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, readSourceRole, readWish, researchPlaces, type Brief, type Design } from "@config/jawad/student";
 import { kindOffered, STUDENT_BRANCH, type Branch } from "@config/jawad/khateeb";
-import { claudeCeilingUsd, fetchCeilingUsd } from "./claude";
+import { claudeCeilingUsd, fetchCeilingUsd, tokenRatioOf, withTokenRatio } from "./claude";
 import { loadCtx } from "./context";
 import { islamicAsk, islamicCeiling } from "./islamic";
 import { addVersion, getFile, getOutput, getProject, latestVersion, outputs, saveOutput, sdb, segments, sources, touch, type Output, type Project, type TextVersion } from "./db";
@@ -354,7 +354,8 @@ export async function projectAction(user: User, id: string, b: Body) {
       const note = text(b.note, 3000);
       const revising = Boolean(note) && Boolean(await latestVersion(p.id, "understanding"));
       // a revision only combines the notes again (the text is not re-read)
-      const usd = revising ? claudeCeilingUsd(t!.content.segments.length * 400, 14000) : understandCeiling(t!.content);
+      // made from this material's real tokens-per-character (see tokenRatioOf)
+      const usd = await withTokenRatio(await tokenRatioOf(t!.content.segments.map((x) => x.text).join("\n")), async () => (revising ? claudeCeilingUsd(t!.content.segments.length * 400, 14000) : understandCeiling(t!.content)));
       return paid(user, b, { projectId: p.id, kind: "understand", usd, input: { textVersion: p.text_version, note, previous: revising, requestKind: b.kind === "other" ? "other" : "edit" }, stage: "فهم المادة" });
     }
     case "understanding_approve": {

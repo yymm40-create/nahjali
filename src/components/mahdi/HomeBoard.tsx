@@ -15,6 +15,7 @@ import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
 import { WIDGETS, homeWidgets, moveWidget, widgetDef, type WidgetId } from "@/lib/mahdi/home-widgets";
 import type { Profile, Project } from "@/lib/mahdi/types";
 import BookletCard from "./BookletCard";
+import DailyCard from "./DailyCard";
 import DayBars from "./DayBars";
 import DayPriorities from "./DayPriorities";
 import DayTasks from "./DayTasks";
@@ -37,6 +38,7 @@ import { StoriesBar } from "./social/Stories";
 import { useReading } from "./useReading";
 
 const LOCAL = "mahdi:home-widgets";
+const DAILY_OFFERED = "mahdi:daily-offered";
 
 function readLocal(): unknown {
   try {
@@ -86,6 +88,24 @@ export default function HomeBoard() {
       toast((e as Error).message);
     }
   };
+
+  // «آية اليوم ورواية اليوم» is offered ONCE to a person who arranged their home before it existed: it is put after «اضغط وأنجز»;
+  // if they take it off afterwards it stays off
+  useEffect(() => {
+    if (!profile.homeWidgets && !local) return;
+    let offered = false;
+    try {
+      offered = localStorage.getItem(DAILY_OFFERED) === "1";
+      if (!offered) localStorage.setItem(DAILY_OFFERED, "1");
+    } catch {
+      offered = true;
+    }
+    if (offered || list.includes("daily")) return;
+    const at = list.indexOf("quick");
+    const t = setTimeout(() => void save(at >= 0 ? [...list.slice(0, at + 1), "daily", ...list.slice(at + 1)] : ["daily", ...list]), 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [local, profile.homeWidgets]);
 
   return (
     <div className="space-y-5">
@@ -174,6 +194,8 @@ function Widget({ id, list }: { id: WidgetId; list: WidgetId[] }) {
         return <BookletCard />;
       case "stories":
         return <StoriesBar />;
+      case "daily":
+        return <DailyCard />;
     }
   })();
   if (!body) return null;
