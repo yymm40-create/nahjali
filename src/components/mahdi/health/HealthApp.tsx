@@ -48,6 +48,7 @@ import {
 } from "@/lib/mahdi/health/plan";
 import RobotFace from "@/components/RobotFace";
 import "./health.css";
+import FoodGuide from "./FoodGuide";
 
 /** «عباس سبع القنطرة»: the coach of «الصحة العلوية»; a word on every screen (to a man or to a woman). */
 export const COACH = "عباس سبع القنطرة";
@@ -709,6 +710,20 @@ export function PlanView({ plan, save, onHabits, onHome }: { plan: HealthPlan; s
           )}
           <p className="gym-small">أقل من {n.saltG} غ ملح، والسكر المضاف أقل من {n.sugarG} غ باليوم (منظمة الصحة العالمية). أكثر أكلك أطعمة كاملة: لحم وسمك وبيض وألبان وبقوليات وحبوب كاملة وخضار وفواكه.</p>
         </div>
+      )}
+
+      {plan.food && n && (
+        <FoodGuide
+          t={{
+            kcal: plan.food.kcal,
+            proteinG: plan.food.proteinG,
+            carbG: macrosOf(plan.food, plan.profile).carbG,
+            fatG: macrosOf(plan.food, plan.profile).fatG,
+            fiberG: n.fiberG,
+            meals: plan.profile.meals,
+            sex: plan.profile.sex === "female" ? "female" : "male",
+          }}
+        />
       )}
 
       {w && w.blocked && (

@@ -184,7 +184,7 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
             </details>
             <details>
               <summary>ما أعرف أستخدم الذكاء الاصطناعي، يناسبني؟</summary>
-              <p>إيه. اكتب بلهجتك عادي، والروبوتات تسألك اللي تحتاجه. وإذا احترت في أي شي اضغط على «سلمان» تحت الشاشة ويجاوبك.</p>
+              <p>إيه. اكتب بلهجتك عادي، والروبوتات تسألك اللي تحتاجه.</p>
             </details>
           </div>
         </div>

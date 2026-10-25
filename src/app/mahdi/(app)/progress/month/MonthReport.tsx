@@ -10,6 +10,7 @@ import Icon from "@/components/mahdi/Icon";
 import { BarRow, Delta, Insights, ProgressTabs, Tile } from "@/components/mahdi/Stats";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { periodGoals } from "@/lib/mahdi/engine";
+import ReviewNote from "@/components/mahdi/ReviewNote";
 
 /** One month, top to bottom: the score, weeks, projects, habits, goals, extra work and the previous month. */
 export default function MonthReport({ month }: { month?: string }) {
@@ -145,6 +146,8 @@ export default function MonthReport({ month }: { month?: string }) {
           </div>
         </>
       )}
+
+      <ReviewNote kind="month" start={ms} />
     </div>
   );
 }

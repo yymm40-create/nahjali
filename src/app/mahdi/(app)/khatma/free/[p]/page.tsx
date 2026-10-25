@@ -35,7 +35,7 @@ export default function FreeReader() {
       <Link href="/mahdi/khatma/free" className="m-btn m-btn-quiet m-btn-sm -ms-3">
         <Icon name="chevronRight" size={18} /> قراءة حرة
       </Link>
-      <ReaderClock extra={`قراءة حرة · صفحة ${p} من ${portionCount("page")}`} />
+      <ReaderClock extra={`قراءة حرة · صفحة ${p} من ${portionCount("page")}`} page={p} />
       {error && !words ? (
         <p className="m-card p-5 text-center">{error}</p>
       ) : !words ? (

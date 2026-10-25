@@ -18,15 +18,6 @@ export interface RobotIntro {
 }
 
 export const ROBOTS: Record<string, RobotIntro> = {
-  salman: {
-    id: "salman",
-    name: "سلمان",
-    face: "🤖",
-    role: "مساعدك في الموقع كله",
-    does: ["أشرح لك أي شي في الموقع ما فهمته، بكلام بسيط", "أدلّك على القسم أو الروبوت اللي يسوي طلبك", "أجاوبك عن الرصيد والشحن والتسجيل"],
-    start: ["اضغط زر «سلمان» تحت في أي صفحة", "اكتب سؤالك بكلامك العادي", "اضغط على الزر اللي أعطيك ياه ويوديك للصفحة"],
-    tint: ["#7c3aed", "#ec4899"],
-  },
   jawad: {
     id: "jawad",
     name: "جواد",
@@ -140,7 +131,7 @@ export const ROBOTS: Record<string, RobotIntro> = {
 /** Which robot lives on this page of JAWAD AI (null when none does). */
 export function robotFor(path: string): RobotIntro | null {
   const p = path.replace(/\/+$/, "") || "/";
-  // the home page: سلمان has his own button on every page already (src/components/Salman.tsx), so no second one
+  // the home page: no robot
   if (p === "/jawad-ai") return null;
   const m = /^\/jawad-ai\/([^/]+)/.exec(p);
   const seg = m?.[1] ?? "";

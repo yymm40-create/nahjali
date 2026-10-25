@@ -49,7 +49,7 @@ export default function MyKhatmaReader() {
       <Link href="/mahdi/khatma" className="m-btn m-btn-quiet m-btn-sm -ms-3">
         <Icon name="chevronRight" size={18} /> ختمتي
       </Link>
-      <ReaderClock extra={extra} />
+      <ReaderClock extra={extra} page={q} />
       {error && !words ? (
         <p className="m-card p-5 text-center">{error}</p>
       ) : !words ? (

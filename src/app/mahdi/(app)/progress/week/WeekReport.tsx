@@ -7,6 +7,7 @@ import { fmtDate, fmtNum, fmtPct, t, weekdayName } from "@/lib/mahdi/i18n";
 import { bySort, itemHref, pickPhrase } from "@/lib/mahdi/client/derive";
 import { weekInsights } from "@/lib/mahdi/client/insights";
 import Icon from "@/components/mahdi/Icon";
+import ReviewNote from "@/components/mahdi/ReviewNote";
 import { BarRow, Delta, Insights, ProgressTabs, Tile } from "@/components/mahdi/Stats";
 import { useMahdi } from "@/components/mahdi/Provider";
 
@@ -138,6 +139,8 @@ export default function WeekReport({ start }: { start?: string }) {
           )}
         </>
       )}
+
+      <ReviewNote kind="week" start={ws} />
     </div>
   );
 }

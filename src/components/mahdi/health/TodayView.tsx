@@ -12,7 +12,7 @@ import { REF } from "@config/mahdi/health-research";
 import RobotFace from "@/components/RobotFace";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { WEEKDAYS, arNum, dayLabel, exerciseById, focusName, type PlanDay, type PlanItem, type Workout } from "@/lib/mahdi/health/plan";
-import { bestSet, e1rm, lastTime, parseNum, record, sessionMin, suggestion, weekOf, type DayLog, type FoodKey, type SetLog } from "@/lib/mahdi/health/tracker";
+import { bestSet, e1rm, gymHabitWrites, lastTime, parseNum, record, sessionMin, suggestion, weekOf, type DayLog, type FoodKey, type SetLog } from "@/lib/mahdi/health/tracker";
 import { Barbell, COACH, DayCard } from "./HealthApp";
 import { useHealth } from "./HealthProvider";
 import ExerciseFigure from "./ExerciseFigure";
@@ -274,9 +274,8 @@ export default function TodayView() {
     const done = !log.done;
     // finishing stops the clock: the day keeps how long the whole session took
     setLog(done && log.startedAt ? { done, startedAt: null, durationMin: Math.round(sessionMin(log) * 10) / 10 } : { done });
-    if (planned) logHabit(`day-${planned.weekday}`, date, done ? 1 : 0);
-    logHabit("weekly", date, done ? 1 : 0);
-    if (done) for (const [id, s] of Object.entries(log.sets)) logHabit(`ex-${id}`, date, s.filter((x) => x.reps > 0).length);
+    // the habits follow what was really trained that day (the session picked, its exercises and sets), both ways
+    for (const w of gymHabitWrites({ done, session: planned?.weekday ?? null, recorded: log.planDay, sets: log.sets })) logHabit(w.key, date, w.value);
     if (done) toast(habitFor(planned ? `day-${planned.weekday}` : "weekly") || habitFor("weekly") ? "عاش! تمرين اليوم انسجّل وانحسب في عاداتك 🔥" : "عاش! تمرين اليوم انسجّل 🔥");
   };
 
@@ -358,7 +357,11 @@ export default function TodayView() {
               log={log}
               days={all}
               date={date}
-              onSets={(s) => setLog({ sets: { ...log.sets, [it.exId]: s } })}
+              onSets={(s) => {
+                setLog({ sets: { ...log.sets, [it.exId]: s } });
+                // sets changed after «خلصت»: the exercise's habit follows them
+                if (log.done) logHabit(`ex-${it.exId}`, date, s.filter((x) => x.reps > 0).length);
+              }}
               onRest={(sec) => setRest(Date.now() + sec * 1000)}
             />
           ))}

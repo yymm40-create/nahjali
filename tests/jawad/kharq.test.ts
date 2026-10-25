@@ -207,7 +207,7 @@ describe("the section", () => {
 
 describe("«محمد الخارق» is خارق — the whole site's team is his", () => {
   it("knows every robot of the site, and is told about them on every turn", () => {
-    for (const id of ["jawad", "director", "sajjad", "haidara", "sadiq", "islamic", "qanbar", "baqir", "kazim", "zahraa", "salman"]) {
+    for (const id of ["jawad", "director", "sajjad", "haidara", "sadiq", "islamic", "qanbar", "baqir", "kazim", "zahraa"]) {
       expect(AGENT_IDS, id).toContain(id);
       expect(agentsBlock(), id).toContain(id);
     }
@@ -276,7 +276,7 @@ describe("«محمد الخارق» is خارق — the whole site's team is his
 
   it("hands each agent its own page's whole knowledge", async () => {
     const sizes: Record<string, number> = {};
-    for (const id of ["jawad", "director", "sajjad", "haidara", "sadiq", "salman"] as const) {
+    for (const id of ["jawad", "director", "sajjad", "haidara", "sadiq"] as const) {
       const k = await agentKnowledge(id);
       sizes[id] = k.length;
       expect(k.length, id).toBeGreaterThan(800);

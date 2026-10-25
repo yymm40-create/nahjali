@@ -113,6 +113,12 @@ export const HABIT_COLORS = [
   { key: "bronze", name: "برونزي", hex: "#a18072" },
   { key: "gold", name: "ذهبي", hex: "#c9a227" },
   { key: "slate", name: "رصاصي", hex: "#6b7a90" },
+  { key: "crimson", name: "قرمزي", hex: "#b5303f" },
+  { key: "peach", name: "خوخي", hex: "#f08a65" },
+  { key: "ocean", name: "محيطي", hex: "#1c6ea4" },
+  { key: "lavender", name: "خزامي", hex: "#9a8cd8" },
+  { key: "sage", name: "مريمي", hex: "#7a9a7e" },
+  { key: "sand", name: "رملي", hex: "#c8b08a" },
 ] as const;
 export type HabitColor = (typeof HABIT_COLORS)[number]["key"];
 export const habitColorHex = (key: string | null | undefined) => HABIT_COLORS.find((c) => c.key === key)?.hex ?? null;

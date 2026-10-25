@@ -31,7 +31,7 @@ import {
 
 export const COACH = {
   name: "عباس سبع القنطرة",
-  /** the light, fast model (like سلمان): free for the person, limited per address (src/lib/rate-limit.ts) */
+  /** the light, fast model free for the person, limited per address (src/lib/rate-limit.ts) */
   model: "claude-haiku-5-5",
   keepTurns: 14,
   maxChars: 1500,

@@ -187,3 +187,26 @@ export function weekOf(date: string): string[] {
   const d = new Date(`${date}T12:00:00Z`);
   return Array.from({ length: 7 }, (_, i) => new Date(d.getTime() - (6 - i) * 86400000).toISOString().slice(0, 10));
 }
+
+/**
+ * What the gym habits of a day must say, from what was really logged that day (and not from the plan's first shape):
+ * finishing credits the session actually trained («day-N» by its weekday), the weekly count and each exercise that has
+ * sets; taking the finish back clears exactly those — including the session recorded when it was finished, even if the
+ * person has since picked another one — so nothing stays ticked from "the previous thing".
+ */
+export function gymHabitWrites(o: { done: boolean; session: number | null; recorded?: number; sets: DayLog["sets"] }): { key: string; value: number }[] {
+  const out = new Map<string, number>();
+  const sessions = [...new Set([o.session, o.recorded].filter((x): x is number => typeof x === "number"))];
+  if (o.done) {
+    if (o.session !== null) out.set(`day-${o.session}`, 1);
+    out.set("weekly", 1);
+  } else {
+    for (const d of sessions) out.set(`day-${d}`, 0);
+    out.set("weekly", 0);
+  }
+  for (const [id, s] of Object.entries(o.sets)) {
+    const n = s.filter((x) => x.reps > 0).length;
+    out.set(`ex-${id}`, o.done ? n : 0);
+  }
+  return [...out].map(([key, value]) => ({ key, value }));
+}

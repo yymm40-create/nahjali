@@ -26,7 +26,6 @@ const server = createServer((req, res) => {
   const u = new URL(req.url, "http://x");
   if (u.pathname === "/") return void res.writeHead(200, { "content-type": "text/html" }).end(html);
   const f = { "/bundle.js": "bundle.js", "/bundle.css": "bundle.css" }[u.pathname] ?? (/^\/sample\d\.png$/.test(u.pathname) ? u.pathname.slice(1) : null);
-  if (u.pathname === "/api/salman") return void res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ reply: "سهلة 👌\n١) اضغط «+ اشحن» جنب رصيدك فوق.\n٢) اختر الباقة واضغط «اشحن الآن».\n٣) حوّل المبلغ واضغط «تم التحويل»، ويوصلك الرصيد بعد التأكيد.", links: [{ label: "اشحن رصيدك", href: "/jawad-ai/credits" }] }));
   if (!f || !existsSync(join(out, f))) return void res.writeHead(404).end();
   res.writeHead(200, { "content-type": f.endsWith(".js") ? "text/javascript" : f.endsWith(".css") ? "text/css" : "image/png" }).end(readFileSync(join(out, f)));
 });
@@ -52,16 +51,6 @@ for (const [name, qs, w, h, full] of shots) {
   await page.screenshot({ path: join(out, `${name}.png`), fullPage: full });
   await page.close();
 }
-// «سلمان»: open, ask, read the answer
-const page = await browser.newPage();
-await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
-await page.goto(`http://127.0.0.1:${port}/?view=landing`);
-await page.click(".slm-fab");
-await page.click(".slm-quick button");
-await page.waitForSelector(".slm-links a", { timeout: 5000 });
-await page.screenshot({ path: join(out, "salman-phone.png") });
-const answer = await page.evaluate(() => document.querySelectorAll(".slm-msg").length);
-console.log(answer >= 3 ? "  ✓ salman answered with a link" : "  ✗ salman did not answer");
 await browser.close();
 server.close();
 console.log(bad ? "overflow found" : "no sideways overflow", "→", out);

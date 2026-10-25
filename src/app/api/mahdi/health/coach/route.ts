@@ -13,7 +13,7 @@ export const maxDuration = 120;
  * «عباس سبع القنطرة»: one turn of the side chat of «الصحة العلوية». Body: { messages, profile, plan, screen }.
  * He answers and may change the person's answers, nutrition targets and training table; the changes are applied here
  * by the rules (src/lib/mahdi/health/coach.ts) and the page takes the new profile and plan as they come back.
- * Free for the person (the light model, limited per address like سلمان).
+ * Free for the person (the light model, limited per address).
  */
 export const POST = mahdiRoute(async (req: Request) => {
   const { user } = await requireProfile(req);
