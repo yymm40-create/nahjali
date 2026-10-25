@@ -27,6 +27,9 @@ export interface Watch {
   motion: number[];
 }
 
+/** The "clip" of a watch of the WHOLE FILM as composed on the timeline (every track, the captions, the grading). */
+export const FILM = "film";
+
 export const WATCH = {
   /** frames shown to him at most (tiles), and per sheet */
   tiles: 96,
@@ -122,7 +125,7 @@ const pairs = (v: unknown) =>
 export function readWatch(v: unknown, clipIds: Set<string>): Watch | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
-  if (typeof o.clipId !== "string" || !clipIds.has(o.clipId)) return null;
+  if (typeof o.clipId !== "string" || (o.clipId !== FILM && !clipIds.has(o.clipId))) return null;
   const sheets = (Array.isArray(o.sheets) ? o.sheets : [])
     .filter((s): s is { data: string; times: unknown } => !!s && typeof s === "object" && typeof (s as { data?: unknown }).data === "string")
     .filter((s) => s.data.length < WATCH.sheetMax && /^[A-Za-z0-9+/]+=*$/.test(s.data))
@@ -148,6 +151,7 @@ const sec = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
 /** The words that go with the sheets: what was measured, what was found, how to read the tiles. */
 export function watchText(w: Watch): string {
+  if (w.clipId === FILM) return filmText(w);
   const shown = w.sheets.reduce((n, s) => n + s.times.length, 0);
   const lenS = (w.to - w.from) / 1000;
   return [
@@ -158,6 +162,22 @@ export function watchText(w: Watch): string {
     .filter(Boolean)
     .join("\n");
 }
+
+function filmText(w: Watch): string {
+  const shown = w.sheets.reduce((n, s) => n + s.times.length, 0);
+  const lenS = (w.to - w.from) / 1000;
+  return [
+    `THE WHOLE FILM WATCHED, ${sec(w.from)}–${sec(w.to)} (${lenS.toFixed(1)} s) — not one clip: the preview COMPOSED as the person sees it (every track together, titles and captions on top, the grading applied). The page stepped through the timeline, measured ${w.analysed} moments, and ${shown} of them are shown below on ${w.sheets.length} contact sheets — tiles left to right, top to bottom, in time order, each labelled with its TIMELINE time. Use them as your eyes on the whole film: the pacing, where it drags, what is on screen when, whether the captions and titles sit well, jumps in the look between clips. Name moments by these times; when you cut or place something on a moment, use the timeline ms of the tile.`,
+    `MEASURED ACROSS THE FILM — hard changes of picture (cuts, jumps): ${w.cuts.length ? w.cuts.map(sec).join(", ") : "none"}; black: ${w.black.length ? w.black.map(([a, b]) => `${sec(a)}–${sec(b)}`).join(", ") : "none"}; still (no change for a second or more): ${w.frozen.length ? w.frozen.map(([a, b]) => `${sec(a)}–${sec(b)}`).join(", ") : "none"}.`,
+    w.motion.length ? `HOW MUCH HAPPENS EACH SECOND (0 still … 100 everything changes), from ${sec(w.from)}: ${w.motion.join(" ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** Does the person ask to see the WHOLE film (rather than a clip)? */
+export const asksToSeeFilm = (message: string) =>
+  /(شوف|تشوف|شاهد|اتفرج|تفرج|راجع|حلل|حلّل|قيّم|قيم|رأيك|وش رايك|watch|review|look at)[^.!؟?\n]{0,24}(الفيلم|الفيديو كامل|الفيديو كله|الريل|المونتاج|التايملاين|الشغل كله|كل الفيديو|whole|entire|full|film|timeline)|(الفيلم|الفيديو|التايملاين|المونتاج) (كامل|كله)/i.test(message);
 
 /** Does the person's request need to SEE what happens in the clip (rather than its settings)? */
 export const asksToSee = (message: string) =>

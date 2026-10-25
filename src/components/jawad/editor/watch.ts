@@ -3,7 +3,7 @@
 // one by one, it is stepped through many times a second instead. Then the frames worth seeing are drawn as numbered
 // tiles on contact sheets with their timeline time. What is measured and picked is src/lib/editor/watch.ts.
 
-import { findCuts, motionPerSecond, pickTimes, spansOf, WATCH, type FrameStat, type Watch } from "@/lib/editor/watch";
+import { FILM, findCuts, motionPerSecond, pickTimes, spansOf, WATCH, type FrameStat, type Watch } from "@/lib/editor/watch";
 
 interface Clip {
   id: string;
@@ -171,5 +171,113 @@ export async function watchClip(url: string, clip: Clip, onStep: (s: string) => 
     v.pause();
     v.removeAttribute("src");
     v.load();
+  }
+}
+
+/** The preview canvas as it is drawn now, drawn small on a probe canvas (null when the page has none). */
+const previewCanvas = () => document.querySelector("canvas.jw-screen") as HTMLCanvasElement | null;
+/** Two animation frames: the player has drawn the moment it was sent to. */
+const drawn = () => new Promise<void>((ok) => requestAnimationFrame(() => requestAnimationFrame(() => ok())));
+const settle = async (ms: number) => {
+  await drawn();
+  await new Promise((r) => setTimeout(r, ms));
+};
+
+/**
+ * The WHOLE FILM watched: the editor's own player is stepped through the timeline (so every track, the captions and
+ * the grading are in what is seen — it is the composed preview, not one file), several moments a second for a short
+ * film, each measured on a tiny copy; then the moments worth seeing are drawn as numbered tiles on contact sheets.
+ * The playhead goes back where it was.
+ */
+export async function watchFilm(
+  player: { ms: number; playing: boolean; seek(ms: number): void; pause(): void },
+  total: number,
+  onStep: (s: string) => void,
+  signal?: AbortSignal,
+): Promise<Watch | null> {
+  const canvas = previewCanvas();
+  if (!canvas || !canvas.width || total < 500) return null;
+  const was = player.ms;
+  const wasPlaying = player.playing;
+  player.pause();
+  const probe = document.createElement("canvas");
+  probe.width = WATCH.probeW;
+  probe.height = WATCH.probeH;
+  const pctx = probe.getContext("2d", { willReadFrequently: true })!;
+  let prev: Uint8ClampedArray | null = null;
+  const stats: FrameStat[] = [];
+  const n = Math.min(400, Math.max(8, Math.round(total / 250)));
+  try {
+    for (let i = 0; i < n; i++) {
+      if (signal?.aborted) break;
+      const t = Math.min(total - 1, Math.round((total * i) / Math.max(1, n - 1)));
+      player.seek(t);
+      await settle(60);
+      pctx.drawImage(canvas, 0, 0, probe.width, probe.height);
+      const px = pctx.getImageData(0, 0, probe.width, probe.height).data;
+      let luma = 0;
+      let diff = 0;
+      for (let k = 0; k < px.length; k += 4) {
+        const y = 0.2126 * px[k] + 0.7152 * px[k + 1] + 0.0722 * px[k + 2];
+        luma += y;
+        if (prev) diff += Math.abs(y - (0.2126 * prev[k] + 0.7152 * prev[k + 1] + 0.0722 * prev[k + 2]));
+      }
+      const m = px.length / 4;
+      prev = px;
+      stats.push({ t, luma: luma / m, diff: stats.length ? (diff / m / 255) * 100 : 0 });
+      if (i % 10 === 0) onStep(`حيدرا ماكس يشوف الفيلم كامل… (${i}/${n})`);
+    }
+    // the sampling is coarser than a clip's own frames: a jump needs a clearer step to count as a cut
+    const cuts = findCuts(stats);
+    const times = pickTimes(0, total, cuts);
+    const cols = 4;
+    const T = WATCH.tile;
+    const sheets: { data: string; times: number[] }[] = [];
+    for (let s = 0; s < times.length; s += WATCH.perSheet) {
+      if (signal?.aborted) break;
+      const part = times.slice(s, s + WATCH.perSheet);
+      const c = document.createElement("canvas");
+      c.width = cols * T;
+      c.height = Math.ceil(part.length / cols) * T;
+      const ctx = c.getContext("2d")!;
+      ctx.fillStyle = "#111";
+      ctx.fillRect(0, 0, c.width, c.height);
+      for (let i = 0; i < part.length; i++) {
+        player.seek(part[i]);
+        await settle(80);
+        const x = (i % cols) * T;
+        const y = Math.floor(i / cols) * T;
+        const k = Math.min((T - 4) / canvas.width, (T - 4) / canvas.height);
+        const w = canvas.width * k;
+        const h = canvas.height * k;
+        ctx.drawImage(canvas, x + (T - w) / 2, y + (T - h) / 2, w, h);
+        const label = `#${s + i + 1} · ${(part[i] / 1000).toFixed(2)}s`;
+        ctx.font = "bold 18px system-ui, sans-serif";
+        const lw = ctx.measureText(label).width + 12;
+        ctx.fillStyle = "rgba(0,0,0,0.78)";
+        ctx.fillRect(x + 4, y + T - 30, lw, 26);
+        ctx.fillStyle = "#ffe14d";
+        ctx.fillText(label, x + 10, y + T - 11);
+        ctx.strokeStyle = "#333";
+        ctx.strokeRect(x + 0.5, y + 0.5, T - 1, T - 1);
+      }
+      sheets.push({ data: c.toDataURL("image/jpeg", 0.7).split(",")[1], times: part });
+      onStep(`حيدرا ماكس يرتّب لقطات الفيلم… (${Math.min(times.length, s + WATCH.perSheet)}/${times.length})`);
+    }
+    if (!sheets.length) return null;
+    return {
+      clipId: FILM,
+      sheets,
+      analysed: stats.length,
+      from: 0,
+      to: total,
+      cuts,
+      black: spansOf(stats, (s) => s.luma < 16, 300),
+      frozen: spansOf(stats.slice(1), (s) => s.diff < 0.4, 1000),
+      motion: motionPerSecond(stats, 0, total),
+    };
+  } finally {
+    player.seek(was);
+    if (wasPlaying) await settle(0);
   }
 }
