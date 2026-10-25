@@ -21,6 +21,7 @@ import HabitRow from "./HabitRow";
 import Icon from "./Icon";
 import ProgressRing from "./ProgressRing";
 import ProjectForm from "./ProjectForm";
+import ReviewNote from "./ReviewNote";
 import { useMahdi } from "./Provider";
 import { useLook } from "./ThemeRoot";
 
@@ -184,6 +185,7 @@ export default function DayView({ date: requested, home = false }: { date?: ISOD
 
           {/* Side: streak and the week */}
           <aside className="space-y-5">
+            <ReviewNote kind="day" start={date} />
             <section className="m-card space-y-3 p-5">
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold">{t.home.weekSoFar}</h2>

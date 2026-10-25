@@ -111,9 +111,15 @@ describe("free reading", () => {
 
 describe("the reader's wiring", () => {
   it("the clock sits on both readers and the tabs stay out of the way while reading", () => {
-    expect(read("src/app/mahdi/(app)/khatma/read/[q]/page.tsx")).toMatch(/<ReaderClock extra=\{extra\} \/>/);
-    expect(read("src/app/mahdi/(app)/khatma/free/[p]/page.tsx")).toMatch(/<ReaderClock /);
+    expect(read("src/app/mahdi/(app)/khatma/read/[q]/page.tsx")).toMatch(/<ReaderClock extra=\{extra\} page=\{q\} \/>/);
+    expect(read("src/app/mahdi/(app)/khatma/free/[p]/page.tsx")).toMatch(/<ReaderClock [^>]*page=\{p\} \/>/);
     expect(read("src/components/mahdi/khatma/KhatmaTabs.tsx")).toMatch(/\/free\//);
+  });
+  it("the stopwatch starts again from zero with each page, and the day's total keeps them all", () => {
+    const clock = read("src/components/mahdi/khatma/ReaderClock.tsx");
+    expect(clock).toMatch(/seenPage !== page/);
+    expect(clock).toMatch(/setSession\(0\)/);
+    expect(clock).toMatch(/initial \+ before \+ session/);
   });
   it("the tables are server-only and the time route credits the habit through the person's own client", () => {
     const sql = read("supabase/migrations/0084_mahdi_quran_reader.sql");
