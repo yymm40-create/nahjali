@@ -62,7 +62,8 @@ export default function MovableBubble({
       const x = corner === "left" ? 12 : window.innerWidth - size - 12;
       const start = saved && Number.isFinite(saved.x) && Number.isFinite(saved.y) ? saved : { x, y: window.innerHeight - size - 84 };
       setPos(clamp(start.x, start.y));
-      setFolded(read(`jw-bubble-fold:${id}`) === "1");
+      // folded into a thin side tab until the person opens it (quiet by default)
+      setFolded(read(`jw-bubble-fold:${id}`) !== "0");
     }, 0);
     const keep = () => setPos((p) => (p ? clamp(p.x, p.y) : p));
     window.addEventListener("resize", keep);

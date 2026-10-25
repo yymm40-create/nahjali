@@ -1,9 +1,8 @@
 "use client";
 
-// The page's robot introducing itself: on the first visit to its page a card pops up (who it is, what it does, how to
-// start); after that a small bubble with its face stays on the page — it can be dragged anywhere, and folded into a
-// thin tab on the side so it never sits on anything — and pressing it brings the card back. Where it was put and
-// whether it is folded are remembered on this device.
+// The page's robot introducing itself: a thin tab on the side, never a pop-up by itself. Opened, a small bubble with its
+// face stays on the page — it can be dragged anywhere and folded back into the thin tab so it never sits on anything —
+// and pressing it brings the intro card. Where it was put and whether it is folded are remembered on this device.
 
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -13,7 +12,6 @@ import RobotFace from "@/components/RobotFace";
 
 const POS = "jw-robot-pos";
 const FOLD = "jw-robot-fold";
-const seenKey = (id: string) => `jw-robot-seen:${id}`;
 const SIZE = 58;
 
 const read = (k: string) => {
@@ -58,16 +56,12 @@ export default function RobotGuide() {
       }
     })();
     const start = saved ? clamp(saved.x, saved.y) : clamp(window.innerWidth - SIZE - 14, window.innerHeight * 0.55);
-    const workPage = /^\/jawad-ai\/editor\/[^/]+/.test(path);
-    const first = read(seenKey(robot.id)) !== "1" && !workPage;
+    // quiet by default (the owner, 25 October 2026: the pop-ups and icons were annoying): no card opens by itself, and
+    // the icon starts folded into a thin tab on the side until the person opens it
     const t = window.setTimeout(() => {
       setPos(start);
-      setFolded(read(FOLD) === "1");
-      if (first) {
-        setOpen(true);
-        write(seenKey(robot.id), "1");
-      }
-    }, first ? 700 : 0);
+      setFolded(read(FOLD) !== "0");
+    }, 0);
     const keep = () => setPos((p) => (p ? clamp(p.x, p.y) : p));
     window.addEventListener("resize", keep);
     return () => {
