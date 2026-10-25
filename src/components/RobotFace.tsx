@@ -20,7 +20,6 @@ interface Look {
 
 export const ROBOT_LOOKS: Record<string, Look> = {
   // deep, muted metals — never candy colours: each robot is one dark hue lit from above, with a gold trim
-  salman: { a: "#5b4b9a", b: "#2e2466", head: "round", eyes: "big", antenna: "single", extra: "none" },
   jawad: { a: "#3a6ea5", b: "#1b3a63", head: "capsule", eyes: "visor", antenna: "bolt", extra: "none" },
   director: { a: "#343c47", b: "#050607", head: "square", eyes: "visor", antenna: "none", extra: "clapper" },
   sajjad: { a: "#86661f", b: "#4a340d", head: "square", eyes: "dots", antenna: "double", extra: "clapper" },
@@ -223,12 +222,12 @@ function extra(x: Extra, b: string) {
 /**
  * A robot's face — sober and weighty, never comic: a heavy squared head in one deep metal with a gold trim, level glowing
  * eyes behind dark glass, a flat mouth-groove (not a smile), and a broad collar under it.
- * `id`: salman · jawad · sajjad · haidara · sadiq · islamic · qanbar · baqir · kazim · zahraa · kharq · abbas · zainab · booklet · sabaa · sheikh (the robot of «لأجل المهدي»).
+ * `id`: jawad · sajjad · haidara · sadiq · islamic · qanbar · baqir · kazim · zahraa · kharq · abbas · zainab · booklet · sabaa · sheikh (the robot of «لأجل المهدي»).
  */
 export default function RobotFace({ id, size = 40, className = "", title }: { id: string; size?: number; className?: string; title?: string }) {
   // «الشيخ صادق» of «الخطيب الذكي» is the robot of «لأجل المهدي»: the same one, in the dress of a cleric
   if (id === "sheikh") return <MahdiRobot size={size} className={className} />;
-  const l = ROBOT_LOOKS[id] ?? ROBOT_LOOKS.salman;
+  const l = ROBOT_LOOKS[id] ?? ROBOT_LOOKS.jawad;
   const g = `rf-${id}`;
   const body = `${g}-body`;
   return (

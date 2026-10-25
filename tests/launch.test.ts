@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { bonusPct, CREDITS, DEFAULT_CREDIT_SETTINGS, DEFAULT_PACKS, packYield, readCreditSettings, SCENE_PACK_SAR, STUDENT_PACK_SAR, STUDENT_SUMMARY_HALALAS, supportLink } from "@config/credits";
 import { claudeHalalas, coinsFor } from "@config/coins";
 import { videoEstimateUsd } from "@config/film";
-import { cleanLinks, cleanTurns } from "@/lib/salman";
 import { PUBLIC_PERMS } from "@config/access";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 import { NAHJ_ALI_HIDDEN, SITE_NAME } from "@config/site";
@@ -82,17 +81,6 @@ describe("the balance packages", () => {
   });
 });
 
-describe("«سلمان»", () => {
-  it("keeps the last turns, starting with the person, sides alternating", () => {
-    const t = cleanTurns([{ role: "assistant", text: "هلا" }, { role: "user", text: "سؤال" }, { role: "user", text: "وثاني" }, { role: "assistant", text: "جواب" }, { role: "x", text: "؟" }, { role: "user", text: "  " }]);
-    expect(t).toEqual([{ role: "user", text: "سؤال\nوثاني" }, { role: "assistant", text: "جواب" }]);
-    expect(cleanTurns("nope")).toEqual([]);
-  });
-  it("only links inside the site", () => {
-    expect(cleanLinks([{ label: "اشحن", href: "/jawad-ai/credits" }, { label: "برا", href: "https://evil.com" }, { label: "x", href: "//evil.com" }, { label: "api", href: "/api/x" }, { label: "", href: "/a" }])).toEqual([{ label: "اشحن", href: "/jawad-ai/credits" }]);
-  });
-});
-
 describe("the launch", () => {
   it("opens every section, the booklet of tables included (it lives in JAWAD AI now)", () => {
     expect(PUBLIC_PERMS).toContain("booklet");
@@ -101,7 +89,6 @@ describe("the launch", () => {
   });
   it("the site is «الجواد الذكي» while «نهج علي» is hidden, and the robots know the new parts", () => {
     if (NAHJ_ALI_HIDDEN) expect(SITE_NAME).toBe("الجواد الذكي");
-    expect(JAWAD_KNOWLEDGE).toContain("سلمان");
     expect(JAWAD_KNOWLEDGE).toContain("/jawad-ai/credits");
     expect(JAWAD_KNOWLEDGE).toContain("فتح الموقع للجميع");
     expect(JAWAD_KNOWLEDGE).not.toContain("الملاحظ حسن");

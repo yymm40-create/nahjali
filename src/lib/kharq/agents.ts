@@ -20,7 +20,6 @@ import { MOODS_SKILL, MOTION_STYLES_SKILL } from "@/lib/editor/motion-styles";
 import { MOTION_TEN_SKILL } from "@/lib/editor/motion-ten";
 import { TALK_STYLES_SKILL } from "@/lib/editor/talk-styles";
 import { GRADING_KNOW_HOW } from "@/lib/editor/assistant-guide";
-import { SALMAN_TASK } from "@/lib/salman";
 import { ask as islamicAsk } from "@/lib/islamic/ask";
 import * as games from "@/lib/games/persona";
 import * as content from "@/lib/content/persona";
@@ -75,8 +74,6 @@ export async function agentKnowledge(id: AgentId): Promise<string> {
       return designer.systemText((await designer.getPersona()).text);
     case "zahraa":
       return photo.systemText((await photo.getPersona()).text);
-    case "salman":
-      return SALMAN_TASK;
     case "islamic":
       return "";
   }

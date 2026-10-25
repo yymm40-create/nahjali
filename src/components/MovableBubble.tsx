@@ -2,7 +2,7 @@
 
 // A small floating button that never sits on the page's content: it can be dragged anywhere on the screen (kept inside it),
 // folded with «–» into a thin tab on the nearest side, and its place and fold are remembered on this device. A press
-// (without moving) calls `onPress`. Used by سلمان and the student's «رأيك».
+// (without moving) calls `onPress`. Used by the student's «رأيك».
 
 import { useEffect, useRef, useState } from "react";
 import "./movable-bubble.css";
