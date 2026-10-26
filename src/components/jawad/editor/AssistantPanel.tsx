@@ -5,7 +5,7 @@ import { clipEnd, duration, findClip, mainTrack, type Timeline } from "@/lib/edi
 import { framesOf } from "./media";
 import { watchClip, watchFilm } from "./watch";
 import { rememberBackdrops } from "./backdrop-memory";
-import { asksToSee, asksToSeeFilm, FILM, type Watch } from "@/lib/editor/watch";
+import { asksToSee, asksToSeeFilm, FILM, WATCH, type Watch } from "@/lib/editor/watch";
 import { diagNote, diagReport, previewShot } from "./diag";
 import { gradeLayers } from "./grade-gl";
 import type { Grade } from "@/lib/editor/grade";
@@ -59,6 +59,8 @@ interface Msg {
 
 /** From here a handoff is suggested (same as the server's CHAT_LONG). */
 const LONG = { messages: 40, chars: 24_000 };
+/** from here the film is too long to be seen well in one go (96 moments): the person is told to split the request */
+const LONG_FILM_MS = 180_000;
 const localKey = (id: string) => `jw-editor-chat-${id}`;
 
 const QUICK = ["صمّم لي نص هوك", "حط موسيقى تناسب المقطع", "قص السكتات الطويلة", "رتّب المقاطع وحط انتقالات ناعمة", "خلّه ٣٠ ثانية بأحلى اللقطات", "حط عنوان في البداية", "سوّ لي مونتاج كامل من الملفات", "خفّض الموسيقى وقت الكلام"];
@@ -364,6 +366,11 @@ export default function AssistantPanel({
     if (!player) return null;
     const key = JSON.stringify(at);
     if (filmSeen.current?.key === key) return filmSeen.current.w;
+    // a long film is seen through only ${WATCH.tiles} moments (and measured over its first 10 minutes): say so, and ask for the request in parts
+    if (duration(at) > LONG_FILM_MS) {
+      const min = Math.round(duration(at) / 6000) / 10;
+      setMsgs((m) => [...m, { role: "assistant", text: `⚠️ فيلمك طويل (${min} دقيقة). أشوف منه ${WATCH.tiles} لقطة بس، يعني لقطة كل ${Math.round(duration(at) / WATCH.tiles / 1000)} ثواني تقريبًا، وممكن تفوتني تفاصيل. الأفضل تجزّئ طلبك: اطلب مني كل جزء لحاله (مثلًا «شوف أول دقيقتين» أو حدد مقطع وقل «شوف هذا المقطع»)، وكل جزء أشوفه بتفصيل أكثر.` }]);
+    }
     try {
       const w = await watchFilm(player, duration(at), setBusy, signal);
       if (w) filmSeen.current = { key, w };
