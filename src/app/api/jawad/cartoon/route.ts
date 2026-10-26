@@ -3,7 +3,7 @@ import { CARTOON_IMAGE, CARTOON_VIDEO, CARTOON_PRICE, cartoonInput, cartoonImage
 import { callClaudeJson } from "@/lib/film/anthropic";
 import { generatorById } from "@config/jawad/generators";
 import { can, permForGenerator } from "@/lib/access";
-import { handle, UserError } from "@/lib/api";
+import { handle, shortBalance, UserError } from "@/lib/api";
 import { coinBalance, holdCoins } from "@/lib/coins";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireJawadApiUser } from "@/lib/jawad/server/access";
@@ -73,7 +73,10 @@ async function film(req: Request, body: Record<string, unknown>, user: { id: str
   const existing = await db.from("jawad_jobs").select("*").eq("user_id", user.id).eq("idempotency_key", key + "_0").maybeSingle();
   if (existing.data) return NextResponse.json({ key, jobs: await jobViews([existing.data as JobRow], { owner }) });
   if (body.expectedCoins !== quote.totalCoins) throw new UserError("تغيّر السعر؛ اعرض السعر الحالي قبل التنفيذ.", 409);
-  if (!owner && (await coinBalance(user.id) ?? 0) < quote.totalCoins) throw new UserError("رصيدك لا يكفي للفيلم كله. اشحن الرصيد أولًا.", 402);
+  if (!owner) {
+    const balance = (await coinBalance(user.id)) ?? 0;
+    if (balance < quote.totalCoins) throw shortBalance(quote.totalCoins - balance, balance, "الفيلم كله");
+  }
   const written = input.scenes.length ? await direct(input) : 0;
   const upload = await uploadFromOutput(user.id, outputId);
   const refs = await filmRefs(user.id, input, upload.id);
@@ -114,7 +117,10 @@ export const POST = handle(async (req: Request) => {
   if (!isUuid(body.key)) throw new UserError("معرّف طلب غير صالح.", 400);
   if (existing.data) return NextResponse.json({ key, jobs: await jobViews([existing.data as JobRow], { owner }) });
   if (body.expectedCoins !== quote.totalCoins) throw new UserError("تغيّر السعر؛ اعرض السعر الحالي قبل التنفيذ.", 409);
-  if (!owner && (await coinBalance(user.id) ?? 0) < quote.totalCoins) throw new UserError("رصيدك لا يكفي لإكمال الطلب كله. اشحن الرصيد أولًا.", 402);
+  if (!owner) {
+    const balance = (await coinBalance(user.id)) ?? 0;
+    if (balance < quote.totalCoins) throw shortBalance(quote.totalCoins - balance, balance, "إكمال الطلب كله");
+  }
   if (!Array.isArray(body.uploads) || body.uploads.length < 1 || body.uploads.length > 3 || body.uploads.some((id: unknown) => !isUuid(id)) || new Set(body.uploads).size !== body.uploads.length) throw new UserError("ارفع ١–٣ صور مختلفة.", 400);
   // «المخرج الخارق» writes each part of the character's film from the person's words, before anything starts; a part
   // he could not write is told plainly (translated when it is Arabic) and costs nothing

@@ -3,7 +3,8 @@
 
 import { coinStr } from "@config/coins";
 import { randomUUID } from "crypto";
-import { UserError } from "@/lib/api";
+import { shortBalance, UserError } from "@/lib/api";
+import { coinBalance } from "@/lib/coins";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn, type ClaudeUsage } from "@/lib/film/anthropic";
 import { SUPER_DIRECTOR } from "@config/film-prompts/director";
@@ -136,7 +137,10 @@ export async function improvePrompt(user: { id: string }, owner: boolean, b: Dir
   if (charged) {
     const { data, error } = await db().rpc("adjust_smart_coins", { p_user: user.id, p_delta: -coins, p_reason: "reserve", p_ref: ref, p_label: LABEL, p_allow_negative: false });
     if (error) throw error;
-    if (data == null) throw new UserError(`رصيدك من النقود الذكية لا يكفي: تطوير البرومبت يحتاج ${coinStr(coins)}.`, 402);
+    if (data == null) {
+      const balance = (await coinBalance(user.id)) ?? 0;
+      throw shortBalance(coins - Math.min(balance, 0), balance, "تطوير البرومبت");
+    }
     balance = data as number;
     const { data: same } = await db().from("smart_coin_ledger").select("ref,created_at").eq("user_id", user.id).like("ref", `director:${key}:%`).lt("delta", 0).order("created_at").order("ref");
     if (same?.[0]?.ref !== ref) {

@@ -11,6 +11,7 @@ import SiteChrome from "@/components/SiteChrome";
 import NavFeedback from "@/components/NavFeedback";
 import NativeAppBridge from "@/components/NativeAppBridge";
 import NewVersion from "@/components/NewVersion";
+import TopUpSheet from "@/components/TopUpSheet";
 import { NAHJ_ALI_HIDDEN, OWN_CHROME_HEADER, SITE_URL } from "@config/site";
 import { THEME_INIT_SCRIPT } from "@/components/ThemeSwitcher";
 import "./globals.css";
@@ -52,6 +53,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <Pixels />
         <NativeAppBridge />
         <NewVersion />
+        {/* «خلص رصيدك»: a short wallet anywhere opens the sheet to pay just what it needs, or a package */}
+        <TopUpSheet />
         <SiteChrome
           top={
             ownChrome ? null : (

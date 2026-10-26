@@ -8,12 +8,12 @@
 //            the whole shot (previous prompt, frames, references, continuity, the film's brief) and decides — then the
 //            job is sent like any other. If he fails, the job fails and every coin comes back.
 
-import { coinStr } from "@config/coins";
 import { sajjadBrief, tellSajjad } from "@/lib/film/sajjad";
 import { after } from "next/server";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
-import { UserError } from "@/lib/api";
+import { shortBalance, UserError } from "@/lib/api";
+import { coinBalance } from "@/lib/coins";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ClaudePart } from "@/lib/film/anthropic";
 import { coinsOf, EDIT_CLAUDE_KEY, EDIT_CLAUDE_USD, EDIT_FEE_KEY, generatorById } from "@config/jawad/generators";
@@ -373,7 +373,10 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   });
   if (error) {
     const msg = String(error.message ?? "");
-    if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التعديل يحتاج ${coinStr(final.coins)}.`, 402);
+    if (msg.includes("JAWAD_INSUFFICIENT")) {
+      const balance = (await coinBalance(user.id)) ?? 0;
+      throw shortBalance(final.coins - Math.min(balance, 0), balance, "هالتعديل");
+    }
     if (msg.includes("JAWAD_BUSY")) throw new UserError(`عندك ${MAX_ACTIVE_JOBS} توليدات قيد العمل. انتظر حتى ينتهي أحدها.`, 429);
     throw new Error(`إنشاء العمل: ${msg}`);
   }

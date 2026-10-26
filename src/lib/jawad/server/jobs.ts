@@ -10,18 +10,18 @@
 
 import { findStyle } from "@config/film-styles";
 import { withStyle } from "@config/jawad/style-prompt";
-import { coinStr, costOfLines } from "@config/coins";
+import { costOfLines } from "@config/coins";
 import { MINIMAX_PRICE, minimaxSpeech } from "./providers/minimax";
 import { jawadSpeak } from "./providers/jawad-voice";
 import { jawadReference, onceReferenceText } from "./voices";
 import { can, perksOf, permForGenerator } from "@/lib/access";
 import { requireSeedanceRoom, SEEDANCE_20_GENERATOR } from "@/lib/access-perks";
 import { PERMS } from "@config/access";
-import { holdTeamCoins, refundTeamCoins } from "@/lib/coins";
+import { coinBalance, holdTeamCoins, refundTeamCoins } from "@/lib/coins";
 import { giveAttempt } from "@/lib/film/team";
 import { after } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
-import { UserError } from "@/lib/api";
+import { shortBalance, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dictionOf, ELEVEN_PRICE, generatorById, GPT_IMAGE_2_SIZES, SEEDREAM_SIZES, JAWAD_VOICE_PRICE, MUSIC_REF_MS, MUSIC_REF_USE } from "@config/jawad/generators";
 import { MAX_ACTIVE_JOBS } from "@config/jawad/brand";
@@ -347,7 +347,10 @@ export async function createJob(user: { id: string; email?: string | null }, own
     // No job: the frames kept for it go too
     if (video) await removeFrames(video);
     const msg = String(error.message ?? "");
-    if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التوليد يحتاج ${coinStr(payCoins)}.`, 402);
+    if (msg.includes("JAWAD_INSUFFICIENT")) {
+      const balance = (await coinBalance(user.id)) ?? 0;
+      throw shortBalance(payCoins - Math.min(balance, 0), balance, def.output === "image" ? "هالصورة" : def.output === "video" ? "هالفيديو" : def.output === "audio" ? "هالصوت" : "هالتوليد");
+    }
     if (msg.includes("JAWAD_BUSY")) throw new UserError(`عندك ${MAX_ACTIVE_JOBS} توليدات قيد العمل. انتظر حتى ينتهي أحدها.`, 429);
     if (msg.includes("JAWAD_FREE_IMAGE_USED")) throw new UserError("استعملت الصورة المجانية لحسابك من قبل.", 409);
     throw error;
