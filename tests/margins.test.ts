@@ -10,10 +10,10 @@ import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 
 const read = (p: string) => readFileSync(p, "utf8");
 
-describe("الربح حسب النوع: Claude ٤٠٪، حيدرا ماكس ٧٠٪، GPT Image 2 ٣٠٪، الفيديو ٤٠٪، سيدنس الواقعي ١٠٪، الباقي ٤٠٪", () => {
+describe("الربح حسب النوع: Claude وحيدرا ماكس ٦٠٪، GPT Image 2 ٣٠٪، الفيديو ٤٠٪، سيدنس الواقعي ١٠٪، الباقي ٤٠٪", () => {
   it("has the owner's margins by default, and the struck price keeps the same gap above each", () => {
     expect(DEFAULT_PRICING).toMatchObject({ marginPct: 40, wasMarginPct: 70, imageMarginPct: 30, videoMarginPct: 40 });
-    expect([marginFor("image"), marginFor("video"), marginFor("claude"), marginFor("max"), marginFor("other")]).toEqual([30, 40, 40, 70, 40]);
+    expect([marginFor("image"), marginFor("video"), marginFor("claude"), marginFor("max"), marginFor("other")]).toEqual([30, 40, 60, 60, 40]);
     expect([wasMarginFor("image"), wasMarginFor("video"), wasMarginFor("other")]).toEqual([60, 70, 70]);
   });
 
@@ -21,13 +21,13 @@ describe("الربح حسب النوع: Claude ٤٠٪، حيدرا ماكس ٧٠
     expect(sellKind(1000, "image")).toBe(1000 + 300);
     expect(sellKind(1000, "video")).toBe(1000 + 400);
     expect(sellKind(1000, "other")).toBe(1000 + 400);
-    // Claude: the real cost + 40٪, to the halala, never rounded up to half a riyal; «حيدرا ماكس» + 70٪ the same way
-    expect(sellKind(1000, "claude")).toBe(1400);
-    expect(sellKind(7, "claude")).toBe(10);
-    expect(sellKind(1000, "max")).toBe(1700);
+    // Claude: the real cost + 60٪, to the halala, never rounded up to half a riyal; «حيدرا ماكس» the same
+    expect(sellKind(1000, "claude")).toBe(1600);
+    expect(sellKind(7, "claude")).toBe(12);
+    expect(sellKind(1000, "max")).toBe(1600);
     expect(coinsFor(1, "claude")).toBe(claudeHalalas(1));
     expect(coinsFor(1, "max")).toBe(claudeHalalas(1, getPricing(), "max"));
-    expect(claudeHalalas(1, getPricing(), "max")).toBe(Math.ceil(375 * 1.7));
+    expect(claudeHalalas(1, getPricing(), "max")).toBe(Math.ceil(375 * 1.6));
     expect(wasHalalas(1000, getPricing(), "image")).toBe(sellHalalas(1000, getPricing(), 60));
   });
 
@@ -79,6 +79,31 @@ describe("الربح حسب النوع: Claude ٤٠٪، حيدرا ماكس ٧٠
 
   it("is in what Claude knows about the site", () => {
     expect(JAWAD_KNOWLEDGE).toContain("GPT Image 2's pictures 30٪");
-    expect(JAWAD_KNOWLEDGE).toContain("«حيدرا ماكس»'s programs 70٪");
+    expect(JAWAD_KNOWLEDGE).toContain("«حيدرا ماكس»'s programs 60٪");
+    expect(JAWAD_KNOWLEDGE).toContain("«أسبوع العرض»");
+  });
+});
+
+describe("«أسبوع العرض»: ١٠٪ على كل شي إلا شغل Claude (٦٠٪) حتى نهاية ٢ نوفمبر ٢٠٢٦، بعدها يرجع الربح المعتاد", () => {
+  it("is 10٪ on every kind but Claude's during the week, over the owner's settings, and the struck price shows the usual one", async () => {
+    const { PROMO, promoActive, setPromoClock, setPricing } = await import("@config/coins");
+    setPricing({ marginPct: 50, imageMarginPct: 45, videoMarginPct: 55 });
+    setPromoClock(() => Date.parse("2026-10-27T12:00:00Z"));
+    try {
+      expect(promoActive()).toBe(true);
+      expect([marginFor("image"), marginFor("video"), marginFor("other"), marginFor("claude"), marginFor("max")]).toEqual([10, 10, 10, 60, 60]);
+      expect(sellKind(1000, "video")).toBe(1000 + 100);
+      expect(wasMarginFor("video")).toBe(10 + (getPricing().wasMarginPct - 50));
+      // «سيدنس الواقعي» stays at its own 10٪
+      const rf = generatorById("seedance-real-face");
+      if (rf) expect(priceKindOf(rf)).toBe("video");
+      // the week ends by itself
+      setPromoClock(() => PROMO.until);
+      expect(promoActive()).toBe(false);
+      expect([marginFor("image"), marginFor("video"), marginFor("other"), marginFor("claude")]).toEqual([45, 55, 50, 60]);
+    } finally {
+      setPromoClock(() => Infinity);
+      setPricing(null);
+    }
   });
 });

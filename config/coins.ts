@@ -37,7 +37,7 @@ export interface Pricing {
 
 /**
  * The owner's margins (21 October 2026): GPT Image 2's pictures 30٪, videos 40٪ (Seedance, Kling…; «سيدنس الواقعي» its
- * own 10٪, config/jawad/generators.ts), Claude's own work 40٪ (its real usage + 40٪, `claudeHalalas`), «حيدرا ماكس» 70٪,
+ * own 10٪, config/jawad/generators.ts), Claude's own work and «حيدرا ماكس» 60٪ since 26 October 2026 (its real usage + 60٪, `claudeHalalas`),
  * everything else (the other picture models, sound, the owner's fixed fees) the general 40٪. The struck «كان» price keeps
  * the same gap above each as the general one does (+30 points).
  */
@@ -64,9 +64,22 @@ export function setPricing(p: Partial<Pricing> | null | undefined) {
   };
 }
 
+/**
+ * «أسبوع العرض» (the owner, 26 October 2026): every profit except Claude's work (the robots and «حيدرا ماكس», 60٪) is 10٪
+ * until `until` — over the owner's settings too — and then the margins above come back by themselves. The struck «كان»
+ * price keeps its gap above the profit in force, so during the week it shows the usual price.
+ */
+export const PROMO = { marginPct: 10, until: Date.parse("2026-11-02T21:00:00Z") } as const;
+// the tests price at the usual margins unless one sets the clock (setPromoClock)
+let promoClock = () => (typeof process !== "undefined" && process.env.VITEST ? Infinity : Date.now());
+export const setPromoClock = (now: () => number) => {
+  promoClock = now;
+};
+export const promoActive = (now = promoClock()) => now < PROMO.until;
+
 /** The profit (percent) on a kind of price. Claude's and «حيدرا ماكس»'s are fixed by the owner (see `claudeHalalas`). */
 export const marginFor = (kind: PriceKind, p = current) =>
-  kind === "image" ? p.imageMarginPct : kind === "video" ? p.videoMarginPct : kind === "claude" ? CLAUDE_MARGIN_PCT : kind === "max" ? HAIDARA_MAX_MARGIN_PCT : p.marginPct;
+  kind === "claude" ? CLAUDE_MARGIN_PCT : kind === "max" ? HAIDARA_MAX_MARGIN_PCT : promoActive() ? PROMO.marginPct : kind === "image" ? p.imageMarginPct : kind === "video" ? p.videoMarginPct : p.marginPct;
 /** The struck «was» margin of a kind: the same gap above it as the general one. */
 export const wasMarginFor = (kind: PriceKind, p = current) => marginFor(kind, p) + Math.max(0, p.wasMarginPct - p.marginPct);
 
