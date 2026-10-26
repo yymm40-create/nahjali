@@ -64,7 +64,7 @@ describe("at cost: what the tool costs us, with Claude's input and output counte
     expect(usd).toBeCloseTo(0.425, 3);
     expect(priceOf(usd, "claude", true)).toBe(costHalalas(usd));
     expect(priceOf(usd, "claude", true)).toBe(160);
-    expect(claudeHalalas(usd)).toBe(224); // normal: cost + 40%
+    expect(claudeHalalas(usd)).toBe(255); // normal: cost + 60%
     // a video: the normal price carries 40% and is rounded to half riyals; at cost it is the cost to the halala
     const video = 2.109;
     expect(coinsFor(video, "video")).toBe(1150);

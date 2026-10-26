@@ -34,13 +34,14 @@ export interface CreditSettings {
 }
 
 /**
- * «المشهد السينمائي» (owner, 17 October 2026; re-priced with the margins of 21 October 2026): the balance one cinematic
- * scene costs, end to end, at the owner's margins (videos 40٪, GPT Image 2 pictures 30٪, Claude its real cost + 40٪) —
+ * «المشهد السينمائي» (owner, 17 October 2026; re-priced with the margins of 21 October 2026, and Claude's 60٪ of
+ * 26 October 2026): the balance one cinematic scene costs, end to end, at the owner's usual margins (videos 40٪, GPT Image 2
+ * pictures 30٪, Claude its real cost + 60٪) —
  * the owner's basis: Seedance 2.0 at its 15-second limit in 480p, ONE take (¤6), 4 sheets with no redraws (¤8), and ONE
  * reply each from the screenwriter, the sheet maker and the director plus the small helpers, at what the film code
- * reserves for each (¤14.18) = ¤28.18, rounded up to the whole riyal (the owner's cap: never above ¤50). The trial is ¤10.
+ * reserves for each (¤16.20 at 60٪) = ¤30.20, rounded up to the whole riyal (the owner's cap: never above ¤50). The trial is ¤10.
  */
-export const SCENE_PACK_SAR = 29;
+export const SCENE_PACK_SAR = 31;
 
 /**
  * «الطالب الذكي» (owner, 18 October 2026): ¤12 — one PDF of 5–10 pages turned into ONE output (a summary or an

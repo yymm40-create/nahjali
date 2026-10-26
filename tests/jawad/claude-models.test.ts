@@ -54,24 +54,24 @@ describe("the four minds", () => {
   });
 });
 
-describe("the platform's 40% on Claude's usage («حيدرا ماكس» 70%)", () => {
+describe("the platform's 60% on Claude's usage («حيدرا ماكس» too)", () => {
   setPricing(null);
-  it("is the real cost plus 40% — rounded up to the halala only", () => {
-    expect(CLAUDE_MARGIN_PCT).toBe(40);
+  it("is the real cost plus 60% — rounded up to the halala only", () => {
+    expect(CLAUDE_MARGIN_PCT).toBe(60);
     for (const usd of [0.0003, 0.002, 0.03, 0.12, 0.5, 1.37, 9.99]) {
       const cost = costHalalas(usd);
       const exact = usd * 3.75 * 100;
       const price = claudeHalalas(usd);
-      expect(price, String(usd)).toBeGreaterThanOrEqual(exact * 1.4 - 1e-9);
-      // never more than the 40% and one halala of rounding
-      expect(price, String(usd)).toBeLessThanOrEqual(Math.ceil(exact * 1.4) + 0);
-      expect(claudeHalalas(usd, undefined, "max"), String(usd)).toBe(Math.max(1, Math.ceil(exact * 1.7 - 1e-9)));
+      expect(price, String(usd)).toBeGreaterThanOrEqual(exact * 1.6 - 1e-9);
+      // never more than the 60% and one halala of rounding
+      expect(price, String(usd)).toBeLessThanOrEqual(Math.ceil(exact * 1.6) + 0);
+      expect(claudeHalalas(usd, undefined, "max"), String(usd)).toBe(Math.max(1, Math.ceil(exact * 1.6 - 1e-9)));
       expect(price).toBeGreaterThanOrEqual(cost);
     }
   });
 
   it("is under the general price (which rounds to the half riyal)", () => {
-    expect(claudeHalalas(0.12)).toBe(63);
+    expect(claudeHalalas(0.12)).toBe(72);
     expect(coinsFor(0.12)).toBe(100);
     expect(claudeHalalas(0)).toBe(0);
   });

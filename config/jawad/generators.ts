@@ -6,7 +6,7 @@
 // The owner can rename, hide, reorder or re-price a generator from /jawad-ai/admin, but can never add a capability:
 // options, limits and modes only come from this file.
 
-import { COIN_COST_USD, sellKind, wasHalalas, getPricing, type PriceKind } from "../coins";
+import { COIN_COST_USD, sellKind, wasHalalas, getPricing, marginFor, type PriceKind } from "../coins";
 import type { GeneratorDef, Issue, ModeDef, OptionState, PriceResult, RefMeta, Settings } from "./types";
 import { DICTION_KEY, DICTION_VALUES, hasMarks, mostlyArabic, type Diction } from "./diction";
 import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, STEM_LABEL, stemsOf, VIDEO_SFX, videoSfxSeconds } from "./smart-split";
@@ -971,7 +971,7 @@ const realFaceSec = (d: { settings: Settings }) => Math.max(4, Math.min(d.settin
 /** The owner's profit on «سيدنس الواقعي» (21 October 2026), whatever the videos' general margin is. */
 export const REALFACE_MARGIN_PCT = 10;
 /** The cost lines lifted so that the videos' margin on them comes to REALFACE_MARGIN_PCT. */
-const realFaceLift = () => (100 + REALFACE_MARGIN_PCT) / (100 + getPricing().videoMarginPct);
+const realFaceLift = () => (100 + REALFACE_MARGIN_PCT) / (100 + marginFor("video"));
 const REALFACE_CHECKED = "2026-10-21";
 
 const realFaceModes: ModeDef[] = [
