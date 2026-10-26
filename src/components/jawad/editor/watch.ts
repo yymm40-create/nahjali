@@ -206,7 +206,7 @@ export async function watchFilm(
   const pctx = probe.getContext("2d", { willReadFrequently: true })!;
   let prev: Uint8ClampedArray | null = null;
   const stats: FrameStat[] = [];
-  const n = Math.min(400, Math.max(8, Math.round(total / 250)));
+  const n = Math.max(8, Math.round(total / 250));
   try {
     for (let i = 0; i < n; i++) {
       if (signal?.aborted) break;
