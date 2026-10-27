@@ -931,11 +931,31 @@ export interface Crop {
   b: number;
 }
 export const NO_CROP: Crop = { l: 0, t: 0, r: 0, b: 0 };
+/** The most of the picture a crop may hide across (left + right, top + bottom): a sliver always stays. */
+export const CROP_MAX = 0.95;
+/**
+ * A crop kept possible: every side 0…95٪ (half the picture for a split screen, or more), and two opposite sides never
+ * meeting — when they would, the side named in `keep` stays and the other gives way. Null = nothing hidden.
+ */
+export function fitCrop(c: Partial<Crop>, keep?: keyof Crop): Crop | null {
+  const k = (v: unknown) => Math.min(CROP_MAX, Math.max(0, Number(v) || 0));
+  const out = { l: k(c.l), t: k(c.t), r: k(c.r), b: k(c.b) };
+  for (const [a, b] of [["l", "r"], ["t", "b"]] as const) {
+    const over = out[a] + out[b] - CROP_MAX;
+    if (over <= 0) continue;
+    if (keep === a) out[b] = Math.max(0, out[b] - over);
+    else if (keep === b) out[a] = Math.max(0, out[a] - over);
+    else {
+      out[a] -= over / 2;
+      out[b] -= over / 2;
+    }
+  }
+  for (const s of ["l", "t", "r", "b"] as const) out[s] = Math.round(out[s] * 1000) / 1000;
+  return out.l || out.t || out.r || out.b ? out : null;
+}
 function readCrop(v: unknown): Crop | null {
   if (!v || typeof v !== "object") return null;
-  const o = v as Record<string, unknown>;
-  const c = { l: num(o.l, 0, 0.45, 0), t: num(o.t, 0, 0.45, 0), r: num(o.r, 0, 0.45, 0), b: num(o.b, 0, 0.45, 0) };
-  return c.l || c.t || c.r || c.b ? c : null;
+  return fitCrop(v as Partial<Crop>);
 }
 
 function readColor(v: unknown): ColorGrade | null {
