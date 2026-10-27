@@ -5,6 +5,7 @@
 // cover, its progress, «▶ العب الحين», its link to copy or send on WhatsApp, «✏️ عدّل» to change it at the client's word, and «📊 الإحصائيات» (who played it).
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import Riyal from "@/components/Riyal";
 import { api, postJson } from "@/lib/fetch";
 import { findClaudeModel } from "@config/claude-models";
@@ -140,29 +141,57 @@ export function useBuilds(chatId: string | null, enabled: boolean) {
 }
 
 /** The sheet before building: what happens, how long, what it costs, with or without drawn pictures. */
+interface Quote {
+  picture: number | null;
+  cover: number | null;
+  free: boolean;
+  writing: { typical: number; max: number } | null;
+  edit: { typical: number; max: number } | null;
+  maxPictures: number;
+  balance: number | null;
+  atCost: boolean;
+}
+
+/** How many pictures a game usually has besides its cover (the plan decides, up to the most). */
+const USUAL_PICTURES = 3;
+
+/**
+ * The sheet before a build: «قنبر» builds NOTHING until the person has seen what it will take from their wallet and
+ * confirmed it — the model's writing (the usual and the most), the cover, each picture, and the balance they hold now.
+ */
 export function BuildSheet({ busy, onGo, onClose }: { busy: boolean; onGo: (pictures: boolean) => void; onClose: () => void }) {
   const [pictures, setPictures] = useState(true);
-  const [quote, setQuote] = useState<{ picture: number | null; cover: number | null; free: boolean } | null>(null);
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     let live = true;
-    api<{ picture: number | null; cover: number | null; free: boolean }>("/api/games/build?quote=1")
+    api<Quote>("/api/games/build?quote=1")
       .then((q) => live && setQuote(q))
-      .catch(() => null);
+      .catch(() => live && setFailed(true));
     return () => {
       live = false;
     };
   }, []);
+
+  const q = quote;
+  const n = pictures ? q?.maxPictures ?? 5 : 0;
+  const pics = (count: number) => (pictures && q?.picture != null ? q.picture * count : 0);
+  // the usual and the most this build can take; known only when every part could be priced
+  const known = !!q && (q.free || (q.writing != null && q.cover != null && (!pictures || q.picture != null)));
+  const typical = q && known ? (q.writing?.typical ?? 0) + (q.cover ?? 0) + pics(Math.min(USUAL_PICTURES, n)) : null;
+  const most = q && known ? (q.writing?.max ?? 0) + (q.cover ?? 0) + pics(n) : null;
+  const short = !!q && !q.free && q.balance != null && typical != null && q.balance < typical;
   return (
-    <div className="gm-sheet" role="dialog" aria-modal="false" aria-label="اصنع اللعبة">
+    <div className="gm-sheet" role="dialog" aria-modal="false" aria-label="تأكيد بناء اللعبة">
       <div className="gm-sheet-head">
-        <b>🎮 قنبر بيبني لعبتك الحين</b>
+        <b>🎮 قبل ما يبدأ قنبر: راجع التكلفة وأكّد</b>
         <button type="button" className="gm-mini" onClick={onClose} aria-label="إغلاق">✕</button>
       </div>
       <ul className="gm-sheet-list">
+        <li>ما يبدأ قنبر ولا يصرف شي من رصيدك إلا بعد ما تضغط «أؤكد».</li>
         <li>يقرأ محادثتكم ويكتب اللعبة كاملة، تنلعب على الجوال والكمبيوتر.</li>
         <li>{pictures ? "جواد يرسم غلافها وصورها (الأبطال والخلفية…)." : "جواد يرسم غلافها بس، واللعبة بأشكال وألوان."}</li>
-        <li>تاخذ تقريبًا ٢–٥ دقايق، وتقدر تكمل كلامك مع قنبر وهي تنبني.</li>
-        <li>بالأخير يطلع لك رابط: تضغطه وتلعب، وترسله لربعك.</li>
+        <li>تاخذ تقريبًا ٢–٥ دقايق، وتقدر تكمل كلامك مع قنبر وهي تنبني. بالأخير يطلع لك رابط تلعب فيه وترسله لربعك.</li>
       </ul>
       <div className="gm-seg" role="radiogroup" aria-label="الصور">
         <button type="button" role="radio" aria-checked={pictures} className={pictures ? "on" : ""} onClick={() => setPictures(true)}>
@@ -172,29 +201,47 @@ export function BuildSheet({ busy, onGo, onClose }: { busy: boolean; onGo: (pict
           ⚡ بدون صور <small>أسرع وأرخص</small>
         </button>
       </div>
-      <p className="gm-cost">
-        {quote?.free ? (
-          "مجانًا لحسابك."
-        ) : (
+      <div className="gm-cost" aria-live="polite">
+        {!q && !failed && <p>نحسب لك التكلفة…</p>}
+        {failed && <p>ما قدرنا نحسب التكلفة الحين؛ جرّب تفتح الصفحة مرة ثانية قبل ما تبني.</p>}
+        {q?.free && <p>مجانًا لحسابك: ما يُصرف من رصيدك شي.</p>}
+        {q && !q.free && (
           <>
-            التكلفة من رصيدك: كتابة اللعبة حسب الاستهلاك{WRITER ? ` (يكتبها «${WRITER}»، الأسرع بالكود)` : ""}{" "}
-            {quote?.cover != null && (
-              <>
-                + الغلاف <Riyal halalas={quote.cover} size={13} />
-              </>
+            <p>
+              <b>المتوقع يُصرف من رصيدك: </b>
+              {typical != null ? <Riyal halalas={typical} size={15} /> : "—"}
+              {most != null && most > (typical ?? 0) && (
+                <>
+                  {" "}
+                  <small>(ممكن يوصل لحد <Riyal halalas={most} size={12} /> لو احتاجت اللعبة إصلاح أو صور أكثر)</small>
+                </>
+              )}
+            </p>
+            <ul>
+              <li>
+                كتابة اللعبة{WRITER ? ` («${WRITER}»)` : ""}: {q.writing ? <Riyal halalas={q.writing.typical} size={13} /> : "—"} <small>حسب الاستهلاك الفعلي</small>
+              </li>
+              <li>
+                الغلاف: {q.cover != null ? <Riyal halalas={q.cover} size={13} /> : "—"}
+              </li>
+              {pictures && (
+                <li>
+                  الصور: {q.picture != null ? <Riyal halalas={q.picture} size={13} /> : "—"} للصورة، غالبًا {USUAL_PICTURES} وحتى {q.maxPictures}
+                </li>
+              )}
+            </ul>
+            {q.balance != null && (
+              <p>
+                رصيدك الحين: <Riyal halalas={q.balance} size={13} />
+                {short && <> — <b>ما يكفي</b>. <Link href="/jawad-ai/coins">اشحن رصيدك</Link> وارجع.</>}
+              </p>
             )}
-            {pictures && quote?.picture != null && (
-              <>
-                {" "}
-                + كل صورة <Riyal halalas={quote.picture} size={13} /> (حتى ٥ صور)
-              </>
-            )}
-            . الصورة اللي تفشل يرجع رصيدها.
+            <p><small>الصورة اللي تفشل يرجع رصيدها. {q.atCost ? "الأسعار بسعر الأداة (بدون ربح)." : ""}</small></p>
           </>
         )}
-      </p>
-      <button type="button" className="gm-send gm-go" disabled={busy} onClick={() => onGo(pictures)}>
-        {busy ? "قنبر يخطط اللعبة…" : "🎮 ابنِ اللعبة"}
+      </div>
+      <button type="button" className="gm-send gm-go" disabled={busy || short || (!q && !failed)} onClick={() => onGo(pictures)}>
+        {busy ? "قنبر يخطط اللعبة…" : typical != null && !q?.free ? <>✅ أؤكد، ابنِ اللعبة (≈ <Riyal halalas={typical} size={13} />)</> : "✅ أؤكد، ابنِ اللعبة"}
       </button>
     </div>
   );
@@ -227,6 +274,18 @@ export function BuildCard({ b, note, onEdit, onRetry, onRemove }: { b: Build; no
   const [change, setChange] = useState("");
   const [copied, setCopied] = useState(false);
   const [stats, setStats] = useState(false);
+  // what a change would take from the wallet, shown when the change box opens (nothing is made before the person confirms)
+  const [editQuote, setEditQuote] = useState<Quote | null>(null);
+  useEffect(() => {
+    if (!editing || editQuote) return;
+    let live = true;
+    api<Quote>("/api/games/build?quote=1")
+      .then((q) => live && setEditQuote(q))
+      .catch(() => null);
+    return () => {
+      live = false;
+    };
+  }, [editing, editQuote]);
   const url = typeof window === "undefined" ? b.link : `${window.location.origin}${b.link}`;
   const share = `جرّب لعبتي «${b.title}» 🎮\n${withRef(url, "wa")}`;
   const building = b.status === "building";
@@ -315,7 +374,17 @@ export function BuildCard({ b, note, onEdit, onRetry, onRemove }: { b: Build; no
                 }}
               >
                 <textarea className="gm-input" dir="auto" rows={2} maxLength={2000} value={change} onChange={(e) => setChange(e.target.value)} placeholder="وش تبي يتغير؟ مثلًا: خل اللاعب أسرع، زد الأعداء، غيّر الألوان…" aria-label="التعديل" />
-                <button type="submit" className="gm-send" disabled={!change.trim()}>عدّل</button>
+                <p className="gm-cost" aria-live="polite">
+                  {!editQuote ? "نحسب لك التكلفة…" : editQuote.free || !editQuote.edit ? "مجانًا لحسابك." : (
+                    <>
+                      المتوقع يُصرف من رصيدك: <Riyal halalas={editQuote.edit.typical} size={13} /> <small>(حتى <Riyal halalas={editQuote.edit.max} size={11} /> لو احتاج إصلاح)</small>
+                      {editQuote.balance != null && <> · رصيدك <Riyal halalas={editQuote.balance} size={12} /></>}
+                    </>
+                  )}
+                </p>
+                <button type="submit" className="gm-send" disabled={!change.trim() || !editQuote || (!editQuote.free && editQuote.balance != null && editQuote.edit != null && editQuote.balance < editQuote.edit.typical)}>
+                  {editQuote && !editQuote.free && editQuote.edit ? <>✅ أؤكد وعدّل (≈ <Riyal halalas={editQuote.edit.typical} size={12} />)</> : "✅ أؤكد وعدّل"}
+                </button>
               </form>
             )}
           </>

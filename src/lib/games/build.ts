@@ -10,7 +10,10 @@ import { Script } from "node:vm";
 import { UserError } from "@/lib/api";
 import { unlimitedFor } from "@/lib/access";
 import { deskImage, deskQuote, DeskError, type DeskWho } from "@/lib/content/jawad";
-import { claudeTrouble, isLeader } from "@/lib/film/anthropic";
+import { claudeCost, claudeTrouble, isLeader, type ClaudeUsage } from "@/lib/film/anthropic";
+import { atCostFor, coinBalance, priceOf } from "@/lib/coins";
+import { claudeHalalas } from "@config/coins";
+import { findClaudeModel } from "@config/claude-models";
 import { isAdmin } from "@config/site";
 import { JAWAD_BUCKET } from "@/lib/jawad/server/runtime";
 import { storage } from "@/lib/storage";
@@ -170,15 +173,50 @@ export async function deleteBuild(userId: string, id: string) {
   if (files.length) await storage.from(JAWAD_BUCKET).remove(files).catch(() => null);
 }
 
-/** About what a build's pictures cost this person now (halalas; 0 when free, null when unknown). */
-export async function picturesQuote(user: { id: string; email?: string | null }, origin: string): Promise<{ picture: number | null; cover: number | null; free: boolean }> {
+/**
+ * What a build would cost this person, shown to them BEFORE anything is made (halalas; null when it cannot be priced):
+ * the model's writing (what is usual, and the most it can come to when a fix or a continuation is needed), the cover,
+ * each picture, and what their wallet holds now. Nothing is made or taken here.
+ */
+export interface BuildQuote {
+  picture: number | null;
+  cover: number | null;
+  free: boolean;
+  /** the plan and the code written by the model: the usual cost and the ceiling (a continuation and a fix on top) */
+  writing: { typical: number; max: number } | null;
+  /** a change to a finished game («✏️ عدّل»): one rewrite of its code, and the most (a fix more) */
+  edit: { typical: number; max: number } | null;
+  /** pictures besides the cover, at most */
+  maxPictures: number;
+  /** the person's wallet, or null when it cannot be read */
+  balance: number | null;
+  /** the cost price (a code's «بسعر التكلفة»): no profit in the prices above */
+  atCost: boolean;
+}
+
+/** The writing of a game by the model that writes it, in USD: the usual way, and the most (one continuation and one fix more). */
+export function writingUsd(model: Parameters<typeof claudeCost>[1]): { typical: number; max: number; edit: { typical: number; max: number } } {
+  const tokens = (input: number, write: number, read: number, output: number): ClaudeUsage => ({ input_tokens: input, cache_creation_input_tokens: write, cache_read_input_tokens: read, output_tokens: output });
+  // a plan opens the site's long knowledge text cold (it is written to the cache), the code steps then read it from there
+  const plan = (out: number) => claudeCost(tokens(6000, 60000, 0, out), model);
+  const code = (out: number) => claudeCost(tokens(8000, 0, 60000, out), model);
+  return { typical: plan(3000) + code(14000), max: plan(GAME_BUILD.planTokens) + code(GAME_BUILD.codeTokens) * 3, edit: { typical: code(14000), max: code(GAME_BUILD.codeTokens) * 2 } };
+}
+
+export async function picturesQuote(user: { id: string; email?: string | null }, origin: string): Promise<BuildQuote> {
   const free = await unlimitedFor(user.email);
   const who: DeskWho = { id: user.id, email: user.email, owner: free, origin };
-  const [picture, cover] = await Promise.all([
+  const [picture, cover, atCost, balance] = await Promise.all([
     deskQuote(who, { kind: "image", prompt: "quote", aspect: "1:1", quality: "medium", resolution: "std" }),
     deskQuote(who, { kind: "image", prompt: "quote", aspect: "16:9", quality: "high", resolution: "std" }),
+    atCostFor(user.id, user.email).catch(() => false),
+    free ? Promise.resolve(null) : coinBalance(user.id),
   ]);
-  return { picture, cover, free };
+  const model = findClaudeModel(GAME_BUILD.model);
+  const usd = model ? writingUsd(model) : null;
+  const halalas = (x: number) => (atCost ? priceOf(x, "claude", true) : claudeHalalas(x, undefined, "claude"));
+  const pay = (x: { typical: number; max: number }) => (free ? { typical: 0, max: 0 } : { typical: halalas(x.typical), max: halalas(x.max) });
+  return { picture, cover, free, writing: usd ? pay(usd) : null, edit: usd ? pay(usd.edit) : null, maxPictures: GAME_BUILD.maxAssets, balance, atCost };
 }
 
 // ———————————————————————————— the plan ————————————————————————————
