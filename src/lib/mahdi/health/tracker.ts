@@ -26,6 +26,26 @@ export const MEASUREMENT_NAMES: Record<MeasurementKey, string> = {
   calf: "السمانة",
 };
 
+/**
+ * «شنو أكلت؟»: one thing eaten that day — the food (from the catalogue, or written by the person and estimated), the
+ * household measure and how many, and what it gives. Its calories and protein are added to the day's counters.
+ */
+export interface MealItem {
+  id: string;
+  /** the catalogue food (config/mahdi/meal-foods.ts), or null for one estimated from the person's words */
+  foodId: string | null;
+  name: string;
+  /** the measure as said («صحن متوسط», «ملعقة طعام عادية», «بيضة») */
+  unit: string;
+  qty: number;
+  g: number;
+  kcal: number;
+  p: number;
+  c: number;
+  f: number;
+}
+export const MEALS_MAX = 60;
+
 export interface DayLog {
   date: string;
   /** exercise id → its sets, in order */
@@ -44,6 +64,8 @@ export interface DayLog {
   startedAt?: number | null;
   /** the minutes of training already counted that day (the clock adds to it when it stops) */
   durationMin?: number;
+  /** «شنو أكلت؟»: what was eaten, item by item */
+  meals?: MealItem[];
 }
 
 /** A number as the person typed it: Arabic digits, «٫» or «,» as the decimal point (so 7.5 and ٧٫٥ both work). */
@@ -104,7 +126,40 @@ export function cleanDay(v: unknown): DayLog | null {
     ...(Number.isInteger(o.planDay) && (o.planDay as number) >= 0 && (o.planDay as number) <= 6 ? { planDay: o.planDay as number } : {}),
     startedAt: typeof o.startedAt === "number" && o.startedAt > 1.6e12 && o.startedAt < 4e12 ? Math.round(o.startedAt) : null,
     durationMin: num(o.durationMin, 0, 600, 0.1) ?? 0,
+    ...(Array.isArray(o.meals) && o.meals.length ? { meals: cleanMeals(o.meals) } : {}),
   };
+}
+
+/** The meals as the page sent them, kept inside bounds. */
+export function cleanMeals(v: unknown[]): MealItem[] {
+  return v
+    .slice(0, MEALS_MAX)
+    .filter((m): m is Record<string, unknown> => !!m && typeof m === "object")
+    .map((m) => ({
+      id: typeof m.id === "string" && /^[a-z0-9]{4,24}$/i.test(m.id) ? m.id : Math.random().toString(36).slice(2, 12),
+      foodId: typeof m.foodId === "string" && /^[a-z0-9-]{1,40}$/.test(m.foodId) ? m.foodId : null,
+      name: String(m.name ?? "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 60),
+      unit: String(m.unit ?? "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 40),
+      qty: num(m.qty, 0, 50, 0.25) ?? 1,
+      g: num(m.g, 0, 5000) ?? 0,
+      kcal: num(m.kcal, 0, 6000) ?? 0,
+      p: num(m.p, 0, 400, 0.1) ?? 0,
+      c: num(m.c, 0, 800, 0.1) ?? 0,
+      f: num(m.f, 0, 400, 0.1) ?? 0,
+    }))
+    .filter((m) => m.name);
+}
+
+/** What the day's meals add up to. */
+export function mealTotals(meals: MealItem[] | undefined) {
+  const t = { kcal: 0, p: 0, c: 0, f: 0 };
+  for (const m of meals ?? []) {
+    t.kcal += m.kcal;
+    t.p += m.p;
+    t.c += m.c;
+    t.f += m.f;
+  }
+  return { kcal: Math.round(t.kcal), p: Math.round(t.p), c: Math.round(t.c), f: Math.round(t.f) };
 }
 
 /** Epley: the weight you could lift once (bodyweight sets count by reps only). */

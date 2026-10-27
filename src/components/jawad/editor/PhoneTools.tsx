@@ -48,6 +48,7 @@ function clipChips(kind: ClipKindOf, hasAudio: boolean): Chip[] {
     { id: "basic", label: kind === "text" ? "النص" : kind === "audio" ? "السرعة" : "تعديل", icon: kind === "text" ? "type" : "settings", go: { kind: "tab", tab: "basic" } },
     ...(hasAudio || kind === "audio" ? [{ id: "sound", label: "الصوت", icon: "volume", go: { kind: "tab", tab: "sound" } } as Chip] : []),
     { id: "delete", label: "حذف", icon: "trash", go: { kind: "delete" } },
+    ...(visual && media ? [{ id: "crop", label: "القص", icon: "ratio", go: { kind: "tab", tab: "crop" } } as Chip] : []),
     ...(visual ? [{ id: "anim", label: "حركة", icon: "wand", go: { kind: "tab", tab: "anim" } } as Chip] : []),
     ...(visual ? [{ id: "fx", label: "مؤثرات", icon: "burst", go: { kind: "tab", tab: "fx" } } as Chip] : []),
     ...(visual && media ? [{ id: "color", label: "ألوان", icon: "palette", go: { kind: "tab", tab: "color" } } as Chip] : []),

@@ -23,6 +23,7 @@ export function rulesFor(path: string, method: string): Rule[] {
   if (path === "/api/khateeb/enter" && method === "POST") out.push({ key: "khateeb", max: 8, windowMs: 10 * 60_000 });
   // «عباس سبع القنطرة» (the coach of «الصحة العلوية») is free for the person: a conversation, never a flood
   if (path === "/api/mahdi/health/coach" && method === "POST") out.push({ key: "coach", max: 30, windowMs: 10 * 60_000 });
+  if (path === "/api/mahdi/health/meal" && method === "POST") out.push({ key: "meal", max: 40, windowMs: 10 * 60_000 });
   // a page opened (the owner's statistics): one per page, never a flood
   if (path === "/api/visit") out.push({ key: "visit", max: 60, windowMs: 60_000 });
   // a game's player reports an error it hit: a few, never a flood (anyone with a game's link can)

@@ -1,0 +1,37 @@
+# The bar, the score sheet and the cheap-look blacklist
+
+THE OWNER'S BAR — «لو حطيت المقطع، الشخص يفكر مصروف عليه ملايين»: a viewer must believe millions were spent on it. Not a pleasant template: a studio piece. Aim there on every shot.
+
+WHAT MAKES IT LOOK EXPENSIVE (numbers from the research; apply them, don't recite them)
+- Easing: never linear on anything that starts or stops. Entrances K.ease.silk / outExpo / outQuint (80% of the way fast, a long landing); exits inCubic, 60–75% of the entrance's length; state-to-state inOutCubic. No more than two tweens of a shot on the same ease. Never start a shot at its t = 0 exactly (offset 0.1–0.3 s).
+- Durations: small element 0.4–0.7 s, headline build 0.6–1.0 s, hero reveal 1.2–2.5 s, camera moves 3–6 s across the shot; longer for longer distances. Energy 0.15–0.3 s, luxury 0.5–0.8 s, cinematic 0.8–2 s. The slowest shot ≥ 3× the fastest.
+- Overshoot budget: premium/brand 0–2%; feedback 2–5%; a badge 5–10% (0 → 1.08 → 1); never on opacity. Springs: damping near critical by default; bouncy only when the brand is playful. Never scale from 0 — from 0.9–0.97 with opacity, or build it from particles/masks.
+- Stagger: letters (Latin only) 15–35 ms, UI 30–80 ms, words 60–120 ms, dramatic 100–200 ms; a group's whole stagger ≤ 0.5–0.7 s.
+- Choreography: ONE hero motion at a time; at most 2–3 secondary motions at lower amplitude; at most a third of the elements moving at once; the background always slightly alive (0.5–2% drift, slow noise, dust). Shot shape: build 0–30%, breathe 30–70% with exactly one ambient motion (scale 1 → 1.04), resolve 70–100%. Follow-through: children 50–150 ms behind; the background counter-moves 20–30%.
+- Premium = ONE object changing shape across shots (a word dissolves into the dust that builds the next one; a card grows into the next scene; a line becomes the chart). A crossfade between pictures looks cheap.
+- Camera: a slow push (2–6% scale) on every hold; parallax with 3–5 planes (near 1.5×, hero 1×, far 0.2–0.4×) via K.camera + K.inSpace with dof; rack focus 0.4–0.8 s; orbits slow (15–40° over 4–6 s); crash zoom 0.2–0.4 s with motion blur only for a punch; never shake or spin without a reason; the lens (fov) does not tween.
+- Light & finish: a key glow or rim on the hero, a MOVING specular (K.lightSweep once per ~3 s at most), restrained bloom (strength 0.2–0.6), vignette 10–25%, grain light or none (K.grain default 0.02, never above 0.04 — the owner's «убери шум»), RGB split 0.5–1.5 px only on hits. Contact shadows under floating things.
+- Type: one idea per card (≤ 7 words), held ≥ 1.5 s after it lands (0.5 s + 0.25 s a word); headline ≥ 8% of the frame's width in px (≈ 90–180 px at 1080), support ≥ 4%, nothing under 3.3%; hero text 60–80% of the width; weight contrast 300/400 vs 800/900; ≤ 2 families; mask reveals rising 40–60% of their height (outExpo 0.6–0.9 s); blur-to-sharp 8–16 px → 0 with 4–8% scale-down. Never typewriter on headlines, never bouncing letters, never spinning 3D text.
+- Colour: 3–5 colours, ONE accent (60-30-10) on the hero / key word only; near-black (#0a0a0c–#141318) and off-white (#f2f0eb) instead of pure black/white; one grade for the whole piece. Brand colours win when given.
+- Pacing: the hook in the first 1–1.5 s (an impossible event on frame 1); something new every 0.8–1.5 s (kinetic) or 2–4 s (explainer); cuts on the beat grid; the biggest reveal on the drop after a riser; the ending held ≥ 2 s or looping into frame 1 (make the last 0.5 s match the start).
+- Sound (cues): whoosh 10–20 ms before the move, impact on the exact landing frame, riser cresting on the reveal, soft UI ticks for small things; ~1 accent per 1–2 s; never the same cue twice in a row; no hit on every word.
+
+THE CHEAP-LOOK BLACKLIST (a critic rejects the piece for any of these)
+centred title on a gradient with everything fading in · linear slides · one ease and one duration for everything · bouncy overshoot on a premium brand · particle bursts or glows for no reason ("AI purple") · crossfades, star wipes, page curls, random wipes, glitch on every cut, constant zoom, spinning cards · a static or empty opening, a logo intro · dead frames (nothing alive for > 1 s) · text overlapping another text during a swap, text blurred by scaling, text under the platform's buttons, text < 3.3% of the width · invented UI, invented numbers, the brand typed as text when its logo was given · pure #000 / #fff · rainbow gradients, > 2 fonts, outlines and bevels on type · over-bloom that washes the frame, heavy RGB split everywhere, gradient banding · objects floating with no grounding · living beings drawn as shapes (use given pictures instead) · a loop that stutters, a single-frame pop.
+
+ARABIC (over anything above written for Latin type)
+Animate whole words or lines, never letters (the joins break); never letter-spacing (K.text never tracks Arabic) — stretch with kashida (ـ) only after letters that join forward; motion, masks, wipes and lists run RIGHT → LEFT (the first item on the right); line height 1.3–1.5 with room above for diacritics; one digit system (Western 0–9 unless asked for ٠١٢: K.digits / K.counter {arabic:true}); Arabic 10–15% larger than Latin for the same read. Word-by-word 120–200 ms a word, 60–120 ms apart; pill 300–450 ms; badge pop 350–500 ms (0 → 1.08 → 1, −8° → 0); a hold over 2.5 s needs a secondary motion; end card 3–7 s. Gulf campaigns: gold/brass on deep dark grounds, geometric patterns assembling from particles.
+
+## The score sheet (every criterion 1–10; pass ≥ 8; at most 3 rounds)
+- **hook** (الهوك): Hook: something striking already moving in frame 1; the idea readable by ~1.5 s; no lead-in, no logo intro
+- **concept** (الفكرة): One clear concept a viewer can say in one sentence; every shot serves it
+- **hero** (البطل): One hero per frame, an obvious focal point, ≥ 40% of the frame breathing during holds
+- **motion** (الحركة): Easing quality: strong ease-out in, ease-in out, springs (no linear starts/stops), overshoot inside budget, arcs, follow-through, staggers that read as one gesture
+- **camera** (الكاميرا): Camera life and depth: a slow push or parallax on every hold, ≥ 3 depth planes, no dead locked-off frames
+- **light** (الإضاءة والمواد): Light and finish: a motivated glow/rim, a moving specular or sweep, restrained bloom, grain, vignette, no banding, no clipped highlights
+- **type** (الخط): Typography: ≤ 2 families, weight and size contrast, one idea ≤ 7 words per card, held ≥ 1.5 s, inside the safe zone, readable on a phone; Arabic whole words, right to left
+- **color** (الألوان): Colour discipline: 3–5 colours, ONE accent used sparingly, near-black / off-white instead of pure #000/#fff
+- **variety** (التنوّع): Something new every 0.8–2 s; no two beats arrive the same way; transitions motivated (a shape carries into the next shot), never preset wipes
+- **sound** (الصوت): Sound (read the program's sound() and cues against the frames — you cannot hear it): whoosh peaking on the move, impact on the landing frame, riser cresting on the reveal; ~1 accent per 1–2 s; not on every move; with a voice, the big accents in the gaps between lines and the visuals landing on the words
+- **wow** (الانبهار): The million-dollar test: would a viewer believe a top studio was paid for it? At least one moment nobody has seen in a template
+- **clean** (النظافة): Technically clean: no overlap of texts, no pops or flicker, nothing cut by the frame, a held ending (≥ 2 s) or a seamless loop

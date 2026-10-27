@@ -13,6 +13,7 @@ import { stillOpen, type EditorProject } from "@/lib/editor/server";
 import { checkScene, LAB_FONTS } from "./contract";
 import { SCENE_CONTRACT } from "./skill";
 import { COVER_PASS, COVER_ROUNDS, COVER_RUBRIC, type CoverRubricId } from "./cover-rubric";
+import { COVER_REVIEW_SCHEMA, COVER_SCHEMA } from "./schemas";
 
 export { COVER_PASS, COVER_ROUNDS, COVER_RUBRIC };
 
@@ -33,29 +34,6 @@ THE PERSON'S PHOTO comes from the film itself: its frames are given to you as pi
 ${SCENE_CONTRACT}
 
 THE COVER'S OWN RULES OVER THE SCENE CONTRACT: duration is 1 and only t = 0 is drawn (no motion, no cues, no sound()); draw the whole frame K.W × K.H; text sizes in px of the real frame (K.W wide), never smaller than the skill's minimums.`;
-
-const COVER_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["headline", "code", "notes"],
-  properties: {
-    headline: { type: "string", description: "the cover's headline exactly as drawn (≤ 5 words), from the film's own words" },
-    code: { type: "string", description: "the complete cover program (scene({ duration: 1, draw(K, t, ctx) { … } }))" },
-    notes: { type: "string", description: "to the person, Gulf Arabic, one sentence: the idea of the cover" },
-  },
-};
-
-const REVIEW_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["scores", "problems", "verdict", "code"],
-  properties: {
-    scores: { type: "object", additionalProperties: false, required: COVER_RUBRIC.map((r) => r.id), properties: Object.fromEntries(COVER_RUBRIC.map((r) => [r.id, { type: "integer", description: r.en }])) },
-    problems: { type: "array", items: { type: "string" }, description: "what is wrong, most important first (≤ 4)" },
-    verdict: { type: "string", description: "to the person, Gulf Arabic, one sentence: how it reads and what you changed" },
-    code: { type: "string", description: `the COMPLETE revised cover program when any score is below ${COVER_PASS}; empty otherwise` },
-  },
-};
 
 const jpeg = (v: unknown) => (typeof v === "string" && /^[A-Za-z0-9+/=]+$/.test(v) && v.length < 1_400_000 ? v : null);
 const pics = (v: unknown, max: number) => (Array.isArray(v) ? v : []).map(jpeg).filter((x): x is string => Boolean(x)).slice(0, max);
@@ -167,7 +145,7 @@ ${code}`,
     ...(tiny ? ([{ type: "text", text: "AT THE GRID'S SIZE (12 %):" }, { type: "image64", data: tiny, mediaType: "image/jpeg" }] as ClaudePart[]) : []),
     ...crops.flatMap((d, i): ClaudePart[] => [{ type: "text", text: i === 0 ? "CROP 1:1:" : "CROP 3:4:" }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
   ];
-  const r = await ask<Record<string, unknown>>(who, b.model, `مختبر الموشن · مراجعة الكفر ${round}`, parts, REVIEW_SCHEMA, 48_000);
+  const r = await ask<Record<string, unknown>>(who, b.model, `مختبر الموشن · مراجعة الكفر ${round}`, parts, COVER_REVIEW_SCHEMA, 48_000);
   const review = readCoverReview(r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkScene(r.data.code) : null;
   return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };

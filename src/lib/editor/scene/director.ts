@@ -15,6 +15,7 @@ import { stillOpen, type EditorProject } from "@/lib/editor/server";
 import { checkScene, LAB_FONTS, readPlan, readReview, SECONDS, type LabPlan } from "./contract";
 import { EXEMPLARS } from "./exemplars";
 import { MAX_ROUNDS, MOTION_LAB_SKILL, PASS, RUBRIC } from "./skill";
+import { CHAT_SCHEMA, CODE_SCHEMA, PLAN_SCHEMA, REVIEW_SCHEMA } from "./schemas";
 import { continueAsk, effortAtMost, stitchCode } from "./resume";
 import { ALWAYS_AT_PLAN, HF_LAB_TEXT, knownRefs, openRefs } from "./higgsfield";
 import { choicesRefs, choicesText, readChoices } from "@config/editor/lab-options";
@@ -50,66 +51,6 @@ function frameOf(p: EditorProject) {
   const w = p.timeline.width || 1080, h = p.timeline.height || 1920;
   return { w, h, shape: h > w * 1.2 ? "portrait 9:16" : w > h * 1.2 ? "landscape 16:9" : "square-ish" };
 }
-
-const PLAN_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["title", "idea", "hook", "format", "wow", "intensity", "seconds", "bpm", "palette", "fonts", "shots", "assets", "pictures", "music", "narration", "skillRefs", "say"],
-  properties: {
-    title: { type: "string" },
-    idea: { type: "string", description: "the one idea in one sentence" },
-    hook: { type: "string", description: "what is on frame 1 and why it stops the scroll" },
-    format: { type: "string", description: "the viral format (or your own)" },
-    wow: { type: "string", description: "the one moment nobody has seen in a template" },
-    intensity: { type: "integer" },
-    seconds: { type: "number" },
-    bpm: { type: "integer" },
-    palette: { type: "object", additionalProperties: false, required: ["bg", "ink", "accent", "second", "muted"], properties: { bg: { type: "string" }, ink: { type: "string" }, accent: { type: "string" }, second: { type: "string" }, muted: { type: "string" } } },
-    fonts: { type: "object", additionalProperties: false, required: ["head", "body"], properties: { head: { type: "string" }, body: { type: "string" } } },
-    shots: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["from", "to", "what", "motion", "camera", "text", "transition", "sound", "frame"],
-        properties: { from: { type: "number" }, to: { type: "number" }, what: { type: "string" }, motion: { type: "string" }, camera: { type: "string" }, text: { type: "string" }, transition: { type: "string" }, sound: { type: "string" }, frame: { type: "string", description: "ONLY when the piece is built on the person's video: how it sits in this shot — full | card | split | corner | away | over; otherwise empty" } },
-      },
-    },
-    assets: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "use"], properties: { id: { type: "string" }, use: { type: "string" } } } },
-    pictures: {
-      type: "array",
-      description: "0–4 PICTURES SHOWN INSIDE the motion that nobody gave (a product photo, an object, a person or character, an illustration that appears as a picture in a shot). GPT Image 2 makes each one WITHOUT any writing. The motion itself and its whole foundation are CODE, always: never ask for a background, a backdrop, a texture, a world, a frame, type, shapes, particles or a transition — you draw all of that. Usually [].",
-      items: { type: "object", additionalProperties: false, required: ["prompt", "name", "use", "aspect"], properties: { prompt: { type: "string", description: "English, detailed: subject, style matching the palette, lighting, composition, empty space where your type goes; never any text" }, name: { type: "string", description: "Arabic, 2–4 words" }, use: { type: "string", description: "where and how the scene uses it" }, aspect: { type: "string", enum: ["1:1", "9:16", "16:9", "4:5", "3:4", "4:3", "2:3", "3:2"] } } },
-    },
-    music: { type: "string", description: "the music bed in words (mood, tempo, instruments), or empty" },
-    narration: {
-      type: "array",
-      description: "only when the person records their own voice: the lines they will read, in order, with the seconds planned for each; otherwise []",
-      items: { type: "object", additionalProperties: false, required: ["text", "from", "to"], properties: { text: { type: "string" }, from: { type: "number" }, to: { type: "number" } } },
-    },
-    skillRefs: { type: "array", items: { type: "string" }, description: "ids from <skill-catalogue> to have open, word for word, while writing and reviewing this piece (≤ 12)" },
-    say: { type: "string", description: "to the person, in Gulf Arabic, 1–2 sentences: the idea and why it will stop the scroll" },
-  },
-};
-
-const CODE_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["code", "notes"],
-  properties: { code: { type: "string", description: "the complete scene program" }, notes: { type: "string", description: "to the person, Gulf Arabic, one sentence on what you built or fixed" } },
-};
-
-const REVIEW_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["scores", "worst", "verdict", "code"],
-  properties: {
-    scores: { type: "object", additionalProperties: false, required: RUBRIC.map((r) => r.id), properties: Object.fromEntries(RUBRIC.map((r) => [r.id, { type: "integer", description: r.en }])) },
-    worst: { type: "array", items: { type: "object", additionalProperties: false, required: ["t", "problem", "fix"], properties: { t: { type: "number" }, problem: { type: "string" }, fix: { type: "string" } } } },
-    verdict: { type: "string", description: "to the person, Gulf Arabic, 1–2 sentences: what you saw and what you changed" },
-    code: { type: "string", description: `the COMPLETE revised program when any score is below ${PASS}; empty when every score is ≥ ${PASS}` },
-  },
-};
 
 /** What the person chose for the sound: their own voice, and music made in code / by ElevenLabs / none. */
 function soundAsk(b: Record<string, unknown>) {
@@ -311,20 +252,6 @@ ${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkScene(r.data.code) : null;
   return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };
 }
-
-const CHAT_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["reply", "action", "brief", "code", "options", "search"],
-  properties: {
-    reply: { type: "string", description: "to the person, Gulf Arabic, short (1–3 sentences): what you understood and what you are doing, or the answer / the one question" },
-    action: { type: "string", enum: ["none", "plan", "code", "cover", "render"], description: "none = only talk; plan = (re)write the scenario from `brief`; code = the COMPLETE revised program in `code`; cover = design the piece's cover now; render = make the final film now" },
-    options: { type: "array", items: { type: "string" }, description: "0–4 short replies the person can press next (Gulf Arabic, 2–5 words each, e.g. «اعتمد وابنِ»، «أسرع شوي»، «صمّم الكفر»); [] when nothing obvious" },
-    brief: { type: "string", description: "action plan: the complete creative brief from the whole conversation (the idea, length, tone, every word to show, colours, what to avoid); else empty" },
-    code: { type: "string", description: "action code: the COMPLETE revised scene program (it replaces the old one); else empty" },
-    search: { type: "string", description: "a web search to run FIRST, when the person asks you to look something up («ابحث»، «وش الترند») or your answer needs facts you don't have (a number, a brand's look, what is viral now) and no WEB RESEARCH is given yet: the query in a few words (action is then \"none\" and reply says you are searching); else empty" },
-  },
-};
 
 /**
  * 0 · CHAT: the lab as a conversation. The person writes what they want — a new piece, a change («كبّر الشعار»،

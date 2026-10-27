@@ -58,6 +58,11 @@ export const ASSET_DRAG = "application/x-jawad-asset";
 const MEDIA_FILE = /\.(mp4|mov|m4v|webm|mkv|mp3|m4a|aac|wav|ogg|opus|flac|png|jpe?g|webp|gif|heic|avif)$/i;
 
 type Mode = "move" | "start" | "end";
+/** The keys a pointer event carries. */
+type Mods = { metaKey?: boolean; ctrlKey?: boolean; altKey?: boolean };
+/** ⌘ (Mac), Ctrl (Windows) or Alt (Premiere's own) held: a drag copies instead of moving. */
+const copyKey = (e: Mods) => !!(e.metaKey || e.ctrlKey || e.altKey);
+
 interface Drag {
   id: string;
   mode: Mode;
@@ -78,6 +83,10 @@ interface Drag {
   snapAt: number | null;
   /** the other selected clips, moving with it by the same time (they keep their tracks) */
   group: { id: string; trackId: string; start: number }[];
+  /** ⌘ / Ctrl / Alt held while dragging: a copy goes where it is dropped and the clip stays (Premiere's Alt-drag) */
+  copy?: boolean;
+  /** ⌘ / Ctrl / Shift pressed on a clip already selected: a plain click (no drag) takes it out of the selection */
+  toggleOff?: boolean;
 }
 
 /** A box being drawn over the empty timeline to select every clip it touches (in the content's pixels). */
@@ -356,7 +365,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
 
   // ---------- clips: select, move, trim ----------
   // (the window-level listeners of a drag call the latest versions of these, not the ones of the render it began in)
-  const handlers = useRef<{ onMove: (e: { pointerId: number; clientX: number; clientY: number }) => void; onUp: (e: { pointerId: number; shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void }>({ onMove: () => {}, onUp: () => {} });
+  const handlers = useRef<{ onMove: (e: Mods & { pointerId: number; clientX: number; clientY: number }) => void; onUp: (e: Mods & { pointerId: number; shiftKey: boolean }) => void }>({ onMove: () => {}, onUp: () => {} });
   const begin = (e: React.PointerEvent, track: Track, c: Clip, mode: Mode) => {
     if (readOnly || e.button > 0) return;
     e.stopPropagation();
@@ -370,13 +379,17 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     }
     // on a phone an unselected clip only gets selected (its touch scrolls the timeline)
     if (touch && !isSel && mode === "move") return;
-    // Shift/Ctrl/Cmd on a selected clip takes it out of the selection
-    if (isSel && add && mode === "move") return onSelect(selected.filter((id) => id !== c.id));
+    // Shift/Ctrl/Cmd on a selected clip takes it out of the selection — when it is a click; dragged with ⌘/Ctrl it is
+    // copied instead (decided when the pointer lets go)
+    const toggleOff = isSel && add && mode === "move";
+    if (toggleOff && e.shiftKey) return onSelect(selected.filter((id) => id !== c.id));
     const sel = isSel ? selected : add ? [...selected, c.id] : [c.id];
     if (!isSel) onSelect(sel);
     if (track.locked) return;
+    // ⌘/Ctrl/Alt on a clip not yet selected and dragged: only that clip is copied (it can go to another track)
+    const solo = !isSel && copyKey(e);
     const group =
-      mode === "move"
+      mode === "move" && !solo
         ? tl.tracks.flatMap((t) => (t.locked ? [] : t.clips.filter((x) => x.id !== c.id && sel.includes(x.id)).map((x) => ({ id: x.id, trackId: t.id, start: x.start }))))
         : [];
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -399,6 +412,8 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       ghostTrack: track.id,
       snapAt: null,
       group,
+      copy: mode === "move" && copyKey(e),
+      toggleOff,
     };
     dragRef.current = d;
     setDrag(d);
@@ -427,13 +442,13 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     window.addEventListener("pointercancel", cancel, true);
   };
 
-  const onMove = (e: { pointerId: number; clientX: number; clientY: number }) => {
+  const onMove = (e: Mods & { pointerId: number; clientX: number; clientY: number }) => {
     const d = dragRef.current;
     if (!d || d.pointer !== e.pointerId) return;
     const dx = e.clientX - d.x0;
     if (!d.moved && Math.hypot(dx, e.clientY - d.y0) < 4) return;
     const dms = (dx * 1000) / pps;
-    const next = { ...d, moved: true };
+    const next = { ...d, moved: true, copy: d.mode === "move" && copyKey(e) };
     if (d.mode === "move") {
       const len = d.end - d.start;
       let s = Math.max(0, d.start + dms);
@@ -500,15 +515,23 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     setDrag(next);
   };
 
-  const onUp = (e: { pointerId: number; shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => {
+  const onUp = (e: Mods & { pointerId: number; shiftKey: boolean }) => {
     const d = dragRef.current;
     if (!d || d.pointer !== e.pointerId) return;
     dragRef.current = null;
     setDrag(null);
     // a plain click on one of several selected clips leaves only it selected
     if (!d.moved) {
+      if (d.toggleOff) onSelect(selected.filter((id) => id !== d.id));
       // a plain click leaves only this clip selected (and brings its settings up again)
-      if (!(e.shiftKey || e.metaKey || e.ctrlKey)) onSelect([d.id]);
+      else if (!(e.shiftKey || e.metaKey || e.ctrlKey)) onSelect([d.id]);
+      return;
+    }
+    if (d.mode === "move" && (copyKey(e) || d.copy)) {
+      // ⌘/Ctrl/Alt + drag: copies where they were dropped; the clips themselves stay where they were
+      const dt = d.ghostStart - d.start;
+      const all = [{ id: d.id, trackId: d.group.length ? d.trackId : d.ghostTrack, start: d.start }, ...d.group];
+      run(all.map((g) => ({ type: "copy_clip" as const, clipId: g.id, trackId: g.trackId, start: Math.max(0, g.start + dt) })), { label: all.length > 1 ? `نسخت ${all.length} مقاطع` : "نسخت مقطعًا" });
       return;
     }
     if (d.mode === "move") {
@@ -768,7 +791,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   };
   const dragBadge = dragging
     ? dragging.mode === "move"
-      ? { ms: dragging.ghostStart - dragging.start, at: dragging.ghostStart, note: `عند ${formatTime(dragging.ghostStart, true)}` }
+      ? { ms: dragging.ghostStart - dragging.start, at: dragging.ghostStart, note: `${dragging.copy ? "⧉ نسخة · " : ""}عند ${formatTime(dragging.ghostStart, true)}` }
       : dragging.mode === "start"
         ? { ms: dragging.ghostStart - dragging.start, at: dragging.ghostStart, note: `الطول ${formatTime(dragging.end - dragging.ghostStart, true)}` }
         : { ms: dragging.ghostEnd - dragging.end, at: dragging.ghostEnd, note: `الطول ${formatTime(dragging.ghostEnd - dragging.start, true)}` }

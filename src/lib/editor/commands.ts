@@ -47,6 +47,7 @@ import {
   TRACK_COLORS,
   NO_SOUND_FX,
   NO_CROP,
+  fitCrop,
   BLEND_MODES,
   NEW_KEY,
   readKey,
@@ -72,7 +73,7 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
   text?: Partial<TextStyle>;
   /** null = back to the original colours */
   color?: Partial<ColorGrade> | null;
-  /** «القص» (crop): how much of each side is hidden, 0…0.45; null = the whole picture */
+  /** «القص» (crop): how much of each side is hidden, 0…0.95 (two opposite sides never meet); null = the whole picture */
   crop?: Partial<Crop> | null;
   /** «الشفافية»: the blend mode */
   blend?: BlendMode;
@@ -113,6 +114,8 @@ export type Command =
   | { type: "add_motion"; kind: MotionKind; at: number; duration?: number; motion?: Partial<MotionEl> }
   /** `trackId: "new"` puts it on a new track of its kind (above the pictures, or a new sound track) */
   | { type: "move_clip"; clipId: string; trackId: string; start: number }
+  /** a copy of the clip put where it is dropped (⌘/Ctrl/Alt + drag); the clip itself stays */
+  | { type: "copy_clip"; clipId: string; trackId: string; start: number }
   /** moves one edge of a clip to timeline time `to` */
   | { type: "trim_clip"; clipId: string; edge: "start" | "end"; to: number }
   /** cuts the given clips (or every clip under `at` on unlocked tracks) in two at `at` */
@@ -428,6 +431,16 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       return { timeline: t, label: `أضفت ${MOTION_KINDS[motion.kind].label}`, select: [c.id] };
     }
 
+    case "copy_clip": {
+      const { track: from, clip } = owned(t, cmd.clipId);
+      if (countClips(t) >= LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
+      // the copy starts beside the clip on its own track, then moves like any clip (same rules for the target track)
+      const copy: Clip = { ...structuredClone(clip), id: newId("c"), fix: null };
+      from.clips = [...from.clips, copy];
+      const r = apply(t, { type: "move_clip", clipId: copy.id, trackId: cmd.trackId, start: cmd.start }, assets);
+      return { ...r, label: "نسخت مقطعًا", select: [copy.id] };
+    }
+
     case "move_clip": {
       const { track: from, clip } = owned(t, cmd.clipId);
       // a video's sound taken out (on a sound track) moves as sound
@@ -629,9 +642,9 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       if (p.crop !== undefined) {
         if (clip.text || track.kind === "audio") fail("القص للصور والفيديو.");
         const c = { ...(clip.crop ?? NO_CROP), ...(p.crop ?? NO_CROP) };
-        const k = (v: number) => Math.min(0.45, Math.max(0, Number(v) || 0));
-        const next = { l: k(c.l), t: k(c.t), r: k(c.r), b: k(c.b) };
-        clip.crop = p.crop === null || (!next.l && !next.t && !next.r && !next.b) ? null : next;
+        // the side just changed stays as typed; its opposite gives way when the two would meet
+        const keep = p.crop ? (Object.keys(p.crop).find((x) => x === "l" || x === "t" || x === "r" || x === "b") as keyof Crop | undefined) : undefined;
+        clip.crop = p.crop === null ? null : fitCrop(c, keep);
       }
       if (p.blend !== undefined) {
         if (track.kind === "audio") fail("الشفافية للصور والفيديو والنصوص.");

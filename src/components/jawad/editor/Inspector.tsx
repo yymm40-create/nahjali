@@ -2,6 +2,7 @@
 
 import LabPiece from "./LabPiece";
 import MotionPanel from "./MotionPanel";
+import CropPanel from "./CropPanel";
 import type { LabSource } from "./MotionLab";
 import { useEffect, useState } from "react";
 import { setStemQuality, stemQuality, type StemQuality } from "./make";
@@ -54,7 +55,7 @@ import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
 
 export type Run = (cmd: Command | Command[], opts?: { label?: string; coalesce?: string }) => unknown;
-export type InspectorTab = "basic" | "motion" | "opacity" | "anim" | "fx" | "color" | "backdrop" | "transition" | "sound";
+export type InspectorTab = "basic" | "crop" | "motion" | "opacity" | "anim" | "fx" | "color" | "backdrop" | "transition" | "sound";
 
 const COLORS = ["#ffffff", "#000000", "#b8f53d", "#facc15", "#f43f5e", "#22d3ee", "#a78bfa", "#fb923c"];
 // YouTube's own steps (and ×3), with a custom value between them like its «مخصص» slider
@@ -333,6 +334,8 @@ export default function Inspector({
   const joined = !!next && next.start === clipEnd(clip);
   const tabs: [InspectorTab, string][] = [
     ["basic", text ? "النص" : "أساسي"],
+    // «القص» is a main option (a split screen needs it): right after the basics, for pictures and videos
+    ...(visual && !text ? ([["crop", "✂️ القص"]] as [InspectorTab, string][]) : []),
     ...(visual ? ([["motion", "حركة"]] as [InspectorTab, string][]) : []),
     ...(visual ? ([["opacity", "الشفافية"]] as [InspectorTab, string][]) : []),
     ...(visual ? ([["anim", "دخول وخروج"]] as [InspectorTab, string][]) : []),
@@ -344,7 +347,7 @@ export default function Inspector({
   ];
   const current = tabs.some(([k]) => k === tab) ? tab : "basic";
   // from the rail: a section this clip doesn't have shows what it has instead, saying so
-  const missing = rail && current !== tab ? { motion: "الحركة", opacity: "الشفافية", anim: "الدخول والخروج", fx: "المؤثرات", color: "الألوان", backdrop: "الخلفية", transition: "الانتقال", sound: "الصوت", basic: "" }[tab] : "";
+  const missing = rail && current !== tab ? { crop: "القص", motion: "الحركة", opacity: "الشفافية", anim: "الدخول والخروج", fx: "المؤثرات", color: "الألوان", backdrop: "الخلفية", transition: "الانتقال", sound: "الصوت", basic: "" }[tab] : "";
 
   // ---- motion: with motion points, a change goes into the point at the playhead
   const inClip = playhead >= clip.start && playhead < clipEnd(clip);
@@ -546,31 +549,15 @@ export default function Inspector({
         </div>
       )}
 
+      {current === "crop" && !text && <CropPanel clip={clip} locked={locked} set={set} />}
+
       {current === "motion" && (
         <div className="space-y-3">
           {!text && (
-            <details className="rounded-lg border border-jw-line p-2" open={!!clip.crop}>
-              <summary className="flex cursor-pointer items-center justify-between text-xs font-semibold">
-                <span>✂️ القص (Crop)</span>
-                {clip.crop && (
-                  <button type="button" className="text-[11px] font-normal text-jw-muted hover:text-jw-ink" disabled={locked} onClick={(e) => { e.preventDefault(); set({ crop: null }, "crop:reset"); }}>
-                    رجّع
-                  </button>
-                )}
-              </summary>
-              <div className="mt-2 grid grid-cols-2 gap-x-3">
-                {(
-                  [
-                    ["l", "يسار"],
-                    ["r", "يمين"],
-                    ["t", "فوق"],
-                    ["b", "تحت"],
-                  ] as const
-                ).map(([k, label]) => (
-                  <Slider key={k} label={label} value={Math.round((clip.crop?.[k] ?? 0) * 100)} min={0} max={45} step={1} disabled={locked} onChange={(v) => set({ crop: { [k]: v / 100 } }, `crop:${k}`)} format={(v) => `${v}%`} />
-                ))}
-              </div>
-            </details>
+            <button type="button" className="flex w-full items-center justify-between rounded-lg border border-jw-line p-2 text-xs font-semibold" onClick={() => onTab("crop")}>
+              <span>✂️ القص (Crop){clip.crop ? " · مفعّل" : ""}</span>
+              <span className="text-jw-muted">صار تبويب لحاله ←</span>
+            </button>
           )}
           {!text && (
             <div className="space-y-1">

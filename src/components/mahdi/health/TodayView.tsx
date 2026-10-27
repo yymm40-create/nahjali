@@ -12,10 +12,11 @@ import { REF } from "@config/mahdi/health-research";
 import RobotFace from "@/components/RobotFace";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { WEEKDAYS, arNum, dayLabel, exerciseById, focusName, type PlanDay, type PlanItem, type Workout } from "@/lib/mahdi/health/plan";
-import { bestSet, e1rm, gymHabitWrites, lastTime, parseNum, record, sessionMin, suggestion, weekOf, type DayLog, type FoodKey, type SetLog } from "@/lib/mahdi/health/tracker";
+import { bestSet, e1rm, gymHabitWrites, lastTime, mealTotals, parseNum, record, sessionMin, suggestion, weekOf, type DayLog, type FoodKey, type MealItem, type SetLog } from "@/lib/mahdi/health/tracker";
 import { Barbell, COACH, DayCard } from "./HealthApp";
 import { useHealth } from "./HealthProvider";
 import ExerciseFigure from "./ExerciseFigure";
+import MealLog from "./MealLog";
 
 const weekdayOf = (date: string) => new Date(`${date}T12:00:00Z`).getUTCDay();
 /**
@@ -287,6 +288,19 @@ export default function TodayView() {
     setLog({ food: { ...log.food, [f.key]: value } });
     logHabit(f.link, date, value);
   };
+  // «شنو أكلت؟»: the meals change, and the day's calories and protein move by the same amounts (habits too)
+  const setMeals = (next: MealItem[]) => {
+    const was = mealTotals(log.meals);
+    const now = mealTotals(next);
+    const food = { ...log.food };
+    for (const [f, d] of [[FOOD.find((x) => x.key === "kcal")!, now.kcal - was.kcal], [FOOD.find((x) => x.key === "proteinG")!, now.p - was.p]] as const) {
+      if (!d) continue;
+      const value = Math.max(0, Math.round(foodValue(f) + d));
+      food[f.key] = value;
+      logHabit(f.link, date, value);
+    }
+    setLog({ meals: next, food });
+  };
 
   return (
     <div className="space-y-4">
@@ -390,6 +404,7 @@ export default function TodayView() {
 
       <section className="space-y-3">
         <h2 className="gym-title text-2xl">تغذية <em>اليوم</em></h2>
+        <MealLog meals={log.meals ?? []} onChange={setMeals} />
         <div className="space-y-2">
           {FOOD.filter((f) => plan.food || f.key === "waterCups" || f.key === "steps").map((f) => {
             const v = foodValue(f);
