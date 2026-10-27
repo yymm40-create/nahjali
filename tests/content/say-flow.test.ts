@@ -135,6 +135,50 @@ describe("his answer", () => {
     expect(findStyle("ghibli")).toBeDefined();
   });
 
+  it("the person picks who designs the slides: «حيدرا ماكس» in code, or GPT Image 2 painting each whole slide; no pick means code", async () => {
+    // the tools he is given say so, and the answer carries the pick
+    answer({});
+    await say("u", null, "أبي كاروسيل", []);
+    expect(claude.calls[0].system).toContain("اسأل العميل سؤالًا واحدًا kind=\"choice\" بخيارين");
+    expect(claude.calls[0].system).toContain("GPT Image 2 (رسم كامل بالذكاء الاصطناعي)");
+    expect(claude.calls[0].system).toContain('"maker"');
+    // GPT Image 2: the carousel is not marked «code», so each slide is painted whole by جواد
+    answer({ produce: { on: true, mode: "all", maker: "gpt", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
+    db.chat = null;
+    await say("u", null, "أنتج بجي بي تي", []);
+    expect(chat().pending!.maker).toBeUndefined();
+    expect(chat().messages[1].slides!.maker).toBeUndefined();
+    // «حيدرا ماكس»
+    answer({ produce: { on: true, mode: "all", maker: "code", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
+    db.chat = null;
+    await say("u", null, "أنتج بحيدرا", []);
+    expect(chat().pending!.maker).toBe("code");
+    expect(chat().messages[1].slides!.maker).toBe("code");
+    // a pick the model did not make: «حيدرا ماكس» (GPT Image 2 only when the person chose it)
+    answer({ produce: { on: true, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
+    db.chat = null;
+    await say("u", null, "أنتج", []);
+    expect(chat().pending!.maker).toBe("code");
+  });
+
+  it("slides drawn again go back to the way the carousel was made, whatever the answer says", async () => {
+    const made = (maker?: "code") => ({
+      id: "chat-1", title: "t", record: "", pending: null, usd: 0, updatedAt: "",
+      messages: [
+        { role: "user", text: "أبي كاروسيل" },
+        { role: "assistant", text: "تمام", slides: { aspect: "1:1", items: [{ n: 1, fileId: "f1", name: "slide-01", text: "t" }], todo: [], failed: [], running: false, total: 1, styleId: "", templateId: "", ...(maker ? { maker } : {}) } },
+      ],
+    });
+    answer({ produce: { on: true, mode: "fix", maker: "code", aspect: "1:1", template_id: "", style_id: "", slides: [{ n: 1, text: "ت", prompt: 'p "ت"' }] } });
+    db.chat = made();
+    await say("u", "chat-1", "أعد الشريحة 1", []);
+    expect(chat().pending!.maker).toBeUndefined();
+    answer({ produce: { on: true, mode: "fix", maker: "gpt", aspect: "1:1", template_id: "", style_id: "", slides: [{ n: 1, text: "ت", prompt: 'p "ت"' }] } });
+    db.chat = made("code");
+    await say("u", "chat-1", "أعد الشريحة 1", []);
+    expect(chat().pending!.maker).toBe("code");
+  });
+
   it("slides drawn again: only those slides, in the carousel that exists, with its style kept", async () => {
     db.chat = {
       id: "chat-1", title: "t", record: "", pending: null, usd: 0, updatedAt: "",
