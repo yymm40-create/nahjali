@@ -3,17 +3,19 @@
 
 import { waLink } from "@config/course";
 import { esc, ownerChat, telegramFull, tgSend } from "@/lib/course/telegram";
-import type { CreditOrder } from "./orders";
+import { payerOf, type CreditOrder } from "./orders";
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { timeZone: "Asia/Riyadh", dateStyle: "short", timeStyle: "short" }) : "");
 
 export function creditText(o: CreditOrder, state = ""): string {
+  const payer = payerOf(o);
   return [
     state || "💳 <b>طلب شحن رصيد</b>",
     `👤 ${esc(o.name)}`,
     `📱 <code>${esc(o.phone)}</code>`,
     `✉️ ${esc(o.email)}`,
     `📦 باقة ${esc(o.packName)} — حوّل <b>${o.price} ريال</b> ويوصله رصيد ${o.credit}`,
+    ...(payer ? [`🏦 اسم الدافع في التحويل: <b>${esc(payer)}</b>`] : []),
     `🕒 ${when(o.transferredAt ?? o.createdAt)}`,
   ].join("\n");
 }

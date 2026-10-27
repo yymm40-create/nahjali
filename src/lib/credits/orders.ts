@@ -125,8 +125,13 @@ export async function startCreditOrder(user: { id: string; email?: string | null
   return { order: view(data!), bank };
 }
 
-/** «تم التحويل»: the owner is told at once (his phone buzzes). */
-export async function markCreditTransferred(user: { id: string }, orderId: string): Promise<CreditOrder> {
+/** The name on the bank transfer («اسم الدافع»), kept in the order's note beside the Telegram message so the owner can match the money. */
+export const PAYER_PREFIX = "payer:";
+export const cleanPayer = (v: unknown) => (typeof v === "string" ? v.replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) : "");
+export const payerOf = (o: { note: string }) => (o.note.startsWith(PAYER_PREFIX) ? o.note.slice(PAYER_PREFIX.length) : "");
+
+/** «تم التحويل»: the owner is told at once (his phone buzzes), with the payer's name when the buyer wrote it. */
+export async function markCreditTransferred(user: { id: string }, orderId: string, payer?: unknown): Promise<CreditOrder> {
   const { data: row, error } = await db().from("credit_orders").select("*").eq("id", orderId).eq("user_id", user.id).maybeSingle();
   wrap(error);
   if (!row) throw new UserError("ما لقينا هذا الطلب.", 404);
@@ -134,7 +139,8 @@ export async function markCreditTransferred(user: { id: string }, orderId: strin
   if (o.status === "transferred" || o.status === "confirmed") return o;
   if (o.status !== "started") throw new UserError("هذا الطلب مغلق؛ ابدأ طلبًا جديدًا.", 409);
   const at = new Date().toISOString();
-  const { data, error: e2 } = await db().from("credit_orders").update({ status: "transferred", transferred_at: at, updated_at: at }).eq("id", o.id).eq("status", "started").select("*").maybeSingle();
+  const name = cleanPayer(payer);
+  const { data, error: e2 } = await db().from("credit_orders").update({ status: "transferred", transferred_at: at, updated_at: at, ...(name ? { note: `${PAYER_PREFIX}${name}` } : {}) }).eq("id", o.id).eq("status", "started").select("*").maybeSingle();
   wrap(e2);
   const done = data ? view(data) : o;
   try {

@@ -7,12 +7,12 @@ import { supportLink } from "@config/credits";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-/** «اشحن رصيدك» · «تم التحويل»: the owner is told at once; the answer carries the WhatsApp link for «طال الوقت؟». Body: { orderId }. */
+/** «اشحن رصيدك» · «تم التحويل»: the owner is told at once; the answer carries the WhatsApp link for «طال الوقت؟». Body: { orderId, payer? } — `payer` is the name on the bank transfer, shown to the owner in Telegram. */
 export const POST = handle(async (req: Request) => {
   const user = await requireApiUser();
-  const b = (await req.json().catch(() => ({}))) as { orderId?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { orderId?: unknown; payer?: unknown };
   if (typeof b.orderId !== "string" || !/^[0-9a-f-]{36}$/i.test(b.orderId)) throw new UserError("طلب غير صحيح.", 400);
-  const order = await markCreditTransferred({ id: user.id }, b.orderId);
+  const order = await markCreditTransferred({ id: user.id }, b.orderId, b.payer);
   const s = await loadCreditSettings();
   return NextResponse.json({ order, support: supportLink(s, { id: order.id, packName: order.packName, price: order.price, email: order.email }) });
 });
