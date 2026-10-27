@@ -434,6 +434,24 @@ function showFromRight(ctx: CanvasRenderingContext2D, look: Drawn, w: number, h:
   ctx.clip();
 }
 
+/**
+ * The part of a w × h picture (centred where the clip is placed) that falls inside the W × H frame, in the picture's
+ * own coordinates (its centre is 0, 0). The whole picture when it is all in the frame, or none of it is (a picture
+ * turned a little is measured as if it were straight).
+ */
+export function cropView(t: Pick<Transform, "x" | "y">, look: { dx: number; dy: number; squashX?: number; squash?: number }, w: number, h: number, W: number, H: number) {
+  const cx = t.x * W + look.dx * W;
+  const cy = t.y * H + look.dy * H;
+  const sx = look.squashX || 1;
+  const sy = look.squash || 1;
+  const x0 = Math.max(-w / 2, -cx / sx);
+  const x1 = Math.min(w / 2, (W - cx) / sx);
+  const y0 = Math.max(-h / 2, -cy / sy);
+  const y1 = Math.min(h / 2, (H - cy) / sy);
+  if (x1 - x0 <= 1 || y1 - y0 <= 1) return { x0: -w / 2, y0: -h / 2, w, h };
+  return { x0, y0, w: x1 - x0, h: y1 - y0 };
+}
+
 /** A tiny repeatable random per frame and slice («قلتش»). */
 const jitter = (seed: number, i: number) => (((seed * 7919 + i * 104729) % 1000) / 1000) - 0.5;
 
@@ -469,11 +487,14 @@ function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Trans
     keyTap.h = h;
   }
   showFromRight(ctx, look, w, h);
-  // «القص»: the hidden sides cut away (the picture keeps its size and place, like Premiere's Crop)
+  // «القص»: the hidden sides cut away (the picture keeps its size and place, like Premiere's Crop) — measured on the
+  // part of the picture that is IN the frame, so a wide video filling a tall frame loses what is seen, not its edges
+  // already out of the frame (a crop there used to change nothing on the screen)
   if (clip.crop) {
     const c = clip.crop;
+    const v = cropView(t, look, w, h, W, H);
     ctx.beginPath();
-    ctx.rect(-w / 2 + c.l * w, -h / 2 + c.t * h, w * (1 - c.l - c.r), h * (1 - c.t - c.b));
+    ctx.rect(v.x0 + c.l * v.w, v.y0 + c.t * v.h, v.w * (1 - c.l - c.r), v.h * (1 - c.t - c.b));
     ctx.clip();
   }
   if (clip.shape !== "rect") {

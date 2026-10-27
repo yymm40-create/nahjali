@@ -1,11 +1,10 @@
 "use client";
 
-// «حيدرة كت» · «✂️ القص» (Crop) as a main tab, like Premiere's Crop effect: four counters — فوق، يمين، يسار، تحت — each
-// typed, stepped with − / + (Shift: ×10) or dragged sideways on its name, in percent of the picture; the picture
-// keeps its size and place, so a half taken away is the other half left exactly where it was (a split screen: crop
-// each clip to its half and place it). Opposite sides never meet: the one being changed wins and the other gives way.
+// «حيدرة كت» · «✂️ القص» (Crop) as a main tab, like Premiere's Crop effect: four sliders — فوق، يمين، يسار، تحت — in
+// percent of the part of the picture seen in the frame (render.ts cropView); the picture keeps its size and place, so a
+// half taken away is the other half left exactly where it was (a split screen: crop each clip to its half and place
+// it). Opposite sides never meet: the one being changed wins and the other gives way.
 
-import { useRef } from "react";
 import { CROP_MAX, NO_CROP, type Clip, type Crop } from "@/lib/editor/model";
 import type { ClipPatch } from "@/lib/editor/commands";
 
@@ -28,57 +27,33 @@ const pct = (v: number) => Math.round(v * 1000) / 10;
 export default function CropPanel({ clip, locked, set }: { clip: Clip; locked: boolean; set: (patch: ClipPatch, key: string) => void }) {
   const c = clip.crop ?? NO_CROP;
   const put = (k: keyof Crop, v: number) => set({ crop: { [k]: Math.min(CROP_MAX, Math.max(0, v)) } }, `crop:${k}`);
-  const scrub = useRef<{ k: keyof Crop; x: number; v: number; id: number } | null>(null);
   return (
     <div className="space-y-3">
-      <p className="text-[11px] leading-5 text-jw-muted">يشيل من الصورة من أي جهة، والصورة تبقى بحجمها ومكانها (مثل بريمير). اكتب الرقم، أو اضغط − / + (مع Shift عشرة عشرة)، أو اسحب على اسم الجهة يمين ويسار.</p>
-      <div className="space-y-2">
+      <p className="text-[11px] leading-5 text-jw-muted">اسحب شريط أي جهة ويشيل منها اللي تشوفه في الإطار، والصورة تبقى بحجمها ومكانها (مثل بريمير).</p>
+      <div className="space-y-3">
         {SIDES.map(({ k, label, icon }) => (
-          <div key={k} className="flex items-center gap-2">
-            <span
-              className={`w-16 shrink-0 select-none text-xs font-semibold ${locked ? "" : "cursor-ew-resize"}`}
-              title="اسحب يمين ويسار"
-              onPointerDown={(e) => {
-                if (locked) return;
-                e.currentTarget.setPointerCapture(e.pointerId);
-                scrub.current = { k, x: e.clientX, v: c[k], id: e.pointerId };
-              }}
-              onPointerMove={(e) => {
-                const s = scrub.current;
-                if (!s || s.id !== e.pointerId) return;
-                // 2 px = 1٪ (Shift: finer)
-                put(s.k, s.v + ((e.clientX - s.x) / (e.shiftKey ? 8 : 2)) / 100);
-              }}
-              onPointerUp={() => (scrub.current = null)}
-              onPointerCancel={() => (scrub.current = null)}
-            >
-              <span aria-hidden>{icon}</span> {label}
+          <label key={k} className="block space-y-1">
+            <span className="flex items-center justify-between text-xs">
+              <span className="font-semibold">
+                <span aria-hidden>{icon}</span> {label}
+              </span>
+              <span className="tabular-nums text-jw-ink" dir="ltr">
+                {pct(c[k])}٪
+              </span>
             </span>
-            <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !w-8 !px-0" disabled={locked || c[k] <= 0} aria-label={`قلّل ${label}`} onClick={(e) => put(k, c[k] - (e.shiftKey ? 0.1 : 0.01))}>
-              −
-            </button>
             <input
-              className="jw-input !min-h-8 w-20 text-center tabular-nums"
-              dir="ltr"
-              inputMode="decimal"
-              aria-label={`القص من ${label} بالنسبة المئوية`}
-              disabled={locked}
+              type="range"
+              dir={k === "r" ? "rtl" : "ltr"}
+              className="w-full accent-[var(--jw-accent)]"
+              min={0}
+              max={CROP_MAX * 100}
+              step={0.5}
               value={pct(c[k])}
-              onChange={(e) => {
-                const n = Number(e.target.value.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).replace(/[^\d.]/g, ""));
-                if (Number.isFinite(n)) put(k, n / 100);
-              }}
-              onKeyDown={(e) => {
-                if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-                e.preventDefault();
-                put(k, c[k] + (e.key === "ArrowUp" ? 1 : -1) * (e.shiftKey ? 0.1 : 0.01));
-              }}
+              disabled={locked}
+              aria-label={`القص من ${label}`}
+              onChange={(e) => put(k, Number(e.target.value) / 100)}
             />
-            <span className="text-xs text-jw-muted">٪</span>
-            <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !w-8 !px-0" disabled={locked || c[k] >= CROP_MAX} aria-label={`زِد ${label}`} onClick={(e) => put(k, c[k] + (e.shiftKey ? 0.1 : 0.01))}>
-              +
-            </button>
-          </div>
+          </label>
         ))}
       </div>
       <div className="space-y-1.5 border-t border-jw-line pt-3">

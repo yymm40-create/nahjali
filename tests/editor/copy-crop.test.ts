@@ -58,3 +58,15 @@ describe("«✂️ القص»: any side, up to half the picture and more, like P
     expect(findClip(apply(r, { type: "update_clip", clipId: id, patch: { crop: null } }, assets).timeline, id)!.clip.crop).toBeNull();
   });
 });
+
+describe("the crop is measured on what is seen in the frame", () => {
+  it("a wide video filling a tall frame: 30٪ from the left takes 30٪ of what shows, not the edges outside", async () => {
+    const { cropView } = await import("@/components/jawad/editor/render");
+    // a 16:9 picture covering a 1080 × 1920 frame is 3413 px wide, centred
+    const v = cropView({ x: 0.5, y: 0.5 }, { dx: 0, dy: 0 }, 3413, 1920, 1080, 1920);
+    expect(v.w).toBeCloseTo(1080, 0);
+    expect(v.x0).toBeCloseTo(-540, 0);
+    // a small picture-in-picture is all in the frame: the whole picture
+    expect(cropView({ x: 0.25, y: 0.2 }, { dx: 0, dy: 0 }, 400, 300, 1080, 1920)).toEqual({ x0: -200, y0: -150, w: 400, h: 300 });
+  });
+});
