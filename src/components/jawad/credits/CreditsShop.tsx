@@ -153,6 +153,8 @@ export default function CreditsShop({
   const [order, setOrder] = useState<Order | null>(null);
   const [bank, setBank] = useState<Bank | null>(null);
   const [support, setSupport] = useState("");
+  // the name on the transfer: the owner sees it in Telegram and matches the money to the order
+  const [payer, setPayer] = useState("");
 
   const there = (id: string) => `${CREDITS.base}?pack=${id}`;
 
@@ -210,7 +212,7 @@ export default function CreditsShop({
     setBusy(order.id);
     setError("");
     try {
-      const r = await post<{ support: string }>("/api/credits/transferred", { orderId: order.id });
+      const r = await post<{ support: string }>("/api/credits/transferred", { orderId: order.id, payer: payer.trim() });
       setSupport(r.support ?? "");
       setStep("done");
       // the purchase as the buyer declares it; the owner's confirm repeats it from the server with the same id (counted once)
@@ -405,6 +407,10 @@ export default function CreditsShop({
                   <Copy label="رقم الحساب" value={bank.account} />
                   <Copy label="رمز السويفت" value={bank.swift} />
                 </div>
+                <label>
+                  اسم الدافع (الاسم اللي على التحويل)
+                  <input value={payer} maxLength={80} autoComplete="name" placeholder="مثال: محمد أحمد" onChange={(e) => setPayer(e.target.value)} />
+                </label>
                 <p className="cr-mute">حوّل المبلغ، أرسل صورة الإيصال على واتساب، ثم اضغط «تم التحويل» — نضيف الرصيد عادةً خلال ساعة (٨ص–١٢م بتوقيت السعودية)</p>
                 {receipt && (
                   <a className="cr-btn cs-wa" href={receipt} target="_blank" rel="noreferrer" onClick={() => track("Lead", { content_name: "whatsapp-receipt" })}>
