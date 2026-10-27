@@ -39,9 +39,10 @@ describe("crop", () => {
   it("sets, clamps, clears, and survives a save", () => {
     let t = apply(emptyTimeline("16:9"), { type: "add_clip", assetId: "a" }, assets).timeline;
     const id = main(t).clips[0].id;
-    t = apply(t, { type: "update_clip", clipId: id, patch: { crop: { l: 0.1, b: 0.9 } } }, assets).timeline;
-    expect(main(t).clips[0].crop).toEqual({ l: 0.1, t: 0, r: 0, b: 0.45 });
-    expect(readTimeline(JSON.parse(JSON.stringify(t))).tracks[0].clips[0].crop).toEqual({ l: 0.1, t: 0, r: 0, b: 0.45 });
+    // any side up to 95٪ (half the picture or more, for a split screen)
+    t = apply(t, { type: "update_clip", clipId: id, patch: { crop: { l: 0.1, b: 0.99 } } }, assets).timeline;
+    expect(main(t).clips[0].crop).toEqual({ l: 0.1, t: 0, r: 0, b: 0.95 });
+    expect(readTimeline(JSON.parse(JSON.stringify(t))).tracks[0].clips[0].crop).toEqual({ l: 0.1, t: 0, r: 0, b: 0.95 });
     t = apply(t, { type: "update_clip", clipId: id, patch: { crop: null } }, assets).timeline;
     expect(main(t).clips[0].crop).toBeNull();
   });

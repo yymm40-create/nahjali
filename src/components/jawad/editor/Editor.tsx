@@ -132,8 +132,8 @@ function kindOfClip(tl: TL, assets: EditorAsset[], id: string): ClipKind | null 
 }
 /** The sections each kind of clip has, and the one that opens first. */
 const TABS_OF: Record<ClipKind, InspectorTab[]> = {
-  video: ["basic", "fx", "motion", "opacity", "anim", "color", "backdrop", "sound", "transition"],
-  image: ["basic", "fx", "motion", "opacity", "anim", "color", "backdrop", "transition"],
+  video: ["basic", "crop", "fx", "motion", "opacity", "anim", "color", "backdrop", "sound", "transition"],
+  image: ["basic", "crop", "fx", "motion", "opacity", "anim", "color", "backdrop", "transition"],
   audio: ["sound", "basic"],
   text: ["basic", "motion", "opacity", "anim", "transition"],
 };
@@ -144,6 +144,7 @@ const EDIT_LABEL: Record<ClipKind, string> = { video: "الفيديو", image: "
 const RAIL: { id: string; label: string; icon: string; tab?: InspectorTab; hint: string }[] = [
   { id: "media", label: "الوسائط", icon: "folder", hint: "ملفاتك: ارفع، اسحب للتايملاين" },
   { id: "edit", label: "تعديل", icon: "settings", tab: "basic", hint: "النص، الصوت، السرعة، الملاءمة" },
+  { id: "crop", label: "القص", icon: "ratio", tab: "crop", hint: "قص الصورة من فوق وتحت ويمين ويسار (مثل بريمير)، وتقسيم الشاشة" },
   { id: "fx", label: "مؤثرات", icon: "burst", tab: "fx", hint: "١٠٠ مؤثر على المقطع: تلفزيون قديم، قلتش، ضوء، مطر، مرايا…" },
   { id: "motion", label: "حركة", icon: "diamond", tab: "motion", hint: "المكان والحجم والدوران ونقاط الحركة (كي فريم)" },
   { id: "opacity", label: "شفافية", icon: "layers", tab: "opacity", hint: "الشفافية، أوضاع الدمج، الكي (شاشة خضراء ولوما)" },

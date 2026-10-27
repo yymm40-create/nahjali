@@ -9,7 +9,7 @@ import { FRAMES, type FootageFrame } from "./footage";
 export const SECONDS = { min: 3, max: Number.POSITIVE_INFINITY } as const;
 
 /** Things a scene program must never contain (the page blocks them anyway; this tells حيدرا ماكس before it runs). */
-const FORBIDDEN: [RegExp, string][] = [
+export const FORBIDDEN: [RegExp, string][] = [
   [/\bfetch\s*\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon/, "network access"],
   [/\bimport\s*\(|\brequire\s*\(|\bimportScripts\b/, "loading code (use K.THREE / K.addon)"],
   [/\beval\s*\(|new\s+Function\b|\bFunction\s*\(/, "evaluating strings"],
