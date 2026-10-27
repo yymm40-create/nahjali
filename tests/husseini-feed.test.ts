@@ -31,10 +31,10 @@ describe("محمد باقر: Claude Code يرسم الكاروسيل", () => {
     expect(p?.maker).toBe("code");
     expect(readPending({ id: "x", aspect: "1:1", slides: [{ n: 1, text: "", prompt: "a" }], at: 1, mode: "all", made: [], failed: [], carry: [] })?.maker).toBeUndefined();
     const { CONTENT_TOOLS, CONTENT_PLATFORM_RULES } = await import("@config/content");
-    // the owner's order: every new carousel is designed by «حيدرا ماكس»; GPT Image 2 only paints a slide's picture
+    // the owner's order now: the person picks who designs the slides — «حيدرا ماكس» in code (GPT Image 2 paints only a slide's picture) or GPT Image 2 for the whole slide
     expect(CONTENT_TOOLS).toContain('"picture"');
-    expect(CONTENT_TOOLS).not.toContain('"maker"');
-    expect(CONTENT_PLATFORM_RULES).toContain("طريقة المنصة الوحيدة للكاروسيل");
+    expect(CONTENT_TOOLS).toContain('"maker"');
+    expect(CONTENT_PLATFORM_RULES).toContain("العميل هو من يختار من يصمم شرائحه");
   });
   it("the page draws a slide in code and sends it back to the produce step", async () => {
     const { readFileSync } = await import("node:fs");

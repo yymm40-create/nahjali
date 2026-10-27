@@ -53,11 +53,12 @@ export const ANSWER_SCHEMA = {
     produce: {
       type: "object",
       additionalProperties: false,
-      required: ["on", "mode", "aspect", "template_id", "style_id", "refs", "slides"],
-      description: "إنتاج كاروسيل: «حيدرا ماكس» يصمم كل شريحة بالكود، وGPT Image 2 يرسم صورها بدون كتابة. فقط بعد طلب صريح. on=false بدون إنتاج.",
+      required: ["on", "mode", "maker", "aspect", "template_id", "style_id", "refs", "slides"],
+      description: "إنتاج كاروسيل: العميل يختار من يصمم شرائحه: «حيدرا ماكس» بالكود (وGPT Image 2 يرسم صورها بدون كتابة)، أو GPT Image 2 يرسم كل شريحة كاملة بكتابتها. فقط بعد طلب صريح واختيار العميل. on=false بدون إنتاج.",
       properties: {
         on: { type: "boolean" },
         mode: { type: "string", enum: ["all", "fix"], description: "all: كاروسيل جديد؛ fix: إعادة رسم شرائح بعينها من آخر كاروسيل" },
+        maker: { type: "string", enum: ["code", "gpt"], description: "من يصمم الشرائح، كما اختاره العميل: code = حيدرا ماكس بالكود؛ gpt = GPT Image 2 يرسم كل شريحة كاملة بكتابتها. في mode=fix يُهمل (تُعاد بطريقة الكاروسيل الأصلي)." },
         aspect: { type: "string", enum: ["1:1", "2:3", "9:16", "16:9"] },
         template_id: { type: "string", description: "معرّف القالب الذي اختاره العميل، أو فارغ" },
         style_id: { type: "string", description: "معرّف الستايل الكرتوني الذي اختاره العميل، أو فارغ" },
@@ -71,8 +72,8 @@ export const ANSWER_SCHEMA = {
             properties: {
               n: { type: "integer", description: "رقم الشريحة من 1" },
               text: { type: "string", description: "النص المعتمد الظاهر على الشريحة كما هو" },
-              prompt: { type: "string", description: "توجيه تصميم الشريحة بالإنجليزية لـ «حيدرا ماكس»: نظام التصميم المشترك كاملًا ثم ما يخص هذه الشريحة، والنص العربي حرفيًا بين علامتي اقتباس مزدوجتين" },
-              picture: { type: "string", description: "إذا احتاجت الشريحة صورة مرسومة (شخص، منتج، مشهد، رسمة) ما يرسمها الكود زين: توجيهها بالإنجليزية لـ GPT Image 2 بدون أي كتابة فيها أبدًا وبنفس ستايل الكاروسيل؛ وإلا فارغ" },
+              prompt: { type: "string", description: "توجيه الشريحة بالإنجليزية: مع maker=code لـ «حيدرا ماكس» (يصممها بالكود)، ومع maker=gpt لـ GPT Image 2 (يرسمها كاملة بكتابتها): نظام التصميم المشترك كاملًا ثم ما يخص هذه الشريحة، والنص العربي حرفيًا بين علامتي اقتباس مزدوجتين" },
+              picture: { type: "string", description: "إذا احتاجت الشريحة صورة مرسومة (شخص، منتج، مشهد، رسمة) ما يرسمها الكود زين: توجيهها بالإنجليزية لـ GPT Image 2 بدون أي كتابة فيها أبدًا وبنفس ستايل الكاروسيل؛ وإلا فارغ؛ ومع maker=gpt فارغ دائمًا" },
             },
           },
         },
@@ -126,7 +127,7 @@ interface Answer {
   reply: string;
   questions: unknown;
   record: string;
-  produce: { on: boolean; mode: string; aspect: string; template_id: string; style_id: string; refs?: string[]; slides: { n: number; text: string; prompt: string; picture?: string }[] };
+  produce: { on: boolean; mode: string; maker?: string; aspect: string; template_id: string; style_id: string; refs?: string[]; slides: { n: number; text: string; prompt: string; picture?: string }[] };
   generate?: { on: boolean; items: { kind: string; name: string; prompt: string; aspect: string; quality: string; resolution: string; seconds: number; with_sound: boolean; refs: string[] }[] };
   handoff: { on: boolean; title: string; shape: string; package: string; storyboard?: string };
 }
@@ -230,8 +231,10 @@ export async function say(userId: string, chatId: string | null, message: string
     const templateId = a.produce.template_id && findTemplate(a.produce.template_id) ? a.produce.template_id : "";
     const styleId = a.produce.style_id && findStyle(a.produce.style_id) ? a.produce.style_id : "";
     const fixAt = a.produce.mode === "fix" ? lastSlidesAt({ messages: history }) : -1;
-    // «حيدرا ماكس» designs every slide in code (the owner's order: him and GPT Image 2 for the pictures, no third way)
-    const code = { maker: "code" as const };
+    // the person picks who designs the slides (the owner's order: «حيدرا ماكس» in code, or GPT Image 2 painting each whole slide, no third way); a choice not made means «حيدرا ماكس»
+    // and a fix goes back to the way the carousel was made
+    const fixed = fixAt >= 0 ? history[fixAt].slides : null;
+    const code = (fixed ? fixed.maker === "code" : a.produce.maker !== "gpt") ? { maker: "code" as const } : {};
     if (slides.length && fixAt >= 0) {
       // draw these slides again in the carousel that exists
       const block = history[fixAt].slides!;
