@@ -2,10 +2,10 @@
 // Paid film operations reserve coins when they start (from the estimate), settle to the real cost when they
 // succeed, and give everything back when they fail — the same reserve → settle → release as film_usage.
 
-import { UserError } from "@/lib/api";
+import { shortBalance, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { claudeHalalas, coinStr, coinsFor, costHalalas, setPricing, type PriceKind, type Pricing } from "@config/coins";
-import type { ClaudeModel } from "@config/claude-models";
+import { typicalReplyUsd, type ClaudeModel } from "@config/claude-models";
 import { fullAccessOf, unlimitedFor } from "@/lib/access";
 
 const db = () => createAdminClient();
@@ -148,17 +148,17 @@ export async function reserveCoins(user: { id: string; email?: string | null }, 
     await logFree(user.id, jobId, label, 0);
     return;
   }
-  void estimateUsd;
-  void claude;
   // pay after use (the owner, 18 October 2026: «على كل شيء يطلع في النهاية تأخذ الفلوس مباشرة»): nothing is held — the
   // job starts while the wallet has something in it, a zero mark ties the job to the wallet, and `settleCoins` takes
   // what it really cost when it is done (a failed one takes nothing)
-  if (((await coinBalance(user.id)) ?? 0) <= 0 || (await adjust(user.id, 0, "reserve", jobId, label)) === null) {
-    throw new UserError(SHORT, 402);
+  const balance = (await coinBalance(user.id)) ?? 0;
+  if (balance <= 0 || (await adjust(user.id, 0, "reserve", jobId, label)) === null) {
+    // «خلص رصيدك»: the page offers to pay what this job is estimated to take (its ceiling), on top of what is missing
+    await loadPricing();
+    throw shortBalance(Math.max(priceOf(estimateUsd, claude), 1) - Math.min(balance, 0), balance, "هالعملية");
   }
 }
 
-const SHORT = "رصيدك خلص. اشحن رصيدك من صفحة «اشحن رصيدك» (زر «+ اشحن» جنب رصيدك) وكمّل من نفس المكان.";
 
 async function reserved(jobId: string) {
   const { data } = await db().from("smart_coin_ledger").select("user_id,delta,label").eq("ref", jobId);
@@ -301,7 +301,10 @@ export const grantTeamCoins = (seriesId: string, amount: number, note: string) =
 export async function holdCoins(userId: string, coins: number, ref: string, label: string) {
   if (coins <= 0) return;
   const left = await adjust(userId, -coins, "reserve", ref, label);
-  if (left === null) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذه العملية تحتاج ${coinStr(coins)}.`, 402);
+  if (left === null) {
+    const balance = (await coinBalance(userId)) ?? 0;
+    throw shortBalance(coins - Math.min(balance, 0), balance, "هالعملية");
+  }
 }
 export async function releaseCoins(userId: string, coins: number, ref: string, label: string) {
   if (coins > 0) await adjust(userId, coins, "refund", ref, label, true);
@@ -341,7 +344,9 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
   const atCost = !who.team && (await atCostFor(who.id, who.email));
   const balance = who.team ? await teamCoinBalance(who.team) : await coinBalance(who.id);
   if (balance !== null && balance <= 0) {
-    throw new UserError(`رصيدك خلص. اشحن رصيدك من صفحة «اشحن رصيدك» (زر «+ اشحن» جنب رصيدك) وكمّل المحادثة مع «${model.name}».`, 402);
+    // a team's wallet is its owner's to fill; a person's own: the page offers to pay about one reply of this mind
+    if (who.team) throw new UserError("رصيد «نقود الفريق الذكي» خلص. اطلب من صاحب المسلسل يشحن رصيد الفريق.", 402);
+    throw shortBalance(claudeHalalas(typicalReplyUsd(model), undefined, kind) - balance, balance, "الرد", `خلص رصيدك. الرد مع «${model.name}» يكلف تقريبًا ${coinStr(claudeHalalas(typicalReplyUsd(model), undefined, kind))}: اشحن بمقداره بس أو اختر باقة، وكمّل المحادثة.`);
   }
   const ref = `claude:${crypto.randomUUID()}`;
   return {

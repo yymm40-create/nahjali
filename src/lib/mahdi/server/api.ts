@@ -14,7 +14,7 @@ export function mahdiRoute<A extends unknown[]>(fn: (...args: A) => Promise<Resp
     try {
       return await fn(...args);
     } catch (err) {
-      if (err instanceof UserError) return NextResponse.json({ error: err.message }, { status: err.status });
+      if (err instanceof UserError) return NextResponse.json({ ...(err.data ?? {}), error: err.message }, { status: err.status });
       const mapped = fromDbError(err);
       if (mapped) return NextResponse.json({ error: mapped.message }, { status: mapped.status });
       console.error("[mahdi]", err);

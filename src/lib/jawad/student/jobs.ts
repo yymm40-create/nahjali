@@ -9,7 +9,7 @@
 //   leaves the job queued; the next poll (or the daily cron) continues it from the saved progress.
 
 import { after } from "next/server";
-import { UserError } from "@/lib/api";
+import { shortBalance, UserError } from "@/lib/api";
 import { chargeAfter, coinBalance, coinsRequired, priceOf, refundCoins, releaseCoins, settleCoins, type PriceMix } from "@/lib/coins";
 import type { PriceKind } from "@config/coins";
 
@@ -96,9 +96,8 @@ export async function createJob(
   // pay after use: nothing is held; a step starts while the wallet has something in it, and what it really cost is
   // taken when it is done (see chargeAfter)
   const pays = o.estimateUsd > 0 && !(await unlimitedFor(user.email)) && (await coinsRequired());
-  if (pays && ((await coinBalance(user.id)) ?? 0) <= 0) {
-    throw new UserError("رصيدك خلص. اشحن رصيدك من صفحة «اشحن رصيدك» (زر «+ اشحن» جنب رصيدك) وكمّل من نفس المكان.", 402);
-  }
+  const balance = pays ? ((await coinBalance(user.id)) ?? 0) : 1;
+  if (pays && balance <= 0) throw shortBalance(Math.max(priceOf(o.estimateUsd, jobMix(o.kind, o.input)), 1) - balance, balance, "هالخطوة");
 
   const { data, error } = await db
     .from("student_jobs")

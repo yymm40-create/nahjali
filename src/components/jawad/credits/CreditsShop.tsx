@@ -110,8 +110,10 @@ function features(credit: number, units: UnitPrices | null | undefined): string[
 }
 
 export default function CreditsShop({
-  packs, featured, bankOk = false, card: cardOn = false, cardSoon = false, back = null, hasSupport, whatsapp = "", user, contactOk, balance, owner, waiting, initialPack, loginHref, units,
+  packs, featured, bankOk = false, card: cardOn = false, cardSoon = false, back = null, hasSupport, whatsapp = "", user, contactOk, balance, owner, waiting, initialPack, loginHref, units, exact = null,
 }: {
+  /** «خلص رصيدك»: a top-up of exactly what an operation needed (and what it was for), shown above the packages */
+  exact?: { pack: Pack; what: string } | null;
   packs: Pack[];
   /** what a standard picture, a 5-second 720p video, a scene and a summary cost now: the check lines on each card */
   units?: UnitPrices | null;
@@ -289,6 +291,28 @@ export default function CreditsShop({
               </p>
             ))}
           </div>
+        </section>
+      )}
+
+      {exact && (
+        <section className="pr cs-exact" aria-label="اشحن بمقدار اللي تحتاجه">
+          <article className="pr-card star" aria-label={exact.pack.name}>
+            <div className="pr-top">
+              <h2 className="pr-name">{exact.pack.name}</h2>
+              <span className="pr-pill">خلص رصيدك</span>
+            </div>
+            <p className="pr-note">{exact.what ? `عشان تكمّل ${exact.what}، اشحن بمقدارها بس` : "اشحن بمقدار العملية اللي كنت بتسويها بس"}</p>
+            <div className="pr-price">
+              <SmartCoin size={26} className="pr-mark" />
+              <Roll value={exact.pack.price} on={rolled} delay={0} />
+            </div>
+            <p className="pr-get">يوصلك رصيد <Riyal halalas={exact.pack.credit * 100} size={14} className="pr-gn" /></p>
+            <button type="button" className={`pr-btn${payable ? "" : " off"}`} disabled={!payable || (!!busy && busy !== exact.pack.id)} aria-busy={busy === exact.pack.id} onClick={() => void pay(exact.pack.id)}>
+              {busy === exact.pack.id ? <span className="pr-spin" aria-label="جاري التحويل للدفع" /> : !payable ? "الدفع يفتح بعد قليل إن شاء الله" : <>ادفع <Riyal halalas={exact.pack.price * 100} size={16} /> بس ←</>}
+            </button>
+            {error && errAt === exact.pack.id && <p className="pr-card-err" role="alert">{error}</p>}
+          </article>
+          <p className="pr-pay">أو اختر باقة تحت، وكل ما كبرت زاد رصيدك المجاني 👇</p>
         </section>
       )}
 

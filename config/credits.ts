@@ -132,7 +132,19 @@ export function readCreditSettings(raw: unknown): CreditSettings {
   return { packs: list, featured, whatsapp: cleanPhone(o.whatsapp) ?? "", removed };
 }
 
-export const packOf = (s: CreditSettings, id: unknown) => s.packs.find((p) => p.id === id) ?? null;
+/**
+ * «بمقدار اللي تحتاجه» (the owner, 26 October 2026): when the wallet runs out, a top-up of exactly what the operation
+ * needs — whole riyals (the orders keep riyals), 1 to 1000 — beside the packages. Its id carries the amount: exact-<riyals>.
+ */
+export const EXACT_MAX_SAR = 1000;
+export const exactSar = (halalas: number) => Math.min(EXACT_MAX_SAR, Math.max(1, Math.ceil(Math.max(0, halalas) / 100 - 1e-9)));
+export const exactPack = (sar: number): Pack => ({ id: `exact-${sar}`, name: "بمقدار اللي تحتاجه", price: sar, credit: sar, tag: "", note: "شحن بمقدار العملية بس" });
+export function exactPackOf(id: unknown): Pack | null {
+  const m = typeof id === "string" ? /^exact-(\d{1,4})$/.exec(id) : null;
+  const sar = m ? Number(m[1]) : 0;
+  return sar >= 1 && sar <= EXACT_MAX_SAR ? exactPack(sar) : null;
+}
+export const packOf = (s: CreditSettings, id: unknown) => s.packs.find((p) => p.id === id) ?? exactPackOf(id);
 
 /** «طال الوقت؟»: a WhatsApp chat with the owner, the message already written. */
 export function supportLink(s: CreditSettings, o: { id: string; packName: string; price: number; email: string }): string {

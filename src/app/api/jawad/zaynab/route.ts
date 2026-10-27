@@ -2,7 +2,7 @@ import { NextResponse, after } from "next/server";
 import { ZAYNAB_IMAGE, ZAYNAB_KEY_PREFIX, ZAYNAB_MAX_PHOTOS, zaynabInput } from "@config/jawad/zaynab";
 import { generatorById } from "@config/jawad/generators";
 import { can, permForGenerator } from "@/lib/access";
-import { handle, UserError } from "@/lib/api";
+import { handle, shortBalance, UserError } from "@/lib/api";
 import { coinBalance } from "@/lib/coins";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireJawadApiUser } from "@/lib/jawad/server/access";
@@ -54,7 +54,8 @@ export const POST = handle(async (req: Request) => {
   const quote = await zaynabQuote(input, uploads.length, prompt);
   const coins = firstFree ? 0 : quote.coins;
   if (body.expectedCoins !== coins) throw new UserError("تغيّر السعر؛ اعرض السعر الحالي قبل التنفيذ.", 409);
-  if (!owner && (await coinBalance(user.id) ?? 0) < coins) throw new UserError("رصيدك لا يكفي. اشحن الرصيد أولًا.", 402);
+  const balance = owner ? null : ((await coinBalance(user.id)) ?? 0);
+  if (balance !== null && balance < coins) throw shortBalance(coins - balance, balance, "هالعملية");
   // the owner's environment sheet goes first, then every photo — all of them references of GPT Image 2
   const sheet = await uploadFromBuffer(user.id, await sheetBytes(), "zaynab-env-sheet.jpg");
   const result = requireCreated(await createJob(user, owner, {

@@ -59,7 +59,7 @@ export async function enhanceCover(user: User, photo: unknown): Promise<{ image:
     try {
       await reserveCoins(user, ref, COVER_ENHANCE.costUsd, LABEL, "image");
     } catch (e) {
-      if (e instanceof UserError && e.status === 402) throw new UserError(E.noCoins(coins), 402);
+      if (e instanceof UserError && e.status === 402) throw new UserError(E.noCoins(coins), 402, e.data);
       throw e;
     }
   }
