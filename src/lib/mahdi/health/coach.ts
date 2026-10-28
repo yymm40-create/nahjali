@@ -34,6 +34,8 @@ export const COACH = {
   /** the light, fast model free for the person, limited per address (src/lib/rate-limit.ts) */
   model: "claude-haiku-5-5",
   keepTurns: 14,
+  /** what the page keeps and sends (the handoff covers what is older than keepTurns) */
+  storedTurns: 400,
   maxChars: 1500,
 } as const;
 
@@ -108,7 +110,8 @@ export interface CoachTurn {
 export function cleanCoachTurns(raw: unknown): CoachTurn[] {
   if (!Array.isArray(raw)) return [];
   const out: CoachTurn[] = [];
-  for (const t of raw.slice(-COACH.keepTurns)) {
+  // the whole conversation the page kept (a long one is read through its handoff: lib/robot-handoff)
+  for (const t of raw.slice(-COACH.storedTurns)) {
     if (!t || typeof t !== "object") continue;
     const r = (t as Record<string, unknown>).role;
     const text = String((t as Record<string, unknown>).text ?? "").trim().slice(0, COACH.maxChars);

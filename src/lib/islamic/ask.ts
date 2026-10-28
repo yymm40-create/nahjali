@@ -4,6 +4,7 @@
 // answer cites its passages by number; thaqalayn is the primary source and almojib / aqaed complement it. The
 // conversation is remembered (chats.ts) and a follow-up is read in its context. Nothing found → it says so. Server only.
 
+import { remember, withNote } from "@/lib/robot-handoff";
 import { ISLAMIC_IDENTITY, ISLAMIC_KV } from "@config/islamic";
 import { callClaudeJson, claudeCost, claudeFetch, isLeader, siteSystem, withModel, type ClaudeUsage } from "@/lib/film/anthropic";
 import { currentClaude } from "@/lib/film/claude-model";
@@ -102,7 +103,7 @@ export function contextOf(history: Turn[]): string {
 }
 
 /** Answers one question from the library, in the way asked, with the conversation before it. */
-export async function ask(userId: string | null, question: string, history: Turn[] = [], email: string | null = null, mode: IslamicMode = "auto"): Promise<Answer> {
+export async function ask(userId: string | null, question: string, history: Turn[] = [], email: string | null = null, mode: IslamicMode = "auto", chatId: string | null = null): Promise<Answer> {
   const q = question.trim().slice(0, 2000);
   if (!q) throw new Error("empty question");
   const key = process.env.ANTHROPIC_API_KEY;
@@ -139,7 +140,13 @@ export async function ask(userId: string | null, question: string, history: Turn
     .join("\n\n");
 
   // the memory: the conversation so far (the answers as they were written, their sources named)
-  const turns = history.slice(-12).map((t) => ({ role: t.role, content: [{ type: "text", text: t.text.slice(0, 6000) }] }));
+  // a long conversation: its own handoff of everything before, then the latest turns (lib/robot-handoff)
+  const mem = chatId ? await remember({ key: `islamic:${chatId}`, userId, robot: "الذكاء الإسلامي", turns: history, window: 12 }) : null;
+  usd += mem?.usd ?? 0;
+  const turns = [
+    ...(mem?.lead ?? []).map((t) => ({ role: t.role, content: [{ type: "text", text: String(t.content) }] })),
+    ...(mem ? mem.kept : history.slice(-12)).map((t) => ({ role: t.role, content: [{ type: "text", text: t.text.slice(0, 6000) }] })),
+  ];
   const head = passages.length ? `المقاطع من المكتبة:\n\n${passagesText(passages)}` : "المكتبة لم تُرجع أي مقطع لهذا السؤال.";
   const user = `${head}${notes ? `\n\n────\n\nملاحظات الباحث بعد بحثه في المكتبة (للاستئناس؛ الجواب من المقاطع):\n${notes}` : ""}\n\n────\n\nسؤال السائل: ${q}`;
   turns.push({ role: "user", content: [{ type: "text", text: user }] });
@@ -166,5 +173,5 @@ export async function ask(userId: string | null, question: string, history: Turn
   });
   const found = data.found && sources.length > 0;
   await logAnswer({ user_id: userId, question: q, answer: data.answer, sources: sources.map((s) => ({ url: s.url, title: s.title, source: s.source })), found, usd });
-  return { answer: data.answer, found, mode, sources, ...(searches ? { searches } : {}), usd };
+  return { answer: withNote(data.answer, !!mem?.fresh), found, mode, sources, ...(searches ? { searches } : {}), usd };
 }

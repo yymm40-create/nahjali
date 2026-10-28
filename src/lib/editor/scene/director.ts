@@ -5,6 +5,8 @@
 // skill is given word for word as the method; the lab's training (skill.ts) is the machine and the bar. Paid by real
 // use like every robot turn. Rendering never happens here: the browser renders (scene-host.ts).
 
+import { createHash } from "node:crypto";
+import { remember, withNote } from "@/lib/robot-handoff";
 import { UserError } from "@/lib/api";
 import { claudeModelOf } from "@config/claude-models";
 import { callClaudeJson, callClaudeSearch, claudeCost, claudeWhy, type ClaudePart, type OnText } from "@/lib/film/anthropic";
@@ -268,10 +270,18 @@ export async function labChat(p: EditorProject, who: Who, b: Record<string, unkn
   const foot = footageOf(b);
   const plan = hasPlan ? readPlan(b.plan, Number(b.seconds) || 15, assets.map((a) => a.id), foot?.seconds) : null;
   const code = typeof b.code === "string" ? checkScene(b.code).code : "";
-  const history = (Array.isArray(b.history) ? b.history : []).slice(-20).map((m) => {
+  // the whole conversation the page sends; a long one is read through his own handoff of what came before
+  // (lib/robot-handoff), keyed by the lab's first message so each lab conversation has its own
+  const said = (Array.isArray(b.history) ? b.history : []).slice(-400).map((m) => {
     const o = (m ?? {}) as Record<string, unknown>;
-    return `${o.role === "assistant" ? "حيدرا ماكس" : "الشخص"}: ${text(o.text, 1500)}`;
-  });
+    return { role: o.role === "assistant" ? ("assistant" as const) : ("user" as const), text: text(o.text, 1500) };
+  }).filter((t) => t.text);
+  const first = createHash("sha1").update(said[0]?.text ?? "").digest("hex").slice(0, 12);
+  const mem = await remember({ key: `lab:${p.id}:${first}`, userId: p.user_id, robot: "حيدرا ماكس (مختبر الموشن)", turns: said, window: 20 });
+  const history = [
+    ...(mem.lead[0] ? [String(mem.lead[0].content)] : []),
+    ...mem.kept.map((t) => `${t.role === "assistant" ? "حيدرا ماكس" : "الشخص"}: ${t.text}`),
+  ];
   const params = (b.params && typeof b.params === "object" ? b.params : {}) as Record<string, unknown>;
   const f = frameOf(p);
   const refs = readRefs(b);
@@ -312,7 +322,7 @@ ${code ? `THE CURRENT PROGRAM:\n${code}` : ""}${footagePart(b, Boolean(code))}${
   const revised = action === "code" ? checkScene(r.data.code) : null;
   if (action === "code" && !revised?.code) action = "none";
   return {
-    reply: text(r.data.reply, 1200) || "تمام.",
+    reply: withNote(text(r.data.reply, 1200) || "تمام.", mem.fresh),
     action,
     brief: action === "plan" ? text(r.data.brief, 6000) || message : action === "cover" ? text(r.data.brief, 1200) : "",
     options: (Array.isArray(r.data.options) ? r.data.options : []).map((o) => text(o, 40)).filter(Boolean).slice(0, 4),

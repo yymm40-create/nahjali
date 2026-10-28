@@ -554,7 +554,7 @@ export default function MotionLab({
       setPersonOn(Boolean(s.personOn));
     }
     if (!initialSource) {
-      setChat(Array.isArray(s.chat) ? s.chat.slice(-80) : []);
+      setChat(Array.isArray(s.chat) ? s.chat.slice(-400) : []);
       setParams(s.params && typeof s.params === "object" ? s.params : {});
     }
     setVersions(Array.isArray(s.versions) ? s.versions.slice(-KEEP_VERSIONS) : []);
@@ -1372,7 +1372,7 @@ export default function MotionLab({
       // the sound is already inside the film: nothing placed twice (a silent scene keeps the old way: its cues on tracks)
       // on the person's video the piece takes the clip's place: it lands where the clip starts, and the clip is muted
       // the scene goes with the film, so it stays editable on the timeline (a film opened again replaces its old one)
-      const lab: LabSource = { v: 1, plan, code, params, fields: info.params ?? [], picks, choices, musicMode, brief, footage: sources.length ? sources : null, footMeta: foot?.meta ?? null, personOn, chat: chat.slice(-30) };
+      const lab: LabSource = { v: 1, plan, code, params, fields: info.params ?? [], picks, choices, musicMode, brief, footage: sources.length ? sources : null, footMeta: foot?.meta ?? null, personOn, chat: chat.slice(-400) };
       const replacing = initialSource?.assetId ?? null;
       onFilm(file, audio ? [] : readCues(info.cues, info.duration), null, source && !replacing ? { at: source.start, muteClipIds: sources.map((c) => c.clipId) } : undefined, { source: lab, replaceAssetId: replacing });
       setStage("ready");
@@ -1455,7 +1455,7 @@ export default function MotionLab({
     const message = (raw ?? chatText).trim();
     if (!message || busy) return;
     setChatText("");
-    const history = chat.filter((m) => m.text).slice(-20).map((m) => ({ role: m.role, text: m.text }));
+    const history = chat.filter((m) => m.text).slice(-400).map((m) => ({ role: m.role, text: m.text }));
     setChat((c) => [...c, { role: "user", text: message }]);
     setError(null);
     const own = direct(message);

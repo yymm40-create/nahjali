@@ -29,7 +29,7 @@ const missing = (e: { code?: string; message?: string } | null) => !!e && (e.cod
 export let memoryOff = false;
 
 /** Turns from storage or the page, checked. */
-export function cleanTurns(raw: unknown, max = 200): ChatTurn[] {
+export function cleanTurns(raw: unknown, max = 2000): ChatTurn[] {
   if (!Array.isArray(raw)) return [];
   const out: ChatTurn[] = [];
   for (const t of raw) {

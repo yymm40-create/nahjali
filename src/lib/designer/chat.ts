@@ -4,11 +4,12 @@
 // produce (the complete design, including its text by default, through جواد's desk) or a
 // picture to split into layers. Server only.
 
+import { remember, withNote } from "@/lib/robot-handoff";
 import { randomUUID } from "crypto";
 import { isLeader, callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { DESIGNER, DESIGN_ASPECTS, isDesignAspect, isDesignKind, type DesignAspect, type DesignKind } from "@config/designer";
 import { findKindStyle } from "@config/designer-library";
-import { cleanHistory, forModel, getChat, lastDesignAt, readQuestions, saveChat, type Attachment, type PendingDesign, type Turn } from "./chats";
+import { cleanHistory, getChat, lastDesignAt, readQuestions, saveChat, type Attachment, type PendingDesign, type Turn } from "./chats";
 import { attachmentsOf, uploadLinks } from "./files";
 import { layersNote, readLayers, sizeOf, type Design } from "./layers";
 import { getPersona, systemText } from "./persona";
@@ -143,16 +144,18 @@ export async function say(userId: string, chatId: string | null, message: string
   const before = chatId ? await getChat(userId, chatId) : null;
   if (chatId && !before) throw new Error("chat not found");
   const history = cleanHistory([...(before?.messages ?? []), { role: "user", text: said || "(صور مرفقة)", files: files.length ? files : undefined }]);
-  const turns = forModel(history);
+  // a long conversation: his own handoff of everything before, then the latest turns (lib/robot-handoff)
+  const mem = await remember({ key: `designer:${chatId ?? ""}`, userId, robot: "كاظم (المصمم الذكي)", turns: history, window: DESIGNER.historyTurns });
+  const turns = mem.kept;
   // pictures of this conversation, by short-lived link, so he can look at them (a template to copy, a photo)
   const links = await uploadLinks(userId, turns.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image" || f.kind === "doc").map((f) => f.id)));
   const persona = await getPersona();
   const system = systemText(persona.text, [], before?.record ?? "");
-  const r = await callClaudeJson<Answer>({ system, turns: turns.map((t) => toClaudeTurn(t, links)), schema: ANSWER_SCHEMA, maxTokens: DESIGNER.maxTokens, effort: "medium", leader: isLeader(email) });
+  const r = await callClaudeJson<Answer>({ system, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: DESIGNER.maxTokens, effort: "medium", leader: isLeader(email) });
   const a = r.data;
-  let usd = claudeCost(r.usage);
+  let usd = claudeCost(r.usage) + mem.usd;
   const questions = readQuestions(a.questions);
-  const reply: Turn = { role: "assistant", text: a.reply.trim() || "…", ...(questions ? { questions } : {}) };
+  const reply: Turn = { role: "assistant", text: withNote(a.reply.trim() || "…", mem.fresh), ...(questions ? { questions } : {}) };
   const messages = [...history, reply];
   const at = messages.length - 1;
 

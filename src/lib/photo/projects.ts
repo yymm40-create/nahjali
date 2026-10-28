@@ -69,7 +69,7 @@ export function cleanMessages(raw: unknown): PhotoTurn[] {
     if (m.error === true) turn.error = true;
     out.push(turn);
   }
-  return out.slice(-200);
+  return out.slice(-2000);
 }
 
 const view = (r: Record<string, unknown>): Project => ({

@@ -4,7 +4,8 @@
 import { GAMES, type GamesMode } from "@config/games";
 import { isLeader } from "@/lib/film/anthropic";
 import { talk, type Turn } from "./claude";
-import { cleanHistory, forModel, getChat, saveChat } from "./chats";
+import { cleanHistory, getChat, saveChat } from "./chats";
+import { leadTurns, remember, withNote } from "@/lib/robot-handoff";
 import { libraryBlock } from "./library";
 import { getPersona, systemText } from "./persona";
 
@@ -25,9 +26,13 @@ export async function say(userId: string, chatId: string | null, message: string
   if (chatId && !chat) throw new Error("chat not found");
   const before = chat?.messages ?? [];
   const history = cleanHistory([...before, { role: "user", text: said }]);
-  const turns = forModel(history);
+  // a long conversation: his own handoff of everything before, then the latest turns (lib/robot-handoff)
+  const mem = await remember({ key: `games:${chatId ?? ""}`, userId, robot: "قنبر (صانع الألعاب)", turns: history, window: GAMES.historyTurns });
+  const turns = mem.kept;
   const [persona, library] = await Promise.all([getPersona(), libraryBlock(turns.filter((t) => t.role === "user").map((t) => t.text))]);
-  const r = await talk({ system: systemText(persona.text, library, mode ?? chat?.mode ?? ""), turns, maxTokens: GAMES.maxTokens, leader: isLeader(email) });
-  const id = await saveChat(userId, chatId, [...history, { role: "assistant", text: r.text } as Turn], r.usd, mode && mode !== chat?.mode ? mode : null);
-  return { chatId: id, text: r.text, usd: r.usd };
+  const r = await talk({ system: systemText(persona.text, library, mode ?? chat?.mode ?? ""), turns: [...leadTurns(mem), ...turns], maxTokens: GAMES.maxTokens, leader: isLeader(email) });
+  const text = withNote(r.text, mem.fresh);
+  const usd = r.usd + mem.usd;
+  const id = await saveChat(userId, chatId, [...history, { role: "assistant", text } as Turn], usd, mode && mode !== chat?.mode ? mode : null);
+  return { chatId: id, text, usd };
 }

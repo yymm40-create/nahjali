@@ -4,6 +4,7 @@
 //   Claude answers with a reply and changes to the form (config/jawad/assistant.ts checks them). Nothing is generated
 //   here, and the person's pictures are shown to Claude by short-lived links to their own stored files only.
 
+import { remember, withNote } from "@/lib/robot-handoff";
 import { findStyle } from "@config/film-styles";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -46,6 +47,9 @@ async function ownUploads(userId: string, ids: string[]) {
 const refLine = (r: AssistantRef) =>
   `@${r.name} — ${r.kind}${r.kind !== "audio" && r.width && r.height ? ` ${r.width}×${r.height}` : ""}${r.durationMs ? ` ${(r.durationMs / 1000).toFixed(1)}s` : ""}, role ${r.role}`;
 
+/** The most turns read from what the page sends (each up to ASSISTANT_LIMITS.message). */
+const HANDOFF_SENT = 300;
+
 /** One turn of the assistant. */
 export async function assistantTurn(user: { id: string; email?: string | null }, owner: boolean, b: AssistantBody): Promise<AssistantAnswer & { attachments: { uploadId: string }[]; usd: number }> {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("المساعد جواد غير متاح حاليًا.", 503);
@@ -58,8 +62,9 @@ export async function assistantTurn(user: { id: string; email?: string | null },
     .filter((d): d is GeneratorDef => Boolean(d));
   if (!defs.length) throw new UserError("لا يوجد مولد متاح في هذا القسم.", 403);
 
-  // The conversation: the last turns, starting with the person's (the API wants user first, alternating)
-  const raw = (Array.isArray(b.messages) ? b.messages : []).slice(-ASSISTANT_LIMITS.history).map((m) => {
+  // The conversation: all of it (the page sends it whole), alternating; a long one is read as his own handoff of what
+  // came before + the latest turns (lib/robot-handoff)
+  const raw = (Array.isArray(b.messages) ? b.messages : []).slice(-HANDOFF_SENT).map((m) => {
     const x = (m ?? {}) as { role?: unknown; text?: unknown };
     return { role: x.role === "assistant" ? ("assistant" as const) : ("user" as const), text: str(x.text, ASSISTANT_LIMITS.message).trim() };
   });
@@ -71,6 +76,12 @@ export async function assistantTurn(user: { id: string; email?: string | null },
   }
   while (turns.length && turns[0].role !== "user") turns.shift();
   if (!turns.length || turns[turns.length - 1].role !== "user") throw new UserError("اكتب رسالتك.", 400);
+  const chatKey = String(b.chatId ?? "");
+  const mem = isUuid(chatKey)
+    ? await remember({ key: `jawad:${chatKey}`, userId: user.id, robot: "جواد (مساعد الاستوديو)", turns, window: ASSISTANT_LIMITS.history })
+    : { lead: [], kept: turns.slice(-ASSISTANT_LIMITS.history), fresh: false, usd: 0 };
+  turns.splice(0, turns.length, ...mem.kept);
+  while (turns.length && turns[0].role !== "user") turns.shift();
 
   // The form now
   const d = (b.draft ?? {}) as Record<string, unknown>;
@@ -149,11 +160,11 @@ export async function assistantTurn(user: { id: string; email?: string | null },
     : fight
       ? `${FIGHT_METHOD}\n\nTHE SCHOOLS:\n${SCHOOLS_BRIEF}\n\n${fightCasesBrief(nearestFightCases(lastText, 3))}`
       : examplesBrief(nearestExamples(lastText, section.output, 3, earlier));
-  const claudeTurns: ClaudeTurn[] = turns.map((t, i) => {
+  const claudeTurns: ClaudeTurn[] = [...mem.lead, ...turns.map((t, i): ClaudeTurn => {
     if (i < turns.length - 1) return { role: t.role, content: t.text };
     // The last message carries the form, the pictures, the recipe and the examples
     return { role: "user", content: [...parts, { type: "text", text: [state, guide, examples, `THE PERSON'S MESSAGE:\n${t.text}`].filter(Boolean).join("\n\n") } as ClaudePart] };
-  });
+  })];
 
   const system = assistantSystem(section.output, defs);
   let data: AssistantRaw;
@@ -201,5 +212,5 @@ export async function assistantTurn(user: { id: string; email?: string | null },
   }
 
   const answer = checkAnswer(data, { defs, draft, attachments: attached.length });
-  return { ...answer, attachments: attached.map((u) => ({ uploadId: u.id })), usd };
+  return { ...answer, reply: withNote(answer.reply, mem.fresh), attachments: attached.map((u) => ({ uploadId: u.id })), usd: usd + mem.usd };
 }
