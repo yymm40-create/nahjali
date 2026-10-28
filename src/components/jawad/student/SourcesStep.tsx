@@ -161,7 +161,7 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
                 <span className="min-w-0 flex-1 truncate">🎬 {m.name}</span>
                 <PaidButton
                   label="فرّغ الكلام"
-                  what={`تفريغ كلام «${m.name}» نصًا بـ ElevenLabs، ويصير هو مادتك.`}
+                  what={`تفريغ كلام «${m.name}» نصًا، ويصير هو مادتك.`}
                   disabled={running}
                   run={async (b) => {
                     const r = await p.act({ action: "media_transcribe", path: m.path, name: m.name, seconds: Math.round(m.seconds), ...b });
@@ -176,12 +176,12 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
 
         <div className="jw-panel space-y-3 p-4">
           <b className="block">▶️ أو رابط فيديو (يوتيوب، تيك توك…)</b>
-          <p className="text-xs text-jw-muted">يسمعه ElevenLabs ويكتب كلامه كامل مع الأوقات. ما ينحجز شي: ينخصم بس طول المقطع الفعلي بعد ما يخلص. استخدم مقاطع لك حق استخدامها.</p>
+          <p className="text-xs text-jw-muted">نسمعه ونكتب كلامه كامل مع الأوقات. ما ينحجز شي: ينخصم بس طول المقطع الفعلي بعد ما يخلص. استخدم مقاطع لك حق استخدامها.</p>
           <div className="flex flex-wrap gap-2">
             <input className="jw-input min-w-0 flex-1" dir="ltr" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" aria-label="رابط الفيديو" />
             <PaidButton
               label="فرّغ الرابط"
-              what="تفريغ كلام الفيديو نصًا بـ ElevenLabs، ويصير هو مادتك."
+              what="تفريغ كلام الفيديو نصًا، ويصير هو مادتك."
               disabled={running || !/^https:\/\/\S+\.\S+/.test(link.trim())}
               run={async (b) => {
                 const r = await p.act({ action: "media_transcribe", url: link.trim(), ...b });

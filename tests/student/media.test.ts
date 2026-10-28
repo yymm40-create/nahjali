@@ -2,11 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const inserted: Record<string, unknown>[] = [];
 const removed: string[][] = [];
+// the job's row: what the webhook wrote on it (a failure), and the progress the first step marks
+const row = vi.hoisted(() => ({ error: null as string | null }));
 vi.mock("@/lib/jawad/student/db", () => ({
   getProject: async () => ({ id: "p", user_id: "u" }),
   sources: async () => [],
   touch: async () => {},
-  sdb: () => ({ from: () => ({ insert: async (row: Record<string, unknown>) => (inserted.push(row), { error: null }) }) }),
+  sdb: () => ({
+    from: () => ({
+      insert: async (r: Record<string, unknown>) => (inserted.push(r), { error: null }),
+      update: () => ({ eq: async () => ({ error: null }) }),
+      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { error: row.error } }) }) }),
+    }),
+  }),
 }));
 vi.mock("@/lib/storage", () => ({
   storage: { from: () => ({ createSignedUrl: async () => ({ data: { signedUrl: "https://r2.example/file.mp4?sig" } }), remove: async (paths: string[]) => (removed.push(paths), { data: [] }) }) },
@@ -46,6 +54,7 @@ describe("the background transcription", () => {
   beforeEach(() => {
     calls.length = inserted.length = removed.length = 0;
     ready = false;
+    row.error = null;
     vi.stubEnv("ELEVENLABS_API_KEY", "k");
     vi.stubGlobal("setTimeout", ((f: () => void) => (f(), 0)) as never);
     vi.stubGlobal(
@@ -56,6 +65,7 @@ describe("the background transcription", () => {
           const f = init!.body as FormData;
           expect(f.get("source_url")).toBe("https://r2.example/file.mp4?sig");
           expect(f.get("webhook")).toBe("true");
+          expect(JSON.parse(String(f.get("webhook_metadata")))).toEqual({ studentJob: "j" });
           return new Response(JSON.stringify({ message: "ok", request_id: "r", transcription_id: "t1" }), { status: 202 });
         }
         if (!ready) return new Response("{}", { status: 404 });
@@ -81,5 +91,25 @@ describe("the background transcription", () => {
     expect(String(inserted[0].body)).toContain("[00:03] اليوم درسنا،");
     expect(removed).toEqual([["u/p/media/x.mp4"]]);
     expect(calls.filter((c) => c.includes("/transcripts/t1"))).toHaveLength(2);
+  });
+
+  it("never names ElevenLabs on the page while it waits", async () => {
+    const job = { id: "j", user_id: "u", project_id: "p", input: { path: "u/p/media/x.mp4", name: "x", seconds: 5 }, progress: {} } as never;
+    const first = await mediaHandler.step(job);
+    const waiting = await mediaHandler.step({ ...(job as object), progress: first.progress } as never);
+    expect(`${first.stage} ${waiting.stage}`).not.toMatch(/ElevenLabs/i);
+    expect(waiting.stage).toContain("نفرّغ الكلام");
+  });
+
+  it("stops at once when the webhook marked the transcription failed", async () => {
+    const job = { id: "j", user_id: "u", project_id: "p", input: { url: "https://youtu.be/x", name: "x" }, progress: { tid: "t1", since: Date.now() } } as never;
+    row.error = "ما قدرنا نفرّغ هذا المقطع (could not download). ما انخصم منك شيء";
+    await expect(mediaHandler.step(job)).rejects.toThrow("could not download");
+  });
+
+  it("gives up after 20 minutes, not hours", async () => {
+    const job = (min: number) => ({ id: "j", user_id: "u", project_id: "p", input: { url: "https://youtu.be/x", name: "x" }, progress: { tid: "t1", since: Date.now() - min * 60_000 } }) as never;
+    expect((await mediaHandler.step(job(19))).done).toBe(false);
+    await expect(mediaHandler.step(job(21))).rejects.toThrow("٢٠ دقيقة");
   });
 });

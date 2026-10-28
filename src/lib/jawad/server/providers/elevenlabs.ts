@@ -353,7 +353,7 @@ const heardOf = (j: { language_code?: string; text?: string; words?: { text: str
  * Speech to text from a link. With a speech-to-text webhook in the ElevenLabs account it runs in the background (an id
  * to poll); without one the request is waited for, at most `waitMs` (it must end before the server function does).
  */
-export async function elevenTranscribeUrl(o: { url: string; languageCode?: string | null; waitMs?: number }): Promise<{ id: string } | { heard: Heard }> {
+export async function elevenTranscribeUrl(o: { url: string; languageCode?: string | null; waitMs?: number; metadata?: Record<string, string> }): Promise<{ id: string } | { heard: Heard }> {
   const form = (background: boolean) => {
     const f = new FormData();
     f.append("model_id", "scribe_v2");
@@ -362,6 +362,8 @@ export async function elevenTranscribeUrl(o: { url: string; languageCode?: strin
     f.append("tag_audio_events", "false");
     if (o.languageCode) f.append("language_code", o.languageCode);
     if (background) f.append("webhook", "true");
+    // comes back with the webhook, so a failed transcription reaches the job waiting for it
+    if (background && o.metadata) f.append("webhook_metadata", JSON.stringify(o.metadata));
     return f;
   };
   try {
