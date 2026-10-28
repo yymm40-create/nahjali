@@ -122,6 +122,18 @@ async function adjust(userId: string, delta: number, reason: string, ref: string
   return data as number | null;
 }
 
+/**
+ * Takes up to `coins` from a wallet, never below zero (the owner, 28 October 2026: «ما يصير سالب أبداً»): the whole
+ * amount when the balance covers it, else what is left in it. Returns what was taken.
+ */
+async function takeUpTo(userId: string, coins: number, reason: string, ref: string, label: string) {
+  for (let i = 0; i < 3 && coins > 0; i++) {
+    if ((await adjust(userId, -coins, reason, ref, label)) !== null) return coins;
+    coins = Math.min(coins, Math.max((await coinBalance(userId)) ?? 0, 0));
+  }
+  return 0;
+}
+
 /** The owner adds (or takes back, with a negative amount) coins for a user. */
 export const grantCoins = (userId: string, amount: number, note: string) => adjust(userId, amount, "grant", note, note, true);
 
@@ -148,14 +160,14 @@ export async function reserveCoins(user: { id: string; email?: string | null }, 
     await logFree(user.id, jobId, label, 0);
     return;
   }
-  // pay after use (the owner, 18 October 2026: «على كل شيء يطلع في النهاية تأخذ الفلوس مباشرة»): nothing is held — the
-  // job starts while the wallet has something in it, a zero mark ties the job to the wallet, and `settleCoins` takes
-  // what it really cost when it is done (a failed one takes nothing)
-  const balance = (await coinBalance(user.id)) ?? 0;
-  if (balance <= 0 || (await adjust(user.id, 0, "reserve", jobId, label)) === null) {
-    // «خلص رصيدك»: the page offers to pay what this job is estimated to take (its ceiling), on top of what is missing
-    await loadPricing();
-    throw shortBalance(Math.max(priceOf(estimateUsd, claude), 1) - Math.min(balance, 0), balance, "هالعملية");
+  // the estimate is held before the job starts (the owner, 28 October 2026, «حل ١»): a wallet that does not cover it is
+  // refused clearly, `settleCoins` gives back what the job did not use, and a wallet never goes below zero
+  await loadPricing();
+  const need = Math.max(priceOf(estimateUsd, claude, await atCostFor(user.id, user.email)), 1);
+  if ((await adjust(user.id, -need, "reserve", jobId, label)) === null) {
+    // «خلص رصيدك»: the page offers to pay what is missing for this job's estimate
+    const balance = (await coinBalance(user.id)) ?? 0;
+    throw shortBalance(need - balance, balance, "هالعملية");
   }
 }
 
@@ -167,19 +179,18 @@ async function reserved(jobId: string) {
 }
 
 /**
- * Pay after use (the owner's way for «الطالب الذكي», 18 October 2026: «خذ الفلوس مباشرة»): nothing is held before a
- * step; when it is done, what it really cost (at the site's margins) is taken from the wallet at once. The wallet may go
- * below zero by the last step's cost; the next step then waits for a top-up.
+ * A job started under the old pay-after-use way (nothing held): what it really cost is taken when it is done, but never
+ * more than the wallet has (it never goes below zero). New jobs hold their estimate (reserveCoins).
  */
 export async function chargeAfter(userId: string, jobId: string, costUsd: number, label: string, claude: ChargeKind = false) {
   await loadPricing();
   const coins = priceOf(costUsd, claude, await atCostFor(userId));
-  if (coins > 0) await adjust(userId, -coins, "settle", jobId, label, true);
+  const taken = coins > 0 ? await takeUpTo(userId, coins, "settle", jobId, label) : 0;
   await logCost(userId, jobId, label, costUsd);
-  return coins;
+  return taken;
 }
 
-/** On success: the held coins become the real charge (the difference is given back, or taken). */
+/** On success: the held coins become the real charge (what was not used is given back; more is taken only while the wallet has it). */
 export async function settleCoins(jobId: string, costUsd: number, claude: ChargeKind = false) {
   await loadPricing();
   const team = await settleTeamCoins(jobId, costUsd, claude);
@@ -193,10 +204,10 @@ export async function settleCoins(jobId: string, costUsd: number, claude: Charge
     return;
   }
   await logCost(r.userId, jobId, r.label, costUsd);
-  // a job marked with nothing held (pay after use) is charged here; one that held its estimate gets the difference back
   if (r.held < 0) return;
   const diff = r.held - priceOf(costUsd, claude, await atCostFor(r.userId));
-  if (diff !== 0) await adjust(r.userId, diff, "settle", jobId, r.label, true);
+  if (diff > 0) await adjust(r.userId, diff, "settle", jobId, r.label, true);
+  else if (diff < 0) await takeUpTo(r.userId, -diff, "settle", jobId, r.label);
 }
 
 /** On failure: every held coin goes back (failed operations cost nothing). */
@@ -218,6 +229,15 @@ async function adjustTeam(seriesId: string, userId: string | null, delta: number
   return data as number | null;
 }
 
+/** Like takeUpTo, from a team's wallet: never below zero. */
+async function takeTeamUpTo(seriesId: string, userId: string | null, coins: number, reason: string, ref: string, label: string) {
+  for (let i = 0; i < 3 && coins > 0; i++) {
+    if ((await adjustTeam(seriesId, userId, -coins, reason, ref, label)) !== null) return coins;
+    coins = Math.min(coins, Math.max(await teamCoinBalance(seriesId), 0));
+  }
+  return 0;
+}
+
 /** The team's balance (0 before anything was put in). */
 export async function teamCoinBalance(seriesId: string): Promise<number> {
   const { data } = await db().from("team_coin_wallets").select("balance").eq("series_id", seriesId).maybeSingle();
@@ -229,12 +249,10 @@ const SHORT_TEAM = (coins: number) => `رصيد «نقود الفريق الذك
 /** A team series' paid job: holds its estimated coins from the team's wallet (`who` pressed it). */
 export async function reserveTeamCoins(seriesId: string, who: { id: string }, jobId: string, estimateUsd: number, label: string, claude: ChargeKind = false) {
   if (!(await coinsRequired())) return;
-  void estimateUsd;
-  void claude;
-  // pay after use, like a person's wallet: nothing held, the real cost taken when the job is done
-  if ((await teamCoinBalance(seriesId)) <= 0 || (await adjustTeam(seriesId, who.id, 0, "reserve", jobId, label)) === null) {
-    throw new UserError("رصيد «نقود الفريق الذكي» خلص. اطلب من صاحب المسلسل يشحن رصيد الفريق.", 402);
-  }
+  // the estimate is held first, like a person's wallet; settleTeamCoins gives back what was not used
+  await loadPricing();
+  const need = Math.max(priceOf(estimateUsd, claude), 1);
+  if ((await adjustTeam(seriesId, who.id, -need, "reserve", jobId, label)) === null) throw new UserError(SHORT_TEAM(need), 402);
 }
 
 /** A fixed price in coins taken from the team's wallet (the editor's prices, a «اصنع لي» generation). */
@@ -254,7 +272,8 @@ async function settleTeamCoins(ref: string, costUsd: number, claude: ChargeKind 
   const r = await teamReserved(ref);
   if (!r || r.held < 0) return r;
   const diff = r.held - priceOf(costUsd, claude);
-  if (diff !== 0) await adjustTeam(r.seriesId, r.userId, diff, "settle", ref, r.label, true);
+  if (diff > 0) await adjustTeam(r.seriesId, r.userId, diff, "settle", ref, r.label, true);
+  else if (diff < 0) await takeTeamUpTo(r.seriesId, r.userId, -diff, "settle", ref, r.label);
   return r;
 }
 
@@ -319,11 +338,14 @@ export interface ClaudeBill {
   charged: number;
   /** after the reply: takes the real usage (USD) plus the platform's profit — never throws over a short balance */
   settle: (usd: number) => Promise<number>;
+  /** the reply failed: what was held for it goes back */
+  release: () => Promise<void>;
 }
 
 /**
- * Before a robot answers: the wallet must have something in it (a clear refusal otherwise); after it, `settle(usd)`
- * takes what the reply really cost + the profit (pay after use). Free for the owner and unlimited accounts.
+ * Before a robot answers: about one reply of this mind is held (a clear refusal when the wallet does not cover it);
+ * after it, `settle(usd)` makes the hold the real cost + the profit (the rest back, more only while the wallet has it;
+ * never below zero), and `release()` gives it all back when the reply failed. Free for the owner and unlimited accounts.
  * `kind` "max": «حيدرا ماكس» writing a program for the job (its own, higher profit).
  */
 export async function claudeMeter(who: { id: string; email?: string | null; owner?: boolean; team?: string | null }, model: ClaudeModel, label: string, kind: "claude" | "max" = "claude"): Promise<ClaudeBill> {
@@ -337,30 +359,43 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
       await logCost(who.id, ref, label, usd);
       return 0;
     },
+    release: async () => {},
   };
   if (who.owner || (await unlimitedFor(who.email)) || !(await coinsRequired())) return bill;
   await loadPricing();
-  // pay after use: a reply starts while the wallet has anything in it, and takes what it really cost after
   const atCost = !who.team && (await atCostFor(who.id, who.email));
-  const balance = who.team ? await teamCoinBalance(who.team) : await coinBalance(who.id);
-  if (balance !== null && balance <= 0) {
-    // a team's wallet is its owner's to fill; a person's own: the page offers to pay about one reply of this mind
-    if (who.team) throw new UserError("رصيد «نقود الفريق الذكي» خلص. اطلب من صاحب المسلسل يشحن رصيد الفريق.", 402);
-    throw shortBalance(claudeHalalas(typicalReplyUsd(model), undefined, kind) - balance, balance, "الرد", `خلص رصيدك. الرد مع «${model.name}» يكلف تقريبًا ${coinStr(claudeHalalas(typicalReplyUsd(model), undefined, kind))}: اشحن بمقداره بس أو اختر باقة، وكمّل المحادثة.`);
-  }
+  const held = atCost ? priceOf(typicalReplyUsd(model), "claude", true) : claudeHalalas(typicalReplyUsd(model), undefined, kind);
   const ref = `claude:${crypto.randomUUID()}`;
+  if (held > 0) {
+    const ok = who.team ? (await adjustTeam(who.team, who.id, -held, "reserve", ref, label)) !== null : (await adjust(who.id, -held, "reserve", ref, label)) !== null;
+    if (!ok) {
+      // a team's wallet is its owner's to fill; a person's own: the page offers to pay what is missing for one reply
+      if (who.team) throw new UserError(SHORT_TEAM(held), 402);
+      const balance = (await coinBalance(who.id)) ?? 0;
+      throw shortBalance(held - balance, balance, "الرد", `رصيدك ما يكفي. الرد مع «${model.name}» يكلف تقريبًا ${coinStr(held)}: اشحن الفرق بس أو اختر باقة، وكمّل المحادثة.`);
+    }
+  }
+  let open = true;
+  const back = (coins: number) => (who.team ? adjustTeam(who.team, who.id, coins, "refund", ref, label, true) : adjust(who.id, coins, "refund", ref, label, true));
   return {
     free: false,
     charged: 0,
     settle: async (usd: number) => {
+      if (!open) return 0;
+      open = false;
       // a code's «بسعر التكلفة»: the real usage with no profit
       const coins = atCost ? priceOf(usd, "claude", true) : claudeHalalas(usd, undefined, kind);
       await logCost(who.id, ref, label, usd);
-      if (coins <= 0) return 0;
-      if (who.team) await adjustTeam(who.team, who.id, -coins, "settle", ref, label, true);
-      else await adjust(who.id, -coins, "settle", ref, label, true);
-      bill.charged = coins;
-      return coins;
+      let charged = Math.min(coins, held);
+      if (held > coins) await back(held - coins);
+      else if (coins > held) charged += who.team ? await takeTeamUpTo(who.team, who.id, coins - held, "settle", ref, label) : await takeUpTo(who.id, coins - held, "settle", ref, label);
+      bill.charged = charged;
+      return charged;
+    },
+    release: async () => {
+      if (!open) return;
+      open = false;
+      if (held > 0) await back(held);
     },
   };
 }
