@@ -134,15 +134,17 @@ export function readCreditSettings(raw: unknown): CreditSettings {
 
 /**
  * «بمقدار اللي تحتاجه» (the owner, 26 October 2026): when the wallet runs out, a top-up of exactly what the operation
- * needs — whole riyals (the orders keep riyals), 1 to 1000 — beside the packages. Its id carries the amount: exact-<riyals>.
+ * needs — whole riyals (the orders keep riyals), 3 to 1000 — beside the packages. Its id carries the amount: exact-<riyals>.
  */
+// the smallest is 3 riyals (the owner, 28 October 2026): the payment gateway takes a fixed fee on every transaction
+export const EXACT_MIN_SAR = 3;
 export const EXACT_MAX_SAR = 1000;
-export const exactSar = (halalas: number) => Math.min(EXACT_MAX_SAR, Math.max(1, Math.ceil(Math.max(0, halalas) / 100 - 1e-9)));
+export const exactSar = (halalas: number) => Math.min(EXACT_MAX_SAR, Math.max(EXACT_MIN_SAR, Math.ceil(Math.max(0, halalas) / 100 - 1e-9)));
 export const exactPack = (sar: number): Pack => ({ id: `exact-${sar}`, name: "بمقدار اللي تحتاجه", price: sar, credit: sar, tag: "", note: "شحن بمقدار العملية بس" });
 export function exactPackOf(id: unknown): Pack | null {
   const m = typeof id === "string" ? /^exact-(\d{1,4})$/.exec(id) : null;
   const sar = m ? Number(m[1]) : 0;
-  return sar >= 1 && sar <= EXACT_MAX_SAR ? exactPack(sar) : null;
+  return sar >= EXACT_MIN_SAR && sar <= EXACT_MAX_SAR ? exactPack(sar) : null;
 }
 export const packOf = (s: CreditSettings, id: unknown) => s.packs.find((p) => p.id === id) ?? exactPackOf(id);
 

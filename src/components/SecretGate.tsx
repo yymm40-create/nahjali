@@ -7,7 +7,7 @@ import { forgetPerks } from "@/components/usePerks";
 
 const ASKED = "secret-asked";
 const PENDING = "secret-pending";
-const SKIP = ["/mahdi", "/login", "/auth", "/admin", "/jawad-ai/login", "/privacy", "/terms", "/editor-test", "/play"];
+const SKIP = ["/mahdi", "/login", "/auth", "/admin", "/jawad-ai/login", "/privacy", "/terms", "/refund", "/editor-test", "/play"];
 const read = (k: string) => {
   try {
     return localStorage.getItem(k);

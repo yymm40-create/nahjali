@@ -200,6 +200,7 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
       <footer className="ld-foot">
         <Link href="/terms">الشروط والأحكام</Link>
         <Link href="/privacy">سياسة الخصوصية</Link>
+        <Link href="/refund">الاسترجاع والاستبدال</Link>
         <span>الجواد الذكي © ٢٠٢٦</span>
       </footer>
 
