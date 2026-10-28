@@ -59,7 +59,10 @@ export async function robotTurn<T extends { usd: number }>(user: RobotUser, mode
   // a code may cap the model (the owner's «الأكواد»): a dearer pick is served by the ceiling's model
   const model = claudeModelOf(await claudeFor(user.email, modelId));
   const bill = await claudeMeter({ id: user.id, email: user.email, owner: isAdmin(user.email), team: user.team }, model, label, options.price ?? "claude");
-  const out = await withClaude(model.id, () => options.memory === "isolated" ? withMemory("", run) : remembering(user.id, run, memo));
+  const out = await withClaude(model.id, () => options.memory === "isolated" ? withMemory("", run) : remembering(user.id, run, memo)).catch(async (e) => {
+    await bill.release().catch(() => {});
+    throw e;
+  });
   const coins = await bill.settle(out.usd).catch((e) => {
     console.error("claude settle failed", e);
     return 0;

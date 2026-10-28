@@ -56,7 +56,10 @@ export async function claudeCharged<T>(who: Who, modelId: unknown, label: string
   const model = claudeModelOf(await claudeFor(who.email, modelId));
   const bill = await claudeMeter(who, model, label, kind);
   // the person's memory («ذاكرتي») is read by حيدرا ماكس too, and learns from the turn
-  const out = await withClaude(model.id, () => remembering(who.id, run, memo));
+  const out = await withClaude(model.id, () => remembering(who.id, run, memo)).catch(async (e) => {
+    await bill.release().catch(() => {});
+    throw e;
+  });
   const coins = await bill.settle(usdOf(out)).catch((e) => {
     console.error("claude settle failed", e);
     return 0;
