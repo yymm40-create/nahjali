@@ -76,7 +76,14 @@ export function isTransient(e: unknown): boolean {
   return /timeout|ECONN|socket|fetch failed/i.test(e instanceof Error ? e.message : String(e));
 }
 
-const reasonOf = (e: unknown) => (e instanceof DeskError ? e.reason : "صار خطأ غير متوقع أثناء الرسم.");
+// a slide refused for a short wallet says it was the balance AT THAT MOMENT (the list stays on the page after a
+// top-up, beside the new balance in the header), and that «أعد المحاولة» draws it now
+export const reasonOf = (e: unknown) =>
+  e instanceof DeskError
+    ? e.detail === "UserError 402"
+      ? `${e.reason.replace(/^خلص رصيدك:\s*/, "وقت الرسم ما كفى الرصيد: ").replace(/\s*اشحن بمقدارها بس أو اختر باقة\.?$/, "")}. إذا شحنت بعدها، اضغط «أعد المحاولة».`
+      : e.reason
+    : "صار خطأ غير متوقع أثناء الرسم.";
 const detailOf = (e: unknown) => (e instanceof DeskError ? e.detail || e.reason : e instanceof Error ? e.message : String(e)).slice(0, 300);
 
 /** The full prompt of one slide: where it stands, the design (Baqir's), the style (verbatim), the slide, the rules. */
