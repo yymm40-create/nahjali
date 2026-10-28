@@ -102,7 +102,7 @@ type Asked<T> = { data: T; coins: number; model: string; partialRaw?: undefined 
  * twice and no step ever starts again from nothing. `effortCap` (from the page, after a request went by in thought alone)
  * makes the model think less.
  */
-async function ask<T>(who: Who, b: Record<string, unknown>, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "low" | "medium" | "high" | "xhigh" = "high", onText?: OnText): Promise<Asked<T>> {
+async function ask<T>(who: Who, b: Record<string, unknown>, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "low" | "medium" | "high" | "xhigh" = "high", onText?: OnText, extraUsd = 0): Promise<Asked<T>> {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
   const written = typeof b.partialRaw === "string" ? b.partialRaw : "";
   const level = effortAtMost(effort, b.effortCap);
@@ -118,7 +118,8 @@ async function ask<T>(who: Who, b: Record<string, unknown>, label: string, parts
         console.error("motion lab", label, e);
         throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يكمل الموشن الحين. جرّب مرة ثانية.", who.email), 502);
       }),
-    (x) => claudeCost(x.usage),
+    // `extraUsd`: the conversation's handoff written for this call (lib/robot-handoff), charged with it
+    (x) => claudeCost(x.usage) + extraUsd,
     undefined,
     "max",
   );
@@ -311,7 +312,7 @@ ${code ? `THE CURRENT PROGRAM:\n${code}` : ""}${footagePart(b, Boolean(code))}${
     },
     ...refsParts(refs),
   ];
-  const r = await ask<{ reply: string; action: string; brief: string; code: string; options?: unknown; search?: unknown }>(who, b, "مختبر الموشن · محادثة", parts, CHAT_SCHEMA, code ? outputBudget(b.model) : 8000, code ? "high" : "medium", onText);
+  const r = await ask<{ reply: string; action: string; brief: string; code: string; options?: unknown; search?: unknown }>(who, b, "مختبر الموشن · محادثة", parts, CHAT_SCHEMA, code ? outputBudget(b.model) : 8000, code ? "high" : "medium", onText, mem.usd);
   if (r.partialRaw !== undefined) return r;
   // a search he asked for (only once per message: with the results in hand he answers)
   const search = research ? "" : text(r.data.search, 300);
