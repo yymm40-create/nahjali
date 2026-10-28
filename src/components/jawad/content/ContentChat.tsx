@@ -392,6 +392,30 @@ export function MediaBox({ items, busy, owner, onRetry }: { items: MediaView[]; 
   );
 }
 
+// the conversation that was open, and what was being typed in it, are kept on this device: leaving the page (to top up
+// a wallet that ran out, a reload, a phone closing the tab) brings the person back to the same conversation with
+// محمد باقر — never to an empty one that knows nothing (the owner, 28 October 2026)
+const OPEN_KEY = "jw-content-open";
+const draftKey = (id: string | null) => `jw-content-draft:${id ?? "new"}`;
+const UUID_RE = /^[0-9a-f-]{36}$/i;
+const store = {
+  get: (k: string) => {
+    try {
+      return localStorage.getItem(k);
+    } catch {
+      return null;
+    }
+  },
+  set: (k: string, v: string | null) => {
+    try {
+      if (v) localStorage.setItem(k, v);
+      else localStorage.removeItem(k);
+    } catch {
+      /* private window: kept for this page only */
+    }
+  },
+};
+
 export default function ContentChat({ name, persona, loginHref, owner }: { name: string; persona: string; loginHref: string | null; owner?: boolean }) {
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
@@ -410,6 +434,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const end = useRef<HTMLDivElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+  /** the conversation of the last visit has been reopened (until then nothing is written over it) */
+  const restored = useRef(false);
 
   const refresh = useCallback(async () => {
     if (loginHref) return;
@@ -502,21 +528,54 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     }
   }, []);
 
-  async function open(id: string) {
+  async function open(id: string, quiet = false) {
     setSide(false);
     try {
       const r = await api<{ chat: { id: string; messages: Msg[]; pending: Pending | null } }>(`/api/content/chats?id=${id}`);
       setChatId(r.chat.id);
       setMsgs(r.chat.messages);
+      setQ(store.get(draftKey(r.chat.id)) ?? "");
       // a carousel ordered before the page was left: drawn on from where it stopped
       if (r.chat.pending) void runProduce(r.chat.id);
       // pictures or videos still with جواد: followed on from where they stand
       else if (r.chat.messages.some((m) => m.media?.items.some((x) => x.state === "todo" || x.state === "running"))) void runMedia(r.chat.id);
     } catch (e) {
+      // the conversation kept from the last visit is gone (deleted): start clean, without an error
+      if (quiet) {
+        store.set(OPEN_KEY, null);
+        return;
+      }
       setMsgs([{ role: "assistant", text: e instanceof Error ? e.message : "تعذّر فتح المحادثة.", error: true }]);
     }
   }
-  const fresh = () => { setChatId(null); setMsgs([]); setPending([]); setSide(false); };
+  const fresh = () => { setChatId(null); setMsgs([]); setQ(store.get(draftKey(null)) ?? ""); setPending([]); setSide(false); };
+
+  // back on the page: the conversation of the address (?chat=) or of the last visit opens again
+  useEffect(() => {
+    if (loginHref) return;
+    const t = window.setTimeout(() => {
+      const fromUrl = new URLSearchParams(window.location.search).get("chat");
+      const id = [fromUrl, store.get(OPEN_KEY)].find((x): x is string => !!x && UUID_RE.test(x));
+      restored.current = true;
+      if (id) void open(id, true);
+      else setQ(store.get(draftKey(null)) ?? "");
+    }, 0);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loginHref]);
+  // the open conversation is remembered (and in the address, so a reload or a shared tab comes back to it)
+  useEffect(() => {
+    if (!restored.current) return;
+    store.set(OPEN_KEY, chatId);
+    const url = new URL(window.location.href);
+    if (chatId) url.searchParams.set("chat", chatId);
+    else url.searchParams.delete("chat");
+    window.history.replaceState(window.history.state, "", url);
+  }, [chatId]);
+  // what is being typed is kept with its conversation
+  useEffect(() => {
+    if (restored.current) store.set(draftKey(chatId), q.trim() ? q : null);
+  }, [q, chatId]);
 
   async function attach(files: FileList | null) {
     if (!files?.length) return;
@@ -573,7 +632,14 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       if (r.pending) produceId = r.chatId;
       else if (r.media) mediaId = r.chatId;
     } catch (e) {
-      setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر الرد.", error: true }]);
+      // not answered (the wallet ran out, the network…): the message goes back into the box with its files, ready to
+      // send again — the conversation itself stays as it was on the server
+      setQ((now) => now || message);
+      setPending((now) => (now.length ? now : files));
+      setMsgs((m) => [
+        ...m.slice(0, -1),
+        { role: "assistant", text: `${e instanceof Error ? e.message : "تعذّر الرد."}\n\nرسالتك رجعت في الخانة تحت، والمحادثة محفوظة كما هي: ${e instanceof Error && /رصيد/.test(e.message) ? "اشحن وارجع لهنا، وأرسلها" : "أرسلها مرة ثانية"} ويكمل محمد باقر من نفس المكان.`, error: true },
+      ]);
     } finally {
       setBusy("");
     }
