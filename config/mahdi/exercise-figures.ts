@@ -514,6 +514,55 @@ export const FIGURES: Record<string, FigureDef> = {
   },
 
   // ── البطن والثبات ──
+  crunch: {
+    frames: [
+      { at: [104, FLOOR], anchor: "hip", thigh: -48, shin: 52, torso: 180, arm: 8, fore: 186 },
+      { at: [104, FLOOR], anchor: "hip", thigh: -48, shin: 52, torso: 208, arm: 36, fore: 214 },
+    ],
+    track: "head",
+  },
+  "reverse-crunch": {
+    frames: [
+      { at: [104, FLOOR], anchor: "hip", thigh: -70, shin: 20, torso: 180, arm: 2, fore: 2 },
+      { at: [104, FLOOR], anchor: "hip", thigh: -128, shin: -30, torso: 180, arm: 2, fore: 2 },
+    ],
+    track: "knee",
+  },
+  "leg-raise": {
+    frames: [
+      { at: [96, FLOOR], anchor: "hip", thigh: -6, shin: -6, foot: -90, torso: 180, arm: 2, fore: 2 },
+      { at: [96, FLOOR], anchor: "hip", thigh: -86, shin: -86, foot: 0, torso: 180, arm: 2, fore: 2 },
+    ],
+    track: "ankle",
+  },
+  bicycle: {
+    frames: [
+      { at: [104, FLOOR], anchor: "hip", thigh: -80, shin: 10, thigh2: -20, shin2: -10, torso: 200, arm: 40, fore: 230 },
+      { at: [104, FLOOR], anchor: "hip", thigh: -20, shin: -10, thigh2: -80, shin2: 10, torso: 200, arm: 40, fore: 230 },
+    ],
+    track: "knee",
+  },
+  "hanging-knee-raise": {
+    frames: [
+      { at: [100, 22], anchor: "wrist", thigh: 92, shin: 92, torso: -90, arm: -90, fore: -90 },
+      { at: [100, 22], anchor: "wrist", thigh: -10, shin: 88, torso: -96, arm: -90, fore: -90 },
+    ],
+    props: [{ t: "bar", at: [100, 22] }],
+    track: "knee",
+    floor: false,
+  },
+  "cable-crunch": {
+    frames: [
+      { at: [96, FLOOR + 1], anchor: "knee", thigh: 90, shin: 180, foot: 180, torso: -88, arm: -110, fore: 60 },
+      { at: [96, FLOOR + 1], anchor: "knee", thigh: 90, shin: 180, foot: 180, torso: -10, arm: 60, fore: 140 },
+    ],
+    props: [
+      { t: "post", x: 30, top: 8 },
+      { t: "cable", from: [34, 14], to: "wrist" },
+    ],
+    hold: "handle",
+    track: "head",
+  },
   plank: {
     frames: [{ at: [40, Y], anchor: "toe", thigh: 168, shin: 168, foot: 104, torso: -12, arm: 90, fore: 0 }],
     pulse: "hip",
