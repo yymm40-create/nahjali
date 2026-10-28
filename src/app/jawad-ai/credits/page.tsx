@@ -3,6 +3,7 @@ import CreditsShop from "@/components/jawad/credits/CreditsShop";
 import { coinBalance } from "@/lib/coins";
 import { myCreditOrders } from "@/lib/credits/orders";
 import { paylinkEnabled } from "@/lib/credits/paylink";
+import { moyasarEnabled } from "@/lib/credits/moyasar";
 import { loadCreditSettings } from "@/lib/credits/settings";
 import { unitPrices } from "@/lib/credits/yields";
 import { loadSettings as loadCourseSettings } from "@/lib/course/settings";
@@ -25,7 +26,9 @@ export default async function CreditsPage({ searchParams }: { searchParams: Prom
   const [{ user, owner }, s, course, units] = await Promise.all([jawadSession(), loadCreditSettings(), loadCourseSettings(), unitPrices().catch(() => null)]);
   const [balance, orders] = user ? await Promise.all([coinBalance(user.id).catch(() => null), myCreditOrders(user.id)]) : [null, []];
   const waiting = orders.filter((o) => o.status === "transferred").map((o) => ({ id: o.id, packName: o.packName, price: o.price, credit: o.credit, support: supportLink(s, { id: o.id, packName: o.packName, price: o.price, email: o.email }) }));
-  // back from Paylink: the paid order (one of this buyer's own, already settled by the return route) or «not confirmed»
+  // the card gateway: Moyasar once its key is set, else Paylink
+  const gateway = moyasarEnabled() ? "moyasar" : paylinkEnabled() ? "paylink" : null;
+  // back from the card gateway: the paid order (one of this buyer's own, already settled by the return route) or «not confirmed»
   const paidOrder = paid ? orders.find((o) => o.id === paid && o.status === "confirmed") : undefined;
   const back = paid || unpaid ? { paid: paidOrder ? { id: paidOrder.id, packName: paidOrder.packName, price: paidOrder.price } : null } : null;
   const contactOk = !!user && contactComplete(contactOf(user));
@@ -36,7 +39,8 @@ export default async function CreditsPage({ searchParams }: { searchParams: Prom
       units={units}
       featured={s.featured}
       bankOk={bankOk}
-      card={paylinkEnabled() && (owner || CARD_PAYMENT_PUBLIC)}
+      card={!!gateway && (owner || CARD_PAYMENT_PUBLIC)}
+      gateway={gateway ?? "paylink"}
       cardSoon={!CARD_PAYMENT_PUBLIC}
       back={back}
       hasSupport={!!s.whatsapp}

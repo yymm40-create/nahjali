@@ -18,8 +18,8 @@ const SERVICE_KEYS = [
   "R2_BUCKET", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
   // the ads: the browser pixels and Meta's Conversions API (src/components/Pixels.tsx, src/lib/meta-capi.ts)
   "NEXT_PUBLIC_META_PIXEL_ID", "NEXT_PUBLIC_TIKTOK_PIXEL_ID", "NEXT_PUBLIC_SNAP_PIXEL_ID", "META_CAPI_TOKEN",
-  // card payment (src/lib/credits/paylink.ts)
-  "PAYLINK_API_ID", "PAYLINK_SECRET_KEY", "API_ID", "secret_key", "PAYLINK_BASE", "PAYLINK_BASE1",
+  // card payment (src/lib/credits/moyasar.ts, src/lib/credits/paylink.ts)
+  "MOYASAR_SECRET_KEY", "PAYLINK_API_ID", "PAYLINK_SECRET_KEY", "API_ID", "secret_key", "PAYLINK_BASE", "PAYLINK_BASE1",
 ];
 
 export interface Expected {
