@@ -190,3 +190,16 @@ describe("the motion choices", () => {
     ]);
   });
 });
+
+describe("a slide refused for a short wallet", () => {
+  it("says it was the balance at that moment, and that a retry draws it now", async () => {
+    const { reasonOf } = await import("@/lib/content/produce");
+    const { DeskError } = await import("@/lib/content/jawad");
+    const r = reasonOf(new DeskError("خلص رصيدك: تكلفة هالصورة ¤1.50 ورصيدك ¤0.73. اشحن بمقدارها بس أو اختر باقة.", "UserError 402"));
+    expect(r).toContain("وقت الرسم ما كفى الرصيد");
+    expect(r).toContain("ورصيدك ¤0.73");
+    expect(r).toContain("«أعد المحاولة»");
+    expect(r).not.toContain("خلص رصيدك");
+    expect(reasonOf(new DeskError("فشل التوليد عند جواد.", "x"))).toBe("فشل التوليد عند جواد.");
+  });
+});
