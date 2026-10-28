@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Chat, Turn } from "@/lib/content/chats";
+import { MAKER_CODE, MAKER_GPT, MAKER_LABEL } from "@/lib/content/maker";
 
 // One message to «محمد باقر» end to end, with Claude, the database and the editor replaced by stand-ins: what he is
 // given (the catalogues, what the person picked, the state of an earlier carousel) and what the site does with his
@@ -123,42 +124,62 @@ describe("his answer", () => {
 
   it("a carousel ordered: it waits to be drawn with the valid template and style, and its slides appear as placeholders", async () => {
     answer({ produce: { on: true, mode: "all", aspect: "2:3", template_id: "scrapbook", style_id: "ghibli", slides: slides() } });
-    const r = await say("u", null, "أنتج", []);
+    const r = await say("u", null, MAKER_GPT, []);
     expect(r.pending).toEqual({ total: 2, mode: "all", todo: [1, 2] });
     expect(chat().pending).toMatchObject({ aspect: "2:3", templateId: "scrapbook", styleId: "ghibli", mode: "all", at: 1 });
     expect(chat().messages[1].slides).toMatchObject({ todo: [1, 2], running: true, total: 2 });
     // an id the site doesn't know is dropped, not trusted
     answer({ produce: { on: true, mode: "all", aspect: "9:99", template_id: "nope", style_id: "nope", slides: slides() } });
     db.chat = null;
-    await say("u", null, "أنتج", []);
+    await say("u", null, MAKER_GPT, []);
     expect(chat().pending).toMatchObject({ aspect: "1:1", templateId: "", styleId: "" });
     expect(findStyle("ghibli")).toBeDefined();
   });
 
-  it("the person picks who designs the slides: «حيدرا ماكس» in code, or GPT Image 2 painting each whole slide; no pick means code", async () => {
-    // the tools he is given say so, and the answer carries the pick
+  it("the person picks who designs the slides as the last step: nothing is made until a button is pressed, and the pick is the one pressed", async () => {
     answer({});
     await say("u", null, "أبي كاروسيل", []);
-    expect(claude.calls[0].system).toContain("اسأل العميل سؤالًا واحدًا kind=\"choice\" بخيارين");
+    expect(claude.calls[0].system).toContain("آخر خطوة قبل تصنيع أي كاروسيل جديد");
     expect(claude.calls[0].system).toContain("GPT Image 2 (رسم كامل بالذكاء الاصطناعي)");
-    expect(claude.calls[0].system).toContain('"maker"');
-    // GPT Image 2: the carousel is not marked «code», so each slide is painted whole by جواد
+    // the model sends the slides without a pick (or claims one): nothing is made, the question goes out
+    for (const maker of [undefined, "code", "gpt"]) {
+      answer({ produce: { on: true, mode: "all", ...(maker ? { maker } : {}), aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
+      db.chat = null;
+      const r = await say("u", null, "أنتج", []);
+      expect(r.pending).toBeNull();
+      expect(chat().pending).toBeNull();
+      expect(r.questions!.at(-1)).toMatchObject({ label: MAKER_LABEL, kind: "choice", options: [MAKER_CODE, MAKER_GPT] });
+    }
+    // a pick typed in words is not the pressed answer
     answer({ produce: { on: true, mode: "all", maker: "gpt", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
     db.chat = null;
-    await say("u", null, "أنتج بجي بي تي", []);
+    expect((await say("u", null, "سو بحيدرا ماكس", [])).pending).toBeNull();
+    // the pressed answer decides, whatever the model puts in "maker"
+    const chosen = async (pressed: string, maker: string) => {
+      answer({});
+      db.chat = null;
+      await say("u", null, "أبي كاروسيل", []);
+      answer({ produce: { on: true, mode: "all", maker, aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
+      await say("u", "chat-1", pressed, []);
+    };
+    await chosen(MAKER_GPT, "code");
+    expect(chat().pending).not.toBeNull();
     expect(chat().pending!.maker).toBeUndefined();
-    expect(chat().messages[1].slides!.maker).toBeUndefined();
-    // «حيدرا ماكس»
+    await chosen(MAKER_CODE, "gpt");
+    expect(chat().pending!.maker).toBe("code");
+  });
+
+  it("a second carousel asks again; the pick of the first does not carry over", async () => {
+    const turns = (maker?: "code") => ({
+      id: "chat-1", title: "t", record: "", pending: null, usd: 0, updatedAt: "",
+      messages: [
+        { role: "user", text: MAKER_CODE },
+        { role: "assistant", text: "تمام", slides: { aspect: "1:1", items: [{ n: 1, fileId: "f1", name: "slide-01", text: "t" }], todo: [], failed: [], running: false, total: 1, styleId: "", templateId: "", ...(maker ? { maker } : {}) } },
+      ],
+    });
     answer({ produce: { on: true, mode: "all", maker: "code", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
-    db.chat = null;
-    await say("u", null, "أنتج بحيدرا", []);
-    expect(chat().pending!.maker).toBe("code");
-    expect(chat().messages[1].slides!.maker).toBe("code");
-    // a pick the model did not make: «حيدرا ماكس» (GPT Image 2 only when the person chose it)
-    answer({ produce: { on: true, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
-    db.chat = null;
-    await say("u", null, "أنتج", []);
-    expect(chat().pending!.maker).toBe("code");
+    db.chat = turns("code");
+    expect((await say("u", "chat-1", "كاروسيل ثاني", [])).pending).toBeNull();
   });
 
   it("slides drawn again go back to the way the carousel was made, whatever the answer says", async () => {

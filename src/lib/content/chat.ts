@@ -23,6 +23,7 @@ import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, s
 import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
+import { MAKER_QUESTION, pickedMaker } from "./maker";
 import { lastSlidesAt } from "./produce";
 import { randomUUID } from "crypto";
 
@@ -231,15 +232,21 @@ export async function say(userId: string, chatId: string | null, message: string
     const templateId = a.produce.template_id && findTemplate(a.produce.template_id) ? a.produce.template_id : "";
     const styleId = a.produce.style_id && findStyle(a.produce.style_id) ? a.produce.style_id : "";
     const fixAt = a.produce.mode === "fix" ? lastSlidesAt({ messages: history }) : -1;
-    // the person picks who designs the slides (the owner's order: «حيدرا ماكس» in code, or GPT Image 2 painting each whole slide, no third way); a choice not made means «حيدرا ماكس»
-    // and a fix goes back to the way the carousel was made
+    // who designs the slides is the person's pick, asked as the last step before a new carousel (the owner's order: «حيدرا ماكس» in code, or GPT Image 2 painting each whole slide;
+    // no default, no third way): the server decides from the answer they pressed, not from what the model says. A fix goes back to the way the carousel was made
     const fixed = fixAt >= 0 ? history[fixAt].slides : null;
-    const code = (fixed ? fixed.maker === "code" : a.produce.maker !== "gpt") ? { maker: "code" as const } : {};
+    const picked = fixed ? (fixed.maker === "code" ? "code" : "gpt") : pickedMaker(history);
+    const code = picked === "code" ? { maker: "code" as const } : {};
     if (slides.length && fixAt >= 0) {
       // draw these slides again in the carousel that exists
       const block = history[fixAt].slides!;
       pending = { id: randomUUID(), aspect: block.aspect, slides, at: fixAt, styleId: styleId || block.styleId, templateId: templateId || block.templateId, mode: "fix", ...code, made: [], failed: [], carry: block.failed.filter((f) => !slides.some((x) => x.n === f.n)) };
       messages[fixAt] = { ...history[fixAt], slides: { ...block, todo: slides.map((x) => x.n), failed: pending.carry, running: true, report: undefined } };
+    } else if (slides.length && !picked) {
+      // nothing is made until they choose: the question goes out as the last step, and their answer brings the slides back
+      const asked = [...(questions ?? []).filter((q) => q.label !== MAKER_QUESTION.label), MAKER_QUESTION].slice(-6);
+      reply.questions = asked;
+      reply.text += "\n\n⏸️ آخر خطوة قبل التصنيع: اختر من يصمم الشرائح، وبعدها أبدأ.";
     } else if (slides.length) {
       const mine = new Set(history.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
       const refs = (Array.isArray(a.produce.refs) ? a.produce.refs : []).filter((r) => mine.has(r)).slice(0, 6);
@@ -290,7 +297,7 @@ export async function say(userId: string, chatId: string | null, message: string
 
   const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : undefined, pending, addUsd: usd });
   usd = Math.round(usd * 10000) / 10000;
-  return { chatId: id, text: reply.text, questions: questions ?? null, usd, pending: pending ? { total: pending.slides.length, mode: pending.mode, todo: pending.slides.map((x) => x.n) } : null, editor, media };
+  return { chatId: id, text: reply.text, questions: reply.questions ?? null, usd, pending: pending ? { total: pending.slides.length, mode: pending.mode, todo: pending.slides.map((x) => x.n) } : null, editor, media };
 }
 
 /**
