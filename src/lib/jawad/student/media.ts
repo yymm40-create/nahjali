@@ -32,8 +32,11 @@ export const MEDIA_TYPES: Record<string, string> = {
   "audio/aac": "aac",
   "audio/flac": "flac",
 };
-/** Stop waiting for ElevenLabs after this (a video of several hours is done well before). */
-const GIVE_UP_MS = 3 * 3600_000;
+/**
+ * Stop waiting after this: Scribe writes an hour of speech in a minute or two, so a transcript still missing after
+ * this long failed without a word (its failure goes only to the webhook, which marks the job, see the webhook route).
+ */
+const GIVE_UP_MS = 20 * 60_000;
 /**
  * Without a speech-to-text webhook in the ElevenLabs account the transcription is one long request: it is given up
  * well inside the server function's 300 s, so a long clip fails clearly instead of the function being stopped
@@ -114,16 +117,19 @@ async function step(job: Job): Promise<StepResult> {
       await sdb().from("student_jobs").update({ progress: { ...job.progress, waiting: true } }).eq("id", job.id);
       const url = typeof job.input.path === "string" ? (await storage.from(STUDENT.bucket).createSignedUrl(job.input.path, 6 * 3600)).data?.signedUrl : String(job.input.url ?? "");
       if (!url) throw new UserError("ما لقينا الملف. ارفعه مرة ثانية.");
-      const r = await elevenTranscribeUrl({ url, languageCode: (job.input.language as string) || null, waitMs: SYNC_WAIT_MS });
+      const r = await elevenTranscribeUrl({ url, languageCode: (job.input.language as string) || null, waitMs: SYNC_WAIT_MS, metadata: { studentJob: job.id } });
       if ("heard" in r) return finish(job, r.heard);
-      return { done: false, progress: { tid: r.id, since: Date.now() }, stage: "ElevenLabs يفرّغ الكلام…" };
+      return { done: false, progress: { tid: r.id, since: Date.now() }, stage: "نفرّغ الكلام…" };
     }
     const heard = await elevenTranscript(tid);
     if (heard) return finish(job, heard);
+    // the webhook said it failed (the link could not be fetched, no sound…): stop now, not after the time limit
+    const { data: marked } = await sdb().from("student_jobs").select("error").eq("id", job.id).maybeSingle();
+    if (typeof marked?.error === "string" && marked.error) throw new UserError(marked.error);
     const waited = Date.now() - Number(job.progress.since ?? Date.now());
-    if (waited > GIVE_UP_MS) throw new UserError("طوّل التفريغ أكثر من اللازم. جرّب مرة ثانية.");
+    if (waited > GIVE_UP_MS) throw new UserError("ما وصل التفريغ خلال ٢٠ دقيقة، وما انخصم منك شيء. جرّب مرة ثانية، أو ارفع الملف نفسه بدل الرابط.");
     await new Promise((ok) => setTimeout(ok, 6000));
-    return { done: false, stage: `ElevenLabs يفرّغ الكلام… (${Math.max(1, Math.round(waited / 60_000))} د)` };
+    return { done: false, stage: `نفرّغ الكلام… (${Math.max(1, Math.round(waited / 60_000))} د)` };
   } catch (e) {
     if (e instanceof ProviderError) throw new UserError(/stt-url: .*(timeout|aborted)/i.test(e.detail) ? TOO_LONG : e.userMessage);
     throw e;
@@ -131,6 +137,6 @@ async function step(job: Job): Promise<StepResult> {
 }
 
 const TOO_LONG =
-  "المقطع طويل ولم يكتمل تفريغه في الوقت المتاح. ما انخصم منك شيء. جرّب مقطعًا أقصر، أو اطلب من الإدارة تفعيل التفريغ بالخلفية (Webhook في ElevenLabs) للمقاطع الطويلة.";
+  "المقطع طويل ولم يكتمل تفريغه في الوقت المتاح. ما انخصم منك شيء. جرّب مقطعًا أقصر، أو اطلب من الإدارة تفعيل التفريغ بالخلفية للمقاطع الطويلة.";
 
 export const mediaHandler: Handler = { label: "تفريغ الفيديو والصوت", step };
