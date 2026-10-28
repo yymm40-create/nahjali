@@ -5,12 +5,13 @@
 // A picture or a video in a delivery is only a PROPOSAL here: its price is worked out and shown, and nothing is
 // generated until the person presses the confirm button (src/lib/kharq/make.ts). Server only.
 
+import { remember, withNote } from "@/lib/robot-handoff";
 import { UserError } from "@/lib/api";
 import { callClaudeJson, claudeCost, isLeader, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { unlimitedFor } from "@/lib/access";
 import { deskQuote } from "@/lib/content/jawad";
 import { AGENT_IDS, DELIVER_KINDS, findAgent, KHARQ, KHARQ_STAGES, ROAD_IDS, type KharqStage } from "@config/kharq";
-import { cleanHistory, consultRoundsSinceUser, forModel, getChat, pendingConsult, readConsult, readDeliver, readQuestions, saveChat, type Attachment, type Chat, type Deliver, type Turn } from "./chats";
+import { cleanHistory, consultRoundsSinceUser, getChat, pendingConsult, readConsult, readDeliver, readQuestions, saveChat, type Attachment, type Chat, type Deliver, type Turn } from "./chats";
 import { runConsults, type Consult } from "./agents";
 import { attachmentsOf, uploadLinks } from "./files";
 import { getPersona, systemText } from "./persona";
@@ -186,7 +187,9 @@ export function turnNotes(o: { auto: boolean; rounds: number; continuing: boolea
 /** He answers the conversation as it stands (a new message from the person, or his team's answers come back). */
 async function answer(o: { userId: string; email: string | null; origin: string; chatId: string | null; before: Chat | null; history: Turn[]; auto: boolean; continuing: boolean }): Promise<Reply> {
   const rounds = consultRoundsSinceUser(o.history);
-  const turns = forModel(o.history);
+  // a long conversation: his own handoff of everything before, then the latest turns (lib/robot-handoff)
+  const mem = await remember({ key: `kharq:${o.chatId ?? ""}`, userId: o.userId, robot: `${KHARQ.persona} (الفرع الخارق)`, turns: o.history, window: KHARQ.historyTurns });
+  const turns = mem.kept.map((t) => ({ ...t }));
   // the answer after his team came back: the conversation ends with his own words, so the person's place is kept by a
   // short line from the site (never stored)
   const sent = o.continuing ? [...turns, { role: "user" as const, text: "(رجعت أجوبة فريقك. كمّل.)" }] : turns;
@@ -195,7 +198,7 @@ async function answer(o: { userId: string; email: string | null; origin: string;
 
   const { data, usage } = await callClaudeJson<Answer>({
     system: systemText(persona.text, o.before?.brief ?? "", turnNotes({ auto: o.auto, rounds, continuing: o.continuing })),
-    turns: sent.map((t) => turnFor(t, links)),
+    turns: [...mem.lead, ...sent.map((t) => turnFor(t, links))],
     schema: ANSWER_SCHEMA,
     maxTokens: KHARQ.maxTokens,
     // the owner asked for the strongest minds on this branch: it thinks hard every turn
@@ -203,9 +206,9 @@ async function answer(o: { userId: string; email: string | null; origin: string;
     leader: isLeader(o.email),
     timeoutMs: 170_000,
   });
-  const usd = claudeCost(usage);
+  const usd = claudeCost(usage) + mem.usd;
 
-  const text = typeof data.reply === "string" ? data.reply.trim() : "";
+  const text = withNote(typeof data.reply === "string" ? data.reply.trim() : "", mem.fresh && typeof data.reply === "string" && !!data.reply.trim());
   const deliverRaw = readDeliver(data.deliver);
   const deliver = deliverRaw ? await priced(deliverRaw, { id: o.userId, email: o.email, owner: await unlimitedFor(o.email), origin: o.origin }) : undefined;
   const suggest = (Array.isArray(data.suggest) ? data.suggest : []).filter((s): s is string => typeof s === "string" && (ROAD_IDS as readonly string[]).includes(s)).slice(0, 4);

@@ -2,6 +2,7 @@
 // any device). A long one can be handed over: Claude writes what matters into a summary and a new conversation starts
 // from it. Server only.
 
+import { remember } from "@/lib/robot-handoff";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, claudeWhy, type ClaudeTurn } from "@/lib/film/anthropic";
@@ -27,7 +28,7 @@ export interface Chat {
 }
 
 /** Kept per conversation (older ones are dropped from the start; a handoff keeps their substance). */
-export const CHAT_MAX = 400;
+export const CHAT_MAX = 2000;
 /** From here the page suggests handing the conversation over. */
 export const CHAT_LONG = { messages: 40, chars: 24_000 } as const;
 export const isLongChat = (m: Pick<ChatMsg, "text">[]) => m.length >= CHAT_LONG.messages || m.reduce((n, x) => n + x.text.length, 0) >= CHAT_LONG.chars;
@@ -65,6 +66,16 @@ export async function appendChat(p: EditorProject, add: Omit<ChatMsg, "at">[]) {
   if (!c.stored) return;
   const at = new Date().toISOString();
   await saveChat(p, { ...c, messages: [...c.messages, ...add.map((m) => ({ ...m, text: m.text.slice(0, 4000), at }))] });
+}
+
+/**
+ * The turns حيدرا ماكس reads: everything while it fits, else his own handoff of what came before (built on the
+ * person's «سلّم المحادثة» one, if any) + the latest turns — lib/robot-handoff, so nothing is forgotten.
+ */
+export async function rememberedTurns(p: Pick<EditorProject, "id" | "user_id">, c: Pick<Chat, "messages" | "handoff">) {
+  const mem = await remember({ key: `editor:${p.id}`, userId: p.user_id, robot: "حيدرا ماكس (حيدرة كت)", turns: c.messages, window: 16, seed: c.handoff });
+  const turns: ClaudeTurn[] = mem.kept.map((m) => ({ role: m.role, content: m.text.slice(0, 2000) }));
+  return { turns: [...mem.lead, ...turns], fresh: mem.fresh, usd: mem.usd };
 }
 
 /** The turns Claude gets: the handoff summary first (when there is one), then the last turns of this conversation. */

@@ -75,7 +75,7 @@ export default function CoachChat() {
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
     try {
-      localStorage.setItem(key, JSON.stringify(list.slice(-40)));
+      localStorage.setItem(key, JSON.stringify(list.slice(-400)));
     } catch {
       /* private window */
     }

@@ -2,6 +2,7 @@
 // the topic with صادق, asks about any part of it, has it explained, summarised or prepared for, and صادق searches the
 // web when asked (or when the material doesn't hold the answer), with its sources. Server only.
 
+import { leadTurns, remember, withNote } from "@/lib/robot-handoff";
 import { UserError } from "@/lib/api";
 import { callClaudeSearch } from "@/lib/film/anthropic";
 import { talk, type Turn } from "@/lib/games/claude";
@@ -101,15 +102,17 @@ export async function chatTurn(userId: string, o: Output, raw: unknown, leader: 
     .join("\n\n");
 
   const ask = found ? `${said}\n\n(ما وجده البحث في الويب الآن، للاستناد إليه مع ذكر المصدر:\n${found})` : said;
-  const turns: Turn[] = [...before.slice(-HISTORY).map((m) => ({ role: m.role, text: m.text })), { role: "user" as const, text: ask }];
-  while (turns.length && turns[0].role !== "user") turns.shift();
+  // a long conversation: his own handoff of everything before, then the latest turns (lib/robot-handoff)
+  const mem = await remember({ key: `student:${o.id}`, userId, robot: c.khateeb ? "الشيخ صادق (الخطيب الذكي)" : "صادق (الطالب الذكي)", turns: [...before.map((m): Turn => ({ role: m.role, text: m.text })), { role: "user", text: ask }], window: HISTORY });
+  usd += mem.usd;
+  const turns: Turn[] = [...leadTurns(mem), ...mem.kept];
   const r = await talk({ system, turns, maxTokens: 6000, leader, stream: true, timeoutMs: 240_000 });
   usd += r.usd;
 
   const now = new Date().toISOString();
   // his markers become an offer under his words (a button), never an action by themselves
   const { text: answer, offer } = splitOffer(r.text, chatMakeKinds());
-  const messages: ChatMsg[] = [...before, { role: "user", text: said, at: now }, { role: "assistant", text: answer, at: now, ...(sources.length ? { sources } : {}), ...(offer ? { offer } : {}) }];
+  const messages: ChatMsg[] = [...before, { role: "user", text: said, at: now }, { role: "assistant", text: withNote(answer, mem.fresh), at: now, ...(sources.length ? { sources } : {}), ...(offer ? { offer } : {}) }];
   await saveOutput(o.id, { content: { messages }, status: "done", approved: true, error: null });
   return { messages, usd };
 }

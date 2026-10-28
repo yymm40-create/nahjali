@@ -6,6 +6,7 @@
 // rewrites the description, adds characters and places, and proposes a plan (episodes, scenes, who does which) that
 // waits for «طبّق الخطة». Everyone else can ask him anything. Server only.
 
+import { remember, withNote } from "@/lib/robot-handoff";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isLeader, callClaudeJson, callClaudeSearch, claudeCost, claudeTrouble, totalTokens, type ClaudeTurn, type ClaudeUsage } from "./anthropic";
@@ -26,7 +27,7 @@ import { journeyIntakeText, normalizeJourneyIntake } from "./intake";
 const db = () => createAdminClient();
 
 export const SAJJAD = { name: "سجاد", icon: "🤖" } as const;
-const MAX_MESSAGES = 80;
+const MAX_MESSAGES = 2000;
 const MAX_MEMORY = 150;
 const ESTIMATE_USD = 0.15;
 
@@ -285,19 +286,23 @@ export async function decideResearch(kind: unknown, id: unknown, userId: string,
   return r;
 }
 
-/** The conversation for Claude: people's consecutive messages joined (with who wrote them), سجاد's answers. */
-function turnsOf(messages: SajjadMessage[], text: string, me: string | null): ClaudeTurn[] {
-  const all = [...messages.slice(-30), { role: "user", text, at: "", username: me } as SajjadMessage];
-  const out: ClaudeTurn[] = [];
+/**
+ * The conversation for Claude: people's consecutive messages joined (with who wrote them), سجاد's answers — all of
+ * it while it fits, else his own handoff of what came before + the latest turns (lib/robot-handoff).
+ */
+async function turnsOf(key: string, userId: string, messages: SajjadMessage[], text: string, me: string | null): Promise<{ turns: ClaudeTurn[]; fresh: boolean; usd: number }> {
+  const all = [...messages, { role: "user", text, at: "", username: me } as SajjadMessage];
+  const out: { role: "user" | "assistant"; text: string }[] = [];
   for (const m of all) {
     const role = m.role === "user" ? "user" : "assistant";
     const line = m.role === "user" ? `${m.username ? `@${m.username}: ` : ""}${m.text}` : m.text + (m.questions?.length ? `\n(سألت: ${m.questions.map((q) => q.question).join(" / ")})` : "");
     const last = out.at(-1);
-    if (last && last.role === role) last.content = `${last.content}\n\n${line}`;
-    else out.push({ role, content: line });
+    if (last && last.role === role) last.text = `${last.text}\n\n${line}`;
+    else out.push({ role, text: line });
   }
-  if (out[0]?.role === "assistant") out.unshift({ role: "user", content: "(بداية المحادثة)" });
-  return out;
+  if (out[0]?.role === "assistant") out.unshift({ role: "user", text: "(بداية المحادثة)" });
+  const mem = await remember({ key: `sajjad:${key}`, userId, robot: "سجاد (مستشار صناعة الأفلام)", turns: out, window: 30 });
+  return { turns: [...mem.lead, ...mem.kept.map((t): ClaudeTurn => ({ role: t.role, content: t.text }))], fresh: mem.fresh, usd: mem.usd };
 }
 
 async function resolveScope(kind: unknown, id: unknown, userId: string): Promise<Scope> {
@@ -334,9 +339,10 @@ export async function askSajjad(kind: unknown, id: unknown, user: { id: string; 
   const system = `${PERSONA}\n\n${rules}${researchState(scope)}\n\n=== CONTEXT (read fresh each time) ===\n${context}\n\n=== YOUR NOTES ===\n${memory.length ? memory.map((m) => `- ${m}`).join("\n") : "(none yet)"}`;
   // his answer, and — when he was asked to research — the search itself, paid together
   const call = async () => {
-    const turns = turnsOf(messages, text, me);
+    const mem = await turnsOf(key, user.id, messages, text, me);
+    const turns = mem.turns;
     let r: { data: Reply; usage: ClaudeUsage };
-    let usd = 0;
+    let usd = mem.usd;
     if (managedAgentConfigured()) {
       try {
         const ownerId = scope.kind === "series" ? scope.series.user_id : scope.project.user_id;
@@ -354,18 +360,19 @@ export async function askSajjad(kind: unknown, id: unknown, user: { id: string; 
           ],
         });
         r = { data: managedJson<Reply>(managed.text), usage: managed.usage };
-        usd = managed.usd;
+        usd += managed.usd;
       } catch (error) {
         console.error("managed sajjad fallback", String(error).slice(0, 300));
         const fallback = await callClaudeJson<Reply>({ system, turns, schema: SCHEMA, maxTokens: 16000, effort: "medium", leader: isLeader(user.email) });
         r = fallback;
-        usd = claudeCost(fallback.usage);
+        usd += claudeCost(fallback.usage);
       }
     } else {
       const fallback = await callClaudeJson<Reply>({ system, turns, schema: SCHEMA, maxTokens: 16000, effort: "medium", leader: isLeader(user.email) });
       r = fallback;
-      usd = claudeCost(fallback.usage);
+      usd += claudeCost(fallback.usage);
     }
+    if (mem.fresh) r = { ...r, data: { ...r.data, reply: withNote(r.data.reply, true) } };
     let found: Research | null = null;
     const scopeText = r.data.research.trim().slice(0, RESEARCH_LIMITS.scopeMax);
     if (scopeText) {

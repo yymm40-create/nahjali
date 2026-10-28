@@ -28,7 +28,8 @@ import { TALK_STYLES_SKILL, talkStyleInText } from "./talk-styles";
 import type { AssetView } from "./server";
 import { applyAll } from "./commands";
 import { COMMANDS_GUIDE } from "./assistant-commands";
-import { appendChat, chatTurns, loadChat, readMessages } from "./chat";
+import { appendChat, loadChat, readMessages, rememberedTurns } from "./chat";
+import { withNote } from "@/lib/robot-handoff";
 import { sajjadBrief } from "@/lib/film/sajjad";
 import { checkDesign, deliveryText, DESIGN_SCHEMA, DESIGN_SYSTEM, designPrompt, RESEARCH_SYSTEM, researchPrompt, type HookDesign, type HookInputs } from "./hook-design";
 import { claudeCharged, type Who } from "./pricing";
@@ -269,7 +270,8 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
 
   // the edit's own conversation (kept with the project, with its handoff); before the migration, the page's
   const chat = await loadChat(p);
-  const history = chat.stored ? chatTurns(chat) : chatTurns({ messages: readMessages(b.history), handoff: typeof b.handoff === "string" ? b.handoff.slice(0, 8000) : null });
+  const mem = await rememberedTurns(p, chat.stored ? chat : { messages: readMessages(b.history), handoff: typeof b.handoff === "string" ? b.handoff.slice(0, 8000) : null });
+  const history = mem.turns;
   // «سجاد» handed over the film (or the episode): everything about it, read fresh
   const brief = p.film_project_id || p.episode_id ? await sajjadBrief({ filmProjectId: p.film_project_id, episodeId: p.episode_id }) : null;
   // «مهارات الموشن»: a skill the person named in this message (its look and craft; their other words win)
@@ -365,7 +367,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     }
   }
 
-  let usd = 0;
+  let usd = mem.usd;
   const ask = async (msgs: ClaudeTurn[]) => {
     const r = await callClaudeJson<Answer>({ system: SYSTEM, turns: msgs, schema: SCHEMA, maxTokens: 16000, effort: "medium", fallback: true, leader: isLeader(who.email), timeoutMs: 420_000 });
     usd += claudeCost(r.usage);
@@ -538,7 +540,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   // «نص الهوك»: the hook designer works now (web research, then the design), and its delivery is the answer
   // never an empty bubble: say what was done, or that the request needs saying again
   const said = answer.reply?.trim() || (valid.length ? `تم ✓ نفذت ${valid.length} خطوة على التايملاين.` : (answer.options ?? []).length ? "اختر من الخيارات تحت:" : (answer.requests ?? []).length ? "بدأت على طلبك…" : "ما وصلني رد واضح هالمرة؛ أعد رسالتك أو وضّحها شوي وأنا أكمل.");
-  let reply = said + (result.error ? `\n\n(ما قدرت أنفذ كل الخطوات: ${result.error.message})` : "") + motionNote;
+  let reply = withNote(said, mem.fresh) + (result.error ? `\n\n(ما قدرت أنفذ كل الخطوات: ${result.error.message})` : "") + motionNote;
   // «اصنع لي…»: each priced now with JAWAD AI's prices (the page shows the price and starts it)
   for (const r of requests.filter((x) => x.kind === "make").slice(0, 3 + sfxRequests.length)) {
     const planned = await planMake(who, { ...(r as unknown as MakeSpec), makeKind: r.makeKind as MakeKind, place: (r.place || "over") as MakePlace }, tl.width / tl.height);

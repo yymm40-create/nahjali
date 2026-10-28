@@ -19,9 +19,11 @@ import { JAWAD_BUCKET } from "@/lib/jawad/server/runtime";
 import { storage } from "@/lib/storage";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { artPath, continueBrief, editBrief, codeBrief, fixBrief, joinParts, GAME_BUILD, GAME_CODE_RULES, GAME_PLAN_RULES, inlineScripts, keepErrors, pageProblems, pagePath, playPath, readPage, readPlan, SPRITE_BACKDROP, type AssetPlan, type GamePlan } from "@config/games-build";
+import { GAMES } from "@config/games";
 import { backgroundFile, coverFile, spriteFile } from "./art";
 import { talk, type Said } from "./claude";
-import { cleanHistory, forModel, getChat } from "./chats";
+import { cleanHistory, getChat } from "./chats";
+import { leadTurns, remember } from "@/lib/robot-handoff";
 
 const db = () => createAdminClient();
 const T = "games_builds";
@@ -230,19 +232,20 @@ export async function startBuild(user: { id: string; email?: string | null }, ch
   if (error) dbError(error);
   if ((count ?? 0) >= GAME_BUILD.maxRunning) throw new UserError("عندك ألعاب تنبني الحين؛ انتظر وحدة منها تخلص وبعدين ابدأ الثانية.", 429);
 
-  const turns = forModel(cleanHistory([...chat.messages, { role: "user", text: "اصنع اللعبة الحين: خطّطها كما في التعليمات." }]));
-  const r = await talk({ system: GAME_PLAN_RULES, turns, maxTokens: GAME_BUILD.planTokens, effort: "medium", timeoutMs: 150_000, leader: isLeader(user.email) });
+  // the whole conversation: his handoff of what came before, then the latest turns (lib/robot-handoff)
+  const mem = await remember({ key: `games:${chatId}`, userId: user.id, robot: "قنبر (صانع الألعاب)", turns: cleanHistory([...chat.messages, { role: "user", text: "اصنع اللعبة الحين: خطّطها كما في التعليمات." }]), window: GAMES.historyTurns });
+  const r = await talk({ system: GAME_PLAN_RULES, turns: [...leadTurns(mem), ...mem.kept], maxTokens: GAME_BUILD.planTokens, effort: "medium", timeoutMs: 150_000, leader: isLeader(user.email) });
   const plan = readPlan(r.text, pictures);
   if (!plan) throw new UserError("ما قدر قنبر يجهّز خطة اللعبة هالمرة؛ جرّب مرة ثانية.", 502);
   const art: Record<string, ArtItem> = { cover: { state: "pending", tries: 0 } };
   for (const a of plan.assets) art[a.id] = { state: "pending", tries: 0 };
   const { data, error: e2 } = await db()
     .from(T)
-    .insert({ user_id: user.id, chat_id: chatId, title: plan.title, summary: plan.summary, plan, art, code_note: JSON.stringify({ job: "write" } satisfies CodeNote), usd: r.usd })
+    .insert({ user_id: user.id, chat_id: chatId, title: plan.title, summary: plan.summary, plan, art, code_note: JSON.stringify({ job: "write" } satisfies CodeNote), usd: r.usd + mem.usd })
     .select("*")
     .single();
   if (e2) dbError(e2);
-  return { build: viewOf(data as Row), usd: r.usd };
+  return { build: viewOf(data as Row), usd: r.usd + mem.usd };
 }
 
 // ———————————————————————————— the code ————————————————————————————

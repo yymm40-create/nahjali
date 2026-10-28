@@ -2,6 +2,7 @@
 // starting a booklet — the ready one (the original booklet with the child's picture) or a designed one — as an order of
 // the booklet machinery (photo → character → poses → PDF), paid from the wallet at once. Server only.
 
+import { leadTurns, remember, withNote } from "@/lib/robot-handoff";
 import { UserError } from "@/lib/api";
 import { unlimitedFor } from "@/lib/access";
 import { holdCoins, loadPricing, logCost } from "@/lib/coins";
@@ -89,7 +90,7 @@ export async function deleteChat(userId: string, id: string) {
   await db().from("booklet_chats").delete().eq("id", id).eq("user_id", userId);
 }
 
-/** Two of the same role in a row become one turn, and the conversation starts with the person. */
+/** Two of the same role in a row become one turn (the whole conversation; lib/robot-handoff keeps what is read). */
 function turnsOf(list: Turn[]): Turn[] {
   const out: Turn[] = [];
   for (const t of list) {
@@ -97,9 +98,7 @@ function turnsOf(list: Turn[]): Turn[] {
     if (last && last.role === t.role) last.text += `\n\n${t.text}`;
     else out.push({ ...t });
   }
-  const cut = out.slice(-TB.historyTurns);
-  while (cut.length && cut[0].role !== "user") cut.shift();
-  return cut;
+  return out;
 }
 
 /** The person says something to the designer (a new conversation when `chatId` is null, with who the booklet is for). */
@@ -111,8 +110,11 @@ export async function sayToNoor(user: { id: string; email?: string | null }, cha
   const audience = before?.audience ?? readAudience(rawAudience);
   if (!audience) throw new UserError("اختر لمين الكتيب أول (العمر والاسم).");
   const history: Turn[] = [...(before?.messages ?? []), { role: "user", text: said }];
-  const r = await talk({ system: [bookletRules(audience), audienceLine(audience), OPTIONS_RULE].join("\n\n"), turns: turnsOf(history), maxTokens: TB.maxTokens });
-  const messages: Turn[] = [...history, { role: "assistant", text: r.text }];
+  // a long conversation: the designer's own handoff of everything before, then the latest turns
+  const mem = await remember({ key: `booklet:${before?.id ?? ""}`, userId: user.id, robot: "مصمم كتيب الجداول", turns: turnsOf(history), window: TB.historyTurns });
+  const said0 = await talk({ system: [bookletRules(audience), audienceLine(audience), OPTIONS_RULE].join("\n\n"), turns: [...leadTurns(mem), ...mem.kept], maxTokens: TB.maxTokens });
+  const r = { ...said0, usd: said0.usd + mem.usd };
+  const messages: Turn[] = [...history, { role: "assistant", text: withNote(r.text, mem.fresh) }];
   const spec = readSpec(r.text) ?? before?.spec ?? null;
   const row = { messages, spec, updated_at: new Date().toISOString() };
   if (before) {

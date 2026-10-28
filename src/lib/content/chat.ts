@@ -4,6 +4,7 @@
 // (made by GPT Image 2 in the produce step) or a package handed to «حيدرا ماكس» (an edit room opened in «حيدرة كت»).
 // Server only.
 
+import { remember, withNote } from "@/lib/robot-handoff";
 import { isSalesAsk, nearestSalesExamples, SALES_METHOD, salesExamplesBrief } from "@config/content-sales";
 import { isMahdiAsk, MAHDI_BRIEF } from "@config/mahdi/app-knowledge";
 import { UserError } from "@/lib/api";
@@ -17,7 +18,7 @@ import { contentExamplesBrief, nearestContentExamples } from "@config/content-ex
 import { nearestTemplateExamples, templateExamplesBrief } from "@config/content-template-examples";
 import { findTemplate } from "@config/content-templates";
 import { findStyle } from "@config/film-styles";
-import { cleanHistory, forModel, getChat, readMedia, readQuestions, saveChat, type Attachment, type MediaItem, type PendingProduce, type Turn } from "./chats";
+import { cleanHistory, getChat, readMedia, readQuestions, saveChat, type Attachment, type MediaItem, type PendingProduce, type Turn } from "./chats";
 import { attachmentsOf, uploadLinks } from "./files";
 import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, systemText } from "./persona";
 import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
@@ -192,7 +193,9 @@ export async function say(userId: string, chatId: string | null, message: string
   const before = chatId ? await getChat(userId, chatId) : null;
   if (chatId && !before) throw new Error("chat not found");
   const history = cleanHistory([...(before?.messages ?? []), { role: "user", text: said || "(ملفات مرفقة)", files: files.length ? files : undefined }]);
-  const turns = forModel(history);
+  // a long conversation: his own handoff of everything before, then the latest turns (lib/robot-handoff)
+  const mem = await remember({ key: `content:${chatId ?? ""}`, userId, robot: "محمد باقر (صانع المحتوى)", turns: history, window: CONTENT.historyTurns });
+  const turns = mem.kept;
   // pictures of this conversation, by short-lived link, so he can look at them
   const links = await uploadLinks(userId, turns.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image" || f.kind === "doc").map((f) => f.id)));
   const persona = await getPersona();
@@ -212,11 +215,11 @@ export async function say(userId: string, chatId: string | null, message: string
     ids.template || /كاروسيل|شرائح|carousel/i.test(ask + (before?.record ?? "")) ? templateExamplesBrief(nearestTemplateExamples(ask, ids.template && ids.template !== "none" ? ids.template : null, 2)) : "",
   ].filter(Boolean);
   const system = systemText(persona.text, parts, before?.record ?? "");
-  const r = await callClaudeJson<Answer>({ system, turns: turns.map((t) => toClaudeTurn(t, links)), schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email) });
+  const r = await callClaudeJson<Answer>({ system, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email) });
   const a = r.data;
-  let usd = claudeCost(r.usage);
+  let usd = claudeCost(r.usage) + mem.usd;
   const questions = readQuestions(a.questions);
-  const reply: Turn = { role: "assistant", text: a.reply.trim() || "…", ...(questions ? { questions } : {}) };
+  const reply: Turn = { role: "assistant", text: withNote(a.reply.trim() || "…", mem.fresh), ...(questions ? { questions } : {}) };
   const messages = [...history, reply];
   const at = messages.length - 1;
 
