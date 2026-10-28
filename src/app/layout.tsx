@@ -72,6 +72,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 <div className="flex gap-6">
                   <Link href="/privacy" className="hover:text-ink">سياسة الخصوصية</Link>
                   <Link href="/terms" className="hover:text-ink">الشروط والأحكام</Link>
+                  <Link href="/refund" className="hover:text-ink">الاسترجاع والاستبدال</Link>
                 </div>
                 <p>{NAHJ_ALI_HIDDEN ? "الجواد الذكي" : "نهج علي"} © ٢٠٢٦</p>
               </footer>

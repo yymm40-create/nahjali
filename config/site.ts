@@ -15,7 +15,7 @@ export const SITE_URL = "https://www.aljawadai.app";
 export const CONTACT_EMAIL = "yymm40@gmail.com";
 
 /** Date shown as "last updated" on the legal pages. */
-export const LEGAL_UPDATED = NAHJ_ALI_HIDDEN ? "١٠ أكتوبر ٢٠٢٦" : "١ أكتوبر ٢٠٢٦";
+export const LEGAL_UPDATED = NAHJ_ALI_HIDDEN ? "٢٨ أكتوبر ٢٠٢٦" : "١ أكتوبر ٢٠٢٦";
 
 /** «الرئيس»: the site's owner, above everyone. */
 export const OWNER_EMAILS = ["yymm40@gmail.com"];

@@ -11,6 +11,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/jawad-ai/games", changeFrequency: "weekly", priority: 0.7 },
     { path: "/privacy", changeFrequency: "monthly", priority: 0.3 },
     { path: "/terms", changeFrequency: "monthly", priority: 0.3 },
+    { path: "/refund", changeFrequency: "monthly", priority: 0.3 },
   ];
   return pages.map((p) => ({ url: `${SITE_URL}${p.path}`, changeFrequency: p.changeFrequency, priority: p.priority }));
 }

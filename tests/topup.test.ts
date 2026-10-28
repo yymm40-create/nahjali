@@ -13,13 +13,15 @@ describe("«خلص رصيدك»: ادفع بمقدار العملية بس", () 
     expect(shortBalance(300, 120, "هالفيديو").message).toContain("ورصيدك ¤1.20");
   });
 
-  it("the exact top-up is whole riyals of what is missing, 1 to 1000, and an order can be made of it", () => {
-    expect(exactSar(150)).toBe(2);
-    expect(exactSar(100)).toBe(1);
-    expect(exactSar(1)).toBe(1);
-    expect(exactSar(0)).toBe(1);
+  it("the exact top-up is whole riyals of what is missing, 3 to 1000, and an order can be made of it", () => {
+    expect(exactSar(150)).toBe(3);
+    expect(exactSar(300)).toBe(3);
+    expect(exactSar(301)).toBe(4);
+    expect(exactSar(1)).toBe(3);
+    expect(exactSar(0)).toBe(3);
     expect(exactSar(10_000_000)).toBe(1000);
     expect(exactPackOf("exact-3")).toMatchObject({ id: "exact-3", price: 3, credit: 3 });
+    expect(exactPackOf("exact-2")).toBeNull();
     expect(exactPackOf("exact-0")).toBeNull();
     expect(exactPackOf("exact-1001")).toBeNull();
     expect(exactPackOf("exact-2.5")).toBeNull();

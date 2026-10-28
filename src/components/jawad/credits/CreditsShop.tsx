@@ -369,7 +369,8 @@ export default function CreditsShop({
               <p className="pr-terms">
                 بالدفع توافق على{" "}
                 <Link href="/terms" target="_blank" rel="noreferrer">الشروط والأحكام</Link>{" "}
-                و<Link href="/privacy" target="_blank" rel="noreferrer">سياسة الخصوصية</Link>
+                و<Link href="/privacy" target="_blank" rel="noreferrer">سياسة الخصوصية</Link>{" "}
+                و<Link href="/refund" target="_blank" rel="noreferrer">الاسترجاع والاستبدال</Link>
               </p>
             </>
           )}
