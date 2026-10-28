@@ -315,3 +315,18 @@ describe("decimals and the session clock", () => {
     expect([d.planDay, d.startedAt, d.durationMin]).toEqual([2, t, 33.3]);
   });
 });
+
+describe("the abs", () => {
+  it("every session of every table has an abs exercise, and they change from session to session", () => {
+    for (const days of [1, 3, 4, 5, 6]) for (const level of ["beginner", "intermediate", "advanced"] as const) for (const place of ["gym", "home", "body"] as const) {
+      const w = workout(P({ days: Array.from({ length: days }, (_, i) => i), level, place }));
+      for (const d of w.days) expect(d.items.some((it) => exerciseById(it.exId)?.muscle === "core"), `${days} ${level} ${place} ${d.focus}`).toBe(true);
+      if (days >= 3) expect(new Set(w.days.map((d) => d.items.find((it) => exerciseById(it.exId)?.muscle === "core")?.exId)).size, `${days} ${level} ${place}`).toBeGreaterThan(1);
+    }
+  });
+
+  it("real abs exercises are in the list, and none lies on the back in pregnancy", () => {
+    for (const id of ["crunch", "reverse-crunch", "leg-raise", "bicycle", "hanging-knee-raise", "cable-crunch"]) expect(exerciseById(id)?.muscle, id).toBe("core");
+    expect(EXERCISES.filter((e) => e.muscle === "core" && e.preg).map((e) => e.id).sort()).toEqual(["bird-dog", "pallof", "side-plank-knee"]);
+  });
+});

@@ -348,6 +348,12 @@ export const EXERCISES: Exercise[] = [
   X("diamond-pushup", "ضغط ضيق (للترايسبس)", "triceps", true, "b", false, "اليدين قريبة والكوع لصق الجسم"),
   X("wall-tri", "ترايسبس على الجدار", "triceps", false, "b", true, "الساعدين على الجدار وادفع بالكف"),
   // البطن والثبات
+  X("crunch", "كرنش (طحن البطن)", "core", false, "b", false, "ارفع كتفيك شوي عن الأرض، لا تسحب رقبتك"),
+  X("reverse-crunch", "كرنش عكسي (الركب للصدر)", "core", false, "b", false, "لف الحوض لفوق ببطء، بدون مرجحة"),
+  X("leg-raise", "رفع الرجلين مستلقي", "core", false, "b", false, "أسفل الظهر لاصق بالأرض، نزول بطيء"),
+  X("bicycle", "كرنش الدراجة", "core", false, "b", false, "الكوع للركبة العكسية ببطء"),
+  X("hanging-knee-raise", "رفع الركب معلّق على البار", "core", false, "gh", false, "بدون مرجحة، الركب للصدر"),
+  X("cable-crunch", "كرنش بالكيبل (راكع)", "core", false, "g", false, "انحنِ بالبطن مو بالورك"),
   X("plank", "بلانك", "core", false, "b", false, "جسمك خط مستقيم"),
   X("pallof", "بالوف برس (ثبات البطن)", "core", false, "gh", true, "قاوم الدوران"),
   X("dead-bug", "ديد بق", "core", false, "b", false, "أسفل الظهر لاصق بالأرض"),
@@ -373,7 +379,7 @@ const POPULAR: Record<Muscle, string[]> = {
   rear: ["rear-fly", "face-pull", "band-pull-apart", "wall-angel", "ytw"],
   biceps: ["db-curl", "hammer-curl", "cable-curl", "bag-curl", "towel-curl"],
   triceps: ["pushdown", "overhead-ext", "diamond-pushup", "bench-dip", "wall-tri"],
-  core: ["plank", "pallof", "dead-bug", "bird-dog", "side-plank-knee"],
+  core: ["crunch", "plank", "hanging-knee-raise", "cable-crunch", "reverse-crunch", "leg-raise", "bicycle", "dead-bug", "pallof", "side-plank-knee", "bird-dog"],
   pelvic: ["kegel"],
 };
 
@@ -458,7 +464,7 @@ export function dose(ex: Exercise, p: HealthProfile): Omit<PlanItem, "exId"> {
   if (ex.muscle === "pelvic") return { sets: 3, reps: "10", restSec: 30 };
   if (gentle(p)) return { sets: 2, reps: "10–15", restSec: 60 };
   const sets = p.level === "beginner" ? (ex.compound ? 3 : 2) : p.level === "advanced" && ex.compound ? 4 : 3;
-  if (ex.muscle === "core") return { sets: Math.min(sets, 3), reps: ex.id === "plank" ? "30–45 ث" : "10–12", restSec: 45 };
+  if (ex.muscle === "core") return { sets: Math.min(sets, 3), reps: ex.id === "plank" ? "30–45 ث" : ex.id === "hanging-knee-raise" || ex.id === "cable-crunch" ? "10–12" : "12–15", restSec: 45 };
   if (has(p, "strength") && ex.compound) return { sets: p.level === "beginner" ? 3 : 4, reps: "4–6", restSec: 180 };
   if (ex.compound) return { sets, reps: has(p, "muscle") ? "6–10" : "8–12", restSec: 120 };
   return { sets, reps: "10–15", restSec: 75 };
@@ -470,14 +476,23 @@ export const perSession = (minutes: number) => (minutes <= 30 ? 4 : minutes <= 4
 /** Start with the smallest useful table. The person can add one familiar exercise later from the alternatives. */
 export const exerciseLimit = (p: HealthProfile) => Math.min(perSession(p.minutes), p.level === "beginner" ? 4 : p.level === "intermediate" ? 5 : 6);
 
+/** Every session ends with one abs exercise (the owner, 28 October 2026: a short table used to cut it off). */
+export function withAbs(slots: Muscle[]): Muscle[] {
+  if (!slots.length || slots.includes("core")) return slots;
+  return [...slots.slice(0, -1), "core"];
+}
+
+/** The abs exercise changes from session to session (crunch, plank, knee raise…), the rest stays the familiar first pick. */
+const pickFor = (m: Muscle, list: Exercise[], turn: number) => (m === "core" ? list[Math.abs(turn) % Math.min(list.length, 6)] : list[0]);
+
 export function buildDay(p: HealthProfile, weekday: number, focus: Focus, variant: number): PlanDay {
-  const slots = FOCUS[focus].slots.slice(0, exerciseLimit(p));
+  const slots = withAbs(FOCUS[focus].slots.slice(0, exerciseLimit(p)));
   const used = new Set<string>();
   const items: PlanItem[] = [];
   slots.forEach((m) => {
     const list = candidates(m, p).filter((e) => !used.has(e.id));
     if (!list.length) return;
-    const ex = list[0];
+    const ex = pickFor(m, list, weekday + variant);
     used.add(ex.id);
     items.push({ exId: ex.id, ...dose(ex, p) });
   });
@@ -502,9 +517,10 @@ export function buildDayFrom(p: HealthProfile, id: number, focuses: Focus[], var
   for (let i = 0; slots.length < limit && i < 10; i++) for (const f of fs) if (FOCUS[f].slots[i] && slots.length < limit) slots.push(FOCUS[f].slots[i]);
   const used = new Set<string>();
   const items: PlanItem[] = [];
-  for (const m of slots) {
-    const ex = candidates(m, p).find((e) => !used.has(e.id));
-    if (!ex) continue;
+  for (const m of withAbs(slots)) {
+    const list = candidates(m, p).filter((e) => !used.has(e.id));
+    if (!list.length) continue;
+    const ex = pickFor(m, list, id + variant);
     used.add(ex.id);
     items.push({ exId: ex.id, ...dose(ex, p) });
   }
