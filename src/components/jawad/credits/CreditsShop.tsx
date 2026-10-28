@@ -110,7 +110,7 @@ function features(credit: number, units: UnitPrices | null | undefined): string[
 }
 
 export default function CreditsShop({
-  packs, featured, bankOk = false, card: cardOn = false, cardSoon = false, back = null, hasSupport, whatsapp = "", user, contactOk, balance, owner, waiting, initialPack, loginHref, units, exact = null,
+  packs, featured, bankOk = false, card: cardOn = false, gateway = "paylink", cardSoon = false, back = null, hasSupport, whatsapp = "", user, contactOk, balance, owner, waiting, initialPack, loginHref, units, exact = null,
 }: {
   /** «خلص رصيدك»: a top-up of exactly what an operation needed (and what it was for), shown above the packages */
   exact?: { pack: Pack; what: string } | null;
@@ -120,8 +120,10 @@ export default function CreditsShop({
   featured: string;
   /** the bank transfer is set up (the owner's bank data) */
   bankOk?: boolean;
-  /** Paylink is set up: one tap to card, mada, Apple Pay, STC Pay */
+  /** a card gateway is set up: one tap to its payment page */
   card?: boolean;
+  /** which one: Moyasar (card, mada) once its key is set, else Paylink (card, mada, Apple Pay, STC Pay) */
+  gateway?: "moyasar" | "paylink";
   /** card payment is not open to everyone yet: «يتفعّل قريبًا» under the cards (the owners test it meanwhile) */
   cardSoon?: boolean;
   /** coming back from Paylink: the order that is paid (its balance is added) or null when the payment was not confirmed */
@@ -172,7 +174,7 @@ export default function CreditsShop({
     setBusy(id);
     try {
       if (card) {
-        const r = await post<{ order: Order; url: string }>("/api/credits/paylink", { pack: id, source: visitorSource() });
+        const r = await post<{ order: Order; url: string }>(`/api/credits/${gateway}`, { pack: id, source: visitorSource() });
         track("InitiateCheckout", { value: r.order.price, currency: "SAR", content_name: r.order.packName });
         if (!r.url || !/^https:\/\//.test(r.url)) throw new Error("بوابة الدفع ما رجّعت رابط الدفع. جرّب مرة ثانية.");
         window.location.assign(r.url);
@@ -358,7 +360,7 @@ export default function CreditsShop({
           {error && !errAt && <p className="cr-error" role="alert">{error}</p>}
           {payable && (
             <>
-              <p className="pr-pay">{card ? "💳 بطاقة · مدى · Apple Pay · STC Pay — الدفع آمن عبر Paylink" : "🏦 تحويل بنكي — ينضاف الرصيد بعد ما نتأكد من التحويل"}</p>
+              <p className="pr-pay">{card ? (gateway === "moyasar" ? "💳 بطاقة · مدى — الدفع آمن عبر ميسّر" : "💳 بطاقة · مدى · Apple Pay · STC Pay — الدفع آمن عبر Paylink") : "🏦 تحويل بنكي — ينضاف الرصيد بعد ما نتأكد من التحويل"}</p>
               {!cardOn && cardSoon && <p className="pr-pay">💳 الدفع بالبطاقة ومدى وApple Pay يتفعّل قريبًا إن شاء الله</p>}
               {cardOn && bankOk && (
                 <p className="pr-pay">

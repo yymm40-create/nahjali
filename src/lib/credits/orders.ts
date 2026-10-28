@@ -14,6 +14,7 @@ import { cleanPhone, type Bank } from "@config/course";
 import { CREDITS, packOf } from "@config/credits";
 import { loadSettings as loadCourseSettings } from "@/lib/course/settings";
 import { addInvoice, getInvoice, invoicePaid, paylinkEnabled } from "./paylink";
+import * as moyasar from "./moyasar";
 import { loadCreditSettings } from "./settings";
 import { notifyCreditTransfer } from "./telegram";
 
@@ -201,12 +202,8 @@ function reportPurchase(o: CreditOrder): void {
   }
 }
 
-/**
- * «ادفع بالبطاقة» (Paylink): the same order as the bank one, plus an invoice on Paylink's page (card, mada, Apple Pay, STC Pay).
- * Paylink's transaction number is kept in `note`, so the return can read the invoice and settle only what Paylink says is paid.
- */
-export async function startPaylinkOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown }, ad: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null | undefined, origin: string, debug = false): Promise<{ order: CreditOrder; url: string }> {
-  if (!paylinkEnabled()) throw new UserError("الدفع بالبطاقة غير متاح الحين؛ استخدم التحويل البنكي.", 503);
+/** The order behind a card payment (Paylink or Moyasar): the package, the name and number checked, the open-orders limit, saved as «started». */
+async function newCardOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown }, ad: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null | undefined) {
   const s = await loadCreditSettings();
   const pack = packOf(s, b.pack);
   if (!pack) throw new UserError("هذي الباقة غير متاحة؛ حدّث الصفحة.", 409);
@@ -220,7 +217,16 @@ export async function startPaylinkOrder(user: { id: string; email?: string | nul
   const fields = { email: user.email ?? "", name, phone, pack_name: pack.name, price_sar: pack.price, credit_sar: pack.credit };
   const { data, error } = await saveOrder((on) => db().from("credit_orders").insert({ user_id: user.id, pack_id: pack.id, ...(on && source ? { ...fields, source } : fields) }).select("*").single());
   wrap(error);
-  const order = view(data!);
+  return { order: view(data!), pack, name, phone };
+}
+
+/**
+ * «ادفع بالبطاقة» (Paylink): the same order as the bank one, plus an invoice on Paylink's page (card, mada, Apple Pay, STC Pay).
+ * Paylink's transaction number is kept in `note`, so the return can read the invoice and settle only what Paylink says is paid.
+ */
+export async function startPaylinkOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown }, ad: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null | undefined, origin: string, debug = false): Promise<{ order: CreditOrder; url: string }> {
+  if (!paylinkEnabled()) throw new UserError("الدفع بالبطاقة غير متاح الحين؛ استخدم التحويل البنكي.", 503);
+  const { order, pack, name, phone } = await newCardOrder(user, b, ad);
   try {
     const inv = await addInvoice({
       orderNumber: order.id,
@@ -260,6 +266,52 @@ export async function settlePaylinkOrder(orderId: string): Promise<{ order: Cred
     return { order: o, paid: false };
   }
   const { order } = await confirmCreditOrder(o.id, "paylink");
+  return { order, paid: order.status === "confirmed" };
+}
+
+/**
+ * «ادفع بالبطاقة» (Moyasar): the same order, plus an invoice on Moyasar's hosted page (card, mada). Moyasar's invoice id is kept
+ * in `note`, so the return and the webhook read that invoice and settle only what Moyasar says is paid.
+ */
+export async function startMoyasarOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown }, ad: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null | undefined, origin: string, debug = false): Promise<{ order: CreditOrder; url: string }> {
+  if (!moyasar.moyasarEnabled()) throw new UserError("الدفع بالبطاقة غير متاح الحين؛ استخدم التحويل البنكي.", 503);
+  const { order, pack } = await newCardOrder(user, b, ad);
+  try {
+    const inv = await moyasar.createInvoice({
+      amount: pack.price,
+      description: `رصيد الجواد الذكي — باقة ${pack.name}`,
+      callbackUrl: `${origin}/api/credits/moyasar/webhook?order=${order.id}`,
+      successUrl: `${origin}/api/credits/moyasar/return?order=${order.id}`,
+      backUrl: `${origin}/jawad-ai/credits?cancelled=1`,
+    });
+    await db().from("credit_orders").update({ note: `moyasar:${inv.id}`, updated_at: new Date().toISOString() }).eq("id", order.id);
+    return { order, url: inv.url };
+  } catch (e) {
+    console.error("moyasar createInvoice", order.id, e);
+    await db().from("credit_orders").update({ status: "rejected", note: "moyasar: invoice failed", updated_at: new Date().toISOString() }).eq("id", order.id).eq("status", "started");
+    // the owners see Moyasar's own answer, to fix the key; buyers never do
+    throw new UserError(`تعذّر فتح صفحة الدفع. جرّب مرة ثانية أو استخدم التحويل البنكي.${debug ? ` [للمالك: ${String(e).slice(0, 400)}]` : ""}`, 502);
+  }
+}
+
+/**
+ * The buyer is back from Moyasar (or Moyasar called): the invoice is READ from Moyasar and only a paid one, the one made for this
+ * order, in riyals, for this price, adds the balance (once, however many times this runs).
+ */
+export async function settleMoyasarOrder(orderId: string): Promise<{ order: CreditOrder; paid: boolean } | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) return null;
+  const o = await getCreditOrder(orderId);
+  if (!o) return null;
+  const inv = /^moyasar:(.+)$/.exec(o.note)?.[1];
+  if (!inv) return { order: o, paid: false };
+  if (o.status === "confirmed") return { order: o, paid: true };
+  try {
+    if (!moyasar.invoicePaid(await moyasar.getInvoice(inv), inv, o.price)) return { order: o, paid: false };
+  } catch (e) {
+    console.error("moyasar getInvoice", o.id, e);
+    return { order: o, paid: false };
+  }
+  const { order } = await confirmCreditOrder(o.id, "moyasar");
   return { order, paid: order.status === "confirmed" };
 }
 

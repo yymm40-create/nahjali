@@ -64,7 +64,7 @@ export const isQuality = (q: unknown): q is QualityKey => typeof q === "string" 
 export const BANK_TRANSFER_ENABLED = true;
 
 /**
- * Card payment (Paylink) for EVERYONE. While false, only the owners see the card button (to test it with the Paylink keys) and
+ * Card payment (Moyasar, or Paylink without Moyasar's key) for EVERYONE. While false, only the owners see the card button (to test it) and
  * everyone else sees «الدفع بالبطاقة يتفعّل قريبًا إن شاء الله» and pays by bank transfer; the server refuses card payment to
  * anyone else too. Set to true once a test payment went through.
  */
