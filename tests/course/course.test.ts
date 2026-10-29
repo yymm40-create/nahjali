@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SHARE } from "@config/share";
-import { countdown, DEFAULT_SETTINGS, embedOf, hasLifetimeAccess, offerFor, offersAt, PRODUCT_ACCESS, readSettings, savingPct, cleanPhone, waLink, COURSE, type CourseSettings } from "@config/course";
+import { countdown, DEFAULT_SETTINGS, embedOf, hasLifetimeAccess, isLadder, offerFor, offersAt, PRODUCT_ACCESS, readSettings, savingPct, cleanPhone, waLink, COURSE, type CourseSettings } from "@config/course";
 
 const H = 3_600_000;
 const T0 = Date.parse("2026-10-10T12:00:00Z");
@@ -53,7 +53,7 @@ describe("reading the owner's settings", () => {
 
   it("fills what is missing with his numbers and clamps nonsense", () => {
     const s = readSettings({ prices: { comboA: -5, liveB: "abc", recordedB: 1e9 }, hoursA: 0, hoursB: 0, launchAt: "not a date", videoUrl: "http://x.com/a.mp4", groupLink: "javascript:alert(1)", bank: { iban: "SA03 8000 0000" } });
-    expect(s.prices).toEqual({ comboA: 1, liveB: 40, recordedB: 100000, liveC: 80, recordedC: 100 });
+    expect(s.prices).toEqual({ comboA: 1, liveB: 49, recordedB: 100000, comboB: 100, liveC: 80, recordedC: 150 });
     expect(s.hoursA).toBe(1);
     expect(s.hoursB).toBeGreaterThan(s.hoursA);
     expect(s.launchAt).toBeNull();
@@ -139,5 +139,53 @@ describe("what the course sells", () => {
 
   it("keeps «انشرنا واربح» stopped", () => {
     expect(SHARE.paused).toBe(true);
+  });
+});
+
+describe("the clock course («دورة صانع المحتوى»): the owner's three days", () => {
+  const ID = "3b68eb1d-ca1b-4e71-a5f7-78013603b443";
+  const L: CourseSettings = { ...S, ladderCourseId: ID };
+  const at = (h: number) => offersAt(L, T0 + h * H, 150, 230, ID);
+  const sold = (h: number) => at(h).offers.map((o) => [o.product, o.price, o.was]);
+
+  it("day one: only the whole course, 49.99 instead of 230", () => {
+    expect(at(0).phase).toBe("A");
+    expect(sold(0)).toEqual([["combo", 49.99, 230]]);
+    expect(sold(23.9)).toEqual([["combo", 49.99, 230]]);
+    expect(at(0).endsAt).toBe(T0 + 24 * H);
+    expect(at(0).next).toBe("بعدها: الكاملة ¤100 والمباشرة ¤49");
+  });
+
+  it("day two: live 49 or the whole course 100 (no recorded alone)", () => {
+    expect(at(24).phase).toBe("B");
+    expect(sold(30)).toEqual([["combo", 100, 230], ["live", 49, 80]]);
+    expect(at(30).endsAt).toBe(T0 + 48 * H);
+    expect(at(30).next).toBe("بعدها: المسجلة ¤150 والمباشرة ¤80");
+  });
+
+  it("after: the usual prices, live 80 and recorded 150, with no end", () => {
+    expect(sold(48)).toEqual([["recorded", 150, 150], ["live", 80, 80]]);
+    expect(at(5000).endsAt).toBeNull();
+    expect(offerFor(L, "combo", T0 + 60 * H, 150, 230, ID)).toBeNull();
+  });
+
+  it("is «soon» before the owner starts the clock, and the other courses keep their one price", () => {
+    expect(offersAt({ ...L, launchAt: null }, T0, 150, 230, ID)).toMatchObject({ phase: "soon", offers: [] });
+    expect(offersAt(L, T0 - H, 150, 230, ID).phase).toBe("soon");
+    expect(offersAt(L, T0, 60, 60, "00000000-0000-4000-8000-000000000001").offers.map((o) => [o.product, o.price])).toEqual([["recorded", 60]]);
+    expect(isLadder(L, ID.toUpperCase())).toBe(true);
+    expect(isLadder(S, ID)).toBe(false);
+  });
+
+  it("keeps prices to the halala and a price of 0 means «not on sale»", () => {
+    const r = readSettings({ prices: { comboA: "49.994", liveB: 0, comboB: 100 }, ladderCourseId: ID.toUpperCase(), ladderRisks: [" أ ", ""], terms: " ش " });
+    expect(r.prices.comboA).toBe(49.99);
+    expect(r.prices.liveB).toBe(0);
+    expect(r.ladderCourseId).toBe(ID);
+    expect(r.ladderRisks).toEqual(["أ"]);
+    expect(r.terms).toBe("ش");
+    expect(readSettings({ ladderCourseId: "x" }).ladderCourseId).toBe("");
+    const only = offersAt({ ...L, prices: { ...L.prices, liveB: 0 } }, T0 + 30 * H, 150, 230, ID);
+    expect(only.offers.map((o) => o.product)).toEqual(["combo"]);
   });
 });

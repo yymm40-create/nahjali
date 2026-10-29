@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import AgreeTerms from "@/components/jawad/AgreeTerms";
 import Coined from "@/components/Coined";
 import Riyal from "@/components/Riyal";
-import { COURSE, countdown, embedOf, hasLifetimeAccess, offersAt, PRODUCT_ACCESS, PRODUCT_LABEL, type Bank, type Offer, type Product } from "@config/course";
+import { COURSE, countdown, embedOf, hasLifetimeAccess, isLadder, offersAt, PRODUCT_ACCESS, PRODUCT_LABEL, type Bank, type Offer, type Product } from "@config/course";
 import { LEARN } from "@config/learn";
 import type { PublicCourse } from "@/lib/course/settings";
 
@@ -42,11 +42,14 @@ async function post<T>(url: string, body: unknown): Promise<T> {
 }
 
 
+/** riyals (49.99) → halalas, without the float's 4998.999… */
+const hal = (sar: number) => Math.round(sar * 100);
+
 /** A price drawn the way the whole site draws one: the coin's logo and the amount (no currency word), the usual price struck, the saving. */
 function Price({ o, size = 26 }: { o: Offer; size?: number }) {
   return (
     <div className="cr-price">
-      <Riyal halalas={o.price * 100} was={o.was > o.price ? o.was * 100 : null} size={size} className="cr-now" />
+      <Riyal halalas={hal(o.price)} was={o.was > o.price ? hal(o.was) : null} size={size} className="cr-now" />
     </div>
   );
 }
@@ -92,7 +95,7 @@ function Copy({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function CourseLanding({ s, courseId, price, was, serverNow, user, orders, unlocked, buy, loginHref }: { s: PublicCourse; courseId: string; price: number; was: number; serverNow: number; user: { email: string } | null; orders: OrderView[]; unlocked: Unlocked | null; buy: Product | null; loginHref: string }) {
+export default function CourseLanding({ s, courseId, title, price, was, serverNow, user, orders, unlocked, buy, loginHref }: { s: PublicCourse; courseId: string; title: string; price: number; was: number; serverNow: number; user: { email: string } | null; orders: OrderView[]; unlocked: Unlocked | null; buy: Product | null; loginHref: string }) {
   const router = useRouter();
   const [skew] = useState(() => serverNow - Date.now());
   const [now, setNow] = useState(serverNow);
@@ -100,11 +103,12 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
     const t = setInterval(() => setNow(Date.now() + skew), 1000);
     return () => clearInterval(t);
   }, [skew]);
-  const cur = useMemo(() => offersAt(s, now, price, was), [s, now, price, was]);
+  const ladder = isLadder(s, courseId);
+  const cur = useMemo(() => offersAt(s, now, price, was, courseId), [s, now, price, was, courseId]);
   const video = useMemo(() => (s.videoFileUrl ? null : embedOf(s.videoUrl)), [s.videoFileUrl, s.videoUrl]);
 
   // coming back from signing in (?buy=…): the payment sheet is already open
-  const [sheet, setSheet] = useState<{ product: Product; step: "form" | "bank" | "done" } | null>(() => (buy && user && offersAt(s, serverNow, price, was).offers.some((o) => o.product === buy) ? { product: buy, step: "form" } : null));
+  const [sheet, setSheet] = useState<{ product: Product; step: "form" | "bank" | "done" } | null>(() => (buy && user && offersAt(s, serverNow, price, was, courseId).offers.some((o) => o.product === buy) ? { product: buy, step: "form" } : null));
   const last = orders[0];
   const [name, setName] = useState(last?.name ?? "");
   const [phone, setPhone] = useState(last?.phone ?? "");
@@ -142,7 +146,7 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
     setBusy(true);
     setError("");
     try {
-      const r = await post<{ order: OrderView; bank: Bank }>("/api/course/order", { courseId, name, phone, code: coded?.code });
+      const r = await post<{ order: OrderView; bank: Bank }>("/api/course/order", { courseId, name, phone, code: coded?.code, product: sheet.product });
       setOrder(r.order);
       setBank(r.bank);
       setSheet({ ...sheet, step: "bank" });
@@ -230,13 +234,15 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
           <div className="cr-in">
             <h2>{unlocked.confirmed ? "✅ اشتراكك مؤكد" : "⏳ تحويلك قيد التأكيد"}</h2>
             <p>
-              {unlocked.confirmed ? `أهلًا فيك في ${COURSE.name}.` : "وصلنا طلبك، ونتأكد من التحويل."}{" "}
-              {unlocked.confirmed ? "دورتك جاهزة في «دوراتي»." : "بعد ما يتأكد المالك من التحويل تظهر دورتك في «دوراتي» مباشرة."}
+              {unlocked.confirmed ? `أهلًا فيك في «${title}».` : "وصلنا طلبك، ونتأكد من التحويل."}{" "}
+              {ladder && !unlocked.products.some(hasLifetimeAccess) && unlocked.products.includes("live")
+                ? "رابط مجموعة البث المباشر تحت."
+                : unlocked.confirmed ? "دورتك جاهزة في «دوراتي»." : "بعد ما يتأكد المالك من التحويل تظهر دورتك في «دوراتي» مباشرة."}
             </p>
             <div className="cr-actions">
               {unlocked.groupLink && <a className="cr-btn cr-primary" href={unlocked.groupLink} target="_blank" rel="noreferrer">{unlocked.confirmed ? "ادخل المجموعة" : "اطلب الانضمام للمجموعة"}</a>}
               {unlocked.recordedLink && unlocked.products.includes("recorded") && <a className="cr-btn" href={unlocked.recordedLink} target="_blank" rel="noreferrer">افتح الدورة المسجلة</a>}
-              {unlocked.confirmed && <Link className="cr-btn cr-primary" href={LEARN.base}>📚 افتح دوراتي</Link>}
+              {unlocked.confirmed && (!ladder || unlocked.products.some(hasLifetimeAccess)) && <Link className="cr-btn cr-primary" href={LEARN.base}>📚 افتح دوراتي</Link>}
             </div>
           </div>
         </section>
@@ -244,7 +250,7 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
 
       <header className="cr-hero">
         <div className="cr-in">
-          <span className="cr-kicker cr-reveal">الدورة · مسجلة</span>
+          <span className="cr-kicker cr-reveal">{ladder ? `${title} · مباشرة + مسجلة` : "الدورة · مسجلة"}</span>
           <h1 className="cr-reveal" style={{ ["--i" as string]: 1 }}>{s.headline}</h1>
           <p className="cr-sub cr-reveal" style={{ ["--i" as string]: 2 }}>{s.subhead}</p>
 
@@ -274,7 +280,7 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
                               {o.bonus > 0 && <em>🌸 + هدية {o.bonus} زهرة</em>}
                             </span>
                             <span className="cr-cprice">
-                              <Riyal halalas={o.price * 100} size={22} className="cr-cn" />
+                              <Riyal halalas={hal(o.price)} size={22} className="cr-cn" />
                               {o.was > o.price && <s dir="ltr">{o.was}</s>}
                             </span>
                           </button>
@@ -295,8 +301,8 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
                   <ul className="cr-trust">
                     <li>🔒 تحويل بنكي مباشر</li>
                     {hasLifetimeAccess(sel.product) && <li>♾️ تسجيل الدورة مدى الحياة</li>}
-                    {sel.product === "live" && <li>🎥 حضور مباشر</li>}
-                    <li>📚 تظهر في «دوراتي» بعد التأكيد</li>
+                    {sel.product !== "recorded" && <li>🎥 حضور مباشر</li>}
+                    {hasLifetimeAccess(sel.product) ? <li>📚 تظهر في «دوراتي» بعد التأكيد</li> : <li>💬 رابط مجموعة البث بعد التحويل</li>}
                   </ul>
                 </div>
               </>
@@ -350,6 +356,15 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
         </section>
       )}
 
+      {s.terms && (
+        <section className="cr-band cr-alt" id="terms">
+          <div className="cr-in">
+            <h2 className="cr-h" data-k="الشروط · ٠٤">شروط الدورة</h2>
+            <p className="cr-lead">{s.terms}</p>
+          </div>
+        </section>
+      )}
+
       <section className="cr-band cr-alt">
         <div className="cr-in">
           <h2 className="cr-h" data-k="الدفع · ٤ خطوات">كيف تدفع؟</h2>
@@ -379,7 +394,7 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
       {cur.phase !== "soon" && sel && !unlocked && canBuy && (
         <div className={`cr-sticky${atBuy ? " hide" : ""}`} aria-hidden={atBuy}>
           <div className="cr-sprice">
-            <Riyal halalas={sel.price * 100} size={22} className="cr-sn" />
+            <Riyal halalas={hal(sel.price)} size={22} className="cr-sn" />
             {left !== null && <small dir="ltr">ينتهي بعد {countdown(left)}</small>}
           </div>
           <button type="button" className="cr-cta cr-cta-sm" onClick={go} tabIndex={atBuy ? -1 : 0}>اشترك الآن</button>
@@ -414,6 +429,7 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
                 <label>رقم الجوال (واتساب)<input dir="ltr" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="05xxxxxxxx" autoComplete="tel" /></label>
                 <label>الإيميل<input dir="ltr" value={user?.email ?? ""} readOnly /></label>
                 {error && <p className="cr-error" role="alert">{error}</p>}
+                {s.terms && <p className="cr-mute">⚠️ {s.terms}</p>}
                 <AgreeTerms on={agree} onChange={setAgree} what="الاشتراك" />
                 <button type="button" className="cr-cta" disabled={busy || !agree || name.trim().length < 2 || phone.trim().length < 8} onClick={() => void start()}>{busy ? "…" : <span className="cr-cta-main">التالي: بيانات التحويل</span>}</button>
               </>
@@ -421,7 +437,7 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
             {sheet.step === "bank" && order && bank && (
               <>
                 <h3>حوّل المبلغ</h3>
-                <p className="cr-amount"><Riyal halalas={order.amount * 100} size={38} /></p>
+                <p className="cr-amount"><Riyal halalas={hal(order.amount)} size={38} /></p>
                 <p className="cr-mute">{PRODUCT_LABEL[order.product]}{order.bonus > 0 ? ` · + ${order.bonus} زهرة هدية` : ""} · السعر محفوظ لك {countdown(lock)}</p>
                 <div className="cr-bank">
                   <Copy label="اسم صاحب الحساب" value={bank.holder} />
@@ -438,7 +454,7 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
             {sheet.step === "done" && (
               <>
                 <h3>وصلنا طلبك ✅</h3>
-                <p>راح نتأكد من التحويل، وبعدها تظهر لك الدورة مباشرة في «دوراتي»{phone ? <> (وقد نتواصل معك على <b dir="ltr">{phone}</b>)</> : null}.</p>
+                <p>راح نتأكد من التحويل، وبعدها {hasLifetimeAccess(sheet.product) ? "تظهر لك الدورة مباشرة في «دوراتي»" : "يوصلك موعد البث المباشر في المجموعة"}{phone ? <> (وقد نتواصل معك على <b dir="ltr">{phone}</b>)</> : null}.</p>
                 {group && <a className="cr-cta" href={group} target="_blank" rel="noreferrer"><span className="cr-cta-main">اطلب الانضمام لمجموعة الواتساب</span></a>}
                 <button type="button" className="cr-btn" onClick={() => setSheet(null)}>تمام</button>
               </>

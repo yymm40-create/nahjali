@@ -47,6 +47,23 @@ function Num({ label, value, onChange, hint }: { label: string; value: number; o
     </label>
   );
 }
+/** riyals to the halala (49.99): the box keeps what is typed («49.» on the way to «49.99») and hands on the number */
+function Money({ label, value, onChange, hint }: { label: string; value: number; onChange: (n: number) => void; hint?: string }) {
+  const [t, setT] = useState(String(value));
+  // a value saved or loaded from outside replaces what is shown (while typing «49.» the number is already 49, so it stays)
+  const [seen, setSeen] = useState(value);
+  if (seen !== value) {
+    setSeen(value);
+    if (Number(t) !== value) setT(String(value));
+  }
+  return (
+    <label className="grid gap-1 text-sm font-bold">
+      {label}
+      <input className="field" dir="ltr" inputMode="decimal" value={t} onChange={(e) => { const v = e.target.value.replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 1632)).replace(/[^\d.]/g, ""); setT(v); onChange(Number(v) || 0); }} />
+      {hint && <span className="text-xs font-bold text-muted">{hint}</span>}
+    </label>
+  );
+}
 function Txt({ label, value, onChange, rows, ltr, ph }: { label: string; value: string; onChange: (s: string) => void; rows?: number; ltr?: boolean; ph?: string }) {
   return (
     <label className="grid gap-1 text-sm font-bold">
@@ -62,6 +79,7 @@ export default function CourseAdmin() {
   const [s, setS] = useState<CourseSettings | null>(null);
   const [daysText, setDaysText] = useState("");
   const [risksText, setRisksText] = useState("");
+  const [ladderRisksText, setLadderRisksText] = useState("");
   const [filter, setFilter] = useState<"" | Order["status"]>("");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -74,7 +92,7 @@ export default function CourseAdmin() {
       if (!keepForm) {
         setS(r.settings);
         setDaysText(daysToText(r.settings.days));
-        setRisksText(r.settings.risks.join("\n"));
+        setRisksText(r.settings.risks.join("\n")); setLadderRisksText(r.settings.ladderRisks.join("\n"));
       }
       setErr("");
     } catch (e) {
@@ -84,7 +102,7 @@ export default function CourseAdmin() {
   useEffect(() => {
     let on = true;
     api<Data>(URL)
-      .then((r) => { if (on) { setD(r); setS(r.settings); setDaysText(daysToText(r.settings.days)); setRisksText(r.settings.risks.join("\n")); } })
+      .then((r) => { if (on) { setD(r); setS(r.settings); setDaysText(daysToText(r.settings.days)); setRisksText(r.settings.risks.join("\n")); setLadderRisksText(r.settings.ladderRisks.join("\n")); } })
       .catch((e) => on && setErr((e as Error).message));
     return () => { on = false; };
   }, []);
@@ -102,7 +120,7 @@ export default function CourseAdmin() {
       if (r.settings) {
         setS(r.settings);
         setDaysText(daysToText(r.settings.days));
-        setRisksText(r.settings.risks.join("\n"));
+        setRisksText(r.settings.risks.join("\n")); setLadderRisksText(r.settings.ladderRisks.join("\n"));
       }
       setMsg(r.bot ? `${done} البوت: @${r.bot}` : r.already ? "كان مؤكدًا من قبل." : done);
       await load(true);
@@ -126,7 +144,7 @@ export default function CourseAdmin() {
 
   if (!d || !s) return <p className="text-sm font-bold text-muted">{err || "…"}</p>;
   const set = <K extends keyof CourseSettings>(k: K, v: CourseSettings[K]) => setS({ ...s, [k]: v });
-  const save = () => act({ action: "save", settings: { ...s, days: textToDays(daysText), risks: risksText.split("\n").map((x) => x.trim()).filter(Boolean) } }, "انحفظت الإعدادات ✅");
+  const save = () => act({ action: "save", settings: { ...s, days: textToDays(daysText), risks: risksText.split("\n").map((x) => x.trim()).filter(Boolean), ladderRisks: ladderRisksText.split("\n").map((x) => x.trim()).filter(Boolean) } }, "انحفظت الإعدادات ✅");
   const waiting = d.orders.filter((o) => o.status === "transferred").length;
 
   return (
@@ -136,7 +154,8 @@ export default function CourseAdmin() {
 
       <section className="card space-y-3 p-4">
         <h2 className="text-xl font-extrabold">⏱️ ساعة الأسعار</h2>
-        <p className="text-sm font-bold text-muted">الأسعار تتغير حسب الساعات من نزول الريل. اضغط الزر لحظة ما تنزّل الريل، فتبدأ أول ٢٤ ساعة (الدورة كاملة بسعر واحد).</p>
+        <p className="text-sm font-bold text-muted">الساعة تمشي على دورة وحدة (رقمها تحت). أسعارها تتغير حسب الساعات من نزول الإعلان: اضغط الزر لحظة ما ينزل، فتبدأ أول ٢٤ ساعة (الدورة كاملة بسعر واحد). باقي الدورات سعرها ثابت.</p>
+        <Txt label="رقم الدورة اللي أسعارها على الساعة (من رابط صفحتها /jawad-ai/course/…)" value={s.ladderCourseId} onChange={(v) => set("ladderCourseId", v.trim().replace(/^.*\/course\//, ""))} ltr ph="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
         <p className="font-extrabold">الحالة الآن: {PHASE[d.phase]}{s.launchAt ? ` · بدأت ${new Date(s.launchAt).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { dateStyle: "short", timeStyle: "short" })}` : ""}</p>
         <div className="flex flex-wrap items-end gap-2">
           <button type="button" className="btn btn-primary" onClick={() => window.confirm("نزل الريل الحين؟ تبدأ الساعة من هذي اللحظة.") && void act({ action: "start_now" }, "بدأت الساعة ▶️")}>▶️ نزل الريل الآن</button>
@@ -148,14 +167,14 @@ export default function CourseAdmin() {
       <section className="card space-y-3 p-4">
         <h2 className="text-xl font-extrabold">💰 الأسعار والهدية (بالريال)</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <Num label="أول يوم: الدورة كاملة" value={s.prices.comboA} onChange={(n) => set("prices", { ...s.prices, comboA: n })} hint="مباشرة + مسجلة" />
-          <Num label="اليوم الثاني: المباشرة" value={s.prices.liveB} onChange={(n) => set("prices", { ...s.prices, liveB: n })} />
-          <Num label="اليوم الثاني: المسجلة" value={s.prices.recordedB} onChange={(n) => set("prices", { ...s.prices, recordedB: n })} />
-          <Num label="بعدها: المباشرة" value={s.prices.liveC} onChange={(n) => set("prices", { ...s.prices, liveC: n })} />
-          <Num label="بعدها: المسجلة" value={s.prices.recordedC} onChange={(n) => set("prices", { ...s.prices, recordedC: n })} />
-          <span />
-          <Num label="سعرها الأصلي: المباشرة" value={s.was.live} onChange={(n) => set("was", { ...s.was, live: n })} hint="يظهر مشطوبًا" />
-          <Num label="سعرها الأصلي: المسجلة" value={s.was.recorded} onChange={(n) => set("was", { ...s.was, recorded: n })} />
+          <Money label="أول يوم: الدورة كاملة" value={s.prices.comboA} onChange={(n) => set("prices", { ...s.prices, comboA: n })} hint="مباشرة + مسجلة" />
+          <Money label="اليوم الثاني: المباشرة" value={s.prices.liveB} onChange={(n) => set("prices", { ...s.prices, liveB: n })} hint="٠ = ما تنعرض" />
+          <Money label="اليوم الثاني: الكاملة" value={s.prices.comboB} onChange={(n) => set("prices", { ...s.prices, comboB: n })} hint="مباشرة + مسجلة · ٠ = ما تنعرض" />
+          <Money label="اليوم الثاني: المسجلة" value={s.prices.recordedB} onChange={(n) => set("prices", { ...s.prices, recordedB: n })} hint="٠ = ما تنعرض" />
+          <Money label="بعدها: المباشرة" value={s.prices.liveC} onChange={(n) => set("prices", { ...s.prices, liveC: n })} />
+          <Money label="بعدها: المسجلة" value={s.prices.recordedC} onChange={(n) => set("prices", { ...s.prices, recordedC: n })} />
+          <Money label="سعرها الأصلي: المباشرة" value={s.was.live} onChange={(n) => set("was", { ...s.was, live: n })} hint="يظهر مشطوبًا (الكاملة = المباشرة + المسجلة)" />
+          <Money label="سعرها الأصلي: المسجلة" value={s.was.recorded} onChange={(n) => set("was", { ...s.was, recorded: n })} />
           <span />
           <Num label="تنتهي المرحلة الأولى بعد (ساعة)" value={s.hoursA} onChange={(n) => set("hoursA", n)} />
           <Num label="تنتهي الثانية بعد (ساعة)" value={s.hoursB} onChange={(n) => set("hoursB", n)} />
@@ -169,12 +188,14 @@ export default function CourseAdmin() {
       </section>
 
       <section className="card space-y-3 p-4">
-        <h2 className="text-xl font-extrabold">📝 كلام الصفحة</h2>
+        <h2 className="text-xl font-extrabold">📝 كلام صفحة دورة الساعة</h2>
         <Txt label="العنوان الكبير (النتيجة اللي يشتريها)" value={s.headline} onChange={(v) => set("headline", v)} rows={2} />
         <Txt label="سطر تحته" value={s.subhead} onChange={(v) => set("subhead", v)} rows={2} />
         <Txt label="المشكلة اللي يعاني منها" value={s.problem} onChange={(v) => set("problem", v)} rows={3} />
         <Txt label="الأيام (عنوان اليوم في سطر، ونقاطه تحته تبدأ بـ -، وسطر فاضي بين كل يوم ويوم)" value={daysText} onChange={setDaysText} rows={10} />
-        <Txt label="اللي يطمّنه (كل سطر نقطة)" value={risksText} onChange={setRisksText} rows={4} />
+        <Txt label="اللي يطمّنه في الدورات الثانية (كل سطر نقطة)" value={risksText} onChange={setRisksText} rows={4} />
+        <Txt label="اللي يطمّنه في دورة الساعة (كل سطر نقطة)" value={ladderRisksText} onChange={setLadderRisksText} rows={5} />
+        <Txt label="شروط دورة الساعة (تظهر في صفحتها وقبل الدفع)" value={s.terms} onChange={(v) => set("terms", v)} rows={3} />
       </section>
 
       <section className="card space-y-3 p-4">
