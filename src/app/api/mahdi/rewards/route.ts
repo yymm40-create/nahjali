@@ -14,7 +14,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export const POST = mahdiRoute(async (req: Request) => {
   const { supabase, user, profile } = await requireProfile(req);
   const snap = await loadSnapshot(supabase, profile);
-  const items = toItems([...snap.habits, ...challengeHabits(snap)], snap.logs);
+  const items = toItems([...snap.habits, ...challengeHabits(snap)], snap.logs, snap.emergencyDays);
   const tl = buildTimeline(items, snap.logsFrom, snap.today, { asOf: snap.today, weekStart: profile.weekStart });
   const metrics = milestoneMetrics(tl, CONSISTENCY_THRESHOLD);
   const have = new Set(snap.rewards.map((r) => r.milestoneId));

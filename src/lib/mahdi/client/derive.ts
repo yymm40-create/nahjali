@@ -7,8 +7,15 @@ import type { GroupProject } from "../groups/program";
 import type { CSSProperties } from "react";
 import { habitColorHex } from "@config/mahdi";
 
-export const toItems = (habits: Habit[], logs: Snapshot["logs"]): Item[] =>
-  habits.map((h) => ({ id: h.id, projectId: h.projectId, versions: h.versions, logs: logs[h.id] ?? {} }));
+export const toItems = (habits: Habit[], logs: Snapshot["logs"], emergencyDays?: Snapshot["emergencyDays"]): Item[] =>
+  habits.map((h) => ({
+    id: h.id,
+    projectId: h.projectId,
+    versions: h.versions,
+    logs: logs[h.id] ?? {},
+    // «خانة الطوارئ»: the smaller goal, and the days it applies to
+    ...(h.emergencyTarget ? { emergency: { target: h.emergencyTarget, days: new Set(emergencyDays?.[h.id] ?? []) } } : {}),
+  }));
 
 /** A habit's own colour as `--pc` (inline, so it wins over the project's colour class); undefined = the project's. */
 export function habitTint(h: Pick<Habit, "color"> | null | undefined): CSSProperties | undefined {

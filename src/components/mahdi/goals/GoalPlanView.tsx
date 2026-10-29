@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { buildTimeline, diffDays, leadLagAdvice, planHistory, planProgress, startOfWeek, summarize, weekGoals, type PlanProgress } from "@/lib/mahdi/engine";
 import { fmtDate, fmtMonth, fmtNum, t } from "@/lib/mahdi/i18n";
-import { bySort, parseNumberInput } from "@/lib/mahdi/client/derive";
+import { bySort, parseNumberInput, toItems } from "@/lib/mahdi/client/derive";
 import type { Habit, Milestone, Project } from "@/lib/mahdi/types";
 import ConfirmSheet from "../ConfirmSheet";
 import Icon from "../Icon";
@@ -51,7 +51,7 @@ export default function GoalPlanView({
     const ids = new Set(list.map((h) => h.id));
     const ctx = { asOf: today, weekStart: snap.profile.weekStart };
     const tl = buildTimeline(
-      list.filter((h) => ids.has(h.id)).map((h) => ({ id: h.id, projectId: h.projectId, versions: h.versions, logs: state.logs[h.id] ?? {} })),
+      toItems(list.filter((h) => ids.has(h.id)), state.logs, snap.emergencyDays),
       snap.logsFrom,
       today,
       ctx,

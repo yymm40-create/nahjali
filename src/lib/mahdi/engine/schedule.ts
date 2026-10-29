@@ -38,6 +38,9 @@ export function dayInstance(item: Item, d: ISODate, ctx: EngineContext): Instanc
   const v = versionAt(item, d);
   if (!isDueOn(v, d)) return null;
   const raw = item.logs[d] ?? 0;
+  // «طوارئ»: on a day the person chose, the goal is the smaller one (only a counter or an amount, and only when it IS smaller)
+  const em = item.emergency;
+  const lowered = Boolean(em && v!.measure !== "check" && em.days.has(d) && em.target > 0 && em.target < v!.target);
   return finish(
     {
       itemId: item.id,
@@ -50,9 +53,10 @@ export function dayInstance(item: Item, d: ISODate, ctx: EngineContext): Instanc
       periodEnd: d,
       measure: v!.measure,
       unit: v!.unit,
-      target: v!.target,
+      target: lowered ? em!.target : v!.target,
       value: v!.measure === "check" ? Math.min(raw, 1) : raw,
       partial: false,
+      ...(lowered ? { emergency: true, fullTarget: v!.target } : {}),
     },
     ctx.asOf,
   );

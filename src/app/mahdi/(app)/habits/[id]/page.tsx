@@ -7,6 +7,7 @@ import { addDays, buildTimeline, itemStreak, startOfWeek, summarize, weekGoals, 
 import { fmtDate, fmtNum, fmtPct, t, weekdayName } from "@/lib/mahdi/i18n";
 import { currentVersion, describeGoal, habitStatus, habitTint } from "@/lib/mahdi/client/derive";
 import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
+import EmergencySetup from "@/components/mahdi/EmergencySetup";
 import HabitForm from "@/components/mahdi/HabitForm";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
@@ -18,6 +19,7 @@ export default function HabitPage() {
   const { state, store, items, toast } = useMahdi();
   const { snap, today } = state;
   const [editing, setEditing] = useState(false);
+  const [emergency, setEmergency] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
   const habit = snap.habits.find((h) => h.id === id);
@@ -76,6 +78,11 @@ export default function HabitPage() {
           {habit.category && <span className="m-chip">{habit.category}</span>}
         </div>
         {habit.notes && <p className="m-soft whitespace-pre-line p-3 text-sm">{habit.notes}</p>}
+        {v.measure !== "check" && status !== "archived" && (
+          <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setEmergency(true)}>
+            <Icon name="shield" size={16} /> {habit.emergencyTarget ? `خانة الطوارئ: ${habit.emergencyTarget} ${v.measure === "amount" ? v.unit : "مرة"}` : "أضف خانة الطوارئ"}
+          </button>
+        )}
       </header>
 
       <section className="grid grid-cols-3 gap-3">
@@ -152,6 +159,7 @@ export default function HabitPage() {
       {projectArchived && <p className="m-note text-sm">{t.errors.archivedProject}</p>}
 
       <HabitForm open={editing} onClose={() => setEditing(false)} habit={habit} />
+      {emergency && <EmergencySetup open onClose={() => setEmergency(false)} habitId={habit.id} />}
       <ConfirmSheet
         open={deleting}
         onClose={() => setDeleting(false)}

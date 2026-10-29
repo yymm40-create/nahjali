@@ -76,7 +76,7 @@ export default function MahdiProvider({ initial, children }: { initial: Snapshot
 
   const { snap } = state;
   const allHabits = useMemo(() => [...snap.habits, ...challengeHabits(snap), ...groupHabits(snap)], [snap]);
-  const items = useMemo(() => toItems(allHabits, state.logs), [allHabits, state.logs]);
+  const items = useMemo(() => toItems(allHabits, state.logs, snap.emergencyDays), [allHabits, state.logs, snap.emergencyDays]);
   const timeline = useMemo(
     () => buildTimeline(items, state.snap.logsFrom, state.today, { asOf: state.today, weekStart: state.snap.profile.weekStart }),
     [items, state.snap.logsFrom, state.today, state.snap.profile.weekStart],

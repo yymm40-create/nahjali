@@ -23,6 +23,8 @@
   --p-amber: #d9822b;
   --p-olive: #8b9a3d;
   --p-stone: #8f8a80;
+  /* «خانة الطوارئ»: the colour of an emergency day's goal, and of a goal reached in an emergency (never the project's) */
+  --m-emergency: #f97316;
 
   position: relative;
   isolation: isolate;
@@ -1652,3 +1654,7 @@ body {
   --m-s4: #eda100;
   --m-s4: light-dark(#eda100, #c98500);
 }
+
+/* «خانة الطوارئ»: a habit on an emergency day (its goal is the smaller one) wears the emergency colour, whatever its project's colour */
+[data-emergency="1"] { --pc: var(--m-emergency) !important; }
+.m-emergency-chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 1px 10px; font-size: 0.78rem; font-weight: 700; color: var(--m-emergency); background: color-mix(in srgb, var(--m-emergency) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--m-emergency) 55%, transparent); }

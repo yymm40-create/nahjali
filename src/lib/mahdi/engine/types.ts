@@ -29,6 +29,11 @@ export interface Item {
   versions: Version[];
   /** The total logged per day. */
   logs: Record<ISODate, number>;
+  /**
+   * «خانة الطوارئ»: the smaller goal the person accepts on a day they cannot do the habit in full, and the days they said
+   * «اليوم طوارئ». On those days the goal is this one (a counter or an amount, never a done / not done habit).
+   */
+  emergency?: { target: number; days: ReadonlySet<ISODate> };
 }
 
 export type SlotKind = "day" | "week" | "month";
@@ -59,6 +64,9 @@ export interface Instance {
   over: number;
   /** True when a week/month goal covers only part of the period (habit started, paused or changed mid-period). */
   partial: boolean;
+  /** «طوارئ»: this day's goal was lowered to the emergency one; `fullTarget` is the habit's usual goal. */
+  emergency?: boolean;
+  fullTarget?: number;
   status: "past" | "current" | "future";
 }
 

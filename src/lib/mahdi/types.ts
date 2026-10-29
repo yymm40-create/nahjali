@@ -105,6 +105,8 @@ export interface Habit {
   milestoneId?: string | null;
   /** a HABIT_COLORS key (null = the project's colour) */
   color?: string | null;
+  /** «خانة الطوارئ» (migration 0097): the smaller goal accepted on an emergency day; null = the habit has no emergency */
+  emergencyTarget?: number | null;
 }
 
 export type PhraseContext = "home" | "day_complete" | "weekly" | "monthly" | "comeback" | "milestone" | "notification";
@@ -133,6 +135,8 @@ export interface Snapshot {
   /** strategic goals' milestones, and what was done towards each (milestoneId → date → value); empty before SQL 0086 */
   milestones?: Milestone[];
   milestoneLogs?: Record<string, Record<ISODate, number>>;
+  /** «خانة الطوارئ»: habitId → the days the person chose «اليوم طوارئ» for it (from `logsFrom` on); empty before SQL 0097 */
+  emergencyDays?: Record<string, ISODate[]>;
   /** habitId → date → value. Only days from `logsFrom` on. */
   logs: Record<string, Record<ISODate, number>>;
   logsFrom: ISODate;
