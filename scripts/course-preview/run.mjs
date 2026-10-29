@@ -33,7 +33,7 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const port = server.address().port;
 const { default: puppeteer } = await import(join(root, "node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js"));
-const exe = ["/opt/pw-browsers/chromium-1194/chrome-linux/chrome", "/opt/pw-browsers/chromium"].find(existsSync);
+const exe = [process.env.CHROME, "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", "/opt/pw-browsers/chromium", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"].filter(Boolean).find(existsSync);
 const browser = await puppeteer.launch({ executablePath: exe, headless: true, args: ["--no-sandbox"] });
 const shots = [
   ["phone-A", "phase=A", 390, 844, true], ["phone-A-top", "phase=A", 390, 844, false], ["phone-B", "phase=B", 390, 844, true], ["phone-C", "phase=C", 390, 844, true], ["phone-soon", "phase=soon", 390, 844, false],
