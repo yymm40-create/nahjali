@@ -10,6 +10,7 @@ import { bySort, currentVersion, describeGoal, habitStatus, habitTint } from "@/
 import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
 import DayBars from "@/components/mahdi/DayBars";
 import HabitForm from "@/components/mahdi/HabitForm";
+import EmergencySetup from "@/components/mahdi/EmergencySetup";
 import Icon from "@/components/mahdi/Icon";
 import ProjectForm from "@/components/mahdi/ProjectForm";
 import GoalPlanView from "@/components/mahdi/goals/GoalPlanView";
@@ -24,6 +25,7 @@ export default function ProjectPage() {
   const { state, store, items, toast } = useMahdi();
   const { snap, today } = state;
   const [editing, setEditing] = useState(false);
+  const [emergency, setEmergency] = useState(false);
   const [adding, setAdding] = useState<{ milestoneId: string | null } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -120,6 +122,11 @@ export default function ProjectPage() {
           </button>
         </div>
         {archived && <p className="m-note text-sm">{t.project.archivedNote}</p>}
+        {!archived && (
+          <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setEmergency(true)}>
+            <Icon name="shield" size={16} /> خانة الطوارئ
+          </button>
+        )}
       </header>
 
       <section className="grid gap-3 sm:grid-cols-3" aria-label={t.project.stats}>
@@ -194,6 +201,7 @@ export default function ProjectPage() {
       </section>
 
       <ProjectForm open={editing} onClose={() => setEditing(false)} project={project} />
+      {emergency && <EmergencySetup open onClose={() => setEmergency(false)} projectIds={[project.id]} />}
       <HabitForm open={Boolean(adding)} onClose={() => setAdding(null)} projectId={project.id} milestoneId={adding?.milestoneId ?? undefined} />
       <ConfirmSheet
         open={deleting}

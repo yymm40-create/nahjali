@@ -6,6 +6,7 @@ import type { ISODate, Instance, Version } from "@/lib/mahdi/engine";
 import { fmtNum, fmtRelativeDay, t } from "@/lib/mahdi/i18n";
 import { describeGoal, itemHref, parseNumberInput, quantity } from "@/lib/mahdi/client/derive";
 import type { Habit } from "@/lib/mahdi/types";
+import EmergencyDay from "./EmergencyDay";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
 import Sheet from "./Sheet";
@@ -133,6 +134,8 @@ export default function LogSheet({
           {inst.progress >= 1 && <p className="font-semibold" style={{ color: "var(--m-success)" }}>{inst.over > 0 ? `${t.habit.overachieved} (+${fmtNum(inst.over)})` : t.habit.goalReached}</p>}
           {inst.partial && <p className="m-muted">{inst.kind === "week" ? t.habit.partialWeek : t.habit.partialMonth}</p>}
         </div>
+
+        <EmergencyDay habit={habit} version={v} inst={inst} date={date} />
 
         <Link href={itemHref(habit.id)} className="m-btn m-btn-quiet w-full" onClick={onClose}>
           {t.habit.actions.open} <Icon name="chevronLeft" size={18} />

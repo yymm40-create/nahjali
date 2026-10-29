@@ -101,22 +101,31 @@ export function TimeHabitLink({ reader, onChange }: { reader: ReaderState; onCha
 const URL = "/api/mahdi/khatma/reader";
 
 /**
- * The bar at the top of the reader. `extra`: a line of the reader's own (e.g. the khatma's progress). `page`: which
- * portion is on the screen — the stopwatch starts again from zero with each one (the day's total keeps all of them).
+ * The stopwatch of a reading visit: it goes on from one page of the reader to the next (each page is a new screen, so it is
+ * kept here, outside the screens) and starts again from zero only after the person has been away from the reader for a while.
  */
-export default function ReaderClock({ extra, page }: { extra?: string; page?: string | number }) {
+const VISIT_GAP_MS = 10 * 60_000;
+const visit = { seconds: 0, running: true, leftAt: 0 };
+const visitSeconds = () => {
+  if (visit.leftAt && Date.now() - visit.leftAt > VISIT_GAP_MS) {
+    visit.seconds = 0;
+    visit.running = true;
+  }
+  visit.leftAt = 0;
+  return visit.seconds;
+};
+
+/**
+ * The bar at the top of the reader. `extra`: a line of the reader's own (e.g. the khatma's progress). The stopwatch does NOT start
+ * again when the person moves to another portion: it goes on for the whole visit (the day's total keeps counting too).
+ */
+export default function ReaderClock({ extra }: { extra?: string }) {
   const { store } = useMahdi();
   const { state: reader, initial, setHabit, refresh } = useReaderState();
-  const [running, setRunning] = useState(true);
-  const [session, setSession] = useState(0);
-  // the seconds of the pages read before this one today (the stopwatch shows only this page's)
-  const [before, setBefore] = useState(0);
-  const [seenPage, setSeenPage] = useState(page);
-  if (seenPage !== page) {
-    setSeenPage(page);
-    setBefore((b) => b + session);
-    setSession(0);
-  }
+  const [running, setRunning] = useState(() => visit.running);
+  // the visit's seconds when this screen opened (the day's total from the server already holds the ones reported before)
+  const [from] = useState(visitSeconds);
+  const [session, setSession] = useState(from);
   const [panel, setPanel] = useState(false);
   const pending = useRef(0);
 
@@ -139,7 +148,8 @@ export default function ReaderClock({ extra, page }: { extra?: string; page?: st
     const tick = setInterval(() => {
       if (!running || document.visibilityState !== "visible") return;
       pending.current += 1;
-      setSession((s) => s + 1);
+      visit.seconds += 1;
+      setSession(visit.seconds);
       if (pending.current >= CLOCK.reportEvery) flush();
     }, 1000);
     const onHide = () => {
@@ -151,11 +161,12 @@ export default function ReaderClock({ extra, page }: { extra?: string; page?: st
       clearInterval(tick);
       document.removeEventListener("visibilitychange", onHide);
       window.removeEventListener("pagehide", flush);
+      visit.leftAt = Date.now();
       flush();
     };
   }, [running, flush]);
 
-  const today = initial + before + session;
+  const today = initial + (session - from);
   return (
     <div className="sticky top-[calc(56px+env(safe-area-inset-top,0px))] z-10 -mx-1 mb-4 lg:top-16">
       <div className="m-card space-y-2 px-3 py-2" style={{ background: "color-mix(in srgb, var(--m-surface-solid) 92%, transparent)", backdropFilter: "blur(10px)" }}>
@@ -166,7 +177,7 @@ export default function ReaderClock({ extra, page }: { extra?: string; page?: st
             اليوم {minutesText(wholeMinutes(today))}
             {reader?.timeHabitId && " · 🔗 تنضاف لعادتك"}
           </span>
-          <button type="button" className="m-icon-btn m-btn-ghost" onClick={() => setRunning((v) => !v)} aria-label={running ? "أوقف العدّاد" : "كمّل العدّاد"} aria-pressed={!running}>
+          <button type="button" className="m-icon-btn m-btn-ghost" onClick={() => setRunning((v) => { visit.running = !v; return !v; })} aria-label={running ? "أوقف العدّاد" : "كمّل العدّاد"} aria-pressed={!running}>
             <Icon name={running ? "pause" : "play"} size={18} />
           </button>
           <button type="button" className="m-icon-btn m-btn-ghost" onClick={() => setPanel((v) => !v)} aria-label="اربط بعادة القراءة" aria-expanded={panel}>

@@ -56,7 +56,7 @@ export default function QuranText({ words, eyebrow }: { words: PortionWords; eye
       localStorage.setItem(SIZE_KEY, String(s));
     } catch {}
   }
-  const font = { fontFamily: "var(--font-quran), serif", fontSize: `${SIZES[size]}rem` };
+  const font = { fontFamily: "var(--font-quran), var(--font-amiri), serif", fontSize: `${SIZES[size]}rem` };
   return (
     <>
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -79,7 +79,7 @@ export default function QuranText({ words, eyebrow }: { words: PortionWords; eye
         {words.suras.map((s) => (
           <section key={s.sura} className="space-y-3">
             {s.ayat[0]?.n === 1 && (
-              <h2 className="rounded-xl border-2 py-2 text-center" style={{ borderColor: "var(--m-gold)", fontFamily: "var(--font-quran), serif", fontSize: "1.4rem" }}>
+              <h2 className="rounded-xl border-2 py-2 text-center" style={{ borderColor: "var(--m-gold)", fontFamily: "var(--font-quran), var(--font-amiri), serif", fontSize: "1.4rem" }}>
                 سُورَةُ {s.name}
               </h2>
             )}

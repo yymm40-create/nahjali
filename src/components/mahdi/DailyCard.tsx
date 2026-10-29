@@ -31,7 +31,7 @@ export default function DailyCard() {
           <Icon name="book" size={16} className="m-gold" />
           آية اليوم
         </span>
-        <p className="mt-2 text-center leading-[2.1]" style={{ fontFamily: "var(--font-quran), serif", fontSize: "1.35rem" }}>
+        <p className="mt-2 text-center leading-[2.1]" style={{ fontFamily: "var(--font-quran), var(--font-amiri), serif", fontSize: "1.35rem" }}>
           {ayah.text_ar}
         </p>
         <p className="m-muted mt-1 text-center text-sm">{ayahRef(ayah)}</p>

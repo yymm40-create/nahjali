@@ -75,7 +75,7 @@ export const POST = mahdiRoute(async (req: Request) => {
   const closing = typeof body.closing === "string" && (t.share.closings as readonly string[]).includes(body.closing) ? body.closing : "";
 
   const snap = await loadSnapshot(supabase, profile);
-  const tl = buildTimeline(toItems([...snap.habits, ...challengeHabits(snap)], snap.logs), snap.logsFrom, snap.today, { asOf: snap.today, weekStart: profile.weekStart });
+  const tl = buildTimeline(toItems([...snap.habits, ...challengeHabits(snap)], snap.logs, snap.emergencyDays), snap.logsFrom, snap.today, { asOf: snap.today, weekStart: profile.weekStart });
   const payload = buildShare(tl, snap, {
     kind,
     showDelta: body.showDelta === true,

@@ -50,7 +50,7 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
   const today = todayIn(profile.timeZone);
   const logsFrom = addDays(today, -HISTORY_DAYS);
 
-  const [shrines, phrases, extra, reading, username, tasks, projects, habits, versions, logs, groups, plan] = await Promise.all([
+  const [shrines, phrases, extra, reading, username, tasks, projects, habits, versions, logs, groups, plan, emergencyDays] = await Promise.all([
     getShrines(),
     supabase
       .from("mahdi_phrases")
@@ -75,6 +75,8 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
     loadGroupPlan(createAdminClient(), profile.userId, logsFrom).catch(() => null),
     // strategic goals' milestones arrive with migration 0086; until it runs, none
     loadMilestones(supabase).catch(() => ({ milestones: [], logs: {} })),
+    // «خانة الطوارئ» arrives with migration 0098; until it runs, none
+    loadEmergencyDays(supabase, logsFrom).catch(() => ({})),
   ]);
 
   const byHabit: Snapshot["logs"] = {};
@@ -94,6 +96,7 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
     projects: projects.map(projectFromRow),
     habits: habitsFromRows(habits, versions),
     logs: byHabit,
+    emergencyDays,
     logsFrom,
     today,
     tasks: tasks ?? [],
@@ -102,6 +105,16 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
     milestones: plan.milestones,
     milestoneLogs: plan.logs,
   };
+}
+
+/** «خانة الطوارئ»: the days the person chose «اليوم طوارئ», per habit (through RLS: their own). */
+export async function loadEmergencyDays(supabase: SupabaseClient, from: string): Promise<Record<string, string[]>> {
+  const rows = await selectAll<{ habit_id: string; day: string }>((a, b) =>
+    supabase.from("mahdi_emergency_days").select("habit_id,day").gte("day", from).order("habit_id").order("day").range(a, b),
+  );
+  const out: Record<string, string[]> = {};
+  for (const r of rows) (out[r.habit_id] ??= []).push(r.day);
+  return out;
 }
 
 /** Strategic goals' milestones and everything logged towards them (through RLS: the user's own). */

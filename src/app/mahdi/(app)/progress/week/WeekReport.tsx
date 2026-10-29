@@ -7,6 +7,7 @@ import { fmtDate, fmtNum, fmtPct, t, weekdayName } from "@/lib/mahdi/i18n";
 import { bySort, itemHref, pickPhrase } from "@/lib/mahdi/client/derive";
 import { weekInsights } from "@/lib/mahdi/client/insights";
 import Icon from "@/components/mahdi/Icon";
+import EmergencySummary from "@/components/mahdi/EmergencySummary";
 import ReviewNote from "@/components/mahdi/ReviewNote";
 import { BarRow, Delta, Insights, ProgressTabs, Tile } from "@/components/mahdi/Stats";
 import { useMahdi } from "@/components/mahdi/Provider";
@@ -88,6 +89,8 @@ export default function WeekReport({ start }: { start?: string }) {
             <Tile label={t.progress.weekStreak} value={t.units.weeks(streak.current)} sub={`${t.progress.best}: ${t.units.weeks(streak.best)}`} />
             <Tile label={t.reports.extra} value={fmtNum(s.overCount)} sub={s.overCount ? t.reports.extraTimes(s.overCount) : undefined} />
           </section>
+
+          <EmergencySummary from={ws} to={addDays(ws, 6)} />
 
           {isCurrent && <Insights lines={weekInsights(timeline, snap.projects, snap.habits)} />}
           {phrase && <p className="text-center m-muted">{phrase.text}</p>}

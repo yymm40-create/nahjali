@@ -73,6 +73,8 @@ export interface HabitRow {
   /** migration 0086 */
   milestone_id?: string | null;
   color?: string | null;
+  /** migration 0098 */
+  emergency_target?: number | string | null;
 }
 export interface VersionRow {
   habit_id: string;
@@ -199,5 +201,6 @@ export function habitsFromRows(habits: HabitRow[], versions: VersionRow[]): Habi
     versions: byHabit.get(h.id) ?? [],
     milestoneId: h.milestone_id ?? null,
     color: h.color ?? null,
+    emergencyTarget: h.emergency_target == null ? null : Number(h.emergency_target),
   }));
 }

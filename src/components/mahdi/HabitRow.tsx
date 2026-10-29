@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { versionAt, type ISODate, type Instance } from "@/lib/mahdi/engine";
+import { doneByEmergency, versionAt, type ISODate, type Instance } from "@/lib/mahdi/engine";
 import { fmtNum, t } from "@/lib/mahdi/i18n";
 import { habitColorHex } from "@config/mahdi";
 import { describeGoal, habitTint, quantity } from "@/lib/mahdi/client/derive";
@@ -29,7 +29,8 @@ export default function HabitRow({ habit, inst, date, project }: { habit: Habit;
   const dayValue = state.logs[habit.id]?.[date] ?? 0;
   const done = inst.progress >= 1;
   const todayDone = v.measure === "check" && dayValue >= 1;
-  const color = habitColorHex(habit.color) ?? `var(--p-${project?.color ?? "gold"})`;
+  // «طوارئ»: a day lowered to the emergency goal wears the emergency colour (a full day keeps the habit's own)
+  const color = inst.emergency ? "var(--m-emergency)" : habitColorHex(habit.color) ?? `var(--p-${project?.color ?? "gold"})`;
   const weekly = inst.kind !== "day";
   const periodLabel = inst.kind === "week" ? t.home.thisWeek : inst.kind === "month" ? t.home.thisMonth : "";
 
@@ -66,7 +67,7 @@ export default function HabitRow({ habit, inst, date, project }: { habit: Habit;
         : `${t.habit.addAmount}: ${habit.name}`;
 
   return (
-    <li className={`p-${project?.color ?? "gold"} flex items-center gap-3 py-2.5`} style={habitTint(habit)}>
+    <li className={`p-${project?.color ?? "gold"} flex items-center gap-3 py-2.5`} style={habitTint(habit)} data-emergency={inst.emergency ? "1" : undefined}>
       <button type="button" onClick={tap} className="m-tap" data-done={done || todayDone} aria-label={tapLabel} aria-pressed={v.measure === "check" ? todayDone : undefined}>
         <ProgressRing value={inst.progress} size={52} stroke={4} color={color}>
           {done || todayDone ? (
@@ -91,6 +92,12 @@ export default function HabitRow({ habit, inst, date, project }: { habit: Habit;
         <span key={bump} className={`m-num block truncate text-sm m-muted ${bump ? "m-bump" : ""}`}>
           {progressText}
         </span>
+        {inst.emergency && (
+          <span className="m-emergency-chip mt-1">
+            <Icon name="shield" size={13} /> {doneByEmergency(inst) ? "تمّت بالطوارئ" : "طوارئ"}
+            <span className="m-num">({fmtNum(inst.target)} بدل {fmtNum(inst.fullTarget ?? inst.target)})</span>
+          </span>
+        )}
         {inst.over > 0 && (
           <span className="m-chip m-chip-success mt-1" title={t.habit.overachieved}>
             <Icon name="sparkle" size={14} /> {t.habit.overachieved}

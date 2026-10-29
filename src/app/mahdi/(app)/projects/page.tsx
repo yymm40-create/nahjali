@@ -6,6 +6,7 @@ import { dayGoals, scoreBy, startOfWeek, summarize, weekGoals } from "@/lib/mahd
 import { fmtPct, t } from "@/lib/mahdi/i18n";
 import { bySort } from "@/lib/mahdi/client/derive";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
+import EmergencySetup from "@/components/mahdi/EmergencySetup";
 import Icon from "@/components/mahdi/Icon";
 import ProjectForm from "@/components/mahdi/ProjectForm";
 import { useMahdi } from "@/components/mahdi/Provider";
@@ -14,6 +15,7 @@ import { useMahdi } from "@/components/mahdi/Provider";
 export default function ProjectsPage() {
   const { state, store, timeline, toast } = useMahdi();
   const [creating, setCreating] = useState(false);
+  const [emergency, setEmergency] = useState(false);
   const { snap, today } = state;
   const active = snap.projects.filter((p) => !p.archivedAt).sort(bySort);
   const archived = snap.projects.filter((p) => p.archivedAt).sort(bySort);
@@ -39,9 +41,14 @@ export default function ProjectsPage() {
     <div className="space-y-6">
       <header className="flex items-center justify-between gap-3">
         <h1 className="m-display text-3xl">{t.nav.projects}</h1>
-        <button type="button" className="m-btn m-btn-primary m-btn-sm" onClick={() => setCreating(true)}>
-          <Icon name="plus" size={18} /> {t.project.newTitle}
-        </button>
+        <div className="flex items-center gap-2">
+          <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setEmergency(true)}>
+            <Icon name="shield" size={16} /> خانة الطوارئ
+          </button>
+          <button type="button" className="m-btn m-btn-primary m-btn-sm" onClick={() => setCreating(true)}>
+            <Icon name="plus" size={18} /> {t.project.newTitle}
+          </button>
+        </div>
       </header>
 
       {active.length === 0 && (
@@ -106,6 +113,7 @@ export default function ProjectsPage() {
         </section>
       )}
       <ProjectForm open={creating} onClose={() => setCreating(false)} />
+      {emergency && <EmergencySetup open onClose={() => setEmergency(false)} />}
     </div>
   );
 }

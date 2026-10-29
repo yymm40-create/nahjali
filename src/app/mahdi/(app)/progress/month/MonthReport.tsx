@@ -7,6 +7,7 @@ import { fmtDate, fmtMonth, fmtNum, fmtPct, fmtPoints, t } from "@/lib/mahdi/i18
 import { bySort, itemHref, pickPhrase } from "@/lib/mahdi/client/derive";
 import { monthInsight } from "@/lib/mahdi/client/insights";
 import Icon from "@/components/mahdi/Icon";
+import EmergencySummary from "@/components/mahdi/EmergencySummary";
 import { BarRow, Delta, Insights, ProgressTabs, Tile } from "@/components/mahdi/Stats";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { periodGoals } from "@/lib/mahdi/engine";
@@ -89,6 +90,7 @@ export default function MonthReport({ month }: { month?: string }) {
             <Tile label={t.reports.extra} value={fmtNum(s.overCount)} sub={s.overCount ? t.reports.extraTimes(s.overCount) : undefined} />
             <Tile label={t.reports.vsPrevMonth} value={c.delta === null ? "—" : fmtPoints(c.delta)} />
           </section>
+          <EmergencySummary from={ms} to={endOfMonth(ms)} />
 
           {insight && <Insights lines={[insight]} />}
           {phrase && <p className="text-center m-muted">{phrase.text}</p>}
