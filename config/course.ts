@@ -109,8 +109,8 @@ export const DEFAULT_SETTINGS: CourseSettings = {
   ladderCourseId: "",
   ladderRisks: [],
   terms: "",
-  // the owner, 29 October 2026: «الثلاثاء القادم ٣ نوفمبر، والساعة تتحدد لاحقًا»
-  liveWhen: "الثلاثاء ٣ نوفمبر ٢٠٢٦ · الساعة تتحدد قريبًا",
+  // the owner, 29 October 2026: «الخميس القادم ٥ نوفمبر، والساعة تتحدد لاحقًا»
+  liveWhen: "الخميس ٥ نوفمبر ٢٠٢٦ · الساعة تتحدد قريبًا",
   videoPath: null,
   videoUrl: "",
   posterPath: null,

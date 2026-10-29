@@ -171,7 +171,7 @@ describe("the clock course («دورة صانع المحتوى»): what the owne
     const { welcomeText } = await import("@/lib/course/telegram");
     const t = welcomeText(mine("live"), L);
     expect(t).toContain("وقّف السكرول");
-    expect(t).toContain("الثلاثاء ٣ نوفمبر");
+    expect(t).toContain("الخميس ٥ نوفمبر");
     expect(t).toContain("https://chat.whatsapp.com/abc");
     expect(t).not.toContain("دوراتي");
   });
