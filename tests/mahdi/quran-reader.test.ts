@@ -111,15 +111,19 @@ describe("free reading", () => {
 
 describe("the reader's wiring", () => {
   it("the clock sits on both readers and the tabs stay out of the way while reading", () => {
-    expect(read("src/app/mahdi/(app)/khatma/read/[q]/page.tsx")).toMatch(/<ReaderClock extra=\{extra\} page=\{q\} \/>/);
-    expect(read("src/app/mahdi/(app)/khatma/free/[p]/page.tsx")).toMatch(/<ReaderClock [^>]*page=\{p\} \/>/);
+    expect(read("src/app/mahdi/(app)/khatma/read/[q]/page.tsx")).toMatch(/<ReaderClock extra=\{extra\} \/>/);
+    expect(read("src/app/mahdi/(app)/khatma/free/[p]/page.tsx")).toMatch(/<ReaderClock extra=\{`قراءة حرة[^\n]*\} \/>/);
+    expect(read("src/app/mahdi/(app)/khatma/free/[p]/page.tsx")).not.toMatch(/<ReaderClock [^\n]*page=/);
     expect(read("src/components/mahdi/khatma/KhatmaTabs.tsx")).toMatch(/\/free\//);
   });
-  it("the stopwatch starts again from zero with each page, and the day's total keeps them all", () => {
+  it("the stopwatch goes on from page to page (the owner's rule), and the day's total keeps counting too", () => {
     const clock = read("src/components/mahdi/khatma/ReaderClock.tsx");
-    expect(clock).toMatch(/seenPage !== page/);
-    expect(clock).toMatch(/setSession\(0\)/);
-    expect(clock).toMatch(/initial \+ before \+ session/);
+    // kept outside the screens (each page is a new screen) and cleared only after a long absence
+    expect(clock).toMatch(/const visit = \{ seconds: 0/);
+    expect(clock).toMatch(/VISIT_GAP_MS/);
+    expect(clock).toMatch(/visit\.seconds \+= 1/);
+    expect(clock).not.toMatch(/seenPage|setSession\(0\)/);
+    expect(clock).toMatch(/initial \+ \(session - from\)/);
   });
   it("the tables are server-only and the time route credits the habit through the person's own client", () => {
     const sql = read("supabase/migrations/0084_mahdi_quran_reader.sql");

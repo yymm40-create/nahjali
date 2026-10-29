@@ -403,7 +403,7 @@ function PortionCard({ division, n }: { division: Division; n: number }) {
   const { range, opening } = portionSummary(division, n);
   return (
     <div className="space-y-2 text-center">
-      {opening && <p className="text-2xl leading-loose" style={{ fontFamily: "var(--font-quran), serif" }}>{opening}…</p>}
+      {opening && <p className="text-2xl leading-loose" style={{ fontFamily: "var(--font-quran), var(--font-amiri), serif" }}>{opening}…</p>}
       <p className="m-num text-sm m-muted">{range}</p>
     </div>
   );
