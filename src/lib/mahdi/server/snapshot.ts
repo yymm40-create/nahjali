@@ -75,7 +75,7 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
     loadGroupPlan(createAdminClient(), profile.userId, logsFrom).catch(() => null),
     // strategic goals' milestones arrive with migration 0086; until it runs, none
     loadMilestones(supabase).catch(() => ({ milestones: [], logs: {} })),
-    // «خانة الطوارئ» arrives with migration 0097; until it runs, none
+    // «خانة الطوارئ» arrives with migration 0098; until it runs, none
     loadEmergencyDays(supabase, logsFrom).catch(() => ({})),
   ]);
 

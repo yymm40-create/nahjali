@@ -73,7 +73,7 @@ export interface HabitRow {
   /** migration 0086 */
   milestone_id?: string | null;
   color?: string | null;
-  /** migration 0097 */
+  /** migration 0098 */
   emergency_target?: number | string | null;
 }
 export interface VersionRow {

@@ -7,10 +7,10 @@ import { loadSnapshot } from "@/lib/mahdi/server/snapshot";
 import { parseDate } from "@/lib/mahdi/server/validate";
 
 // «خانة الطوارئ»: (1) which habits carry an emergency goal and how small it is — many at once, from one or several projects;
-// (2) which days the person chose «اليوم طوارئ» for a habit. Needs migration 0097.
+// (2) which days the person chose «اليوم طوارئ» for a habit. Needs migration 0098.
 
 const MISSING = ["42P01", "42703", "PGRST204", "PGRST205"];
-const NOT_READY = "خانة الطوارئ تحتاج تجهيز قاعدة البيانات (ملف 0097).";
+const NOT_READY = "خانة الطوارئ تحتاج تجهيز قاعدة البيانات (ملف 0098).";
 const ready = <T>(res: { data: T; error: unknown }): T => {
   if (res.error && MISSING.includes((res.error as { code?: string }).code ?? "")) throw new UserError(NOT_READY, 503);
   return check(res);

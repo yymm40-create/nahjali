@@ -77,7 +77,7 @@ describe("the week and the month report", () => {
 
 describe("the wiring", () => {
   it("the migration keeps the goal on the habit and the days in an own-rows table", () => {
-    const sql = read("supabase/migrations/0097_mahdi_emergency.sql");
+    const sql = read("supabase/migrations/0098_mahdi_emergency.sql");
     expect(sql).toMatch(/add column if not exists emergency_target numeric/);
     expect(sql).toMatch(/create table if not exists public\.mahdi_emergency_days/);
     expect(sql).toMatch(/enable row level security/);
