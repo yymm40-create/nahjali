@@ -29,6 +29,7 @@ import { useMahdi } from "./Provider";
 import ReadingCard from "./ReadingCard";
 import DesignGoals from "./home/DesignGoals";
 import DesignQuick from "./home/DesignQuick";
+import EmergencySetup from "./EmergencySetup";
 import Tick, { TICK_SHAPES, useTickPref } from "./home/Tick";
 import { shownPlace, useLook } from "./ThemeRoot";
 import ShrineArt from "./ShrineArt";
@@ -57,6 +58,7 @@ export default function HomeBoard() {
   // before migration 0062 the account keeps no layout: this device's copy is read once the page is on the screen
   // (never during the first render, which must match the server's)
   const [local, setLocal] = useState(false);
+  const [emergency, setEmergency] = useState(false);
   useEffect(() => {
     if (local || profile.homeWidgets) return;
     const saved = readLocal();
@@ -124,9 +126,17 @@ export default function HomeBoard() {
           <h1 className="m-display m-shadow-text text-2xl sm:text-3xl">أهلًا {profile.displayName.split(" ")[0]} 👋</h1>
           <p className="m-shadow-text text-sm font-semibold m-gold">{t.greeting}</p>
         </div>
-        <button type="button" className="m-btn m-btn-ghost m-btn-sm shrink-0" onClick={() => setArranging(true)}>
-          <Icon name="grip" size={18} /> رتّب
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {/* «خانة الطوارئ»: pick the projects, then which of their habits get a smaller goal for emergency days */}
+          {hasProjects && (
+            <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setEmergency(true)}>
+              <Icon name="shield" size={16} /> الطوارئ
+            </button>
+          )}
+          <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setArranging(true)}>
+            <Icon name="grip" size={18} /> رتّب
+          </button>
+        </div>
       </header>
       {where === "horizon" && <ShrineArt shrineId={look.shrine?.id ?? profile.shrineId} style={design.art} className="m-shrine-horizon" label={shrineName ? `رسمة ${shrineName}` : undefined} />}
 
@@ -155,6 +165,7 @@ export default function HomeBoard() {
         <Arrange list={list} onChange={save} />
       </Sheet>
       <ProjectForm open={newProject} onClose={() => setNewProject(false)} />
+      {emergency && <EmergencySetup open onClose={() => setEmergency(false)} />}
     </div>
   );
 }
