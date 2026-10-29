@@ -5,6 +5,8 @@
 //   after 48 h   live goes up, recorded goes up again, the gift stays
 // «زهرة» is the gift's name: 1 زهرة = 1 riyal of free balance in the site. Everything here is a DEFAULT the owner edits;
 // the numbers are his words (live was 80, recorded was 150; launch 40; then 80/100). Pure (page and server alike).
+// Since 29 October 2026 the clock drives ONE course again (`ladderCourseId`, «دورة صانع المحتوى»): day one the whole course
+// 49.99, day two live 49 or the whole 100, then live 80 and recorded 150. Every other course keeps its one recorded price.
 
 export const COURSE = {
   base: "/jawad-ai/course",
@@ -54,7 +56,8 @@ export interface CourseSettings {
   /** hours after launch when the first / second price ends */
   hoursA: number;
   hoursB: number;
-  prices: { comboA: number; liveB: number; recordedB: number; liveC: number; recordedC: number };
+  /** riyals, to the halala (49.99); 0 = not on sale in that phase (the first day's whole course is always on sale) */
+  prices: { comboA: number; liveB: number; recordedB: number; comboB: number; liveC: number; recordedC: number };
   /** the usual prices (struck through when the price is lower) */
   was: { live: number; recorded: number };
   /** the gift of زهرات (riyals of balance) that comes with an offer; 0 = none */
@@ -64,6 +67,17 @@ export interface CourseSettings {
   problem: string;
   days: Day[];
   risks: string[];
+  /**
+   * the course whose prices follow the clock (a learn_courses id): its page sells the live, recorded and whole course at the
+   * phase's prices and shows the words above (headline, problem, days); every other course keeps its one price. "" = none.
+   */
+  ladderCourseId: string;
+  /** what removes the risk on the clock course's page (the other courses keep `risks`) */
+  ladderRisks: string[];
+  /** the clock course's terms, shown on its page and before paying (the owner's words) */
+  terms: string;
+  /** when the clock course's live session is (free text: the day now, the hour once the owner sets it) */
+  liveWhen: string;
   /** a file in the public bucket (the owner's reel), or an outside link (YouTube, Instagram, a direct video) */
   videoPath: string | null;
   videoUrl: string;
@@ -80,8 +94,9 @@ export const DEFAULT_SETTINGS: CourseSettings = {
   launchAt: null,
   hoursA: 24,
   hoursB: 48,
-  prices: { comboA: 40, liveB: 40, recordedB: 80, liveC: 80, recordedC: 100 },
-  was: { live: 80, recorded: 60 },
+  // the owner's ladder (29 October 2026): day one the whole course 49.99; day two live 49 or the whole 100; then live 80, recorded 150
+  prices: { comboA: 49.99, liveB: 49, recordedB: 0, comboB: 100, liveC: 80, recordedC: 150 },
+  was: { live: 80, recorded: 150 },
   bonus: { comboA: 0, recordedB: 0, recordedC: 0 },
   headline: "تعلّم الجواد الذكاء الاصطناعي بفيديوهات مسجلة تشوفها وقت ما تبي",
   subhead: "دورة مسجلة تمشي فيها على الجواد الذكي خطوة بخطوة: الموقع وأقسامه وروبوتاته، وصناعة الصور والفيديو والأفلام، تشوفها في حسابك وقت ما تبي، من أي جهاز.",
@@ -91,6 +106,11 @@ export const DEFAULT_SETTINGS: CourseSettings = {
     { title: "اصنع بالذكاء الاصطناعي", points: ["الصور والفيديو والصوت خطوة بخطوة", "صناعة الفيلم والمشهد السينمائي والمونتاج"] },
   ],
   risks: ["الدورة المسجلة تظهر في حسابك في «دوراتي» مدى الحياة", "تشوفها من أي جهاز وقت ما تبي", "تواصل مباشر معي لو واجهتك مشكلة"],
+  ladderCourseId: "",
+  ladderRisks: [],
+  terms: "",
+  // the owner, 29 October 2026: «الخميس القادم ٥ نوفمبر، والساعة تتحدد لاحقًا»
+  liveWhen: "الخميس ٥ نوفمبر ٢٠٢٦ · الساعة تتحدد قريبًا",
   videoPath: null,
   videoUrl: "",
   posterPath: null,
@@ -133,6 +153,11 @@ const num = (v: unknown, lo: number, hi: number, d: number) => {
   const n = Number(v);
   return Number.isFinite(n) ? Math.max(lo, Math.min(hi, Math.round(n))) : d;
 };
+/** riyals kept to the halala */
+const money = (v: unknown, lo: number, hi: number, d: number) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(lo, Math.min(hi, Math.round(n * 100) / 100)) : d;
+};
 const text = (v: unknown, max: number, d = "") => (typeof v === "string" ? v.trim().slice(0, max) : d);
 const link = (v: unknown) => {
   const s = text(v, 500);
@@ -167,13 +192,14 @@ export function readSettings(raw: unknown): CourseSettings {
     hoursA,
     hoursB: Math.max(hoursA + 1, num(o.hoursB, 2, 2000, d.hoursB)),
     prices: {
-      comboA: num(pr.comboA, 1, 100000, d.prices.comboA),
-      liveB: num(pr.liveB, 1, 100000, d.prices.liveB),
-      recordedB: num(pr.recordedB, 1, 100000, d.prices.recordedB),
-      liveC: num(pr.liveC, 1, 100000, d.prices.liveC),
-      recordedC: num(pr.recordedC, 1, 100000, d.prices.recordedC),
+      comboA: money(pr.comboA, 1, 100000, d.prices.comboA),
+      liveB: money(pr.liveB, 0, 100000, d.prices.liveB),
+      recordedB: money(pr.recordedB, 0, 100000, d.prices.recordedB),
+      comboB: money(pr.comboB, 0, 100000, d.prices.comboB),
+      liveC: money(pr.liveC, 0, 100000, d.prices.liveC),
+      recordedC: money(pr.recordedC, 0, 100000, d.prices.recordedC),
     },
-    was: { live: num(wa.live, 1, 100000, d.was.live), recorded: num(wa.recorded, 1, 100000, d.was.recorded) },
+    was: { live: money(wa.live, 1, 100000, d.was.live), recorded: money(wa.recorded, 1, 100000, d.was.recorded) },
     bonus: { comboA: num(bo.comboA, 0, 100000, 0), recordedB: num(bo.recordedB, 0, 100000, 0), recordedC: num(bo.recordedC, 0, 100000, 0) },
     headline: ((t) => (!t || (OLD_DEFAULTS.headline as readonly string[]).includes(t) ? d.headline : t))(text(o.headline, 240)),
     subhead: ((t) => (!t || (OLD_DEFAULTS.subhead as readonly string[]).includes(t) ? d.subhead : t))(text(o.subhead, 400)),
@@ -184,6 +210,11 @@ export function readSettings(raw: unknown): CourseSettings {
       .map((r) => ((OLD_DEFAULTS.risks as readonly string[]).includes(r) ? d.risks[0] : r))
       .filter(Boolean)
       .slice(0, 10),
+    ladderCourseId: typeof o.ladderCourseId === "string" && /^[0-9a-f-]{36}$/i.test(o.ladderCourseId) ? o.ladderCourseId.toLowerCase() : "",
+    ladderRisks: (Array.isArray(o.ladderRisks) ? o.ladderRisks : d.ladderRisks).map((r) => text(r, 200)).filter(Boolean).slice(0, 10),
+    terms: text(o.terms, 800),
+    // (absent = the default; an empty one the owner saved stays empty)
+    liveWhen: o.liveWhen === undefined ? d.liveWhen : text(o.liveWhen, 200),
     videoPath: typeof o.videoPath === "string" && /^course\/[0-9a-f-]{36}\.(mp4)$/.test(o.videoPath) ? o.videoPath : null,
     videoUrl: link(o.videoUrl),
     posterPath: typeof o.posterPath === "string" && /^course\/[0-9a-f-]{36}\.(png|jpg|webp)$/.test(o.posterPath) ? o.posterPath : null,
@@ -217,16 +248,36 @@ export interface Offers {
 }
 
 /** What is on sale at `now`, and when the price changes. */
-export type Clock = Pick<CourseSettings, "launchAt" | "hoursA" | "hoursB" | "prices" | "was" | "bonus">;
+export type Clock = Pick<CourseSettings, "launchAt" | "hoursA" | "hoursB" | "prices" | "was" | "bonus" | "ladderCourseId">;
 
-export function offersAt(s: Clock, _now: number, price: number = COURSE.price, was: number = price): Offers {
-  void _now;
+/** Is this the course whose prices follow the clock? */
+export const isLadder = (s: Pick<CourseSettings, "ladderCourseId">, courseId?: string | null) => !!courseId && !!s.ladderCourseId && courseId.toLowerCase() === s.ladderCourseId;
+
+/** The clock course's offers: one phase's products (a price of 0 = not on sale), the usual price struck (the whole = live + recorded). */
+function ladderAt(s: Clock, now: number): Offers {
+  const at = s.launchAt ? new Date(s.launchAt).getTime() : NaN;
+  if (!Number.isFinite(at) || now < at) return { phase: "soon", offers: [], endsAt: null, next: "" };
+  const was: Record<Product, number> = { live: s.was.live, recorded: s.was.recorded, combo: Math.round((s.was.live + s.was.recorded) * 100) / 100 };
+  const p = s.prices;
+  const list = (xs: [Product, number][]): Offer[] => xs.filter(([, price]) => price > 0).map(([product, price]) => ({ product, label: PRODUCT_LABEL[product], price, was: Math.max(was[product], price), bonus: 0 }));
+  const say = (xs: [Product, number][]) => xs.filter(([, n]) => n > 0).map(([k, n]) => `${k === "combo" ? "الكاملة" : k === "live" ? "المباشرة" : "المسجلة"} ¤${n}`).join(" و");
+  const h = (now - at) / 3_600_000;
+  const B: [Product, number][] = [["combo", p.comboB], ["live", p.liveB], ["recorded", p.recordedB]];
+  const C: [Product, number][] = [["recorded", p.recordedC], ["live", p.liveC]];
+  if (h < s.hoursA) return { phase: "A", offers: list([["combo", p.comboA]]), endsAt: at + s.hoursA * 3_600_000, next: `بعدها: ${say(B)}` };
+  if (h < s.hoursB) return { phase: "B", offers: list(B), endsAt: at + s.hoursB * 3_600_000, next: `بعدها: ${say(C)}` };
+  return { phase: "C", offers: list(C), endsAt: null, next: "" };
+}
+
+/** What is on sale at `now`: the clock course follows its phases; every other course sells its recorded course at its one price. */
+export function offersAt(s: Clock, now: number, price: number = COURSE.price, was: number = price, courseId?: string | null): Offers {
+  if (isLadder(s, courseId)) return ladderAt(s, now);
   // one thing on sale, always: the recorded course at its one price (no clock, no phases, no live offer)
   return { phase: "C", offers: [{ product: "recorded", label: PRODUCT_LABEL.recorded, price, was: Math.max(was, price), bonus: 0 }], endsAt: null, next: "" };
 }
 
 /** The offer for a product right now, or null when it is not on sale in this phase. */
-export const offerFor = (s: Clock, product: Product, now: number, price?: number, was?: number): Offer | null => offersAt(s, now, price, was).offers.find((o) => o.product === product) ?? null;
+export const offerFor = (s: Clock, product: Product, now: number, price?: number, was?: number, courseId?: string | null): Offer | null => offersAt(s, now, price, was, courseId).offers.find((o) => o.product === product) ?? null;
 
 /** The saving in percent when `was` is higher than `price`. */
 export const savingPct = (o: Pick<Offer, "price" | "was">) => (o.was > o.price ? Math.round((1 - o.price / o.was) * 100) : 0);

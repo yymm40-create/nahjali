@@ -3,7 +3,8 @@ import Link from "next/link";
 import Riyal from "@/components/Riyal";
 import { jawadSession } from "@/lib/jawad/server/access";
 import { loadTree, myCourses } from "@/lib/learn/server";
-import { COURSE } from "@config/course";
+import { COURSE, isLadder, offersAt } from "@config/course";
+import { loadSettings } from "@/lib/course/settings";
 import { LEARN } from "@config/learn";
 import "./course.css";
 
@@ -11,11 +12,19 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "الدورات", description: "دورات الجواد الذكي المسجلة: اختر دورتك واشترك." };
 
 const ICONS = ["🎬", "🎨", "🎙️", "🧠", "📚", "⚡"];
+const nowMs = () => Date.now();
 const two = (n: number) => String(n).padStart(2, "0");
 
 /** «الدورات»: every course on sale, as cards (a course already bought says so and opens in «دوراتي»). */
 export default async function CoursesPage() {
-  const [{ user }, list] = await Promise.all([jawadSession(), loadTree({ onlyPublished: true }).catch(() => [])]);
+  const [{ user }, list, s] = await Promise.all([jawadSession(), loadTree({ onlyPublished: true }).catch(() => []), loadSettings()]);
+  const now = nowMs();
+  // the clock course shows today's lowest price (and «قريبًا» before its clock starts); the others their one price
+  const priceOf = (c: { id: string; priceSar?: number | null; wasSar?: number | null }) => {
+    if (!isLadder(s, c.id)) return { halalas: (c.priceSar ?? 0) * 100, was: c.wasSar && c.wasSar > (c.priceSar ?? 0) ? c.wasSar * 100 : null, soon: false };
+    const o = [...offersAt(s, now, c.priceSar ?? 0, c.wasSar ?? 0, c.id).offers].sort((a, b) => a.price - b.price)[0];
+    return o ? { halalas: Math.round(o.price * 100), was: o.was > o.price ? Math.round(o.was * 100) : null, soon: false } : { halalas: 0, was: null, soon: true };
+  };
   const sale = list.filter((c) => c.priceSar);
   const owned = new Set(user ? (await myCourses(user).catch(() => [])).map((c) => c.id) : []);
   return (
@@ -45,9 +54,12 @@ export default async function CoursesPage() {
                       {mine && <span className="cr-owned">✓ عندك</span>}
                       <h2>{c.title}</h2>
                       {c.summary && <p>{c.summary}</p>}
-                      <p className="cr-mute">{c.days.length} أيام{lessons ? ` · ${lessons} فيديو` : ""}</p>
+                      <p className="cr-mute">{isLadder(s, c.id) ? "مباشرة + مسجلة" : `${c.days.length} أيام`}{lessons ? ` · ${lessons} فيديو` : ""}</p>
                       <div className="cr-course-foot">
-                        <Riyal halalas={(c.priceSar ?? 0) * 100} was={c.wasSar && c.wasSar > (c.priceSar ?? 0) ? c.wasSar * 100 : null} size={22} className="cr-cn" />
+                        {(() => {
+                          const p = priceOf(c);
+                          return p.soon ? <span className="cr-mute">🔔 التسجيل يفتح قريبًا</span> : <Riyal halalas={p.halalas} was={p.was} size={22} className="cr-cn" />;
+                        })()}
                         <span className="cr-course-go">{mine ? "افتحها" : "التفاصيل والاشتراك"} ←</span>
                       </div>
                     </Link>
