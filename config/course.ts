@@ -76,6 +76,8 @@ export interface CourseSettings {
   ladderRisks: string[];
   /** the clock course's terms, shown on its page and before paying (the owner's words) */
   terms: string;
+  /** when the clock course's live session is (free text: the day now, the hour once the owner sets it) */
+  liveWhen: string;
   /** a file in the public bucket (the owner's reel), or an outside link (YouTube, Instagram, a direct video) */
   videoPath: string | null;
   videoUrl: string;
@@ -107,6 +109,8 @@ export const DEFAULT_SETTINGS: CourseSettings = {
   ladderCourseId: "",
   ladderRisks: [],
   terms: "",
+  // the owner, 29 October 2026: «الثلاثاء القادم ٣ نوفمبر، والساعة تتحدد لاحقًا»
+  liveWhen: "الثلاثاء ٣ نوفمبر ٢٠٢٦ · الساعة تتحدد قريبًا",
   videoPath: null,
   videoUrl: "",
   posterPath: null,
@@ -209,6 +213,8 @@ export function readSettings(raw: unknown): CourseSettings {
     ladderCourseId: typeof o.ladderCourseId === "string" && /^[0-9a-f-]{36}$/i.test(o.ladderCourseId) ? o.ladderCourseId.toLowerCase() : "",
     ladderRisks: (Array.isArray(o.ladderRisks) ? o.ladderRisks : d.ladderRisks).map((r) => text(r, 200)).filter(Boolean).slice(0, 10),
     terms: text(o.terms, 800),
+    // (absent = the default; an empty one the owner saved stays empty)
+    liveWhen: o.liveWhen === undefined ? d.liveWhen : text(o.liveWhen, 200),
     videoPath: typeof o.videoPath === "string" && /^course\/[0-9a-f-]{36}\.(mp4)$/.test(o.videoPath) ? o.videoPath : null,
     videoUrl: link(o.videoUrl),
     posterPath: typeof o.posterPath === "string" && /^course\/[0-9a-f-]{36}\.(png|jpg|webp)$/.test(o.posterPath) ? o.posterPath : null,

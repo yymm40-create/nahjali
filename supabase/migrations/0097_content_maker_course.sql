@@ -37,6 +37,7 @@ set data = data || jsonb_build_object(
   'launchAt', null,
   'hoursA', 24,
   'hoursB', 48,
+  'liveWhen', $w$الثلاثاء ٣ نوفمبر ٢٠٢٦ · الساعة تتحدد قريبًا$w$,
   'prices', jsonb_build_object('comboA', 49.99, 'liveB', 49, 'recordedB', 0, 'comboB', 100, 'liveC', 80, 'recordedC', 150),
   'was', jsonb_build_object('live', 80, 'recorded', 150),
   'bonus', jsonb_build_object('comboA', 0, 'recordedB', 0, 'recordedC', 0),

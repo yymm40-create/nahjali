@@ -253,6 +253,7 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
           <span className="cr-kicker cr-reveal">{ladder ? `${title} · مباشرة + مسجلة` : "الدورة · مسجلة"}</span>
           <h1 className="cr-reveal" style={{ ["--i" as string]: 1 }}>{s.headline}</h1>
           <p className="cr-sub cr-reveal" style={{ ["--i" as string]: 2 }}>{s.subhead}</p>
+          {ladder && s.liveWhen && <p className="cr-sub cr-reveal" style={{ ["--i" as string]: 2 }}>🗓️ <b>البث المباشر:</b> {s.liveWhen}</p>}
 
           <section className="cr-buy cr-reveal" style={{ ["--i" as string]: 3 }} id="buy" ref={buyRef} aria-label="الاشتراك">
             {cur.phase === "soon" || !sel ? (
@@ -301,7 +302,7 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
                   <ul className="cr-trust">
                     <li>🔒 تحويل بنكي مباشر</li>
                     {hasLifetimeAccess(sel.product) && <li>♾️ تسجيل الدورة مدى الحياة</li>}
-                    {sel.product !== "recorded" && <li>🎥 حضور مباشر</li>}
+                    {sel.product !== "recorded" && <li>🎥 حضور مباشر{ladder && s.liveWhen ? ` · ${s.liveWhen}` : ""}</li>}
                     {hasLifetimeAccess(sel.product) ? <li>📚 تظهر في «دوراتي» بعد التأكيد</li> : <li>💬 رابط مجموعة البث بعد التحويل</li>}
                   </ul>
                 </div>
@@ -454,7 +455,7 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
             {sheet.step === "done" && (
               <>
                 <h3>وصلنا طلبك ✅</h3>
-                <p>راح نتأكد من التحويل، وبعدها {hasLifetimeAccess(sheet.product) ? "تظهر لك الدورة مباشرة في «دوراتي»" : "يوصلك موعد البث المباشر في المجموعة"}{phone ? <> (وقد نتواصل معك على <b dir="ltr">{phone}</b>)</> : null}.</p>
+                <p>راح نتأكد من التحويل، وبعدها {hasLifetimeAccess(sheet.product) ? "تظهر لك الدورة مباشرة في «دوراتي»" : "يوصلك رابط البث المباشر في المجموعة"}{phone ? <> (وقد نتواصل معك على <b dir="ltr">{phone}</b>)</> : null}.</p>
                 {group && <a className="cr-cta" href={group} target="_blank" rel="noreferrer"><span className="cr-cta-main">اطلب الانضمام لمجموعة الواتساب</span></a>}
                 <button type="button" className="cr-btn" onClick={() => setSheet(null)}>تمام</button>
               </>

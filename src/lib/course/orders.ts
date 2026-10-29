@@ -228,7 +228,12 @@ export async function listOrders(status?: Status): Promise<Order[]> {
   if (status) q = q.eq("status", status);
   const { data, error } = await q;
   if (error) return [];
-  return (data ?? []).map(view);
+  const list = (data ?? []).map(view);
+  // each order with its course's name (one look-up for all of them)
+  const ids = [...new Set(list.map((o) => o.courseId).filter(Boolean))] as string[];
+  const { data: cs } = ids.length ? await db().from("learn_courses").select("id,title").in("id", ids) : { data: [] };
+  const names = new Map((cs ?? []).map((c) => [String(c.id), String(c.title ?? "")]));
+  return list.map((o) => (o.courseId ? { ...o, courseTitle: names.get(o.courseId) ?? "" } : o));
 }
 
 export type { CourseSettings };

@@ -154,3 +154,36 @@ describe("the bot's webhook", () => {
     expect(webhookSecret("a")).not.toBe(webhookSecret("b"));
   });
 });
+
+describe("the clock course («دورة صانع المحتوى»): what the owner's phone shows and sends", () => {
+  const ID = "3b68eb1d-ca1b-4e71-a5f7-78013603b443";
+  const L = readSettings({ ...settings, ladderCourseId: ID });
+  const mine = (product: Order["product"]) => order({ product, courseId: ID, courseTitle: "وقّف السكرول", amount: 49.99, was: 230, bonus: 0 });
+
+  it("names the course AND what was bought, with the halalas", async () => {
+    const { orderText } = await import("@/lib/course/telegram");
+    const t = orderText(mine("combo"));
+    expect(t).toContain("وقّف السكرول · الدورة كاملة (مباشرة + مسجلة)");
+    expect(t).toContain("<b>49.99 ريال</b>");
+  });
+
+  it("welcomes a live ticket with the day and the group, never «دوراتي»", async () => {
+    const { welcomeText } = await import("@/lib/course/telegram");
+    const t = welcomeText(mine("live"), L);
+    expect(t).toContain("وقّف السكرول");
+    expect(t).toContain("الثلاثاء ٣ نوفمبر");
+    expect(t).toContain("https://chat.whatsapp.com/abc");
+    expect(t).not.toContain("دوراتي");
+  });
+
+  it("gives the whole course both, and the recorded one only «دوراتي»", async () => {
+    const { welcomeText } = await import("@/lib/course/telegram");
+    const both = welcomeText(mine("combo"), L);
+    expect(both).toContain("chat.whatsapp.com");
+    expect(both).toContain("دوراتي");
+    const rec = welcomeText(mine("recorded"), L);
+    expect(rec).not.toContain("chat.whatsapp.com");
+    expect(rec).not.toContain("نوفمبر");
+    expect(rec).toContain("دوراتي");
+  });
+});

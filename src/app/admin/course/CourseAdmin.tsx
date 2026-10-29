@@ -11,6 +11,7 @@ interface Order {
   name: string;
   phone: string;
   product: "combo" | "live" | "recorded";
+  courseTitle: string;
   amount: number;
   was: number;
   bonus: number;
@@ -156,6 +157,9 @@ export default function CourseAdmin() {
         <h2 className="text-xl font-extrabold">⏱️ ساعة الأسعار</h2>
         <p className="text-sm font-bold text-muted">الساعة تمشي على دورة وحدة (رقمها تحت). أسعارها تتغير حسب الساعات من نزول الإعلان: اضغط الزر لحظة ما ينزل، فتبدأ أول ٢٤ ساعة (الدورة كاملة بسعر واحد). باقي الدورات سعرها ثابت.</p>
         <Txt label="رقم الدورة اللي أسعارها على الساعة (من رابط صفحتها /jawad-ai/course/…)" value={s.ladderCourseId} onChange={(v) => set("ladderCourseId", v.trim().replace(/^.*\/course\//, ""))} ltr ph="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+        <Txt label="🗓️ موعد البث المباشر (يظهر في صفحة الدورة)" value={s.liveWhen} onChange={(v) => set("liveWhen", v)} ph="الثلاثاء ٣ نوفمبر ٢٠٢٦ · الساعة ٩ مساءً" />
+        <Txt label="💬 رابط مجموعة واتساب المباشر (يوصل لمن اشترى المباشرة أو الكاملة بعد «تم التحويل»)" value={s.groupLink} onChange={(v) => set("groupLink", v)} ltr ph="https://chat.whatsapp.com/…" />
+        <p className="text-xs font-bold text-muted">{s.groupLink ? "✅ الرابط محطوط." : "⚠️ ما فيه رابط للحين: حطه واضغط حفظ."} اللي يحفظ هو زر «احفظ» تحت.</p>
         <p className="font-extrabold">الحالة الآن: {PHASE[d.phase]}{s.launchAt ? ` · بدأت ${new Date(s.launchAt).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { dateStyle: "short", timeStyle: "short" })}` : ""}</p>
         <div className="flex flex-wrap items-end gap-2">
           <button type="button" className="btn btn-primary" onClick={() => window.confirm("نزل الريل الحين؟ تبدأ الساعة من هذي اللحظة.") && void act({ action: "start_now" }, "بدأت الساعة ▶️")}>▶️ نزل الريل الآن</button>
@@ -221,7 +225,6 @@ export default function CourseAdmin() {
           <Txt label="رمز السويفت" value={s.bank.swift} onChange={(v) => set("bank", { ...s.bank, swift: v })} ltr />
         </div>
         <h3 className="font-extrabold">🔗 روابط تظهر لمن يتأكد دفعه فقط</h3>
-        <Txt label="رابط مجموعة الدورة (واتساب أو تيليجرام)" value={s.groupLink} onChange={(v) => set("groupLink", v)} ltr ph="https://chat.whatsapp.com/…" />
         <Txt label="رابط الدورة المسجلة (لمن اشترى المسجلة)" value={s.recordedLink} onChange={(v) => set("recordedLink", v)} ltr />
       </section>
 
@@ -264,7 +267,7 @@ export default function CourseAdmin() {
               <div className="flex flex-wrap gap-2 pt-1">
                 {o.status !== "confirmed" && <button type="button" className="btn btn-primary min-h-9 px-3 text-xs" onClick={() => window.confirm(`تأكيد دفع ${o.name} (${o.amount} ريال)؟`) && void act({ action: "confirm", id: o.id }, "تم التأكيد ✅")}>✅ أكّد</button>}
                 {(o.status === "started" || o.status === "transferred") && <button type="button" className="btn btn-ghost min-h-9 px-3 text-xs" onClick={() => window.confirm("نرفض هذا الطلب؟") && void act({ action: "reject", id: o.id }, "تم الرفض")}>❌ ارفض</button>}
-                {o.phone && <a className="btn btn-ghost min-h-9 px-3 text-xs" target="_blank" rel="noreferrer" href={waLink(o.phone, o.status === "confirmed" ? `هلا ${o.name} 🌸 تم تأكيد اشتراكك في ${COURSE.name} ✅${s.groupLink ? `\nرابط المجموعة: ${s.groupLink}` : ""}` : `هلا ${o.name}، وصلنا طلبك لـ${COURSE.name}.`)}>💬 واتساب</a>}
+                {o.phone && <a className="btn btn-ghost min-h-9 px-3 text-xs" target="_blank" rel="noreferrer" href={waLink(o.phone, o.status === "confirmed" ? `هلا ${o.name} 🌸 تم تأكيد اشتراكك في ${o.courseTitle || COURSE.name} ✅${s.groupLink && o.product !== "recorded" ? `\nرابط المجموعة: ${s.groupLink}` : ""}` : `هلا ${o.name}، وصلنا طلبك لـ${o.courseTitle || COURSE.name}.`)}>💬 واتساب</a>}
               </div>
             </li>
           ))}
