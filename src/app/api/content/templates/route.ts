@@ -7,6 +7,7 @@ import { FILM_STYLES, STYLE_FAMILIES } from "@config/film-styles";
 import { stylePicturesSafe } from "@/lib/film/style-pictures";
 import { MOODS, MOTION_STYLES } from "@/lib/editor/motion-styles";
 import { previewUri } from "@/lib/editor/motion-preview";
+import { CONTENT_PALETTES } from "@config/content-palettes";
 
 const KIND_AR: Record<string, string> = { title: "عنوان", points: "نقاط", stat: "رقم كبير", quote: "اقتباس", steps: "خطوات", compare: "مقارنة", statement: "جملة", outro: "ختام", kinetic: "كلمات طائرة" };
 const PACE_GROUP = { fast: "إيقاع سريع", normal: "إيقاع متوسط", calm: "هادئ وفخم" } as const;
@@ -24,8 +25,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * «صانع المحتوى» · the two galleries a person picks from: the carousel templates (each with the one picture the owner had
- * drawn for it, the same for everyone; a template without one shows its palette) and the library's 100 styles in 14
- * families (their pictures; a new style not drawn yet shows its family's icon).
+ * drawn for it, the same for everyone; a template without one shows its palette), the library's 100 styles in 14
+ * families (their pictures; a new style not drawn yet shows its family's icon), and the 100 four-colour palettes.
  */
 export const GET = handle(async () => {
   await requireContentUser();
@@ -34,6 +35,8 @@ export const GET = handle(async () => {
     {
       templates: CAROUSEL_TEMPLATES.map((t) => ({ id: t.id, group: t.group, name: t.name, description: t.description, bestFor: t.bestFor, structures: t.structures.map(structureName), palettes: t.palettes, image: images[t.id] ?? null })),
       ...motionItems(),
+      // the 100 four-colour palettes (Color Hunt): the four colours are the picture
+      palettes: CONTENT_PALETTES.map((p, i) => ({ id: p.id, group: p.group, name: `${i + 1}. ${p.name}`, description: p.colors.join(" · "), bestFor: p.group, image: null, swatch: p.colors })),
       styles: FILM_STYLES.map((s) => ({ id: s.id, group: s.group, name: `${s.name} · ${s.school}`, description: s.description, bestFor: s.bestFor, image: pictures[s.id] ?? null, icon: STYLE_FAMILIES.find((f) => f.id === s.family)?.icon })),
     },
     { headers: { "Cache-Control": "private, max-age=60" } },

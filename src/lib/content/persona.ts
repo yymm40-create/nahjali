@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { BAQIR_PERSONA, CONTENT_KV, CONTENT_PLATFORM_RULES, CONTENT_TOOLS } from "@config/content";
 import { CAROUSEL_TEMPLATES, designSystem, findTemplate, structureName } from "@config/content-templates";
 import { FILM_STYLES, findStyle } from "@config/film-styles";
+import { findPalette, lightness } from "@config/content-palettes";
 import { MOODS, MOTION_STYLES, moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { MOTION_ICONS } from "@/lib/editor/motion-icons";
 import { SCENE_IDS } from "@/lib/editor/motion-styles";
@@ -63,6 +64,7 @@ const TEMPLATE_MARK = /\[قالب:([a-z0-9-]+)\]/g;
 const STYLE_MARK = /\[ستايل:([a-z0-9-]+)\]/g;
 const MOTION_MARK = /\[موشن:([a-z0-9-]+)\]/g;
 const MOOD_MARK = /\[مزاج:([a-z0-9-]+)\]/g;
+const PALETTE_MARK = /\[ألوان:([a-z0-9-]+)\]/g;
 
 /** What the person picked in the galleries: the last mark of each kind in their messages ("none" = they chose neither). */
 export interface Chosen {
@@ -71,19 +73,23 @@ export interface Chosen {
   /** the motion skill and the mood of the piece ("none" = حيدرا ماكس chooses) */
   motion?: string | null;
   mood?: string | null;
+  /** one of the 100 four-colour palettes ("none" = he chooses the colours) */
+  palette?: string | null;
 }
 export function chosenIds(userTexts: string[]): Required<Chosen> {
   let template: string | null = null;
   let style: string | null = null;
   let motion: string | null = null;
   let mood: string | null = null;
+  let palette: string | null = null;
   for (const t of userTexts) {
     for (const m of t.matchAll(TEMPLATE_MARK)) template = m[1];
     for (const m of t.matchAll(STYLE_MARK)) style = m[1];
     for (const m of t.matchAll(MOTION_MARK)) motion = m[1];
     for (const m of t.matchAll(MOOD_MARK)) mood = m[1];
+    for (const m of t.matchAll(PALETTE_MARK)) palette = m[1];
   }
-  return { template, style, motion, mood };
+  return { template, style, motion, mood, palette };
 }
 
 /** The full details of what was picked (the design system to copy into every slide, the style's meaning). */
@@ -95,6 +101,13 @@ export function chosenBlock(ids: Chosen): string {
       `القالب الذي اختاره العميل: ${t.name} (${t.id}). ${t.description}\nبنيات تناسبه: ${t.structures.map(structureName).join("، ")}. حتى ${t.words} كلمة في الشريحة.\nتشريح الغلاف: ${t.cover}\nتشريح الشريحة الداخلية: ${t.body}\nتشريح الخاتمة: ${t.closing}\nاللوحات الثلاث (يختار منها العميل أو يقترح لوحته):\n${t.palettes.map((p, i) => `  ${i + 1}) ${p.name} — #${p.bg.slice(1)} خلفية، #${p.text.slice(1)} نص، #${p.primary.slice(1)} أساسي، #${p.accent.slice(1)} إبراز`).join("\n")}\nنظام التصميم الذي تنسخه حرفيًا في توجيه كل شريحة (بلوحة العميل المختارة؛ استبدل سطر Palette إن اختار لوحة أخرى):\n${designSystem(t, 0)}`,
     );
   } else if (ids.template === "none") out.push("العميل اختار «بدون قالب جاهز»: صمّم نظامًا واحدًا يناسب موضوعه وجمهوره (ألوانًا برموزها، خطًا ونمطه، هوامش، موضع الشعار) واعرضه عليه، وثبّته في كل الشرائح.");
+  const pal = ids.palette ? findPalette(ids.palette) : null;
+  if (pal) {
+    const by = [...pal.colors].sort((a, b) => lightness(a) - lightness(b));
+    out.push(
+      `الألوان التي اختارها العميل (لوحة رباعية من Color Hunt): «${pal.name}» — ${pal.colors.join(" · ")} (من الأغمق للأفتح: ${by.join(" · ")}). استعمل هذه الألوان الأربعة وحدها في كل الشرائح، برموزها حرفيًا في توجيه كل شريحة: الأغمق أو الأفتح خلفية، ونقيضه للنص، والباقيان للأساسي والإبراز (بتباين يقرأ). إن كان مع قالب فهي تحل محل لوحة القالب.`,
+    );
+  } else if (ids.palette === "none") out.push("العميل ترك الألوان لك: اختر لوحة رباعية تناسب الموضوع وجمهوره، واذكر رموزها له.");
   const x = ids.style ? findStyle(ids.style) : null;
   if (x) out.push(`الستايل الكرتوني الذي اختاره العميل لرسوم الصور: ${x.name} (${x.id}) — ${x.description} (الموقع يضيف نصه الكامل حرفيًا إلى كل شريحة؛ ضع في "style_id" معرّفه: ${x.id}).`);
   else if (ids.style === "none") out.push('العميل اختار «بدون ستايل كرتوني»: اترك "style_id" فارغًا وصمّم الصور تصميمًا رسوميًا نظيفًا أو بصورًا حسب القالب والموضوع.');
