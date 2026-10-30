@@ -69,6 +69,14 @@ describe("the engine", () => {
     expect(read("src/app/api/mahdi/emergency/route.ts")).toContain('.gte("day", date).lte("day", to)');
   });
 
+  it("«أنا الحين في طوارئ»: one press for every ticked habit, from the emergency sheet", () => {
+    const now = read("src/components/mahdi/EmergencyNow.tsx");
+    expect(now).toContain("أنا الحين في طوارئ");
+    expect(now).toContain('habitIds: list.map((r) => r.id), date: today, on: true');
+    expect(now).toContain("instanceOn(item, today, timeline.ctx)");
+    expect(read("src/components/mahdi/EmergencySetup.tsx")).toContain("{!habitId && <EmergencyNow />}");
+  });
+
   it("validates the number: smaller than the usual goal, a counter or an amount", () => {
     expect(validEmergencyTarget("amount", 20, "5")).toBe(5);
     expect(validEmergencyTarget("amount", 20, 2.46)).toBe(2.5);
