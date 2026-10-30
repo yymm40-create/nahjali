@@ -2,8 +2,8 @@
 // the day's goal is the smaller one, so reaching it counts as the day's goal reached — and is shown in its own colour, so it is
 // never mistaken for a full day. The week and the month report how many emergency days and emergency habits there were.
 // Pure functions.
-import { eachDay, type ISODate } from "./dates";
-import { dayInstance } from "./schedule";
+import { eachDay, startOfMonth, startOfWeek, type ISODate } from "./dates";
+import { dayInstance, periodInstances, versionAt } from "./schedule";
 import type { EngineContext, Instance, Item } from "./types";
 
 /** The emergency goal of a habit is valid when the habit is a counter or an amount and it is SMALLER than the usual goal. */
@@ -48,7 +48,7 @@ export function emergencyStats(items: Item[], days: Record<string, ISODate[]> | 
     if (!chosen?.length) continue;
     for (const d of eachDay(from, to)) {
       if (!chosen.includes(d)) continue;
-      const inst = dayInstance(item, d, ctx);
+      const inst = instanceOn(item, d, ctx);
       if (!inst?.emergency) continue;
       dates.add(d);
       habits.add(item.id);
@@ -57,4 +57,14 @@ export function emergencyStats(items: Item[], days: Record<string, ISODate[]> | 
     }
   }
   return { days: dates.size, habits: count, distinctHabits: habits.size, reached, dates: [...dates].sort() };
+}
+
+/** The goal a day belongs to: the day's own, or the week's / month's for a habit counted per week or per month. */
+export function instanceOn(item: Item, d: ISODate, ctx: EngineContext): Instance | null {
+  const day = dayInstance(item, d, ctx);
+  if (day) return day;
+  const v = versionAt(item, d);
+  if (!v || v.state !== "active" || (v.freq !== "weekly" && v.freq !== "monthly")) return null;
+  const list = v.freq === "weekly" ? periodInstances(item, "week", startOfWeek(d, ctx.weekStart), ctx) : periodInstances(item, "month", startOfMonth(d), ctx);
+  return list.find((i) => i.start <= d && d <= i.end) ?? null;
 }

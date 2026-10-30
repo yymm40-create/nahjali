@@ -60,7 +60,12 @@ export const POST = mahdiRoute(async (req: Request) => {
     if (!withEmergency.length) throw new UserError("هذي العادة ما عندها خانة طوارئ. حدّد رقم الطوارئ لها أول.", 400);
     const on = body.on !== false;
     if (on) ready(await supabase.from("mahdi_emergency_days").upsert(withEmergency.map((h) => ({ habit_id: h.id, user_id: user.id, day: date })), { onConflict: "habit_id,day" }));
-    else ready(await supabase.from("mahdi_emergency_days").delete().in("habit_id", withEmergency.map((h) => h.id)).eq("day", date));
+    else {
+      // a week / month goal: every day chosen in it (up to `to`, a month at most)
+      const to = body.to === undefined ? date : parseDate(body.to);
+      if (to < date || to > addDays(date, 31)) throw new UserError(t.errors.invalid, 400);
+      ready(await supabase.from("mahdi_emergency_days").delete().in("habit_id", withEmergency.map((h) => h.id)).gte("day", date).lte("day", to));
+    }
     return NextResponse.json({ snapshot: await loadSnapshot(supabase, profile) });
   }
 
