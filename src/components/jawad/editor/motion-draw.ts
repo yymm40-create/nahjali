@@ -73,6 +73,11 @@ export function drawMotion(ctx: CanvasRenderingContext2D, m: MotionEl, W: number
   const maxW = W * 0.84;
   ctx.save();
   ctx.globalAlpha = b.alpha * p;
+  if (m.kind === "ambient") {
+    drawAmbient(ctx, m, c, W, H, u, b);
+    ctx.restore();
+    return;
+  }
   ctx.direction = "rtl";
   ctx.textBaseline = "middle";
   entrance(ctx, m, p, u, cx, cy);
@@ -84,6 +89,69 @@ export function drawMotion(ctx: CanvasRenderingContext2D, m: MotionEl, W: number
 }
 
 type C = ReturnType<typeof motionColors>;
+
+/** «عناصر تتحرك»: the whole frame, the same at every moment (seeded, driven by the clock), never drawing the eye from the words. */
+function drawAmbient(ctx: CanvasRenderingContext2D, m: MotionEl, c: C, W: number, H: number, u: number, b: Box) {
+  if (m.panel) {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, c.bg);
+    g.addColorStop(1, c.panel);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+  const base = ctx.globalAlpha;
+  const t = (b.local / 1000) * m.speed;
+  const n = m.shape === "orbs" ? 9 : m.shape === "khatim" ? 12 : 26;
+  let seed = 12345;
+  const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  for (let i = 0; i < n; i++) {
+    const x0 = rnd();
+    const y0 = rnd();
+    const phase = rnd() * Math.PI * 2;
+    const k = 0.45 + rnd() * 0.55;
+    const r = (m.shape === "orbs" ? 150 + 190 * k : m.shape === "khatim" ? 34 + 62 * k : 6 + 15 * k) * u;
+    const x = (x0 + Math.sin(t * 0.22 * k + phase) * 0.05) * W;
+    // they rise slowly and come back in from below
+    const y = ((((y0 - t * 0.012 * (0.5 + k)) % 1) + 1) % 1) * (H + r * 2) - r;
+    const twinkle = 0.7 + 0.3 * Math.sin(t * 0.9 + phase);
+    ctx.globalAlpha = base * (m.shape === "orbs" ? 0.2 : m.shape === "khatim" ? 0.26 : 0.55) * twinkle;
+    const color = i % 3 ? c.accent : c.second;
+    if (m.shape === "orbs") {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, color);
+      g.addColorStop(1, alphaHex(color, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    } else if (m.shape === "khatim") {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(t * 0.07 * (i % 2 ? 1 : -1) + phase);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3 * u;
+      for (const a of [0, Math.PI / 4]) {
+        ctx.save();
+        ctx.rotate(a);
+        ctx.strokeRect(-r * 0.7, -r * 0.7, r * 1.4, r * 1.4);
+        ctx.restore();
+      }
+      ctx.restore();
+    } else {
+      // a four-pointed star («نجوم» bigger and fewer points of light, «لمعات» small dots)
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      if (m.shape === "sparks") ctx.arc(x, y, r * 0.5, 0, Math.PI * 2);
+      else {
+        ctx.moveTo(x, y - r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.quadraticCurveTo(x, y, x, y + r);
+        ctx.quadraticCurveTo(x, y, x - r, y);
+        ctx.quadraticCurveTo(x, y, x, y - r);
+      }
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = base;
+}
 
 function panelBehind(ctx: CanvasRenderingContext2D, m: MotionEl, c: C, x: number, y: number, w: number, h: number, u: number) {
   if (!m.panel) return;
