@@ -506,6 +506,7 @@
 /* the motion previews are portrait stills drawn by the engine */
 .ct-gal-grid.motion, .ct-gal-grid.moods { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
 .ct-gal-grid.motion .ct-thumb, .ct-gal-grid.moods .ct-thumb { aspect-ratio: 9 / 16; }
+.ct-gal-grid.palettes .ct-thumb { aspect-ratio: 2 / 1; border-radius: 10px; }
 .ct-thumb.big { max-height: 62vh; width: auto; max-width: 100%; margin: 0 auto; border-radius: 14px; }
 .ct-thumb-ph { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 8px; text-align: center; }
 .ct-thumb-ph b { font-size: 13px; line-height: 1.4; }

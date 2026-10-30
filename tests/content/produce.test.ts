@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { ARABIC_TEXT_RULES, CAROUSEL_TEMPLATES, designSystem } from "@config/content-templates";
 import { FILM_STYLES } from "@config/film-styles";
 import { DeskError, isTransientText } from "@/lib/content/jawad";
-import { answerLine, DELEGATE_LINE, moodLine, motionLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
+import { answerLine, DELEGATE_LINE, moodLine, motionLine, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
+import { CONTENT_PALETTES } from "@config/content-palettes";
 import { readQuestions, readPending, cleanHistory } from "@/lib/content/chats";
 import { catalogBlock, chosenBlock, chosenIds, motionCatalogBlock } from "@/lib/content/persona";
 import { MOODS, MOTION_STYLES } from "@/lib/editor/motion-styles";
@@ -100,8 +101,8 @@ describe("the buttons and the galleries", () => {
   });
   it("finds the last pick of each kind and tells him the full details of it", () => {
     const ids = chosenIds(["أبي كاروسيل", `${templateLine({ id: "minimal-clean", name: "بسيط نظيف" })}\n${styleLine({ id: "none", name: "" })}`, templateLine({ id: "scrapbook", name: "دفتر قصاصات" })]);
-    expect(ids).toEqual({ template: "scrapbook", style: "none", motion: null, mood: null });
-    expect(chosenIds(["لا شي"])).toEqual({ template: null, style: null, motion: null, mood: null });
+    expect(ids).toEqual({ template: "scrapbook", style: "none", motion: null, mood: null, palette: null });
+    expect(chosenIds(["لا شي"])).toEqual({ template: null, style: null, motion: null, mood: null, palette: null });
     const t = CAROUSEL_TEMPLATES.find((x) => x.id === "scrapbook")!;
     const block = chosenBlock({ template: "scrapbook", style: "ghibli" });
     expect(block).toContain(t.name);
@@ -110,6 +111,13 @@ describe("the buttons and the galleries", () => {
     expect(block).toContain('"style_id"');
     expect(block).toContain("ghibli");
     expect(chosenBlock({ template: "none", style: "none" })).toContain("بدون قالب");
+    // a palette from «معرض الألوان»: its four codes go into every slide
+    const pid = CONTENT_PALETTES[0].id;
+    expect(chosenIds([paletteLine({ id: pid, name: CONTENT_PALETTES[0].name })]).palette).toBe(pid);
+    const pb = chosenBlock({ template: null, style: null, palette: pid });
+    for (const c of CONTENT_PALETTES[0].colors) expect(pb).toContain(c);
+    expect(chosenBlock({ template: null, style: null, palette: "none" })).toContain("ترك الألوان لك");
+    expect(stripMarks(paletteLine({ id: pid, name: "x" }))).not.toContain("[ألوان:");
     expect(chosenBlock({ template: null, style: null })).toBe("");
   });
   it("lists all 24 templates and every style of «خريطة الستايلات» for him", () => {
