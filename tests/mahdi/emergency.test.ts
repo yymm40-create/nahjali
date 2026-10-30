@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { buildTimeline, dayInstance, doneByEmergency, emergencyStats, validEmergencyTarget, type Item, type Version } from "@/lib/mahdi/engine";
+import { buildTimeline, dayInstance, doneByEmergency, emergencyStats, instanceOn, periodInstances, validEmergencyTarget, type Item, type Version } from "@/lib/mahdi/engine";
 import { toItems } from "@/lib/mahdi/client/derive";
 import type { Habit } from "@/lib/mahdi/types";
 
@@ -39,6 +39,34 @@ describe("the engine", () => {
   it("the day's score counts the reduced goal as reached", () => {
     const tl = buildTimeline([item({ logs: { "2026-10-28": 5 } })], "2026-10-28", "2026-10-28", CTX);
     expect(tl.byDay.get("2026-10-28")![0].progress).toBe(1);
+  });
+
+  it("a counter counted per week or per month (1000 a week) is lowered for the whole period when one of its days is chosen", () => {
+    const weekly = (days: string[], logs: Record<string, number> = {}) =>
+      item({ versions: [v({ measure: "count", unit: "", target: 1000, freq: "weekly" })], logs, emergency: { target: 200, days: new Set(days) } });
+    // the week of Saturday 24 October (weekStart 6)
+    const [plain] = periodInstances(weekly([]), "week", "2026-10-24", CTX);
+    expect(plain.target).toBe(1000);
+    expect(plain.emergency).toBeUndefined();
+    const [em] = periodInstances(weekly(["2026-10-27"], { "2026-10-25": 120, "2026-10-27": 100 }), "week", "2026-10-24", CTX);
+    expect(em).toMatchObject({ target: 200, emergency: true, fullTarget: 1000, progress: 1 });
+    expect(doneByEmergency(em)).toBe(true);
+    // a day of another week does not lower this one
+    expect(periodInstances(weekly(["2026-10-20"]), "week", "2026-10-24", CTX)[0].emergency).toBeUndefined();
+    // the day's goal it belongs to is the week's; the report counts it
+    expect(instanceOn(weekly(["2026-10-27"]), "2026-10-27", CTX)).toMatchObject({ kind: "week", emergency: true });
+    expect(emergencyStats([weekly(["2026-10-27"], { "2026-10-27": 250 })], { h1: ["2026-10-27"] }, "2026-10-24", "2026-10-30", CTX)).toMatchObject({ days: 1, habits: 1, reached: 1 });
+    // monthly, the same
+    const monthly = item({ versions: [v({ measure: "count", unit: "", target: 3000, freq: "monthly" })], emergency: { target: 600, days: new Set(["2026-10-12"]) } });
+    expect(periodInstances(monthly, "month", "2026-10-01", CTX)[0]).toMatchObject({ target: 600, emergency: true, fullTarget: 3000 });
+  });
+
+  it("the log sheet offers it for a week / month goal, and turning it off clears every chosen day of the period", () => {
+    const sheet = read("src/components/mahdi/EmergencyDay.tsx");
+    expect(sheet).not.toContain('inst.kind !== "day" || target >= v.target');
+    expect(sheet).toContain("هذا الأسبوع");
+    expect(sheet).toContain("to: inst.periodEnd");
+    expect(read("src/app/api/mahdi/emergency/route.ts")).toContain('.gte("day", date).lte("day", to)');
   });
 
   it("validates the number: smaller than the usual goal, a counter or an amount", () => {
