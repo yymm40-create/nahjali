@@ -79,6 +79,7 @@ export const COLOR_PRESETS = {
   warm: { label: "دافئ", filter: "sepia(0.25) saturate(1.15) hue-rotate(-8deg)" },
   cool: { label: "بارد", filter: "saturate(0.95) hue-rotate(12deg) brightness(1.02)" },
   bw: { label: "أبيض وأسود", filter: "grayscale(1) contrast(1.1)" },
+  comfort: { label: "مريح للعين", filter: "contrast(0.9) saturate(0.85) brightness(1.02) sepia(0.12)" },
   vintage: { label: "قديم", filter: "sepia(0.45) contrast(0.9) brightness(1.05) saturate(0.85)" },
   cinema: { label: "سينمائي", filter: "contrast(1.18) saturate(0.82) brightness(0.95)" },
   fade: { label: "باهت", filter: "contrast(0.82) brightness(1.08) saturate(0.8)" },
@@ -178,8 +179,9 @@ export const NO_SOUND_FX: SoundFx = { clean: 0, enhance: false, effect: null, mi
 export const hasSoundFx = (c: { sound: SoundFx | null }) => !!c.sound && (c.sound.clean > 0 || c.sound.enhance || !!c.sound.effect || c.sound.pitch !== 0);
 
 /**
- * Entrances and exits («دخول» / «خروج») for texts and pictures. Nothing animates letter by letter (that breaks the
- * joined Arabic letters): «كتابة» reveals from the right, «كلمة كلمة» pops whole words, «مطّ» uses the kashida.
+ * Entrances and exits («دخول» / «خروج») for texts and pictures. Letters never fly apart (that breaks the joined Arabic
+ * letters): «كتابة» reveals from the right, «كلمة كلمة» pops whole words, «مطّ» uses the kashida, and «طباعة» writes the
+ * words as a keyboard does, each letter joining the one before, with a cursor after the last.
  */
 export const ANIMS = {
   fade: { label: "ظهور", icon: "◐", ms: 400 },
@@ -199,6 +201,7 @@ export const ANIMS = {
   whip: { label: "سحبة", icon: "💨", ms: 280 },
   flash: { label: "فلاش", icon: "✨", ms: 220 },
   words: { label: "كلمة كلمة", icon: "🔤", ms: 900, only: "text" },
+  type: { label: "طباعة", icon: "⌨️", ms: 1800, only: "text" },
   kashida: { label: "مطّ", icon: "〰️", ms: 650, only: "text" },
   decode: { label: "فك الشفرة", icon: "🔐", ms: 700, only: "text" },
   count: { label: "عدّاد", icon: "🔢", ms: 900, only: "text" },
@@ -211,7 +214,7 @@ export interface Anim {
   inMs: number;
   outMs: number;
 }
-export const ANIM_MS = { min: 100, max: 3000 } as const;
+export const ANIM_MS = { min: 100, max: 8000 } as const;
 
 /** What an entrance or exit does to a clip at one moment (on top of its own look). */
 export interface AnimLook {
@@ -236,6 +239,8 @@ export interface AnimLook {
   seed: number;
   /** words appearing one by one 0–1 (null = all there) */
   words: number | null;
+  /** «طباعة»: the share of the letters typed 0–1 (null = all there, no cursor) */
+  type: number | null;
   /** kashida stretch 0–1 */
   kashida: number;
   /** «فك الشفرة»: the share of the letters already decoded 0–1 (null = all) */
@@ -243,7 +248,7 @@ export interface AnimLook {
   /** «عدّاد»: the numbers counted up 0–1 (null = their full value) */
   count: number | null;
 }
-export const STILL: AnimLook = { alpha: 1, dx: 0, dy: 0, scale: 1, rotate: 0, squash: 1, blur: 0, show: null, flash: 0, smear: 0, tear: 0, seed: 0, words: null, kashida: 0, decode: null, count: null };
+export const STILL: AnimLook = { alpha: 1, dx: 0, dy: 0, scale: 1, rotate: 0, squash: 1, blur: 0, show: null, flash: 0, smear: 0, tear: 0, seed: 0, words: null, type: null, kashida: 0, decode: null, count: null };
 
 const outCubic = (p: number) => 1 - (1 - p) ** 3;
 const outExpo = (p: number) => (p >= 1 ? 1 : 1 - 2 ** (-10 * p));
@@ -343,6 +348,9 @@ function animStep(k: AnimKind, p: number, l: AnimLook, ms: number, entering: boo
       break;
     case "words":
       l.words = Math.min(l.words ?? 1, q);
+      break;
+    case "type":
+      l.type = Math.min(l.type ?? 1, q);
       break;
     case "kashida":
       l.kashida = Math.max(l.kashida, 1 - outCubic(q));

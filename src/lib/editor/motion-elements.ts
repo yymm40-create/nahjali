@@ -10,6 +10,7 @@ export const MOTION_KINDS = {
   list: { label: "قائمة", icon: "📋", hint: "عنوان وبنود تدخل وحدة وحدة" },
   phrase: { label: "عبارة", icon: "💬", hint: "جملة وكلمة منها مميّزة" },
   big: { label: "رقم كبير", icon: "🔢", hint: "رقم يعدّ لين قيمته وتحته وصف" },
+  ambient: { label: "عناصر تتحرك", icon: "✨", hint: "خلفية ناعمة: أشكال تطفو بهدوء تحت الكلام" },
 } as const;
 export type MotionKind = keyof typeof MOTION_KINDS;
 export const isMotionKind = (v: unknown): v is MotionKind => typeof v === "string" && v in MOTION_KINDS;
@@ -21,6 +22,7 @@ export const MOTION_THEMES = {
   gold: { label: "ذهبي فاخر", bg: "#17120a", panel: "#241a0c", text: "#fff7e6", accent: "#d4a537", second: "#f5d27a" },
   rose: { label: "وردي ناعم", bg: "#2a0f1d", panel: "#3d1529", text: "#ffffff", accent: "#ec4899", second: "#f9a8d4" },
   paper: { label: "ورق فاتح", bg: "#f6f1e7", panel: "#ffffff", text: "#1f2937", accent: "#ea580c", second: "#c2410c" },
+  comfort: { label: "مريح للعين", bg: "#22405e", panel: "#34587c", text: "#f3f7fb", accent: "#8fb8dd", second: "#c7dcef" },
   mono: { label: "أسود وأبيض", bg: "#0a0a0a", panel: "#171717", text: "#ffffff", accent: "#ffffff", second: "#a3a3a3" },
 } as const;
 export type MotionThemeId = keyof typeof MOTION_THEMES;
@@ -35,6 +37,10 @@ export interface MotionColors {
 /** How an element (and each of its items) comes in. */
 export const MOTION_ENTERS = { rise: "يطلع من تحت", side: "يدخل من الجنب", fade: "يظهر بهدوء", pop: "يكبر بسلاسة" } as const;
 export type MotionEnter = keyof typeof MOTION_ENTERS;
+
+/** «عناصر تتحرك»: what floats on the background. */
+export const AMBIENT_SHAPES = { orbs: "دوائر ناعمة", khatim: "نجمة ثمانية", stars: "نجوم", sparks: "لمعات" } as const;
+export type AmbientShape = keyof typeof AMBIENT_SHAPES;
 
 /** One line of an element: its words and when it comes in (ms from the element's start). */
 export interface MotionItem {
@@ -65,6 +71,10 @@ export interface MotionEl {
   font: string;
   /** a number's unit / prefix around «رقم كبير» (e.g. «٪», «$») */
   unit: string;
+  /** «عناصر تتحرك»: the shape that floats */
+  shape: AmbientShape;
+  /** «عناصر تتحرك»: how fast they drift, 0.25–2 (1 = calm) */
+  speed: number;
 }
 
 export const MOTION_LIMITS = { title: 120, sub: 80, item: 90, items: 8, unit: 8 } as const;
@@ -73,12 +83,13 @@ export const MOTION_MS = { min: 600, default: 4000 } as const;
 
 /** A new element of each kind, ready to show (Arabic sample words the person replaces). */
 export function newMotion(kind: MotionKind, o: Partial<MotionEl> = {}): MotionEl {
-  const base: MotionEl = { kind, title: "", sub: "", items: [], x: 0.5, y: 0.5, size: 1, theme: "navy", colors: null, panel: true, enter: "rise", font: "readex", unit: "" };
+  const base: MotionEl = { kind, title: "", sub: "", items: [], x: 0.5, y: 0.5, size: 1, theme: "navy", colors: null, panel: true, enter: "rise", font: "readex", unit: "", shape: "orbs", speed: 1 };
   const sample: Record<MotionKind, Partial<MotionEl>> = {
     title: { title: "العنوان", sub: "سطر صغير تحته", y: 0.3 },
     list: { title: "العنوان", items: [{ text: "النقطة الأولى", at: 500 }, { text: "النقطة الثانية", at: 1300 }, { text: "النقطة الثالثة", at: 2100 }], y: 0.62 },
     phrase: { title: "موضوع اللهجة مهم جدًا", sub: "مهم", y: 0.7, panel: false },
     big: { title: "من المتابعين", sub: "250", unit: "K", y: 0.4 },
+    ambient: { theme: "comfort", shape: "khatim" },
   };
   return readMotion({ ...base, ...sample[kind], ...o }) ?? base;
 }
@@ -118,6 +129,8 @@ export function readMotion(v: unknown): MotionEl | null {
     enter: typeof o.enter === "string" && o.enter in MOTION_ENTERS ? (o.enter as MotionEnter) : "rise",
     font: typeof o.font === "string" && FONT_ID.test(o.font) ? o.font : "readex",
     unit: str(o.unit, MOTION_LIMITS.unit),
+    shape: typeof o.shape === "string" && o.shape in AMBIENT_SHAPES ? (o.shape as AmbientShape) : "orbs",
+    speed: num(o.speed, 0.25, 2, 1),
   };
 }
 

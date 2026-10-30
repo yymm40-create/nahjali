@@ -6,6 +6,9 @@
 
 import { ANIMS, ANIM_MS, type AnimKind } from "./model";
 
+/** A hook is seconds long: its entrance and exit stay short whatever the editor allows. */
+const HOOK_ANIM_MAX = 3000;
+
 export const HOOK_STYLES = [
   "حروف منفوخة لامعة كالبالون: مرح وألفة فورية",
   "حروف صلصال ببصمات الأصابع: دفء وإحساس بالصنعة اليدوية",
@@ -133,11 +136,11 @@ export const DESIGN_SCHEMA = {
     entrance: { type: "integer", description: "1–10 (the library entry)" },
     entranceWhy: { type: "string" },
     inAnim: { type: "string", enum: MEDIA_ANIMS, description: "the editor animation applied as the entrance (the entrance's template or its nearest)" },
-    inMs: { type: "integer", description: `${ANIM_MS.min}–${ANIM_MS.max}` },
+    inMs: { type: "integer", description: `${ANIM_MS.min}–${HOOK_ANIM_MAX}` },
     exit: { type: "string", description: "Arabic name of the exit motion chosen by research" },
     exitWhy: { type: "string" },
     outAnim: { type: "string", enum: MEDIA_ANIMS, description: "the editor animation applied as the exit (its template or nearest)" },
-    outMs: { type: "integer", description: `${ANIM_MS.min}–${ANIM_MS.max}` },
+    outMs: { type: "integer", description: `${ANIM_MS.min}–${HOOK_ANIM_MAX}` },
     imagePrompt: { type: "string", description: "the GPT Image 2 prompt in English, in the required order" },
     lengthMs: { type: "integer", description: "1200–6000: how long the hook stays on screen, entrance and exit included" },
     sfxIn: sound,
@@ -199,8 +202,8 @@ const clamp = (n: number, a: number, b: number) => Math.min(b, Math.max(a, Math.
 export function checkDesign(d: HookDesign, h: HookInputs): HookDesign {
   const inAnim = MEDIA_ANIMS.includes(d.inAnim) ? d.inAnim : HOOK_ENTRANCES[clamp(d.entrance, 1, 10) - 1].anim;
   const outAnim = MEDIA_ANIMS.includes(d.outAnim) ? d.outAnim : "fade";
-  const inMs = clamp(d.inMs, ANIM_MS.min, ANIM_MS.max);
-  const outMs = clamp(d.outMs, ANIM_MS.min, ANIM_MS.max);
+  const inMs = clamp(d.inMs, ANIM_MS.min, HOOK_ANIM_MAX);
+  const outMs = clamp(d.outMs, ANIM_MS.min, HOOK_ANIM_MAX);
   const lengthMs = Math.max(clamp(d.lengthMs, 1200, 6000), inMs + outMs + 600);
   const fixSound = (s: HookSound, motionMs: number): HookSound => {
     const seconds = Math.min(5, Math.max(0.5, Math.round((Number(s.seconds) || 1) * 10) / 10));
