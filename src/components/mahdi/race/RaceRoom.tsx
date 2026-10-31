@@ -431,6 +431,25 @@ function AddPlayer({ act }: { act: (b: Record<string, unknown>) => void }) {
   );
 }
 
+/** The leader can play too: joins like anyone else, and their own screen is under «شاشة الشباب». */
+function JoinMyself({ v, reload }: { v: View; reload: () => void }) {
+  const { toast, state } = useMahdi();
+  if (v.me) return <p className="m-muted text-sm">أنت لاعب بعد. فريقك ودورك السري وسلفيك في تبويب «شاشة الشباب».</p>;
+  return (
+    <button
+      type="button"
+      className="m-btn m-btn-ghost w-full"
+      onClick={() =>
+        mahdiFetch("/api/mahdi/race/join", { method: "POST", json: { code: v.race.code, name: state.snap.profile.displayName } })
+          .then(reload)
+          .catch((e: Error) => toast(e.message))
+      }
+    >
+      🎮 ألعب معهم
+    </button>
+  );
+}
+
 function TeamsTab({ v, act, reload }: { v: View; act: (b: Record<string, unknown>) => void; reload: () => void }) {
   const link = typeof location === "undefined" ? "" : `${location.origin}/mahdi/race?c=${v.race.code}`;
   const { toast } = useMahdi();
@@ -469,6 +488,7 @@ function TeamsTab({ v, act, reload }: { v: View; act: (b: Record<string, unknown
           <Twice label="وزّع عشوائي" again="تأكيد التوزيع" cls="m-btn-primary" onGo={() => act({ action: "deal" })} />
         </div>
         <p className="m-muted text-sm">علّم الصغار عشان يتوزعون بالتساوي وما يطلعون جواسيس. واللي بدون جوال ما يطلع جاسوس.</p>
+        <JoinMyself v={v} reload={reload} />
         <AddPlayer act={act} />
         {!v.players.length && <p className="m-muted">أرسل الرابط للشباب، وأسماءهم تطلع هنا أول ما يدخلون.</p>}
         {v.players.map((p) => (
@@ -604,13 +624,18 @@ function SpiesTab({ v, act }: { v: View; act: (b: Record<string, unknown>) => vo
       <Twice label={v.race.spiesOn ? "اسحب جواسيس من جديد" : "اسحب الجواسيس"} again="تأكيد السحب" cls="m-btn-primary" onGo={() => act({ action: "spies" })} />
       {v.race.spiesOn && (
         <>
-          <Hold kind="spies_seen_by_leader" label="امسك هنا عشان تشوف منو الجواسيس">
-            {spies.map((p) => (
-              <span key={p.id}>
-                {p.name} ({teamById(v, p.team)?.name ?? "بدون فريق"})
-              </span>
-            ))}
-          </Hold>
+          {/* A leader who plays must not see the spies: the list stays hidden until the reveal. */}
+          {v.me ? (
+            <p className="m-muted text-sm">أنت تلعب معهم، فقائمة الجواسيس مخفية عنك لين الكشف.</p>
+          ) : (
+            <Hold kind="spies_seen_by_leader" label="امسك هنا عشان تشوف منو الجواسيس">
+              {spies.map((p) => (
+                <span key={p.id}>
+                  {p.name} ({teamById(v, p.team)?.name ?? "بدون فريق"})
+                </span>
+              ))}
+            </Hold>
+          )}
           <button type="button" className="m-btn m-btn-primary w-full" onClick={() => act({ action: "reveal", revealed: !v.race.revealed })}>
             {v.race.revealed ? "خفّهم مرة ثانية" : "اكشف الجواسيس للكل"}
           </button>
