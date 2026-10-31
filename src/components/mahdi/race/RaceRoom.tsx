@@ -27,6 +27,14 @@ interface Round extends ToolRound {
   pts: string;
   water: boolean;
   done: boolean;
+  result: string;
+  winner_team: string | null;
+  finished_at: string | null;
+}
+interface Photo {
+  id: string;
+  round_id: string | null;
+  caption: string;
 }
 interface View {
   race: { id: string; title: string; code: string; teams: RaceTeamInfo[]; banned: string; currentRound: string | null; spiesOn: boolean; revealed: boolean; winner: string | null };
@@ -36,6 +44,7 @@ interface View {
   me: { id: string; name: string; sv: number; team: RaceTeam | null; spy: boolean; missions: string[] } | null;
   rounds: Round[];
   points: { id: string; team: RaceTeam; points: number; reason: string }[];
+  photos: Photo[];
 }
 
 const teamById = (v: View, id: string | null | undefined) => v.race.teams.find((t) => t.id === id);
@@ -100,7 +109,146 @@ function Winner({ v }: { v: View }) {
   );
 }
 
-function RoundCard({ r, current, children }: { r: Round; current: boolean; children?: React.ReactNode }) {
+const photoUrl = (raceId: string, id: string) => `/api/mahdi/race/${raceId}/photos?p=${id}`;
+
+/** Photos in a grid; a tap opens one big, and the leader can caption, file or delete it there. */
+function PhotoGrid({ v, photos, act }: { v: View; photos: Photo[]; act?: (b: Record<string, unknown>) => void }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const [caption, setCaption] = useState("");
+  const big = photos.find((p) => p.id === open);
+  return (
+    <>
+      <div className="grid grid-cols-3 gap-2">
+        {photos.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            aria-label={p.caption || "صورة تذكارية"}
+            onClick={() => {
+              setOpen(p.id);
+              setCaption(p.caption);
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={photoUrl(v.race.id, p.id)} alt="" loading="lazy" className="aspect-square w-full rounded-xl object-cover" />
+          </button>
+        ))}
+      </div>
+      {big && (
+        <div className="fixed inset-0 z-50 flex flex-col gap-3 overflow-y-auto bg-black/90 p-4" role="dialog" aria-modal="true" aria-label="صورة تذكارية">
+          <button type="button" className="m-btn m-btn-ghost self-start" onClick={() => setOpen(null)}>
+            إغلاق
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={photoUrl(v.race.id, big.id)} alt="" className="max-h-[70vh] w-full rounded-xl object-contain" />
+          {!act && big.caption && <p className="text-center font-bold text-white">{big.caption}</p>}
+          {act && (
+            <div className="m-card space-y-2 p-3">
+              <input className="m-field" value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={200} placeholder="تعليق على الصورة" aria-label="تعليق على الصورة" />
+              <select className="m-field" value={big.round_id ?? ""} aria-label="المسابقة" onChange={(e) => act({ action: "photoEdit", photo: big.id, caption, round: e.target.value || null })}>
+                <option value="">بدون مسابقة</option>
+                {v.rounds.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+              <div className="flex gap-2">
+                <button type="button" className="m-btn m-btn-primary m-btn-sm flex-1" onClick={() => act({ action: "photoEdit", photo: big.id, caption, round: big.round_id })}>
+                  احفظ التعليق
+                </button>
+                <Twice
+                  label="احذف الصورة"
+                  again="متأكد؟"
+                  onGo={() => {
+                    act({ action: "photoDelete", photo: big.id });
+                    setOpen(null);
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** The leader's way in: picks one photo or many, each sent small, one at a time. */
+function AddPhotos({ raceId, round, onDone }: { raceId: string; round?: string; onDone: () => void }) {
+  const { toast } = useMahdi();
+  const input = useRef<HTMLInputElement>(null);
+  const [left, setLeft] = useState(0);
+  async function send(files: File[]) {
+    setLeft(files.length);
+    for (const file of files) {
+      try {
+        const form = new FormData();
+        form.append("file", new File([await shrinkImage(file, 1600)], "photo.jpg", { type: "image/jpeg" }));
+        if (round) form.append("round", round);
+        await mahdiFetch(`/api/mahdi/race/${raceId}/photos`, { method: "POST", body: form });
+        onDone();
+      } catch (e) {
+        toast((e as Error).message);
+      }
+      setLeft((n) => n - 1);
+    }
+  }
+  return (
+    <>
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          void send([...(e.target.files ?? [])]);
+          e.target.value = "";
+        }}
+      />
+      <button type="button" className="m-btn m-btn-ghost w-full" disabled={left > 0} onClick={() => input.current?.click()}>
+        {left > 0 ? `يرفع… باقي ${left}` : "📷 أضف صور"}
+      </button>
+    </>
+  );
+}
+
+/** Who won a finished round and what happened, for everyone. */
+function RoundResult({ v, r }: { v: View; r: Round }) {
+  const w = teamById(v, r.winner_team);
+  if (!r.done || (!w && !r.result)) return null;
+  return (
+    <div className="rounded-xl p-3" style={{ border: `2px solid ${w?.color ?? "var(--m-gold)"}` }}>
+      {w && <p className="font-black">🏆 فاز: {w.emoji} {w.name}</p>}
+      {r.result && <p className="whitespace-pre-line">{r.result}</p>}
+    </div>
+  );
+}
+
+/** The leader ends a round: its winner, what happened, and it goes up on everyone's screen as finished. */
+function FinishRound({ v, r, act }: { v: View; r: Round; act: (b: Record<string, unknown>) => void }) {
+  const [winner, setWinner] = useState(r.winner_team ?? "");
+  const [result, setResult] = useState(r.result);
+  return (
+    <div className="m-card space-y-2 p-3">
+      <h4 className="font-bold">{r.done ? "عدّل النتيجة" : "خلصت؟ سجل النتيجة"}</h4>
+      <div className="flex flex-wrap gap-2">
+        {v.race.teams.map((t) => (
+          <button key={t.id} type="button" className={`m-btn m-btn-sm flex-1 ${winner === t.id ? "m-btn-primary" : "m-btn-ghost"}`} onClick={() => setWinner(winner === t.id ? "" : t.id)}>
+            {t.emoji} {t.name}
+          </button>
+        ))}
+      </div>
+      <textarea className="m-field" rows={3} value={result} onChange={(e) => setResult(e.target.value)} maxLength={1000} placeholder="شنو سوينا؟ النتيجة وأحلى موقف" aria-label="النتيجة وشنو سوينا" />
+      <button type="button" className="m-btn m-btn-primary w-full" onClick={() => act({ action: "roundResult", round: r.id, winner: winner || null, result })}>
+        {r.done ? "احفظ النتيجة" : "✅ خلصت: أعلنها للشباب"}
+      </button>
+    </div>
+  );
+}
+
+function RoundCard({ v, r, current, children }: { v: View; r: Round; current: boolean; children?: React.ReactNode }) {
   const log = useContext(RaceLog);
   const [open, setOpen] = useState(current);
   return (
@@ -129,6 +277,8 @@ function RoundCard({ r, current, children }: { r: Round; current: boolean; child
             </p>
           )}
           {r.water && <p className="font-bold">🛟 كبير يراقب، والصغار في الضحل.</p>}
+          <RoundResult v={v} r={r} />
+          {!children && v.photos.some((p) => p.round_id === r.id) && <PhotoGrid v={v} photos={v.photos.filter((p) => p.round_id === r.id)} />}
           {children}
         </div>
       )}
@@ -286,14 +436,31 @@ function PlayerSide({ v, reload }: { v: View; reload: () => void }) {
       {current && (
         <section className="space-y-2">
           <h2 className="text-lg font-black">الجولة الحين</h2>
-          <RoundCard key={current.id} r={current} current />
+          <RoundCard key={current.id} v={v} r={current} current />
         </section>
       )}
       <Rosters v={v} />
+      {v.rounds.some((r) => r.done) && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-black">اللي خلصناه ونتائجه</h2>
+          {v.rounds.filter((r) => r.done).map((r) => (
+            <div key={r.id} className="m-card space-y-2 p-3" >
+              <h3 className="font-bold">{r.icon} {r.name} <span className="m-chip m-chip-success">خلصت</span></h3>
+              <RoundResult v={v} r={r} />
+            </div>
+          ))}
+        </section>
+      )}
+      {v.photos.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-black">📸 صور تذكارية</h2>
+          <PhotoGrid v={v} photos={v.photos} />
+        </section>
+      )}
       <section className="space-y-2">
         <h2 className="text-lg font-black">كل الألعاب وطريقتها</h2>
         {v.rounds.map((r) => (
-          <RoundCard key={r.id} r={r} current={r.id === v.race.currentRound} />
+          <RoundCard key={r.id} v={v} r={r} current={r.id === v.race.currentRound} />
         ))}
       </section>
       <section className="m-card space-y-2 p-4">
@@ -517,7 +684,7 @@ function TeamsTab({ v, act, reload }: { v: View; act: (b: Record<string, unknown
   );
 }
 
-function GamesTab({ v, act }: { v: View; act: (b: Record<string, unknown>) => void }) {
+function GamesTab({ v, act, reload }: { v: View; act: (b: Record<string, unknown>) => void; reload: () => void }) {
   const teams = v.race.teams;
   return (
     <div className="space-y-2">
@@ -525,18 +692,23 @@ function GamesTab({ v, act }: { v: View; act: (b: Record<string, unknown>) => vo
       {v.rounds.map((r) => {
         const current = r.id === v.race.currentRound;
         return (
-          <RoundCard key={r.id} r={r} current={current}>
+          <RoundCard key={r.id} v={v} r={r} current={current}>
             <div className="flex flex-wrap gap-2">
               <button type="button" className={`m-btn m-btn-sm ${current ? "m-btn-ghost" : "m-btn-primary"}`} onClick={() => act({ action: "roundCurrent", round: current ? null : r.id })}>
                 {current ? "شيلها من «الحين»" : "اعرضها للكل الحين"}
               </button>
-              <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => act({ action: "roundDone", round: r.id, done: !r.done })}>
-                {r.done ? "رجّعها" : "خلصت"}
-              </button>
+              {r.done && (
+                <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => act({ action: "roundDone", round: r.id, done: false })}>
+                  رجّعها
+                </button>
+              )}
               <Twice label="احذف المسابقة" again="متأكد؟" onGo={() => act({ action: "roundDelete", round: r.id })} />
             </div>
             <RaceTools round={r} teams={teams} add={(team, points, reason) => act({ action: "points", team, points, reason })} />
             <PointsPad v={v} act={act} reason={r.name} />
+            <FinishRound key={`${r.id}-${r.finished_at}`} v={v} r={r} act={act} />
+            {v.photos.some((p) => p.round_id === r.id) && <PhotoGrid v={v} photos={v.photos.filter((p) => p.round_id === r.id)} act={act} />}
+            <AddPhotos raceId={v.race.id} round={r.id} onDone={reload} />
           </RoundCard>
         );
       })}
@@ -698,6 +870,7 @@ const TABS = [
   ["teams", "الفريقين"],
   ["games", "الألعاب"],
   ["spies", "الجواسيس"],
+  ["photos", "الصور"],
   ["finish", "الختام"],
   ["record", "السجل"],
 ] as const;
@@ -774,7 +947,7 @@ export default function RaceRoom({ id }: { id: string }) {
           </nav>
           {tab === "score" && <ScoreTab v={v} act={act} />}
           {tab === "teams" && <TeamsTab v={v} act={act} reload={reload} />}
-          {tab === "games" && <GamesTab v={v} act={act} />}
+          {tab === "games" && <GamesTab v={v} act={act} reload={reload} />}
           {tab === "spies" && <SpiesTab v={v} act={act} />}
           {tab === "finish" && (
             <FinishTab
@@ -786,6 +959,12 @@ export default function RaceRoom({ id }: { id: string }) {
                   .catch((e: Error) => toast(e.message))
               }
             />
+          )}
+          {tab === "photos" && (
+            <div className="space-y-3">
+              <AddPhotos raceId={v.race.id} onDone={reload} />
+              {v.photos.length ? <PhotoGrid v={v} photos={v.photos} act={act} /> : <p className="m-muted">الصور التذكارية تطلع هنا وعند الشباب. اضغط صورة بعد الرفع عشان تكتب تعليق أو تربطها بمسابقة.</p>}
+            </div>
           )}
           {tab === "record" && <RecordTab v={v} />}
           {tab === "view" && <PlayerSide v={v} reload={reload} />}

@@ -63,6 +63,13 @@ export async function createRace(db: Db, ownerId: string, title: string): Promis
   return race.id;
 }
 
+/** Stops anyone outside the race: the leader and the players only. */
+export async function requireMember(db: Db, race: RaceRow, userId: string) {
+  if (race.owner_id === userId) return;
+  const { data } = await db.from("mahdi_race_players").select("user_id").eq("race_id", race.id).eq("user_id", userId).maybeSingle();
+  if (!data) throw new UserError("ما انضممت لهذي المسابقة", 403);
+}
+
 /** Adds one line to the day's record. A failed line never stops the game. */
 export async function logEvent(db: Db, raceId: string, actor: { id: string; name?: string | null } | null, kind: string, data: Record<string, unknown> = {}, clientAt?: unknown) {
   const when = typeof clientAt === "string" && !Number.isNaN(Date.parse(clientAt)) ? new Date(clientAt).toISOString() : null;
@@ -99,6 +106,7 @@ export async function raceExport(db: Db, race: RaceRow) {
     players: view.players,
     rounds: view.rounds,
     points: view.points,
+    photos: view.photos,
     events: events.map((e) => ({ ...e, sec: Math.round((Date.parse(e.client_at ?? e.at) - t0) / 100) / 10 })),
   };
 }
@@ -106,10 +114,11 @@ export async function raceExport(db: Db, race: RaceRow) {
 /** What one person may see. The leader sees everything; a player sees only their own spy role until the reveal. */
 export async function raceView(db: Db, race: RaceRow, userId: string) {
   const isOwner = race.owner_id === userId;
-  const [players, rounds, points] = await Promise.all([
+  const [players, rounds, points, photos] = await Promise.all([
     db.from("mahdi_race_players").select(PLAYER_COLS).eq("race_id", race.id).order("joined_at"),
-    db.from("mahdi_race_rounds").select("id, pos, name, icon, how, tools, pts, water, tool, word_set, per, secs, done").eq("race_id", race.id).order("pos"),
+    db.from("mahdi_race_rounds").select("id, pos, name, icon, how, tools, pts, water, tool, word_set, per, secs, done, result, winner_team, finished_at").eq("race_id", race.id).order("pos"),
     db.from("mahdi_race_points").select("id, team, points, reason, created_at").eq("race_id", race.id).order("created_at", { ascending: false }).limit(RACE_LIMITS.pointsShown),
+    db.from("mahdi_race_photos").select("id, round_id, caption, created_at").eq("race_id", race.id).order("created_at"),
   ]);
   const rows = (check(players) ?? []) as RacePlayerRow[];
   const me = rows.find((p) => p.user_id === userId) ?? null;
@@ -124,6 +133,7 @@ export async function raceView(db: Db, race: RaceRow, userId: string) {
     me: me ? { id: me.user_id, name: me.name, sv: me.selfie_v, team: me.team, spy: race.spies_on && me.spy, missions: race.spies_on && me.spy ? me.missions : [] } : null,
     rounds: check(rounds) ?? [],
     points: pts,
+    photos: (check(photos) ?? []) as { id: string; round_id: string | null; caption: string; created_at: string }[],
   };
 }
 
@@ -238,6 +248,19 @@ export async function raceAction(db: Db, race: RaceRow, b: Record<string, unknow
     }
     case "roundDone":
       check(await db.from("mahdi_race_rounds").update({ done: !!b.done }).eq("race_id", id).eq("id", text(b.round, 40)));
+      return;
+    case "roundResult": {
+      // The round ends with its result: everyone sees who won and what happened.
+      const winner = b.winner ? teamOf(race, b.winner) : null;
+      check(await db.from("mahdi_race_rounds").update({ done: true, result: text(b.result ?? "", RACE_LIMITS.result, 0), winner_team: winner, finished_at: new Date().toISOString() }).eq("race_id", id).eq("id", text(b.round, 40)));
+      if (race.current_round === b.round) check(await db.from("mahdi_races").update({ current_round: null }).eq("id", id));
+      return;
+    }
+    case "photoEdit":
+      check(await db.from("mahdi_race_photos").update({ caption: text(b.caption ?? "", RACE_LIMITS.caption, 0), round_id: b.round ? text(b.round, 40) : null }).eq("race_id", id).eq("id", text(b.photo, 40)));
+      return;
+    case "photoDelete":
+      check(await db.from("mahdi_race_photos").delete().eq("race_id", id).eq("id", text(b.photo, 40)));
       return;
     case "roundCurrent":
       check(await db.from("mahdi_races").update({ current_round: b.round ? text(b.round, 40) : null }).eq("id", id));
