@@ -23,12 +23,15 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
   return new Response(new Uint8Array(Buffer.from(data.selfie as string, "base64")), { headers: { "Content-Type": "image/webp", "Cache-Control": "private, max-age=3600" } });
 });
 
-/** Saves the player's own selfie: re-encoded small here, which also drops the photo's location and camera data. */
+/** Saves a player's own selfie, or the leader's picture of a player they added. Re-encoded small here, which also drops the photo's location and camera data. */
 export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const { user } = await requireProfile(req);
   const db = createAdminClient();
   const race = await raceById(db, requireId((await params).id));
-  const { data: me } = await db.from("mahdi_race_players").select("selfie_v, name").eq("race_id", race.id).eq("user_id", user.id).maybeSingle();
+  const asked = new URL(req.url).searchParams.get("u");
+  const target = asked ? requireId(asked) : user.id;
+  const { data: me } = await db.from("mahdi_race_players").select("selfie_v, name, guest").eq("race_id", race.id).eq("user_id", target).maybeSingle();
+  if (me && target !== user.id && !(race.owner_id === user.id && me.guest)) throw new UserError("هذي للقائد فقط", 403);
   if (!me) throw new UserError("ما انضممت لهذي المسابقة", 403);
   const file = (await req.formData().catch(() => null))?.get("file");
   if (!(file instanceof File) || !file.type.startsWith("image/")) throw new UserError("اختر صورة", 415);
@@ -39,7 +42,7 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
   } catch {
     throw new UserError("ما قدرنا نقرأ الصورة، جرب صورة ثانية", 415);
   }
-  check(await db.from("mahdi_race_players").update({ selfie: webp.toString("base64"), selfie_v: (me.selfie_v as number) + 1 }).eq("race_id", race.id).eq("user_id", user.id));
-  await logEvent(db, race.id, { id: user.id, name: me.name as string }, "selfie_taken", { version: (me.selfie_v as number) + 1 });
+  check(await db.from("mahdi_race_players").update({ selfie: webp.toString("base64"), selfie_v: (me.selfie_v as number) + 1 }).eq("race_id", race.id).eq("user_id", target));
+  await logEvent(db, race.id, { id: target, name: me.name as string }, "selfie_taken", { version: (me.selfie_v as number) + 1 });
   return NextResponse.json({ ok: true });
 });
