@@ -2,6 +2,14 @@
 
 export const RACE_LIMITS = { players: 40, rounds: 40, name: 40, title: 60, team: 30, reason: 80, points: 1000, selfieBytes: 15 * 1024 * 1024, pointsShown: 200 } as const;
 
+/** The teams a new race starts with; the leader renames, recolours, adds and removes them. */
+export const RACE_TEAM_LIMITS = { min: 2, max: 6 } as const;
+export const RACE_COLORS = ["#F5C542", "#46C971", "#4FC3F7", "#FF6B5E", "#B388FF", "#FF9F43", "#F48FB1", "#E8EEF5"];
+export const RACE_DEFAULT_TEAMS = [
+  { id: "a", name: "الفريق الأول", emoji: "🟡", color: "#F5C542" },
+  { id: "b", name: "الفريق الثاني", emoji: "🟢", color: "#46C971" },
+];
+
 export interface RaceRoundSeed {
   icon: string;
   name: string;

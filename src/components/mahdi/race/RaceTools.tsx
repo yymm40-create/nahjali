@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { RACE_LETTERS, RACE_WORDS } from "@config/mahdi-race";
-import { finalPoints, shuffled, type RaceTeam } from "@/lib/mahdi/race";
+import { finalPoints, shuffled, type RaceTeam, type RaceTeamInfo } from "@/lib/mahdi/race";
 
 export interface ToolRound {
   id: string;
@@ -11,11 +11,6 @@ export interface ToolRound {
   word_set: string;
   per: number;
   secs: number;
-}
-
-export interface ToolTeams {
-  a: string;
-  b: string;
 }
 
 type Add = (team: RaceTeam, points: number, reason: string) => void;
@@ -123,7 +118,7 @@ function Timer({ secs }: { secs: number }) {
   );
 }
 
-function Bomb({ teams, add }: { teams: ToolTeams; add: Add }) {
+function Bomb({ teams, add }: { teams: RaceTeamInfo[]; add: Add }) {
   const log = useContext(RaceLog);
   const [blown, setBlown] = useState(false);
   const c = useClock(() => {
@@ -139,19 +134,21 @@ function Bomb({ teams, add }: { teams: ToolTeams; add: Add }) {
       <div className="space-y-3 text-center">
         <div className="text-7xl">💥</div>
         <p className="text-xl font-black">انفجرت! عند منو؟</p>
-        <div className="flex gap-2">
-          {(["a", "b"] as const).map((t) => (
+        <div className="flex flex-wrap gap-2">
+          {teams.map((t) => (
             <button
-              key={t}
+              key={t.id}
               type="button"
               className="m-btn m-btn-primary flex-1"
               onClick={() => {
-                log("bomb_held_by", { team: t, name: teams[t] });
-                add(t === "a" ? "b" : "a", 10, `القنبلة انفجرت عند ${teams[t]}`);
+                log("bomb_held_by", { team: t.id, name: t.name });
+                // Two teams: the other one gains. More teams: the holder's team pays.
+                if (teams.length === 2) add(teams.find((x) => x.id !== t.id)!.id, 10, `القنبلة انفجرت عند ${t.name}`);
+                else add(t.id, -10, "القنبلة انفجرت عندهم");
                 setBlown(false);
               }}
             >
-              {teams[t]}
+              {t.emoji} {t.name}
             </button>
           ))}
         </div>
@@ -176,9 +173,9 @@ function Bomb({ teams, add }: { teams: ToolTeams; add: Add }) {
   );
 }
 
-function Words({ round, teams, add }: { round: ToolRound; teams: ToolTeams; add: Add }) {
+function Words({ round, teams, add }: { round: ToolRound; teams: RaceTeamInfo[]; add: Add }) {
   const log = useContext(RaceLog);
-  const [team, setTeam] = useState<RaceTeam>("a");
+  const [team, setTeam] = useState<RaceTeam>(teams[0].id);
   const [word, setWord] = useState("");
   const [count, setCount] = useState(0);
   const left = useRef<string[]>([]);
@@ -196,10 +193,10 @@ function Words({ round, teams, add }: { round: ToolRound; teams: ToolTeams; add:
   });
   return (
     <div className="space-y-3">
-      <div className="flex gap-2">
-        {(["a", "b"] as const).map((t) => (
-          <button key={t} type="button" disabled={c.left !== null} className={`m-btn flex-1 ${team === t ? "m-btn-primary" : "m-btn-ghost"}`} onClick={() => setTeam(t)}>
-            دور {teams[t]}
+      <div className="flex flex-wrap gap-2">
+        {teams.map((t) => (
+          <button key={t.id} type="button" disabled={c.left !== null} className={`m-btn flex-1 ${team === t.id ? "m-btn-primary" : "m-btn-ghost"}`} onClick={() => setTeam(t.id)}>
+            دور {t.emoji} {t.name}
           </button>
         ))}
       </div>
@@ -312,26 +309,26 @@ function Letters({ secs }: { secs: number }) {
   );
 }
 
-function Final({ secs, teams, add }: { secs: number; teams: ToolTeams; add: Add }) {
+function Final({ secs, teams, add }: { secs: number; teams: RaceTeamInfo[]; add: Add }) {
   const log = useContext(RaceLog);
-  const [left, setLeft] = useState({ a: "0", b: "0" });
+  const [left, setLeft] = useState<Record<string, string>>({});
   return (
     <div className="space-y-3">
       <Timer secs={secs} />
       <h4 className="font-bold">كم واحد بقى؟</h4>
-      {(["a", "b"] as const).map((t) => (
-        <label key={t} className="flex items-center gap-3 font-semibold">
-          <span className="flex-1">{teams[t]}</span>
-          <input className="m-field w-20 text-center" inputMode="numeric" value={left[t]} onChange={(e) => setLeft({ ...left, [t]: e.target.value })} />
+      {teams.map((t) => (
+        <label key={t.id} className="flex items-center gap-3 font-semibold">
+          <span className="flex-1">{t.emoji} {t.name}</span>
+          <input className="m-field w-20 text-center" inputMode="numeric" value={left[t.id] ?? "0"} onChange={(e) => setLeft({ ...left, [t.id]: e.target.value })} />
         </label>
       ))}
       <button
         type="button"
         className="m-btn m-btn-primary w-full"
         onClick={() => {
-          log("final_left", { a: left.a, b: left.b });
-          for (const p of finalPoints(Math.max(0, parseInt(left.a, 10) || 0), Math.max(0, parseInt(left.b, 10) || 0))) add(p.team, p.points, p.reason);
-          setLeft({ a: "0", b: "0" });
+          log("final_left", { left });
+          for (const p of finalPoints(Object.fromEntries(teams.map((t) => [t.id, Math.max(0, parseInt(left[t.id] ?? "0", 10) || 0)])))) add(p.team, p.points, p.reason);
+          setLeft({});
         }}
       >
         احسب الحسم
@@ -341,7 +338,7 @@ function Final({ secs, teams, add }: { secs: number; teams: ToolTeams; add: Add 
 }
 
 /** The leader's phone runs the round: its timer, words, or hidden bomb. */
-export default function RaceTools({ round, teams, add }: { round: ToolRound; teams: ToolTeams; add: Add }) {
+export default function RaceTools({ round, teams, add }: { round: ToolRound; teams: RaceTeamInfo[]; add: Add }) {
   if (round.tool === "bomb") return <Bomb teams={teams} add={add} />;
   if (round.tool === "words") return <Words round={round} teams={teams} add={add} />;
   if (round.tool === "draw") return <Draw secs={round.secs} />;

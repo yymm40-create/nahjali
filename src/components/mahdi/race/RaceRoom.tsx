@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { RACE_BANNED, RACE_RULES, RACE_SURPRISES } from "@config/mahdi-race";
+import { RACE_BANNED, RACE_COLORS, RACE_RULES, RACE_SURPRISES, RACE_TEAM_LIMITS } from "@config/mahdi-race";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { shrinkImage } from "@/lib/mahdi/client/reading";
 import { useMahdi } from "@/components/mahdi/Provider";
-import type { RaceTeam } from "@/lib/mahdi/race";
+import { inkOn, leaderOf, type RaceTeam, type RaceTeamInfo } from "@/lib/mahdi/race";
 import RaceTools, { RaceLog, type ToolRound } from "./RaceTools";
 
 interface Player {
@@ -16,6 +16,7 @@ interface Player {
   sv: number;
   team: RaceTeam | null;
   kid: boolean;
+  guest: boolean;
   spy?: boolean;
   missions?: string[];
 }
@@ -28,7 +29,7 @@ interface Round extends ToolRound {
   done: boolean;
 }
 interface View {
-  race: { id: string; title: string; code: string; teamA: string; teamB: string; emojiA: string; emojiB: string; banned: string; currentRound: string | null; spiesOn: boolean; revealed: boolean; winner: RaceTeam | "tie" | null };
+  race: { id: string; title: string; code: string; teams: RaceTeamInfo[]; banned: string; currentRound: string | null; spiesOn: boolean; revealed: boolean; winner: string | null };
   isOwner: boolean;
   scores: Record<RaceTeam, number>;
   players: Player[];
@@ -37,8 +38,7 @@ interface View {
   points: { id: string; team: RaceTeam; points: number; reason: string }[];
 }
 
-const TEAM_BG: Record<RaceTeam, string> = { a: "#F5C542", b: "#46C971" };
-const TEAMS = ["a", "b"] as const;
+const teamById = (v: View, id: string | null | undefined) => v.race.teams.find((t) => t.id === id);
 
 function Face({ raceId, p, size = 48 }: { raceId: string; p: { id: string; name: string; sv: number }; size?: number }) {
   const box = { width: size, height: size, borderRadius: "50%", flex: "none" } as const;
@@ -76,13 +76,12 @@ function Hold({ label, kind, children }: { label: string; kind: string; children
 }
 
 function Board({ v }: { v: View }) {
-  const names = { a: `${v.race.emojiA} ${v.race.teamA}`, b: `${v.race.emojiB} ${v.race.teamB}` };
   return (
     <div className="sticky top-2 z-10 grid grid-cols-2 gap-2">
-      {TEAMS.map((t) => (
-        <div key={t} className="flex items-center justify-between gap-2 rounded-2xl p-3 font-black" style={{ background: TEAM_BG[t], color: "#141414" }}>
-          <span className="text-sm">{names[t]}</span>
-          <b className="text-3xl tabular-nums">{v.scores[t]}</b>
+      {v.race.teams.map((t) => (
+        <div key={t.id} className="flex items-center justify-between gap-2 rounded-2xl p-3 font-black" style={{ background: t.color, color: inkOn(t.color) }}>
+          <span className="min-w-0 text-sm">{t.emoji} {t.name}</span>
+          <b className="text-3xl tabular-nums">{v.scores[t.id] ?? 0}</b>
         </div>
       ))}
     </div>
@@ -95,10 +94,8 @@ function Winner({ v }: { v: View }) {
   return (
     <div className="m-card space-y-2 p-6 text-center">
       <div className="text-6xl">{w === "tie" ? "🤝" : "🏆"}</div>
-      <h2 className="m-display text-3xl">{w === "tie" ? "تعادل!" : `الفايز: ${w === "a" ? v.race.teamA : v.race.teamB}`}</h2>
-      <p className="m-muted">
-        {v.race.teamA} {v.scores.a} · {v.race.teamB} {v.scores.b}
-      </p>
+      <h2 className="m-display text-3xl">{w === "tie" ? "تعادل!" : `الفايز: ${teamById(v, w)?.name ?? ""}`}</h2>
+      <p className="m-muted">{v.race.teams.map((t) => `${t.name} ${v.scores[t.id] ?? 0}`).join(" · ")}</p>
     </div>
   );
 }
@@ -144,12 +141,12 @@ function PointsPad({ v, act, reason }: { v: View; act: (b: Record<string, unknow
   const [why, setWhy] = useState("");
   return (
     <div className="m-card space-y-3 p-4">
-      {TEAMS.map((t) => (
-        <div key={t} className="space-y-2">
-          <h4 className="font-bold">{t === "a" ? v.race.teamA : v.race.teamB}</h4>
+      {v.race.teams.map((t) => (
+        <div key={t.id} className="space-y-2">
+          <h4 className="font-bold">{t.emoji} {t.name}</h4>
           <div className="grid grid-cols-4 gap-2">
             {[5, 10, 15, 30, -2, -5, -10, -20].map((p) => (
-              <button key={p} type="button" className={`m-btn m-btn-sm ${p > 0 ? "m-btn-primary" : "m-btn-ghost"}`} dir="ltr" onClick={() => act({ action: "points", team: t, points: p, reason: why.trim() || reason })}>
+              <button key={p} type="button" className={`m-btn m-btn-sm ${p > 0 ? "m-btn-primary" : "m-btn-ghost"}`} dir="ltr" onClick={() => act({ action: "points", team: t.id, points: p, reason: why.trim() || reason })}>
                 {p > 0 ? `+${p}` : p}
               </button>
             ))}
@@ -157,20 +154,20 @@ function PointsPad({ v, act, reason }: { v: View; act: (b: Record<string, unknow
         </div>
       ))}
       <input className="m-field" value={why} onChange={(e) => setWhy(e.target.value)} maxLength={80} placeholder="السبب (اختياري)" aria-label="سبب النقاط" />
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <input className="m-field w-24 text-center" inputMode="numeric" dir="ltr" value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="-25" aria-label="رقم خاص" />
-        {TEAMS.map((t) => (
+        {v.race.teams.map((t) => (
           <button
-            key={t}
+            key={t.id}
             type="button"
             className="m-btn m-btn-ghost flex-1"
             disabled={!Number(custom)}
             onClick={() => {
-              act({ action: "points", team: t, points: Number(custom), reason: why.trim() || reason });
+              act({ action: "points", team: t.id, points: Number(custom), reason: why.trim() || reason });
               setCustom("");
             }}
           >
-            {t === "a" ? v.race.emojiA : v.race.emojiB} سجّل
+            {t.emoji} سجّل
           </button>
         ))}
       </div>
@@ -185,7 +182,7 @@ function PointsLog({ v, act }: { v: View; act?: (b: Record<string, unknown>) => 
       {v.points.map((p) => (
         <div key={p.id} className="flex items-center justify-between gap-3 border-b py-2 text-sm" style={{ borderColor: "var(--m-border, #8884)" }}>
           <span className="min-w-0 flex-1">
-            {p.team === "a" ? v.race.emojiA : v.race.emojiB} {p.reason || "نقاط"}
+            {teamById(v, p.team)?.emoji} {p.reason || "نقاط"}
           </span>
           <b dir="ltr" className="tabular-nums">
             {p.points > 0 ? `+${p.points}` : p.points}
@@ -204,10 +201,10 @@ function PointsLog({ v, act }: { v: View; act?: (b: Record<string, unknown>) => 
 function Rosters({ v }: { v: View }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      {TEAMS.map((t) => (
-        <div key={t} className="m-card space-y-2 p-3">
-          <h3 className="font-black">{t === "a" ? `${v.race.emojiA} ${v.race.teamA}` : `${v.race.emojiB} ${v.race.teamB}`}</h3>
-          {v.players.filter((p) => p.team === t).map((p) => (
+      {v.race.teams.map((t) => (
+        <div key={t.id} className="m-card space-y-2 p-3" style={{ borderInlineStart: `6px solid ${t.color}` }}>
+          <h3 className="font-black">{t.emoji} {t.name}</h3>
+          {v.players.filter((p) => p.team === t.id).map((p) => (
             <div key={p.id} className="flex items-center gap-2 font-semibold">
               <Face raceId={v.race.id} p={p} size={40} /> <span className="min-w-0 flex-1">{p.name}</span>
               {v.race.revealed && p.spy && <span className="m-chip m-chip-gold">🕵️ جاسوس</span>}
@@ -219,7 +216,7 @@ function Rosters({ v }: { v: View }) {
   );
 }
 
-function SelfieButton({ raceId, again, onDone }: { raceId: string; again: boolean; onDone: () => void }) {
+function SelfieButton({ raceId, again, forUser, onDone }: { raceId: string; again: boolean; forUser?: string; onDone: () => void }) {
   const { toast } = useMahdi();
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -229,7 +226,7 @@ function SelfieButton({ raceId, again, onDone }: { raceId: string; again: boolea
     try {
       const form = new FormData();
       form.append("file", new File([await shrinkImage(file, 800)], "selfie.jpg", { type: "image/jpeg" }));
-      await mahdiFetch(`/api/mahdi/race/${raceId}/selfie`, { method: "POST", body: form });
+      await mahdiFetch(`/api/mahdi/race/${raceId}/selfie${forUser ? `?u=${forUser}` : ""}`, { method: "POST", body: form });
       onDone();
     } catch (e) {
       toast((e as Error).message);
@@ -238,9 +235,9 @@ function SelfieButton({ raceId, again, onDone }: { raceId: string; again: boolea
   }
   return (
     <>
-      <input ref={input} type="file" accept="image/*" capture="user" hidden onChange={(e) => pick(e.target.files?.[0])} />
+      <input ref={input} type="file" accept="image/*" capture={forUser ? "environment" : "user"} hidden onChange={(e) => pick(e.target.files?.[0])} />
       <button type="button" className={`m-btn w-full ${again ? "m-btn-ghost" : "m-btn-primary"}`} disabled={busy} onClick={() => input.current?.click()}>
-        {busy ? "يرفع…" : again ? "غيّر السلفي" : "📸 صوّر سلفي"}
+        {busy ? "يرفع…" : forUser ? (again ? "غيّر الصورة" : "📸 صوّره") : again ? "غيّر السلفي" : "📸 صوّر سلفي"}
       </button>
     </>
   );
@@ -264,7 +261,7 @@ function PlayerSide({ v, reload }: { v: View; reload: () => void }) {
             <Face raceId={v.race.id} p={me} size={56} />
             <div className="min-w-0 flex-1">
               <b className="text-lg">{me.name}</b>
-              <p className="m-muted">{me.team ? `فريقك: ${me.team === "a" ? v.race.teamA : v.race.teamB}` : "القائد بيوزّع الفريقين"}</p>
+              <p className="m-muted">{me.team ? `فريقك: ${teamById(v, me.team)?.name ?? ""}` : "القائد بيوزّع الفريقين"}</p>
             </div>
           </div>
           {v.race.spiesOn && !v.race.revealed && (
@@ -272,7 +269,7 @@ function PlayerSide({ v, reload }: { v: View; reload: () => void }) {
               {me.spy ? (
                 <>
                   <span className="text-xl">🕵️ أنت الجاسوس!</span>
-                  <span>تشتغل للفريق الثاني:</span>
+                  <span>تشتغل ضد فريقك:</span>
                   {me.missions.map((m) => (
                     <span key={m} className="font-medium">• {m}</span>
                   ))}
@@ -380,8 +377,61 @@ function Twice({ label, again, onGo, cls = "m-btn-danger" }: { label: string; ag
   );
 }
 
-function TeamsTab({ v, act }: { v: View; act: (b: Record<string, unknown>) => void }) {
-  const [names, setNames] = useState({ teamA: v.race.teamA, teamB: v.race.teamB, emojiA: v.race.emojiA, emojiB: v.race.emojiB });
+/** One team's name, emoji and colour. The draft stays local until «احفظ», so the live refresh never wipes typing. */
+function TeamEditor({ t, canRemove, act }: { t: RaceTeamInfo; canRemove: boolean; act: (b: Record<string, unknown>) => void }) {
+  const [d, setD] = useState({ name: t.name, emoji: t.emoji, color: t.color });
+  const changed = d.name !== t.name || d.emoji !== t.emoji || d.color !== t.color;
+  return (
+    <div className="space-y-2 rounded-2xl p-3" style={{ border: `3px solid ${d.color}` }}>
+      <div className="flex gap-2">
+        <input className="m-field w-16 text-center" value={d.emoji} onChange={(e) => setD({ ...d, emoji: e.target.value })} aria-label={`رمز ${t.name}`} />
+        <input className="m-field min-w-0 flex-1" value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} maxLength={30} aria-label={`اسم ${t.name}`} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`لون ${t.name}`}>
+        {RACE_COLORS.map((c) => (
+          <button key={c} type="button" onClick={() => setD({ ...d, color: c })} aria-label={`اللون ${c}`} aria-pressed={d.color === c} className="h-10 w-10 rounded-full" style={{ background: c, border: d.color === c ? "3px solid var(--m-gold)" : "2px solid #8886" }} />
+        ))}
+        <input type="color" value={d.color} onChange={(e) => setD({ ...d, color: e.target.value.toUpperCase() })} aria-label="لون خاص" className="h-10 w-10 rounded-full" />
+      </div>
+      <div className="flex gap-2">
+        <button type="button" className="m-btn m-btn-primary m-btn-sm flex-1" disabled={!changed || !d.name.trim() || !d.emoji.trim()} onClick={() => act({ action: "teamSave", team: t.id, ...d })}>
+          احفظ
+        </button>
+        {canRemove && <Twice label="احذف الفريق" again="يروح مع نقاطه؟" onGo={() => act({ action: "teamRemove", team: t.id })} />}
+      </div>
+    </div>
+  );
+}
+
+/** A contestant with no phone or account (a kid, usually): the leader types the name and takes the picture. */
+function AddPlayer({ act }: { act: (b: Record<string, unknown>) => void }) {
+  const [name, setName] = useState("");
+  const [kid, setKid] = useState(true);
+  return (
+    <div className="space-y-2">
+      <h4 className="font-bold">أضف متسابق بدون جوال</h4>
+      <input className="m-field" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} placeholder="اسم المتسابق" aria-label="اسم المتسابق" />
+      <div className="flex items-center gap-3">
+        <label className="flex flex-1 items-center gap-2 font-semibold">
+          <input type="checkbox" checked={kid} onChange={(e) => setKid(e.target.checked)} /> صغير
+        </label>
+        <button
+          type="button"
+          className="m-btn m-btn-primary m-btn-sm"
+          disabled={!name.trim()}
+          onClick={() => {
+            act({ action: "playerAdd", name, kid });
+            setName("");
+          }}
+        >
+          أضف
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TeamsTab({ v, act, reload }: { v: View; act: (b: Record<string, unknown>) => void; reload: () => void }) {
   const link = typeof location === "undefined" ? "" : `${location.origin}/mahdi/race?c=${v.race.code}`;
   const { toast } = useMahdi();
   return (
@@ -403,43 +453,43 @@ function TeamsTab({ v, act }: { v: View; act: (b: Record<string, unknown>) => vo
         </button>
       </div>
       <div className="m-card space-y-2 p-4">
-        <h3 className="font-black">تسمية الفريقين</h3>
-        <div className="flex gap-2">
-          <input className="m-field w-16 text-center" value={names.emojiA} onChange={(e) => setNames({ ...names, emojiA: e.target.value })} aria-label="رمز الفريق الأول" />
-          <input className="m-field flex-1" value={names.teamA} onChange={(e) => setNames({ ...names, teamA: e.target.value })} maxLength={30} aria-label="اسم الفريق الأول" />
-        </div>
-        <div className="flex gap-2">
-          <input className="m-field w-16 text-center" value={names.emojiB} onChange={(e) => setNames({ ...names, emojiB: e.target.value })} aria-label="رمز الفريق الثاني" />
-          <input className="m-field flex-1" value={names.teamB} onChange={(e) => setNames({ ...names, teamB: e.target.value })} maxLength={30} aria-label="اسم الفريق الثاني" />
-        </div>
-        <button type="button" className="m-btn m-btn-ghost w-full" onClick={() => act({ action: "settings", ...names })}>
-          احفظ الأسماء
-        </button>
+        <h3 className="font-black">الفرق: الاسم والرمز واللون</h3>
+        {v.race.teams.map((t) => (
+          <TeamEditor key={t.id} t={t} canRemove={v.race.teams.length > RACE_TEAM_LIMITS.min} act={act} />
+        ))}
+        {v.race.teams.length < RACE_TEAM_LIMITS.max && (
+          <button type="button" className="m-btn m-btn-ghost w-full" onClick={() => act({ action: "teamAdd" })}>
+            + أضف فريق ({v.race.teams.length}/{RACE_TEAM_LIMITS.max})
+          </button>
+        )}
       </div>
       <div className="m-card space-y-3 p-4">
         <div className="flex items-center justify-between gap-2">
           <h3 className="font-black">التوزيع ({v.players.length})</h3>
           <Twice label="وزّع عشوائي" again="تأكيد التوزيع" cls="m-btn-primary" onGo={() => act({ action: "deal" })} />
         </div>
-        <p className="m-muted text-sm">علّم الصغار عشان يتوزعون بالتساوي وما يطلعون جواسيس.</p>
+        <p className="m-muted text-sm">علّم الصغار عشان يتوزعون بالتساوي وما يطلعون جواسيس. واللي بدون جوال ما يطلع جاسوس.</p>
+        <AddPlayer act={act} />
         {!v.players.length && <p className="m-muted">أرسل الرابط للشباب، وأسماءهم تطلع هنا أول ما يدخلون.</p>}
         {v.players.map((p) => (
           <div key={p.id} className="space-y-2 border-t pt-2" style={{ borderColor: "var(--m-border, #8884)" }}>
             <div className="flex items-center gap-2 font-semibold">
               <Face raceId={v.race.id} p={p} size={40} />
               <span className="min-w-0 flex-1">{p.name}</span>
+              {p.guest && <span className="m-chip">بدون جوال</span>}
               <Twice label="احذف" again="متأكد؟" onGo={() => act({ action: "remove", user: p.id })} />
             </div>
-            <div className="flex gap-2">
-              {TEAMS.map((t) => (
-                <button key={t} type="button" className={`m-btn m-btn-sm flex-1 ${p.team === t ? "m-btn-primary" : "m-btn-ghost"}`} onClick={() => act({ action: "move", user: p.id, team: t })}>
-                  {t === "a" ? v.race.teamA : v.race.teamB}
+            <div className="flex flex-wrap gap-2">
+              {v.race.teams.map((t) => (
+                <button key={t.id} type="button" className={`m-btn m-btn-sm flex-1 ${p.team === t.id ? "m-btn-primary" : "m-btn-ghost"}`} onClick={() => act({ action: "move", user: p.id, team: t.id })}>
+                  {t.emoji} {t.name}
                 </button>
               ))}
               <button type="button" className={`m-btn m-btn-sm ${p.kid ? "m-btn-primary" : "m-btn-ghost"}`} onClick={() => act({ action: "kid", user: p.id, kid: !p.kid })}>
                 صغير
               </button>
             </div>
+            {p.guest && <SelfieButton raceId={v.race.id} forUser={p.id} again={p.sv > 0} onDone={reload} />}
           </div>
         ))}
       </div>
@@ -448,7 +498,7 @@ function TeamsTab({ v, act }: { v: View; act: (b: Record<string, unknown>) => vo
 }
 
 function GamesTab({ v, act }: { v: View; act: (b: Record<string, unknown>) => void }) {
-  const teams = { a: v.race.teamA, b: v.race.teamB };
+  const teams = v.race.teams;
   return (
     <div className="space-y-2">
       <p className="m-muted text-sm">كل الألعاب هنا بطريقتها. العب اللي تبي بالترتيب اللي تبي، ومو لازم تمر عليها كلها.</p>
@@ -557,7 +607,7 @@ function SpiesTab({ v, act }: { v: View; act: (b: Record<string, unknown>) => vo
           <Hold kind="spies_seen_by_leader" label="امسك هنا عشان تشوف منو الجواسيس">
             {spies.map((p) => (
               <span key={p.id}>
-                {p.name} ({p.team === "a" ? v.race.teamA : v.race.teamB})
+                {p.name} ({teamById(v, p.team)?.name ?? "بدون فريق"})
               </span>
             ))}
           </Hold>
@@ -578,13 +628,13 @@ function SpiesTab({ v, act }: { v: View; act: (b: Record<string, unknown>) => vo
           </button>
         </>
       )}
-      <p className="m-muted text-sm">النقاط من لوحة النتيجة: +40 للفريق اللي كشف جاسوسه، أو +40 للفريق الثاني إذا ما انكشف، و+10 لكل مهمة سواها الجاسوس.</p>
+      <p className="m-muted text-sm">النقاط من لوحة النتيجة: +40 للفريق اللي كشف جاسوسه، وإذا ما انكشف −20 عليه، و−10 عليه لكل مهمة سواها جاسوسه.</p>
     </div>
   );
 }
 
 function FinishTab({ v, act, onDelete }: { v: View; act: (b: Record<string, unknown>) => void; onDelete: () => void }) {
-  const tied = v.scores.a === v.scores.b;
+  const lead = teamById(v, leaderOf(v.scores));
   return (
     <div className="space-y-3">
       <div className="m-card space-y-3 p-4">
@@ -594,11 +644,11 @@ function FinishTab({ v, act, onDelete }: { v: View; act: (b: Record<string, unkn
           <button type="button" className="m-btn m-btn-ghost w-full" onClick={() => act({ action: "unfinish" })}>
             ألغِ الإعلان
           </button>
-        ) : tied ? (
+        ) : !lead ? (
           <div className="flex flex-wrap gap-2">
-            {TEAMS.map((t) => (
-              <button key={t} type="button" className="m-btn m-btn-primary flex-1" onClick={() => act({ action: "finish", winner: t })}>
-                الفايز {t === "a" ? v.race.teamA : v.race.teamB}
+            {v.race.teams.map((t) => (
+              <button key={t.id} type="button" className="m-btn m-btn-primary flex-1" onClick={() => act({ action: "finish", winner: t.id })}>
+                الفايز {t.name}
               </button>
             ))}
             <button type="button" className="m-btn m-btn-ghost w-full" onClick={() => act({ action: "finish", winner: "tie" })}>
@@ -606,7 +656,7 @@ function FinishTab({ v, act, onDelete }: { v: View; act: (b: Record<string, unkn
             </button>
           </div>
         ) : (
-          <Twice label={`🏆 أعلن الفايز: ${v.scores.a > v.scores.b ? v.race.teamA : v.race.teamB}`} again="تأكيد: يطلع عند الكل" cls="m-btn-primary" onGo={() => act({ action: "finish" })} />
+          <Twice label={`🏆 أعلن الفايز: ${lead.name}`} again="تأكيد: يطلع عند الكل" cls="m-btn-primary" onGo={() => act({ action: "finish" })} />
         )}
       </div>
       <div className="m-card space-y-2 p-4">
@@ -698,7 +748,7 @@ export default function RaceRoom({ id }: { id: string }) {
             </button>
           </nav>
           {tab === "score" && <ScoreTab v={v} act={act} />}
-          {tab === "teams" && <TeamsTab v={v} act={act} />}
+          {tab === "teams" && <TeamsTab v={v} act={act} reload={reload} />}
           {tab === "games" && <GamesTab v={v} act={act} />}
           {tab === "spies" && <SpiesTab v={v} act={act} />}
           {tab === "finish" && (

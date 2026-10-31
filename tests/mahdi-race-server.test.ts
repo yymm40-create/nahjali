@@ -31,7 +31,7 @@ function fakeDb() {
       delete: () => { op = "delete"; return q; },
       insert: (v: Row | Row[]) => {
         op = "insert";
-        inserted = (Array.isArray(v) ? v : [v]).map((r) => ({ id: `id${++seq}`, spy: false, missions: [], selfie_v: 0, kid: false, team: null, spies_on: false, revealed: false, winner: null, current_round: null, team_a: "A", team_b: "B", emoji_a: "1", emoji_b: "2", banned: "", ...r }));
+        inserted = (Array.isArray(v) ? v : [v]).map((r) => ({ id: `id${++seq}`, guest: false, spy: false, missions: [], selfie_v: 0, kid: false, team: null, spies_on: false, revealed: false, winner: null, current_round: null, banned: "", ...r }));
         rows.push(...inserted);
         return q;
       },
@@ -52,7 +52,7 @@ function fakeDb() {
 async function setup(players = 6) {
   const db = fakeDb();
   const id = await createRace(db, "owner", "سباق");
-  for (let i = 0; i < players; i++) (db as unknown as { tables: Record<string, Row[]> }).tables.mahdi_race_players.push({ race_id: id, user_id: `p${i}`, name: `لاعب ${i}`, selfie_v: 0, team: null, kid: false, spy: false, missions: [] });
+  for (let i = 0; i < players; i++) (db as unknown as { tables: Record<string, Row[]> }).tables.mahdi_race_players.push({ race_id: id, user_id: `p${i}`, name: `لاعب ${i}`, selfie_v: 0, team: null, kid: false, spy: false, missions: [], guest: false });
   const go = async (b: Record<string, unknown>) => raceAction(db, await raceById(db, id), b);
   const view = async (u: string) => raceView(db, await raceById(db, id), u);
   return { db, id, go, view };
@@ -93,12 +93,12 @@ describe("the race on the server", () => {
 
   it("gives the leader every control", async () => {
     const { go, view } = await setup();
-    await go({ action: "settings", teamA: "الصقور", teamB: "النمور" });
+    await go({ action: "teamSave", team: "a", name: "الصقور", emoji: "🦅", color: "#123456" });
     await go({ action: "points", team: "a", points: 30, reason: "فوز" });
     await go({ action: "points", team: "a", points: -5, reason: "خصم" });
     await go({ action: "points", team: "b", points: 10, reason: "" });
     let v = await view("owner");
-    expect(v.race.teamA).toBe("الصقور");
+    expect(v.race.teams[0]).toMatchObject({ id: "a", name: "الصقور", emoji: "🦅", color: "#123456" });
     expect(v.scores).toEqual({ a: 25, b: 10 });
     await go({ action: "undo", point: v.points.find((p) => p.points === 10)!.id });
     expect((await view("owner")).scores.b).toBe(0);
@@ -112,6 +112,47 @@ describe("the race on the server", () => {
     expect((await view("owner")).players.find((p) => p.id === "p0")?.team).toBe("b");
     await go({ action: "remove", user: "p0" });
     expect((await view("owner")).players).toHaveLength(5);
+  });
+
+  it("adds and removes teams within the limits", async () => {
+    const { go, view } = await setup();
+    await expect(go({ action: "teamRemove", team: "a" })).rejects.toThrow();
+    await go({ action: "teamAdd" });
+    await go({ action: "teamAdd" });
+    let v = await view("owner");
+    expect(v.race.teams.map((t) => t.id)).toEqual(["a", "b", "c", "d"]);
+    expect(new Set(v.race.teams.map((t) => t.color)).size).toBe(4);
+    await go({ action: "deal" });
+    v = await view("owner");
+    expect(v.players.every((p) => "abcd".includes(p.team ?? "x"))).toBe(true);
+    await go({ action: "points", team: "c", points: 20, reason: "" });
+    await go({ action: "points", team: "b", points: 5, reason: "" });
+    await go({ action: "move", user: "p0", team: "c" });
+    await go({ action: "teamRemove", team: "c" });
+    v = await view("owner");
+    expect(v.race.teams.map((t) => t.id)).toEqual(["a", "b", "d"]);
+    expect(v.scores).toEqual({ a: 0, b: 5, d: 0 });
+    expect(v.players.find((p) => p.id === "p0")?.team).toBeNull();
+    await expect(go({ action: "points", team: "c", points: 5, reason: "" })).rejects.toThrow();
+    await go({ action: "teamAdd" });
+    await go({ action: "teamAdd" });
+    await go({ action: "teamAdd" });
+    await expect(go({ action: "teamAdd" })).rejects.toThrow();
+  });
+
+  it("lets the leader add a contestant with no phone, who is dealt but never a spy", async () => {
+    const { go, view } = await setup(4);
+    await go({ action: "playerAdd", name: "طفل بدون جوال", kid: false });
+    let v = await view("owner");
+    const kid = v.players.find((p) => p.name === "طفل بدون جوال")!;
+    expect(kid.guest).toBe(true);
+    await go({ action: "deal" });
+    v = await view("owner");
+    expect(v.players.find((p) => p.id === kid.id)?.team).toBeTruthy();
+    for (let i = 0; i < 30; i++) {
+      await go({ action: "spies" });
+      expect((await view("owner")).players.find((p) => p.id === kid.id)?.spy).toBe(false);
+    }
   });
 
   it("announces the final winner, and asks on a tie", async () => {
