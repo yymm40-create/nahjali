@@ -96,6 +96,7 @@ export default function MorePage() {
             ["/mahdi/more/family", "users", t.family.link],
             ["/mahdi/reading", "book", t.reading.title],
             ["/mahdi/groups", "users", t.groups.title],
+            ["/mahdi/race", "sparkle", "المسابقة"],
             ["/mahdi/more/rewards", "sparkle", t.rewards.title],
             ["/mahdi/community", "globe", t.community.title],
             ["/mahdi/more/privacy", "lock", t.privacy.title],
