@@ -155,6 +155,17 @@ describe("the race on the server", () => {
     }
   });
 
+  it("lets the leader play on a team and keep the controls", async () => {
+    const { db, id, go, view } = await setup(3);
+    (db as unknown as { tables: Record<string, Row[]> }).tables.mahdi_race_players.push({ race_id: id, user_id: "owner", name: "القائد", selfie_v: 0, team: null, kid: false, spy: false, missions: [], guest: false });
+    await go({ action: "deal" });
+    const v = await view("owner");
+    expect(v.isOwner).toBe(true);
+    expect(v.me?.team).toBeTruthy();
+    await go({ action: "points", team: "a", points: 5, reason: "" });
+    expect((await view("owner")).scores.a).toBe(5);
+  });
+
   it("announces the final winner, and asks on a tie", async () => {
     const { go, view } = await setup();
     await expect(go({ action: "finish" })).rejects.toThrow();
