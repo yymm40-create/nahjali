@@ -8,7 +8,7 @@ import { createRace, raceAction, raceById, raceView } from "@/lib/mahdi/server/r
 // A small in-memory stand-in for the database client: only what the race's server code calls.
 type Row = Record<string, unknown>;
 function fakeDb() {
-  const tables: Record<string, Row[]> = { mahdi_races: [], mahdi_race_players: [], mahdi_race_rounds: [], mahdi_race_points: [], mahdi_race_events: [] };
+  const tables: Record<string, Row[]> = { mahdi_races: [], mahdi_race_players: [], mahdi_race_rounds: [], mahdi_race_points: [], mahdi_race_events: [], mahdi_race_photos: [] };
   let seq = 0;
   const from = (name: string) => {
     const rows = tables[name];
@@ -164,6 +164,32 @@ describe("the race on the server", () => {
     expect(v.me?.team).toBeTruthy();
     await go({ action: "points", team: "a", points: 5, reason: "" });
     expect((await view("owner")).scores.a).toBe(5);
+  });
+
+  it("finishes a round with its result for everyone, and new rounds can still come after", async () => {
+    const { go, view } = await setup();
+    const round = (await view("owner")).rounds[0] as { id: string };
+    await go({ action: "roundCurrent", round: round.id });
+    await go({ action: "roundResult", round: round.id, winner: "b", result: "فازوا بفارق نقطة" });
+    const seen = await view("p1");
+    expect(seen.rounds[0]).toMatchObject({ done: true, winner_team: "b", result: "فازوا بفارق نقطة" });
+    expect(seen.race.currentRound).toBeNull();
+    await expect(go({ action: "roundResult", round: round.id, winner: "z", result: "" })).rejects.toThrow();
+    const n = seen.rounds.length;
+    await go({ action: "finish", winner: "a" });
+    await go({ action: "roundAdd", name: "مسابقة بعد الختام", how: "" });
+    expect((await view("p1")).rounds).toHaveLength(n + 1);
+  });
+
+  it("keeps the album's photos out of the live state and lets the leader edit them", async () => {
+    const { db, id, go, view } = await setup();
+    const tables = (db as unknown as { tables: Record<string, Row[]> }).tables;
+    tables.mahdi_race_photos.push({ id: "ph1", race_id: id, round_id: null, caption: "", image: "BYTES", created_at: "2026-10-31T10:00:00Z" });
+    await go({ action: "photoEdit", photo: "ph1", caption: "صورة الفريق", round: null });
+    expect(tables.mahdi_race_photos[0].caption).toBe("صورة الفريق");
+    expect((await view("p1")).photos).toHaveLength(1);
+    await go({ action: "photoDelete", photo: "ph1" });
+    expect((await view("p1")).photos).toHaveLength(0);
   });
 
   it("announces the final winner, and asks on a tie", async () => {

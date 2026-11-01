@@ -1,6 +1,6 @@
 // «المسابقة» in «لأجل المهدي»: the day's default rounds and the words, missions and limits they use. Pure data.
 
-export const RACE_LIMITS = { players: 40, rounds: 40, name: 40, title: 60, team: 30, reason: 80, points: 1000, selfieBytes: 15 * 1024 * 1024, pointsShown: 200 } as const;
+export const RACE_LIMITS = { players: 40, rounds: 40, name: 40, title: 60, team: 30, reason: 80, points: 1000, selfieBytes: 15 * 1024 * 1024, pointsShown: 200, photos: 150, photoBytes: 15 * 1024 * 1024, caption: 200, result: 1000 } as const;
 
 /** The teams a new race starts with; the leader renames, recolours, adds and removes them. */
 export const RACE_TEAM_LIMITS = { min: 2, max: 6 } as const;
