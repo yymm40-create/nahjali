@@ -1,7 +1,7 @@
 "use client";
 
 // «صانع المحتوى» — the desk and the conversation with «محمد باقر»: chats on the side, cards to start from, his
-// questions as buttons (the table of 50 carousel styles, and the galleries), the messages with the
+// questions as buttons (the table of 100 carousel styles, and the galleries), the messages with the
 // person's attachments, the carousel's slides appearing as they are drawn (each downloadable, each with its check and
 // a way to draw it again), and the edit rooms he opens in «حيدرة كت». The look is content.css.
 
@@ -269,7 +269,7 @@ export function Questions({ questions, gal, disabled, onSend, onWrite }: { quest
           ) : q.kind === "carousels" ? (
             <div className="ct-opts">
               <button type="button" className="ct-opt" aria-pressed={gallery === qi} disabled={disabled} onClick={() => setGallery(gallery === qi ? null : qi)}>
-                📋 {gallery === qi ? "أغلق جدول الستايلات" : "افتح جدول الستايلات (٥٠ ستايل بالنيش)"}
+                📋 {gallery === qi ? "أغلق جدول الستايلات" : "افتح جدول الستايلات (١٠٠ ستايل بالنيش)"}
               </button>
               {chosenName(qi) && (
                 <span className="ct-chip ct-picked">✓ {chosenName(qi)} <button type="button" aria-label="ألغِ" onClick={() => setLines((s) => { const n = { ...s }; delete n[qi]; return n; })}>✕</button></span>

@@ -1,6 +1,6 @@
 "use client";
 
-// «صانع المحتوى» — جدول ستايلات الكاروسيل: the 50 looks a person picks from, by niche, each with its two sample slides, what it
+// «صانع المحتوى» — جدول ستايلات الكاروسيل: the 100 looks a person picks from, by niche, each with its two sample slides, what it
 // is and what it suits. Instead of questions about colours and margins. Two ways out: help me choose, or something else.
 
 import { useEffect, useState } from "react";

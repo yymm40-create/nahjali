@@ -37,7 +37,7 @@ for (const [name, w, h] of [["phone360", 360, 740], ["phone", 390, 844], ["desk"
   await new Promise((r) => setTimeout(r, 900));
   const o = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth, rows: document.querySelectorAll(".ct-ctable tbody tr:not(.niche)").length }));
   if (o.sw > o.iw) { bad++; console.log(`  ✗ ${name}: sideways overflow ${o.sw} > ${o.iw}`); }
-  if (o.rows !== 50) { bad++; console.log(`  ✗ ${name}: ${o.rows} rows`); }
+  if (o.rows !== 100) { bad++; console.log(`  ✗ ${name}: ${o.rows} rows`); }
   await page.screenshot({ path: join(out, `${name}.png`) });
   // a pick sends its line with the mark
   await page.evaluate(() => [...document.querySelectorAll(".ct-ctable .act button")][1].click());
@@ -48,7 +48,7 @@ for (const [name, w, h] of [["phone360", 360, 740], ["phone", 390, 844], ["desk"
   await page.evaluate(() => [...document.querySelectorAll(".ct-ctable-chips button")][5].click());
   await new Promise((r) => setTimeout(r, 200));
   const rows = await page.evaluate(() => document.querySelectorAll(".ct-ctable tbody tr:not(.niche)").length);
-  if (rows !== 5) { bad++; console.log(`  ✗ ${name}: niche shows ${rows}`); }
+  if (rows !== 10) { bad++; console.log(`  ✗ ${name}: niche shows ${rows}`); }
   await page.evaluate(() => document.querySelector(".ct-ctable .pics button").click());
   await new Promise((r) => setTimeout(r, 500));
   await page.screenshot({ path: join(out, `${name}-big.png`) });

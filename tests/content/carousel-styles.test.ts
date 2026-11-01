@@ -10,13 +10,13 @@ import { attachedPictures, carouselHold, CAROUSEL_LABEL, MAKER_CODE, MAKER_GPT, 
 import { slidePrompt } from "@/lib/content/produce";
 import { catalogBlock, chosenBlock, chosenIds } from "@/lib/content/persona";
 
-// The table of 50 carousel styles, picked from instead of being asked about colours and margins: the owner's order.
-describe("the 50 carousel styles", () => {
-  it("are 50, numbered in order, each with its own id and name, in every niche", () => {
-    expect(CAROUSEL_STYLES).toHaveLength(50);
-    expect(CAROUSEL_STYLES.map((s) => s.n)).toEqual(Array.from({ length: 50 }, (_, i) => i + 1));
-    expect(new Set(CAROUSEL_STYLES.map((s) => s.id)).size).toBe(50);
-    expect(new Set(CAROUSEL_STYLES.map((s) => s.name)).size).toBe(50);
+// The table of 100 carousel styles, picked from instead of being asked about colours and margins: the owner's order.
+describe("the 100 carousel styles", () => {
+  it("are 100, numbered in order, each with its own id and name, in every niche", () => {
+    expect(CAROUSEL_STYLES).toHaveLength(100);
+    expect(CAROUSEL_STYLES.map((s) => s.n)).toEqual(Array.from({ length: 100 }, (_, i) => i + 1));
+    expect(new Set(CAROUSEL_STYLES.map((s) => s.id)).size).toBe(100);
+    expect(new Set(CAROUSEL_STYLES.map((s) => s.name)).size).toBe(100);
     expect(new Set(CAROUSEL_STYLES.map((s) => s.niche))).toEqual(new Set(CAROUSEL_NICHES));
     expect(CAROUSEL_NICHES).toHaveLength(12);
     expect(findCarouselStyle("notebook")?.name).toBe("الدفتر");

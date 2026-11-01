@@ -25,7 +25,7 @@ function motionItems() {
 export const dynamic = "force-dynamic";
 
 /**
- * «صانع المحتوى» · the galleries a person picks from: the table of 50 carousel styles, the carousel templates (each with the one picture the owner had
+ * «صانع المحتوى» · the galleries a person picks from: the table of 100 carousel styles, the carousel templates (each with the one picture the owner had
  * drawn for it, the same for everyone; a template without one shows its palette), the library's 100 styles in 14
  * families (their pictures; a new style not drawn yet shows its family's icon), and the 100 four-colour palettes.
  */
@@ -35,7 +35,7 @@ export const GET = handle(async () => {
   return NextResponse.json(
     {
       templates: CAROUSEL_TEMPLATES.map((t) => ({ id: t.id, group: t.group, name: t.name, description: t.description, bestFor: t.bestFor, structures: t.structures.map(structureName), palettes: t.palettes, image: images[t.id] ?? null })),
-      // the table of 50 carousel styles by niche: its two sample slides, what it is and what it suits (never its prompts)
+      // the table of 100 carousel styles by niche: its two sample slides, what it is and what it suits (never its prompts)
       carousels: CAROUSEL_STYLES.map((s) => ({ id: s.id, n: s.n, niche: s.niche, name: s.name, description: s.description, bestFor: s.bestFor, winner: !!s.winner, realistic: !!s.photoIdea, cover: carouselSample(s, "cover"), slide: carouselSample(s, "slide") })),
       niches: CAROUSEL_NICHES,
       ...motionItems(),
