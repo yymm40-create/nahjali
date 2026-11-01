@@ -65,11 +65,11 @@ export function setPricing(p: Partial<Pricing> | null | undefined) {
 }
 
 /**
- * «أسبوع العرض» (the owner, 26 October 2026): every profit except Claude's work (the robots and «حيدرا ماكس», 60٪) is 10٪
+ * «أسبوع العرض» (the owner, 26 October 2026; extended to the end of 16 November 2026 Saudi time on 1 November): every profit except Claude's work (the robots and «حيدرا ماكس», 60٪) is 10٪
  * until `until` — over the owner's settings too — and then the margins above come back by themselves. The struck «كان»
  * price keeps its gap above the profit in force, so during the week it shows the usual price.
  */
-export const PROMO = { marginPct: 10, until: Date.parse("2026-11-02T21:00:00Z") } as const;
+export const PROMO = { marginPct: 10, until: Date.parse("2026-11-16T21:00:00Z") } as const;
 // the tests price at the usual margins unless one sets the clock (setPromoClock)
 let promoClock = () => (typeof process !== "undefined" && process.env.VITEST ? Infinity : Date.now());
 export const setPromoClock = (now: () => number) => {
