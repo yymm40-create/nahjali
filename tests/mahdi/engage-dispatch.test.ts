@@ -17,7 +17,7 @@ vi.mock("@/lib/mahdi/server/bulk", async (orig) => ({ ...(await orig<object>()),
 
 const PK: Record<string, string[]> = { mahdi_push_log: ["user_id", "kind", "day"] };
 function makeDb(tables: Record<string, Row[]>) {
-  class Q implements PromiseLike<{ data: Row[] | null; error: { code: string } | null }> {
+  class Q {
     private f: ((r: Row) => boolean)[] = [];
     private op: "select" | "insert" = "select";
     private row: Row = {};
@@ -29,7 +29,7 @@ function makeDb(tables: Record<string, Row[]>) {
     order() { return this; }
     range(a: number, b: number) { this.lim = [a, b]; return this; }
     insert(r: Row) { this.op = "insert"; this.row = r; return this; }
-    then<A, B>(ok?: ((v: { data: Row[] | null; error: { code: string } | null }) => A) | null, no?: ((e: unknown) => B) | null) {
+    then(ok?: (v: { data: Row[] | null; error: { code: string } | null }) => unknown, no?: (e: unknown) => unknown) {
       const rows = (tables[this.t] ??= []);
       if (this.op === "insert") {
         const keys = PK[this.t];
@@ -86,7 +86,7 @@ describe("dispatchEngagement", () => {
     const { dispatchEngagement } = await import("@/lib/mahdi/server/engage");
     habitData.set(U, streakHabit());
     expect((await dispatchEngagement(makeDb(base()), at("14:00"))).sent).toBe(0);
-    const done = streakHabit();
+    const done = streakHabit() as { habits: unknown[]; logs: Record<string, Record<string, number>> };
     done.logs.h1["2026-10-28"] = 1;
     habitData.set(U, done);
     expect((await dispatchEngagement(makeDb(base()), at("16:35"))).sent).toBe(0);
