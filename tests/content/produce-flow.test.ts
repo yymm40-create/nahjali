@@ -36,6 +36,7 @@ vi.mock("@/lib/content/verify", async (orig) => {
       const step = chk.script.shift() ?? "ok";
       if (step === "ok") return { ok: true, checked: true, problems: [], read: "", usd: 0.01 };
       if (step === "unchecked") return { ok: true, checked: false, problems: [], read: "", usd: 0 };
+      if (step === "woman") return { ok: false, checked: true, problems: [real.WOMAN_PROBLEM], read: "", usd: 0.01 };
       return { ok: false, checked: true, problems: ["حرف مقطوع في الكلمة الثانية"], read: "", usd: 0.01 };
     }),
   };
@@ -193,6 +194,16 @@ describe("drawing a carousel", () => {
     expect(r.slides[0].fixed).toBe(true);
     expect(r.slides[0].flag).toBeUndefined();
     expect(r.report).toContain("أُعيد رسم 1 شريحة تلقائيًا");
+  });
+
+  it("never hands over a slide showing a realistic adult woman: it is drawn again, then reported as not made", async () => {
+    start(1);
+    chk.script.push("woman", "woman", "woman");
+    const r = await produce("u", "chat-1");
+    expect(gen.calls.length).toBeGreaterThanOrEqual(2);
+    expect(r.slides).toHaveLength(0);
+    expect(r.failed[0]).toMatchObject({ n: 1 });
+    expect(r.failed[0].reason).toContain("امرأة بالغة واقعية");
   });
 
   it("keeps a slide that is still wrong after the tries, flagged, and reports it plainly", async () => {

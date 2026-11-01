@@ -567,3 +567,43 @@
 .ct-mediacard figcaption small { opacity: 0.75; }
 .ct-mediacard img, .ct-mediacard video { width: 100%; max-height: 420px; object-fit: contain; border-radius: 10px; background: #000; }
 .ct-mediacard.failed { border-color: rgba(255, 90, 90, 0.5); }
+
+/* جدول ستايلات الكاروسيل: 50 looks by niche; each row its two sample slides, what it is, and «اختر» */
+.ct-ctable { width: 100%; margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+.ct-ctable-ways { display: flex; flex-wrap: wrap; gap: 8px; }
+.ct-ctable-own { display: flex; gap: 8px; align-items: center; }
+.ct-ctable-own .ct-inline { flex: 1; min-width: 0; }
+.ct-ctable-own .ct-send { height: 40px; min-width: 0; padding: 0 18px; }
+.ct-ctable-chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.ct-ctable-chips .ct-opt { flex: none; white-space: nowrap; font-size: 13px; }
+.ct-ctable-chips small { opacity: 0.7; margin-inline-start: 2px; }
+.ct-ctable-scroll { max-height: 72vh; overflow-y: auto; border: 1px solid color-mix(in srgb, var(--ct-amber) 28%, transparent); border-radius: 14px; }
+.ct-ctable table { width: 100%; border-collapse: collapse; }
+.ct-ctable thead th { position: sticky; top: 0; z-index: 2; background: #1b151f; color: #b8ad9c; font-size: 12px; font-weight: 500; text-align: start; padding: 8px 10px; }
+.ct-ctable .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.ct-ctable .niche th { background: color-mix(in srgb, var(--ct-amber) 16%, #1b151f); color: var(--ct-amber); font-size: 14px; text-align: start; padding: 8px 10px; }
+.ct-ctable td { padding: 10px; vertical-align: top; border-top: 1px solid #ffffff14; }
+.ct-ctable tr.win td { background: color-mix(in srgb, var(--ct-amber) 7%, transparent); }
+.ct-ctable .pics { width: 230px; }
+.ct-ctable .pics button { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; width: 100%; padding: 0; background: none; border: 0; cursor: zoom-in; }
+.ct-ctable .pics img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 7px; background: #000; transition: transform 0.18s; }
+.ct-ctable .pics button:hover img { transform: translateY(-2px); }
+.ct-ctable .what b { display: block; font-size: 15px; color: #fff; margin-bottom: 4px; }
+.ct-ctable .what p { margin: 6px 0 4px; font-size: 13px; line-height: 1.75; }
+.ct-ctable .what small { color: #b8ad9c; font-size: 12px; line-height: 1.6; display: block; }
+.ct-ctable .tag { display: inline-block; font-size: 11px; line-height: 1.5; padding: 1px 8px; margin-inline-end: 5px; border-radius: 999px; border: 1px solid #ffffff2e; color: #e8dfd2; }
+.ct-ctable .tag.gold { border-color: var(--ct-amber); color: var(--ct-amber); }
+.ct-ctable .act { width: 76px; }
+.ct-ctable .act .ct-send { height: 38px; min-width: 0; width: 100%; padding: 0 10px; }
+.ct-ctable-big { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ct-ctable-big img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 10px; background: #000; }
+@media (max-width: 640px) {
+  .ct-ctable thead { display: none; }
+  .ct-ctable table, .ct-ctable tbody { display: block; }
+  .ct-ctable tbody tr:not(.niche) { display: grid; grid-template-columns: 1fr; gap: 8px; padding: 10px; border-top: 1px solid #ffffff14; }
+  .ct-ctable tr.niche { display: block; }
+  .ct-ctable tr.niche th { display: block; }
+  .ct-ctable td { display: block; padding: 0; border: 0; width: auto !important; }
+  .ct-ctable tr.win td { background: none; }
+  .ct-ctable tr.win { background: color-mix(in srgb, var(--ct-amber) 7%, transparent); }
+}
