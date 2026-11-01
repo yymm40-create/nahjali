@@ -7,10 +7,10 @@ import { loadSnapshot } from "@/lib/mahdi/server/snapshot";
 import { parseDate } from "@/lib/mahdi/server/validate";
 
 // «خانة الطوارئ»: (1) which habits carry an emergency goal and how small it is — many at once, from one or several projects;
-// (2) which days the person chose «اليوم طوارئ» for a habit. Needs migration 0097.
+// (2) which days the person chose «اليوم طوارئ» for a habit. Needs migration 0098.
 
 const MISSING = ["42P01", "42703", "PGRST204", "PGRST205"];
-const NOT_READY = "خانة الطوارئ تحتاج تجهيز قاعدة البيانات (ملف 0097).";
+const NOT_READY = "خانة الطوارئ تحتاج تجهيز قاعدة البيانات (ملف 0098).";
 const ready = <T>(res: { data: T; error: unknown }): T => {
   if (res.error && MISSING.includes((res.error as { code?: string }).code ?? "")) throw new UserError(NOT_READY, 503);
   return check(res);
@@ -60,7 +60,12 @@ export const POST = mahdiRoute(async (req: Request) => {
     if (!withEmergency.length) throw new UserError("هذي العادة ما عندها خانة طوارئ. حدّد رقم الطوارئ لها أول.", 400);
     const on = body.on !== false;
     if (on) ready(await supabase.from("mahdi_emergency_days").upsert(withEmergency.map((h) => ({ habit_id: h.id, user_id: user.id, day: date })), { onConflict: "habit_id,day" }));
-    else ready(await supabase.from("mahdi_emergency_days").delete().in("habit_id", withEmergency.map((h) => h.id)).eq("day", date));
+    else {
+      // a week / month goal: every day chosen in it (up to `to`, a month at most)
+      const to = body.to === undefined ? date : parseDate(body.to);
+      if (to < date || to > addDays(date, 31)) throw new UserError(t.errors.invalid, 400);
+      ready(await supabase.from("mahdi_emergency_days").delete().in("habit_id", withEmergency.map((h) => h.id)).gte("day", date).lte("day", to));
+    }
     return NextResponse.json({ snapshot: await loadSnapshot(supabase, profile) });
   }
 

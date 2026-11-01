@@ -4,7 +4,7 @@
 // never in the code. Server only.
 
 import { createHash } from "crypto";
-import { COURSE, PRODUCT_LABEL, waLink, type CourseSettings } from "@config/course";
+import { COURSE, isLadder, PRODUCT_LABEL, waLink, type CourseSettings } from "@config/course";
 import { LEARN } from "@config/learn";
 import type { Order } from "./orders";
 
@@ -52,20 +52,32 @@ export function orderText(o: Order, state = ""): string {
     `👤 ${esc(o.name)}`,
     `📱 <code>${esc(o.phone)}</code>`,
     `✉️ ${esc(o.email)}`,
-    `📦 ${esc(o.courseTitle || PRODUCT_LABEL[o.product])} — <b>${o.amount} ريال</b>${o.was > o.amount ? ` (قيمتها ${o.was})` : ""}${o.bonus ? ` + ${o.bonus} زهرة هدية` : ""}`,
+    `📦 ${esc(o.courseTitle ? `${o.courseTitle} · ${PRODUCT_LABEL[o.product]}` : PRODUCT_LABEL[o.product])} — <b>${o.amount} ريال</b>${o.was > o.amount ? ` (قيمتها ${o.was})` : ""}${o.bonus ? ` + ${o.bonus} زهرة هدية` : ""}`,
     ...(o.code ? [`🏷️ كود الخصم: <code>${esc(o.code)}</code>`] : []),
     `🕒 ${when(o.transferredAt ?? o.createdAt)}`,
     ...(state ? [] : ["✅ بعد ما تضغط «أكّد الدفع» تظهر الدورة في «دوراتي» عنده مباشرة."]),
   ].join("\n");
 }
 
-/** What the owner sends the buyer after confirming: the welcome with the group link. */
-export const welcomeText = (o: Order, s: CourseSettings) =>
-  `هلا ${o.name} 🌸 تم تأكيد اشتراكك في ${COURSE.name} ✅\nتلقاها الحين في حسابك في «دوراتي»: https://www.aljawadai.app${LEARN.base}${s.groupLink ? `\nرابط المجموعة: ${s.groupLink}` : ""}${o.bonus ? `\nوانضاف لرصيدك في الجواد ${o.bonus} زهرة هدية 🎁` : ""}`;
+/**
+ * What the owner sends the buyer after confirming: the welcome with what they bought. On the clock course the live ticket gets the
+ * live day and the WhatsApp group (no «دوراتي»: the recording isn't theirs), the whole course gets both, the recorded one «دوراتي».
+ */
+export function welcomeText(o: Order, s: CourseSettings): string {
+  const ladder = isLadder(s, o.courseId);
+  const live = ladder && o.product !== "recorded";
+  const rec = !ladder || o.product !== "live";
+  const lines = [`هلا ${o.name} 🌸 تم تأكيد اشتراكك في ${o.courseTitle || COURSE.name}${ladder ? ` (${PRODUCT_LABEL[o.product]})` : ""} ✅`];
+  if (live && s.liveWhen) lines.push(`🗓️ البث المباشر: ${s.liveWhen}`);
+  if ((ladder ? live : true) && s.groupLink) lines.push(`رابط المجموعة: ${s.groupLink}`);
+  if (rec) lines.push(`${ladder ? "والمسجلة تنزل لك" : "تلقاها الحين"} في حسابك في «دوراتي»: https://www.aljawadai.app${LEARN.base}`);
+  if (o.bonus) lines.push(`وانضاف لرصيدك في الجواد ${o.bonus} زهرة هدية 🎁`);
+  return lines.join("\n");
+}
 
 const rows = (o: Order, s: CourseSettings, done: boolean): unknown[][] => [
   ...(done ? [] : [[{ text: "✅ أكّد الدفع", callback_data: `ok:${o.id}` }, { text: "❌ ارفض", callback_data: `no:${o.id}` }]]),
-  ...(o.phone ? [[{ text: done ? "💬 أرسل له رسالة الترحيب" : "💬 واتساب", url: waLink(o.phone, done ? welcomeText(o, s) : `هلا ${o.name}، وصلنا تحويلك لـ${COURSE.name}.`) }]] : []),
+  ...(o.phone ? [[{ text: done ? "💬 أرسل له رسالة الترحيب" : "💬 واتساب", url: waLink(o.phone, done ? welcomeText(o, s) : `هلا ${o.name}، وصلنا تحويلك لـ${o.courseTitle || COURSE.name}.`) }]] : []),
 ];
 export { rows as orderButtons };
 

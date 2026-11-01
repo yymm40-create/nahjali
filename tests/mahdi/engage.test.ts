@@ -77,12 +77,12 @@ describe("the dispatcher's wiring", () => {
     expect(route).toMatch(/mahdi_dispatch_runs/);
   });
 
-  it("claims a send in the log BEFORE sending, so two ticks never send twice; nothing runs before migration 0098", () => {
+  it("claims a send in the log BEFORE sending, so two ticks never send twice; nothing runs before migration 0102", () => {
     const src = read("src/lib/mahdi/server/engage.ts");
     expect(src.indexOf('from("mahdi_push_log").insert')).toBeLessThan(src.indexOf("pushToUser("));
     expect(src).toMatch(/if \(error\) return result;/);
     expect(src).toMatch(/ENGAGE_DAILY_MAX - log\.filter/);
-    const sql = read("supabase/migrations/0098_mahdi_engage.sql");
+    const sql = read("supabase/migrations/0102_mahdi_engage.sql");
     expect(sql).toMatch(/add column if not exists engage jsonb/);
     expect(sql).toMatch(/primary key \(user_id, kind, day\)/);
     expect(sql).toMatch(/revoke all on public\.mahdi_push_log from anon, authenticated/);

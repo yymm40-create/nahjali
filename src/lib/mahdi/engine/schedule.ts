@@ -94,6 +94,14 @@ export function periodInstances(item: Item, kind: Exclude<SlotKind, "day">, peri
     if (g.v.measure === "amount") target = Math.max(0.1, Math.round(target * 10) / 10);
     else target = Math.max(1, Math.round(target));
     if (g.v.measure === "check") target = Math.min(target, g.days.length);
+    const goal = full ? g.v.target : target;
+    // «طوارئ» for a week / month goal (e.g. 1000 a week): a day of the period chosen lowers that period's goal to the
+    // emergency one (pro-rated like the goal itself when the period is partial), only when it IS smaller
+    const em = item.emergency;
+    const chosen = Boolean(em && g.v.measure !== "check" && em.target > 0 && g.days.some((d) => em.days.has(d)));
+    let low = chosen ? em!.target * (goal / g.v.target) : goal;
+    low = g.v.measure === "amount" ? Math.max(0.1, Math.round(low * 10) / 10) : Math.max(1, Math.round(low));
+    const lowered = chosen && low < goal;
     out.push(
       finish(
         {
@@ -107,9 +115,10 @@ export function periodInstances(item: Item, kind: Exclude<SlotKind, "day">, peri
           periodEnd,
           measure: g.v.measure,
           unit: g.v.unit,
-          target: full ? g.v.target : target,
+          target: lowered ? low : goal,
           value: round2(g.value),
           partial: !full,
+          ...(lowered ? { emergency: true, fullTarget: goal } : {}),
         },
         ctx.asOf,
       ),

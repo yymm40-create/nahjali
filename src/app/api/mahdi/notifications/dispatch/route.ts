@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     const tasks = await dispatchTaskReminders(db).catch((e) => (console.error("[mahdi dispatch tasks]", e), null));
     // «تنبيهات تجيبك للتطبيق» (the morning verse, the review notes, the streak, the comeback): never stops what is above
     const engage = await dispatchEngagement(db).catch((e) => (console.error("[mahdi dispatch engage]", e), null));
-    // the heartbeat (migration 0098): the app can say when the dispatcher last ran
+    // the heartbeat (migration 0102): the app can say when the dispatcher last ran
     await db.from("mahdi_dispatch_runs").insert({ checked: habits.checked, sent: habits.sent, engage_sent: engage?.sent ?? 0 }).then(
       () => db.from("mahdi_dispatch_runs").delete().lt("ran_at", new Date(Date.now() - 7 * 86_400_000).toISOString()),
       () => undefined,

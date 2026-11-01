@@ -262,6 +262,16 @@ function motionTrack(t: Timeline, at: number, len: number): Track {
   Object.assign(track, { name: `موشن ${t.tracks.filter((x) => x.motion).length + 1}`, color: "#8b5cf6", motion: true });
   return track;
 }
+/** The motion track under all the pictures, for a background element (the first track drawn). */
+function backgroundTrack(t: Timeline, at: number, len: number): Track {
+  const first = t.tracks[0];
+  if (first?.motion && !first.locked && free(first, at, at + len)) return first;
+  const track = newTrack(t, "text");
+  Object.assign(track, { name: "خلفية متحركة", color: "#8b5cf6", motion: true });
+  t.tracks.splice(t.tracks.indexOf(track), 1);
+  t.tracks.unshift(track);
+  return track;
+}
 /** A text or motion clip goes only on a track of its own sort (a caption never lands on the motion track, nor back). */
 const sameSort = (x: Track, c: Clip) => !!x.motion === !!c.motion;
 
@@ -411,7 +421,8 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const len = Math.max(MOTION_MS.min, Math.round(cmd.duration ?? MOTION_MS.default));
       const at = Math.max(0, Math.round(cmd.at));
       const motion = newMotion(cmd.kind, cmd.motion ?? {});
-      const track = motionTrack(t, at, len);
+      // «عناصر تتحرك» is a background: its track goes under the pictures, the others over them
+      const track = motion.kind === "ambient" ? backgroundTrack(t, at, len) : motionTrack(t, at, len);
       const c: Clip = {
         id: newId("c"),
         assetId: null,

@@ -8,6 +8,7 @@ import { versionAt } from "@/lib/mahdi/engine";
 import { fmtNum } from "@/lib/mahdi/i18n";
 import { bySort, parseNumberInput, quantity } from "@/lib/mahdi/client/derive";
 import type { Habit, Project } from "@/lib/mahdi/types";
+import EmergencyNow from "./EmergencyNow";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
 import Sheet from "./Sheet";
@@ -85,6 +86,8 @@ export default function EmergencySetup({ open, onClose, projectIds, habitId }: {
   return (
     <Sheet open={open} onClose={onClose} title="خانة الطوارئ">
       <div className="space-y-5">
+        {/* one switch: «أنا الحين في طوارئ» for the habits the person ticks */}
+        {!habitId && <EmergencyNow />}
         <p className="m-muted text-sm leading-relaxed">
           <Icon name="shield" size={16} /> يوم ما تقدر تسوي العادة كاملة؟ حدّد رقم أصغر تقبله في الطوارئ. إذا فعّلت «اليوم طوارئ» وسويت الرقم الصغير ينحسب لك إنجاز كامل بلون خاص، وآخر الأسبوع والشهر يبيّن لك كم يوم طوارئ اخترت وكم عادة.
         </p>

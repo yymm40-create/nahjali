@@ -13,7 +13,7 @@ import { useClaudeModel } from "@/components/robots/claude-model";
 import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
-import { answerLine, DELEGATE_LINE, moodLine, motionLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
+import { answerLine, DELEGATE_LINE, moodLine, motionLine, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { drawWithCode, smallJpeg } from "@/components/claude-code/draw";
 
@@ -26,7 +26,7 @@ interface MediaView {
   url?: string | null; download?: string | null; error?: string; detail?: string; transient?: boolean; tries?: number;
   desk?: { generator: string; coins: number; free: boolean };
 }
-interface Question { label: string; kind: "choice" | "templates" | "styles" | "motion" | "moods"; options: string[]; multi: boolean }
+interface Question { label: string; kind: "choice" | "templates" | "styles" | "motion" | "moods" | "palettes"; options: string[]; multi: boolean }
 interface Msg {
   role: "user" | "assistant";
   text: string;
@@ -40,9 +40,9 @@ interface Msg {
 interface ChatItem { id: string; title: string }
 interface Pending { total: number; mode: "all" | "fix"; todo: number[] }
 interface Palette { name: string; bg: string; text: string; primary: string; accent: string }
-interface GalleryItem { id: string; group: string; name: string; description: string; bestFor: string; image: string | null; icon?: string; palettes?: Palette[]; structures?: string[] }
-interface Galleries { templates: GalleryItem[]; styles: GalleryItem[]; motion?: GalleryItem[]; moods?: GalleryItem[] }
-type GalleryKind = "templates" | "styles" | "motion" | "moods";
+interface GalleryItem { id: string; group: string; name: string; description: string; bestFor: string; image: string | null; icon?: string; palettes?: Palette[]; structures?: string[]; swatch?: string[] }
+interface Galleries { templates: GalleryItem[]; styles: GalleryItem[]; motion?: GalleryItem[]; moods?: GalleryItem[]; palettes?: GalleryItem[] }
+type GalleryKind = "templates" | "styles" | "motion" | "moods" | "palettes";
 
 /** What each gallery says on its buttons, and the line a pick becomes in the message. */
 const GALLERY: Record<GalleryKind, { open: string; none: string; line: (p: { id: string; name: string }) => string }> = {
@@ -50,6 +50,7 @@ const GALLERY: Record<GalleryKind, { open: string; none: string; line: (p: { id:
   styles: { open: "🎨 افتح معرض الستايلات الكرتونية", none: "🚫 بدون ستايل كرتوني", line: styleLine },
   motion: { open: "🎬 افتح معرض مهارات الموشن", none: "🎲 اختر لي المهارة الأنسب", line: motionLine },
   moods: { open: "🎭 افتح معرض مشاعر الموشن", none: "🎲 اختر لي المزاج الأنسب", line: moodLine },
+  palettes: { open: "🎨 افتح معرض الألوان (١٠٠ لوحة)", none: "🎲 اختر لي الألوان الأنسب", line: paletteLine },
 };
 
 const STARTS = [
@@ -121,6 +122,15 @@ const FLOATERS: { s: number; c: string; t: number; d: number; top: string; left:
 
 /** A thumbnail of a gallery item: its picture, or (no picture yet) a template's palette or a style's family icon. */
 function Thumb({ item, big }: { item: GalleryItem; big?: boolean }) {
+  // a palette: its four colours side by side, their codes on the enlarged one
+  if (item.swatch)
+    return (
+      <div className={`ct-thumb ${big ? "big" : ""}`} style={{ display: "flex", overflow: "hidden", ...(big ? { width: "100%", height: 220 } : {}) }} aria-label={item.name}>
+        {item.swatch.map((c) => (
+          <i key={c} style={{ flex: 1, background: c, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 6, fontStyle: "normal", fontSize: 11, color: "#fff", textShadow: "0 1px 2px #000" }}>{big ? c : ""}</i>
+        ))}
+      </div>
+    );
   if (item.image) return <img src={item.image} alt={item.name} loading="lazy" className={`ct-thumb ${big ? "big" : ""}`} />;
   const p = item.palettes?.[0];
   return (

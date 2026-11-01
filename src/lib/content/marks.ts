@@ -1,12 +1,12 @@
 // «صانع المحتوى» — what a press in the questions becomes as a message: the answers as bullets, a pick in a gallery
-// carrying a mark ([قالب:id] / [ستايل:id] / [موشن:id] / [مزاج:id]) that the server reads and the page hides. Pure (server and browser).
+// carrying a mark ([قالب:id] / [ستايل:id] / [موشن:id] / [مزاج:id] / [ألوان:id]) that the server reads and the page hides. Pure (server and browser).
 
 export interface Pick {
   id: string;
   name: string;
 }
 
-const MARK = /\s*\[(?:قالب|ستايل|موشن|مزاج):[a-z0-9-]+\]/g;
+const MARK = /\s*\[(?:قالب|ستايل|موشن|مزاج|ألوان):[a-z0-9-]+\]/g;
 
 /** The text as the person reads it (the marks are for the server). */
 export const stripMarks = (text: string) => text.replace(MARK, "");
@@ -22,6 +22,9 @@ export const motionLine = (p: Pick) => (p.id === "none" ? "• مهارة الم
 
 /** A mood pick (the feeling of the motion piece) as a line of a message (id "none" = he chooses). */
 export const moodLine = (p: Pick) => (p.id === "none" ? "• المزاج: اختر لي الأنسب للموضوع [مزاج:none]" : `• مزاج الموشن: «${p.name}» [مزاج:${p.id}]`);
+
+/** A colour pick (one of the 100 four-colour palettes) as a line of a message (id "none" = he chooses the colours). */
+export const paletteLine = (p: Pick) => (p.id === "none" ? "• الألوان: اختر لي الأنسب للموضوع [ألوان:none]" : `• الألوان: «${p.name}» [ألوان:${p.id}]`);
 
 /** An answer of the buttons: a line per question. */
 export const answerLine = (label: string, answers: string[]) => `• ${label}: ${answers.join("، ")}`;

@@ -15,6 +15,7 @@ import { bonusPct, CREDITS, type Pack, type UnitPrices } from "@config/credits";
 import { waLink } from "@config/course";
 import { giftOpen, SIGNUP_GIFT } from "@config/gift";
 import { JAWAD } from "@config/jawad/brand";
+import { TESTIMONIALS } from "@config/jawad/testimonials";
 import "./landing.css";
 
 export interface LandingTool {
@@ -118,6 +119,27 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
           </ul>
         </div>
       </section>
+
+      {TESTIMONIALS.length > 0 && (
+        <section className="ld-sec ld-alt">
+          <div className="ld-in">
+            <h2 className="ld-h">قالوا عن الجواد</h2>
+            <p className="ld-lead">كلام عملائنا مثل ما وصلنا، بدون تعديل.</p>
+            <div className="ld-says">
+              {TESTIMONIALS.map((t) => (
+                <figure key={t.at + t.who} className="ld-say">
+                  <blockquote>
+                    {t.said.map((line, i) => (
+                      <p key={i} className="ld-bubble">{line}</p>
+                    ))}
+                  </blockquote>
+                  <figcaption>💬 {t.who}</figcaption>
+                </figure>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {models.length > 0 && (
         <section className="ld-sec ld-alt">

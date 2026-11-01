@@ -4,6 +4,9 @@
 // reference recording that stays in the site's storage. Env: VOICESTUDIO_URL (the server's address, e.g. https://…:3900),
 // VOICESTUDIO_KEY (its OMNIVOICE_API_KEY), and optionally VOICESTUDIO_ENGINE (an engine id such as "voxcpm2"; empty = the
 // server's active engine). A voice is a reference recording of the person (10 s – 3 min) plus the words said in it.
+// It runs as a RunPod Serverless «Load Balancer» endpoint (the owner, 1 November 2026: pay only while it speaks): then
+// VOICESTUDIO_URL is the endpoint's address and VOICESTUDIO_KEY the RunPod API key, and a sleeping worker takes about a
+// minute to wake — so the calls wait for it and try again while the gateway answers «not ready» (502/503/504).
 // Server only.
 
 import { createHash } from "crypto";
@@ -42,19 +45,44 @@ export function profileName(refUrl: string): string {
 
 const known = new Set<string>();
 
+/** The gateway's «the worker is still waking up» answers (a serverless worker that was asleep). */
+const WAKING = new Set([502, 503, 504]);
+/** How long to wait for a sleeping worker to wake, in all (VOICESTUDIO_WAKE_MS overrides it), and between two tries. */
+const wakeMs = () => {
+  const n = Number(process.env.VOICESTUDIO_WAKE_MS);
+  return Number.isFinite(n) && n >= 0 ? n : 150_000;
+};
+const wakeStep = () => Math.min(10_000, Math.max(1, wakeMs() / 10));
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function call(path: string, init: RequestInit, what: string, timeoutMs = 280_000): Promise<Response> {
   if (!jawadVoiceReady()) throw new ProviderError("rejected", "محرك «صوت الجواد» غير مفعّل على الخادم (VOICESTUDIO_URL).", "VOICESTUDIO_URL missing");
-  try {
-    return await fetch(base() + path, { ...init, signal: AbortSignal.timeout(timeoutMs) });
-  } catch (e) {
-    throw new ProviderError("unknown", "خادم «صوت الجواد» ما رد الآن؛ جرّب بعد دقيقة.", `voicestudio ${what}: ${e instanceof Error ? e.message : String(e)}`);
+  const until = Date.now() + wakeMs();
+  for (;;) {
+    let res: Response;
+    try {
+      res = await fetch(base() + path, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    } catch (e) {
+      if (Date.now() < until && !(e instanceof Error && e.name === "TimeoutError")) {
+        await pause(wakeStep());
+        continue;
+      }
+      throw new ProviderError("unknown", "خادم «صوت الجواد» ما رد الآن؛ جرّب بعد دقيقة.", `voicestudio ${what}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    // a sleeping serverless worker: wait for it (a form body can be sent again: it is rebuilt from the same bytes)
+    if (WAKING.has(res.status) && Date.now() < until) {
+      await res.body?.cancel().catch(() => {});
+      await pause(wakeStep());
+      continue;
+    }
+    return res;
   }
 }
 
 /** Makes sure the voice exists on the server as a profile (made once from the reference recording). */
 async function ensureProfile(name: string, o: JawadSpeech) {
   if (known.has(name)) return;
-  const list = await call("/profiles", { headers: headers() }, "list profiles", 30_000);
+  const list = await call("/profiles", { headers: headers() }, "list profiles", 120_000);
   if (list.ok) {
     const rows = (await list.json().catch(() => [])) as { name?: string }[];
     if (Array.isArray(rows) && rows.some((r) => r?.name === name)) {
@@ -72,7 +100,7 @@ async function ensureProfile(name: string, o: JawadSpeech) {
   form.set("language", "Auto");
   form.set("ref_text", o.refText);
   form.set("ref_audio", new Blob([bytes], { type: mime }), mime.includes("mpeg") ? "ref.mp3" : "ref.wav");
-  const made = await call("/profiles", { method: "POST", headers: headers(), body: form }, "create profile", 120_000);
+  const made = await call("/profiles", { method: "POST", headers: headers(), body: form }, "create profile", 240_000);
   const body = await made.text();
   if (!made.ok) throw new ProviderError("rejected", rejectedMessage(made.status, body), `voicestudio profile ${made.status} ${body.slice(0, 300)}`);
   known.add(name);

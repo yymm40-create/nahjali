@@ -57,7 +57,7 @@ function SystemStatus({ status }: { status: Status }) {
   const rows: [string, boolean | null, string][] = [
     ["مفاتيح الإشعارات (VAPID) في الموقع", status.configured, status.configured ? "موجودة" : "ناقصة: ضعها في إعدادات الموقع"],
     ["كلمة سر المجدوِل (MAHDI_CRON_SECRET)", status.cronSecret, status.cronSecret ? "موجودة" : "ناقصة أو قصيرة"],
-    ["المجدوِل (كل ١٥ دقيقة)", status.heartbeatReady ? alive : null, !status.heartbeatReady ? "ما نعرف: شغّل ملف 0098" : last !== undefined ? `آخر تشغيل ${ago(last)}` : "ما اشتغل ولا مرة: شغّل ملف 0009 (الجدولة)"],
+    ["المجدوِل (كل ١٥ دقيقة)", status.heartbeatReady ? alive : null, !status.heartbeatReady ? "ما نعرف: شغّل ملف 0102" : last !== undefined ? `آخر تشغيل ${ago(last)}` : "ما اشتغل ولا مرة: شغّل ملف 0009 (الجدولة)"],
   ];
   return (
     <section className="m-card space-y-3 p-5" aria-labelledby="sys-title">

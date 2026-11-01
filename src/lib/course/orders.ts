@@ -5,7 +5,7 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { grantCoins } from "@/lib/coins";
-import { COURSE, cleanPhone, offerFor, offersAt, type Bank, type Product, type CourseSettings } from "@config/course";
+import { COURSE, cleanPhone, isLadder, isProduct, offerFor, offersAt, type Bank, type Product, type CourseSettings } from "@config/course";
 import { loadSettings } from "./settings";
 import { notifyTransfer } from "./telegram";
 
@@ -88,7 +88,7 @@ export interface Started {
 }
 
 /** «ادفع الآن»: the order for ONE course at its own price (kept for a few hours), and the bank data to transfer to. */
-export async function startOrder(user: { id: string; email?: string | null }, b: { courseId: unknown; name: unknown; phone: unknown; code?: unknown }, now = Date.now()): Promise<Started> {
+export async function startOrder(user: { id: string; email?: string | null }, b: { courseId: unknown; name: unknown; phone: unknown; code?: unknown; product?: unknown }, now = Date.now()): Promise<Started> {
   const s = await loadSettings();
   const courseId = typeof b.courseId === "string" ? b.courseId : "";
   const { data: course } = /^[0-9a-f-]{36}$/i.test(courseId) ? await db().from("learn_courses").select("*").eq("id", courseId).maybeSingle() : { data: null };
@@ -98,10 +98,14 @@ export async function startOrder(user: { id: string; email?: string | null }, b:
   const hasCode = typeof b.code === "string" && b.code.trim() !== "";
   const coded = hasCode && course?.published && price > 0 ? await codePrice(courseId, b.code) : null;
   if (hasCode && course?.published && price > 0 && !coded) throw new UserError("كود الخصم غير صحيح لهذه الدورة.", 400);
-  if (coded) price = coded.price;
+  // the clock course sells the product the person chose at today's price (a code still gives its own price); the others their recorded course
+  const ladder = isLadder(s, courseId);
+  const product: Product = ladder ? (isProduct(b.product) ? b.product : "combo") : "recorded";
+  if (coded && !ladder) price = coded.price;
   // a course is on sale while it is shown to students and has a price
-  const offer = course?.published && price > 0 ? offerFor(s, "recorded", now, price, was) : null;
-  if (!offer) throw new UserError("هذه الدورة غير معروضة للبيع الحين.", 409);
+  const found = course?.published && price > 0 ? offerFor(s, product, now, price, was, courseId) : null;
+  if (!found) throw new UserError(ladder && offersAt(s, now, price, was, courseId).offers.length ? "هذا الخيار ما عاد معروض بهذا السعر؛ حدّث الصفحة وشوف أسعار اليوم." : "هذه الدورة غير معروضة للبيع الحين.", 409);
+  const offer = coded && ladder ? { ...found, price: coded.price, was: Math.max(found.was, found.price) } : found;
   const name = typeof b.name === "string" ? b.name.trim().replace(/\s+/g, " ") : "";
   if (name.length < 2 || name.length > 80) throw new UserError("اكتب اسمك الثلاثي (يساعدنا نطابق التحويل).", 400);
   const phone = cleanPhone(b.phone);
@@ -114,18 +118,19 @@ export async function startOrder(user: { id: string; email?: string | null }, b:
   if (mine.some((o) => o.status === "confirmed" && o.courseId === courseId)) throw new UserError("اشتراكك مؤكد من قبل ✅", 409);
   const lock = new Date(now + COURSE.lockMinutes * 60_000).toISOString();
   const open = mine.find((o) => o.courseId === courseId && o.status === "started");
-  const base = { ...(coded ? { code: coded.code } : {}), email: user.email ?? "", name, phone, phase: "A" as const, amount_sar: offer.price, was_sar: offer.was, bonus_sar: offer.bonus, locked_until: lock, updated_at: new Date(now).toISOString() };
-  const phase = offersAt(s, now).phase;
+  const base = { ...(coded ? { code: coded.code } : {}), product, email: user.email ?? "", name, phone, phase: "A" as const, amount_sar: offer.price, was_sar: offer.was, bonus_sar: offer.bonus, locked_until: lock, updated_at: new Date(now).toISOString() };
+  const at = offersAt(s, now, price, was, courseId).phase;
+  const phase = at === "soon" ? "C" : at;
   if (open) {
     // the same order again: the price stays while it is kept, else it follows today's
-    const keep = new Date(open.lockedUntil).getTime() > now && open.amount <= offer.price && open.code === (coded?.code ?? "");
+    const keep = new Date(open.lockedUntil).getTime() > now && open.product === product && open.amount <= offer.price && open.code === (coded?.code ?? "");
     const patch = keep ? { name, phone, email: base.email, updated_at: base.updated_at } : { ...base, ...(open.code && !coded ? { code: "" } : {}), phase };
     const { data, error: e2 } = await db().from("course_orders").update(patch).eq("id", open.id).eq("status", "started").select("*").single();
     wrap(e2);
     return { order: view(data!), bank: s.bank };
   }
   if (mine.filter((o) => o.status === "started" || o.status === "transferred").length >= COURSE.maxOpen) throw new UserError("عندك طلبات مفتوحة كثيرة؛ انتظر تأكيد الموجودة أو تواصل معنا.", 429);
-  const { data, error: e3 } = await db().from("course_orders").insert({ user_id: user.id, product: "recorded", course_id: courseId, ...base, phase }).select("*").single();
+  const { data, error: e3 } = await db().from("course_orders").insert({ user_id: user.id, course_id: courseId, ...base, phase }).select("*").single();
   wrap(e3);
   return { order: view(data!), bank: s.bank };
 }
@@ -169,7 +174,10 @@ async function grantGift(o: Order, at: string): Promise<Order> {
 
 /** The course this page sells opens for THIS buyer only (their e-mail is added to it): a course added later never opens by itself. */
 async function openCourse(o: Order) {
-  const id = o.courseId || (await loadSettings()).learnCourseId;
+  const s = await loadSettings();
+  // the clock course's live-only ticket is the live session (its group), not the recording
+  if (o.product === "live" && isLadder(s, o.courseId)) return;
+  const id = o.courseId || s.learnCourseId;
   const email = o.email.trim().toLowerCase();
   if (!id || !email) return;
   const { error } = await db().from("learn_grants").upsert({ course_id: id, email, granted_by: "شراء" }, { onConflict: "course_id,email" });
@@ -220,7 +228,12 @@ export async function listOrders(status?: Status): Promise<Order[]> {
   if (status) q = q.eq("status", status);
   const { data, error } = await q;
   if (error) return [];
-  return (data ?? []).map(view);
+  const list = (data ?? []).map(view);
+  // each order with its course's name (one look-up for all of them)
+  const ids = [...new Set(list.map((o) => o.courseId).filter(Boolean))] as string[];
+  const { data: cs } = ids.length ? await db().from("learn_courses").select("id,title").in("id", ids) : { data: [] };
+  const names = new Map((cs ?? []).map((c) => [String(c.id), String(c.title ?? "")]));
+  return list.map((o) => (o.courseId ? { ...o, courseTitle: names.get(o.courseId) ?? "" } : o));
 }
 
 export type { CourseSettings };

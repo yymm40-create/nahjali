@@ -1,0 +1,217 @@
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => null }));
+vi.mock("@/lib/mahdi/server/session", () => ({ getApiSession: async () => ({}) }));
+
+import { createRace, raceAction, raceById, raceView } from "@/lib/mahdi/server/race";
+
+// A small in-memory stand-in for the database client: only what the race's server code calls.
+type Row = Record<string, unknown>;
+function fakeDb() {
+  const tables: Record<string, Row[]> = { mahdi_races: [], mahdi_race_players: [], mahdi_race_rounds: [], mahdi_race_points: [], mahdi_race_events: [], mahdi_race_photos: [] };
+  let seq = 0;
+  const from = (name: string) => {
+    const rows = tables[name];
+    const filters: ((r: Row) => boolean)[] = [];
+    let op: "select" | "update" | "delete" | "insert" = "select";
+    let patch: Row = {};
+    let inserted: Row[] = [];
+    let head = false;
+    let single = false;
+    const q = {
+      select: (_c?: string, o?: { head?: boolean }) => { head = !!o?.head; return q; },
+      eq: (k: string, v: unknown) => { filters.push((r) => r[k] === v); return q; },
+      in: (k: string, v: unknown[]) => { filters.push((r) => v.includes(r[k])); return q; },
+      order: () => q,
+      limit: () => q,
+      range: () => q,
+      maybeSingle: () => { single = true; return q; },
+      single: () => { single = true; return q; },
+      update: (p: Row) => { op = "update"; patch = p; return q; },
+      delete: () => { op = "delete"; return q; },
+      insert: (v: Row | Row[]) => {
+        op = "insert";
+        inserted = (Array.isArray(v) ? v : [v]).map((r) => ({ id: `id${++seq}`, guest: false, spy: false, missions: [], selfie_v: 0, kid: false, team: null, spies_on: false, revealed: false, winner: null, current_round: null, banned: "", ...r }));
+        rows.push(...inserted);
+        return q;
+      },
+      then: (res: (v: unknown) => void) => {
+        const hit = rows.filter((r) => filters.every((f) => f(r)));
+        if (op === "update") hit.forEach((r) => Object.assign(r, patch));
+        if (op === "delete") tables[name] = rows.filter((r) => !hit.includes(r));
+        if (op === "delete") { rows.length = 0; rows.push(...tables[name]); tables[name] = rows; }
+        const data = op === "insert" ? inserted : hit;
+        res({ data: head ? null : single ? (data[0] ?? null) : data, error: null, count: data.length });
+      },
+    };
+    return q;
+  };
+  return { from, tables } as unknown as Parameters<typeof raceById>[0] & { tables: typeof tables };
+}
+
+async function setup(players = 6) {
+  const db = fakeDb();
+  const id = await createRace(db, "owner", "سباق");
+  for (let i = 0; i < players; i++) (db as unknown as { tables: Record<string, Row[]> }).tables.mahdi_race_players.push({ race_id: id, user_id: `p${i}`, name: `لاعب ${i}`, selfie_v: 0, team: null, kid: false, spy: false, missions: [], guest: false });
+  const go = async (b: Record<string, unknown>) => raceAction(db, await raceById(db, id), b);
+  const view = async (u: string) => raceView(db, await raceById(db, id), u);
+  return { db, id, go, view };
+}
+
+describe("the race on the server", () => {
+  it("starts with every game and its way of playing", async () => {
+    const { view } = await setup();
+    const v = await view("owner");
+    expect(v.rounds.length).toBeGreaterThanOrEqual(13);
+    expect(v.rounds.every((r) => (r as { how: string }).how.length > 0)).toBe(true);
+    expect(v.rounds.some((r) => (r as { name: string }).name === "كرة طائرة الماء")).toBe(true);
+  });
+
+  it("keeps each spy secret from the other players until the reveal", async () => {
+    const { go, view } = await setup();
+    await go({ action: "deal" });
+    await go({ action: "spies" });
+    const leader = await view("owner");
+    const spies = leader.players.filter((p) => p.spy);
+    expect(spies).toHaveLength(2);
+    const plain = leader.players.find((p) => !p.spy)!;
+    const seen = await view(plain.id);
+    expect(seen.players.every((p) => p.spy === undefined && p.missions === undefined)).toBe(true);
+    expect(seen.me?.spy).toBe(false);
+    const mine = await view(spies[0].id);
+    expect(mine.me?.spy).toBe(true);
+    expect(mine.me?.missions).toHaveLength(2);
+    expect(mine.players.filter((p) => p.id !== spies[0].id).every((p) => p.spy === undefined)).toBe(true);
+    await go({ action: "reveal", revealed: true });
+    expect((await view(plain.id)).players.filter((p) => p.spy)).toHaveLength(2);
+  });
+
+  it("refuses someone who has not joined", async () => {
+    const { view } = await setup();
+    await expect(view("stranger")).rejects.toThrow();
+  });
+
+  it("gives the leader every control", async () => {
+    const { go, view } = await setup();
+    await go({ action: "teamSave", team: "a", name: "الصقور", emoji: "🦅", color: "#123456" });
+    await go({ action: "points", team: "a", points: 30, reason: "فوز" });
+    await go({ action: "points", team: "a", points: -5, reason: "خصم" });
+    await go({ action: "points", team: "b", points: 10, reason: "" });
+    let v = await view("owner");
+    expect(v.race.teams[0]).toMatchObject({ id: "a", name: "الصقور", emoji: "🦅", color: "#123456" });
+    expect(v.scores).toEqual({ a: 25, b: 10 });
+    await go({ action: "undo", point: v.points.find((p) => p.points === 10)!.id });
+    expect((await view("owner")).scores.b).toBe(0);
+    const n = v.rounds.length;
+    await go({ action: "roundAdd", name: "لعبة جديدة", how: "خطوة" });
+    v = await view("owner");
+    expect(v.rounds).toHaveLength(n + 1);
+    await go({ action: "roundDelete", round: (v.rounds.find((r) => (r as { name: string }).name === "لعبة جديدة") as { id: string }).id });
+    expect((await view("owner")).rounds).toHaveLength(n);
+    await go({ action: "move", user: "p0", team: "b" });
+    expect((await view("owner")).players.find((p) => p.id === "p0")?.team).toBe("b");
+    await go({ action: "remove", user: "p0" });
+    expect((await view("owner")).players).toHaveLength(5);
+  });
+
+  it("adds and removes teams within the limits", async () => {
+    const { go, view } = await setup();
+    await expect(go({ action: "teamRemove", team: "a" })).rejects.toThrow();
+    await go({ action: "teamAdd" });
+    await go({ action: "teamAdd" });
+    let v = await view("owner");
+    expect(v.race.teams.map((t) => t.id)).toEqual(["a", "b", "c", "d"]);
+    expect(new Set(v.race.teams.map((t) => t.color)).size).toBe(4);
+    await go({ action: "deal" });
+    v = await view("owner");
+    expect(v.players.every((p) => "abcd".includes(p.team ?? "x"))).toBe(true);
+    await go({ action: "points", team: "c", points: 20, reason: "" });
+    await go({ action: "points", team: "b", points: 5, reason: "" });
+    await go({ action: "move", user: "p0", team: "c" });
+    await go({ action: "teamRemove", team: "c" });
+    v = await view("owner");
+    expect(v.race.teams.map((t) => t.id)).toEqual(["a", "b", "d"]);
+    expect(v.scores).toEqual({ a: 0, b: 5, d: 0 });
+    expect(v.players.find((p) => p.id === "p0")?.team).toBeNull();
+    await expect(go({ action: "points", team: "c", points: 5, reason: "" })).rejects.toThrow();
+    await go({ action: "teamAdd" });
+    await go({ action: "teamAdd" });
+    await go({ action: "teamAdd" });
+    await expect(go({ action: "teamAdd" })).rejects.toThrow();
+  });
+
+  it("lets the leader add a contestant with no phone, who is dealt but never a spy", async () => {
+    const { go, view } = await setup(4);
+    await go({ action: "playerAdd", name: "طفل بدون جوال", kid: false });
+    let v = await view("owner");
+    const kid = v.players.find((p) => p.name === "طفل بدون جوال")!;
+    expect(kid.guest).toBe(true);
+    await go({ action: "deal" });
+    v = await view("owner");
+    expect(v.players.find((p) => p.id === kid.id)?.team).toBeTruthy();
+    for (let i = 0; i < 30; i++) {
+      await go({ action: "spies" });
+      expect((await view("owner")).players.find((p) => p.id === kid.id)?.spy).toBe(false);
+    }
+  });
+
+  it("lets the leader play on a team and keep the controls", async () => {
+    const { db, id, go, view } = await setup(3);
+    (db as unknown as { tables: Record<string, Row[]> }).tables.mahdi_race_players.push({ race_id: id, user_id: "owner", name: "القائد", selfie_v: 0, team: null, kid: false, spy: false, missions: [], guest: false });
+    await go({ action: "deal" });
+    const v = await view("owner");
+    expect(v.isOwner).toBe(true);
+    expect(v.me?.team).toBeTruthy();
+    await go({ action: "points", team: "a", points: 5, reason: "" });
+    expect((await view("owner")).scores.a).toBe(5);
+  });
+
+  it("finishes a round with its result for everyone, and new rounds can still come after", async () => {
+    const { go, view } = await setup();
+    const round = (await view("owner")).rounds[0] as { id: string };
+    await go({ action: "roundCurrent", round: round.id });
+    await go({ action: "roundResult", round: round.id, winner: "b", result: "فازوا بفارق نقطة" });
+    const seen = await view("p1");
+    expect(seen.rounds[0]).toMatchObject({ done: true, winner_team: "b", result: "فازوا بفارق نقطة" });
+    expect(seen.race.currentRound).toBeNull();
+    await expect(go({ action: "roundResult", round: round.id, winner: "z", result: "" })).rejects.toThrow();
+    const n = seen.rounds.length;
+    await go({ action: "finish", winner: "a" });
+    await go({ action: "roundAdd", name: "مسابقة بعد الختام", how: "" });
+    expect((await view("p1")).rounds).toHaveLength(n + 1);
+  });
+
+  it("keeps the album's photos out of the live state and lets the leader edit them", async () => {
+    const { db, id, go, view } = await setup();
+    const tables = (db as unknown as { tables: Record<string, Row[]> }).tables;
+    tables.mahdi_race_photos.push({ id: "ph1", race_id: id, round_id: null, caption: "", image: "BYTES", created_at: "2026-10-31T10:00:00Z" });
+    await go({ action: "photoEdit", photo: "ph1", caption: "صورة الفريق", round: null });
+    expect(tables.mahdi_race_photos[0].caption).toBe("صورة الفريق");
+    expect((await view("p1")).photos).toHaveLength(1);
+    await go({ action: "photoDelete", photo: "ph1" });
+    expect((await view("p1")).photos).toHaveLength(0);
+  });
+
+  it("announces the final winner, and asks on a tie", async () => {
+    const { go, view } = await setup();
+    await expect(go({ action: "finish" })).rejects.toThrow();
+    await go({ action: "finish", winner: "tie" });
+    expect((await view("p1")).race.winner).toBe("tie");
+    await go({ action: "unfinish" });
+    await go({ action: "points", team: "b", points: 5, reason: "" });
+    await go({ action: "finish" });
+    expect((await view("p1")).race.winner).toBe("b");
+  });
+});
+
+describe("the day's record", () => {
+  it("exports every line in order with seconds from the start", async () => {
+    const { db, id } = await setup();
+    const { logEvent, raceExport } = await import("@/lib/mahdi/server/race");
+    await logEvent(db, id, { id: "owner", name: "القائد" }, "bomb_start", { secs: 30 }, "2026-10-31T10:00:00.000Z");
+    await logEvent(db, id, { id: "owner", name: "القائد" }, "bomb_blast", {}, "2026-10-31T10:00:30.500Z");
+    const out = await raceExport(db, await raceById(db, id));
+    expect(out.events.map((e) => [e.kind, e.sec])).toEqual([["bomb_start", 0], ["bomb_blast", 30.5]]);
+    expect(out.rounds.length).toBeGreaterThan(0);
+  });
+});

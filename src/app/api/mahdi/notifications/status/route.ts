@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
  * Is the notification system alive? For everyone: the server's keys are set, and how many devices of mine are subscribed. For the
- * owner also: when the 15-minute dispatcher last ran (its heartbeat, migration 0098), how many people have a device, and what the
+ * owner also: when the 15-minute dispatcher last ran (its heartbeat, migration 0102), how many people have a device, and what the
  * last runs sent. Nothing secret is returned (only whether a secret is set).
  */
 export const GET = mahdiRoute(async (req: Request) => {
@@ -27,7 +27,7 @@ export const GET = mahdiRoute(async (req: Request) => {
     ]);
     Object.assign(out, {
       admin: true,
-      // null error = the heartbeat table exists (migration 0098)
+      // null error = the heartbeat table exists (migration 0102)
       heartbeatReady: !runs.error,
       // minutes since each run (counted here, on the server, so the page needs no clock)
       runs: runs.error ? [] : (runs.data ?? []).map((x) => ({ ...x, age_min: Math.max(0, Math.round((Date.now() - new Date(x.ran_at).getTime()) / 60_000)) })),

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handle, requireApiUser, UserError } from "@/lib/api";
 import { markTransferred } from "@/lib/course/orders";
 import { loadSettings } from "@/lib/course/settings";
+import { isLadder } from "@config/course";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -13,5 +14,8 @@ export const POST = handle(async (req: Request) => {
   if (typeof b.orderId !== "string" || !/^[0-9a-f-]{36}$/i.test(b.orderId)) throw new UserError("طلب غير صحيح.", 400);
   const order = await markTransferred({ id: user.id }, b.orderId);
   // the group's link comes now (joining is approved by the owner in WhatsApp, after he has seen the money)
-  return NextResponse.json({ order, groupLink: (await loadSettings()).groupLink });
+  // only the clock course has a live group now: its live and whole-course buyers get the link; nobody else does
+  const s = await loadSettings();
+  const live = isLadder(s, order.courseId) && (order.product === "live" || order.product === "combo");
+  return NextResponse.json({ order, groupLink: live ? s.groupLink : "" });
 });

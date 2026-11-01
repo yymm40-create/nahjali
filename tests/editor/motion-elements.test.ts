@@ -8,8 +8,8 @@ const assets = lib(video("a", 10000));
 const withVideo = () => apply(emptyTimeline("9:16"), { type: "add_clip", assetId: "a" }, assets).timeline;
 
 describe("«مسار الموشن»: elements, not a rendered video", () => {
-  it("has the four first elements and the themes", () => {
-    expect(Object.keys(MOTION_KINDS)).toEqual(["title", "list", "phrase", "big"]);
+  it("has the elements and the themes", () => {
+    expect(Object.keys(MOTION_KINDS)).toEqual(["title", "list", "phrase", "big", "ambient"]);
     expect(Object.values(MOTION_THEMES).map((t) => t.label)).toEqual(expect.arrayContaining(["ليل كحلي", "بحر فيروزي", "ذهبي فاخر"]));
     const list = newMotion("list");
     expect(list.items.length).toBe(3);
@@ -84,5 +84,18 @@ describe("«مسار الموشن»: elements, not a rendered video", () => {
     expect(countedNumber("1,250", 5000)).toBe("1,250");
     expect(countedNumber("٤٥", 5000)).toBe("45");
     expect(countedNumber("مليون", 100)).toBe("مليون");
+  });
+});
+
+describe("«عناصر تتحرك»", () => {
+  it("goes on a track under the pictures, in the eye-comfort colours", () => {
+    const t = applyAll(emptyTimeline(), [{ type: "add_motion", kind: "ambient", at: 0, duration: 3000 }], assets).timeline;
+    expect(t.tracks[0].motion).toBe(true);
+    expect(t.tracks[0].clips[0].motion).toMatchObject({ kind: "ambient", theme: "comfort", shape: "khatim", speed: 1 });
+  });
+
+  it("keeps its shape and speed inside their bounds", () => {
+    expect(readMotion({ kind: "ambient", shape: "stars", speed: 9 })).toMatchObject({ shape: "stars", speed: 2 });
+    expect(readMotion({ kind: "ambient", shape: "nope" })).toMatchObject({ shape: "orbs", speed: 1 });
   });
 });

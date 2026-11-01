@@ -9,6 +9,7 @@ import { keyFrame } from "./key-gl";
 import { keyMatte, keyParams, despill as despillKey } from "@/lib/editor/key-math";
 import { perfPlan } from "./perf-bench";
 import { drawMotion } from "./motion-draw";
+import type { Word } from "@/lib/editor/model";
 
 /** set while the export draws: the grade always shows (no before/after view) */
 let exporting = false;
@@ -710,8 +711,11 @@ function drawText(ctx: CanvasRenderingContext2D, clip: Clip, t: Transform, look:
   const s = body === s0.body ? s0 : { ...s0, body };
   const tokens = s.body.split(/\s+/).filter(Boolean);
   const timed = !!s.highlight && clip.words.length > 0 && clip.words.length === tokens.length;
+  // «طباعة» on a caption with timed words follows the voice (each word typed while it is said); otherwise its own length
+  const spoken = clip.anim?.in === "type" && clip.words.length > 0 && clip.words.length === tokens.length;
+  const typed = spoken ? typedBySpeech(clip.words, ms - clip.start) : look.type;
   // a caption with timed words lights the word being said; «كلمة كلمة» brings the words in one by one
-  if (timed || look.words != null) return drawCaption(ctx, { ...clip, text: s }, tokens, timed ? wordAt(clip, ms) : -1, t, look, W, H);
+  if (timed || look.words != null || typed != null) return drawCaption(ctx, { ...clip, text: s }, tokens, timed ? wordAt(clip, ms) : -1, t, look, W, H, typed, ms);
   ctx.save();
   place(ctx, t, look, W, H);
   const { size, lines, widths, lh } = textLayout(ctx, s, t.scale * look.scale, W, H);
@@ -779,11 +783,41 @@ function drawText(ctx: CanvasRenderingContext2D, clip: Clip, t: Transform, look:
   ctx.restore();
 }
 
+/** One letter with its marks, so a typed word never shows a fatha without its letter. */
+const letters = (w: string) => w.match(/\P{M}\p{M}*/gu) ?? [w];
+
+/** «طباعة» with timed words: words typed so far, as whole words plus a share of the one being said (word units, not 0–1). */
+function typedBySpeech(words: Word[], local: number): number | null {
+  if (local >= words[words.length - 1].e) return null;
+  let n = 0;
+  for (const w of words) {
+    if (local <= w.s) break;
+    n += Math.min(1, (local - w.s) / Math.max(1, w.e - w.s));
+  }
+  return -n - 1;
+}
+
+/** How many letters of each word show: `typed` is a 0–1 share of all letters, or −1−words typed (from typedBySpeech). */
+function typedLetters(tokens: string[], typed: number): number[] {
+  const each = tokens.map((w) => letters(w).length);
+  if (typed < 0) {
+    const n = -typed - 1;
+    return each.map((c, i) => Math.round(c * Math.min(1, Math.max(0, n - i))));
+  }
+  // the last eighth of the time the words are complete and the cursor blinks
+  let left = Math.floor(Math.min(1, typed / 0.875) * each.reduce((a, b) => a + b, 0));
+  return each.map((c) => {
+    const k = Math.min(c, left);
+    left -= k;
+    return k;
+  });
+}
+
 /**
  * Word by word (right to left for Arabic): the word being said in the highlight colour and a touch bigger, or, for
  * «كلمة كلمة», each word popping in after the one before.
  */
-function drawCaption(ctx: CanvasRenderingContext2D, clip: Clip, tokens: string[], active: number, t: Transform, look: Drawn, W: number, H: number) {
+function drawCaption(ctx: CanvasRenderingContext2D, clip: Clip, tokens: string[], active: number, t: Transform, look: Drawn, W: number, H: number, typed: number | null = null, ms = 0) {
   const s = clip.text!;
   ctx.save();
   place(ctx, t, look, W, H);
@@ -816,6 +850,9 @@ function drawCaption(ctx: CanvasRenderingContext2D, clip: Clip, tokens: string[]
   if (look.blur > 0) ctx.filter = `blur(${(look.blur * H).toFixed(1)}px)`;
   ctx.lineJoin = "round";
   const base = ctx.globalAlpha;
+  const shown = typed == null ? null : typedLetters(tokens, typed);
+  // the cursor stands after the last letter typed
+  const lastShown = shown ? shown.reduce((m, k, i) => (k > 0 ? i : m), -1) : -1;
   lines.forEach((line, li) => {
     const total = line.reduce((m, i) => m + widths[i], 0) + space * (line.length - 1);
     const y = top + li * lh;
@@ -831,27 +868,46 @@ function drawCaption(ctx: CanvasRenderingContext2D, clip: Clip, tokens: string[]
       const cx = rtl ? x - w / 2 : x + w / 2;
       x += rtl ? -(w + space) : w + space;
       const a = look.words == null ? 1 : wordIn(look.words, i, tokens.length);
-      if (a <= 0) continue;
+      if (a <= 0 || shown?.[i] === 0) continue;
       const on = i === active;
+      // a word still being typed grows from its first letter: it stands on its own edge, not its centre
+      const whole = !shown || shown[i] >= letters(tokens[i]).length;
+      const word = whole ? tokens[i] : letters(tokens[i]).slice(0, shown[i]).join("");
+      const edge = rtl ? cx + w / 2 : cx - w / 2;
       ctx.save();
       ctx.globalAlpha = base * Math.min(1, a * 2);
-      ctx.translate(cx, y);
+      if (whole) ctx.translate(cx, y);
+      else {
+        ctx.translate(edge, y);
+        ctx.textAlign = rtl ? "right" : "left";
+      }
       const k = (on ? 1.08 : 1) * (a < 1 ? popScale(a) : 1);
       ctx.scale(k, k);
       ctx.font = font(1);
       if (!s.box) {
         ctx.strokeStyle = "rgba(0,0,0,0.6)";
         ctx.lineWidth = Math.max(2, size * 0.09);
-        ctx.strokeText(tokens[i], 0, 0);
+        ctx.strokeText(word, 0, 0);
       }
       ctx.fillStyle = on ? s.highlight! : s.color;
-      ctx.fillText(tokens[i], 0, 0);
+      ctx.fillText(word, 0, 0);
       if (look.flash > 0) {
         ctx.globalAlpha = base * Math.min(1, look.flash);
         ctx.fillStyle = "#ffffff";
-        ctx.fillText(tokens[i], 0, 0);
+        ctx.fillText(word, 0, 0);
       }
       ctx.restore();
+      if (i === lastShown && typed != null) {
+        // solid while typing, blinking once the words are done
+        const done = shown!.every((k, j) => k >= letters(tokens[j]).length);
+        if (!done || Math.floor(ms / 280) % 2 === 0) {
+          const ww = ctx.measureText(word).width;
+          ctx.fillStyle = s.highlight ?? s.color;
+          const cw = Math.max(3, size * 0.07);
+          ctx.globalAlpha = base;
+          ctx.fillRect(whole ? cx + (rtl ? -ww / 2 - cw * 2.2 : ww / 2 + cw * 1.2) : edge + (rtl ? -ww - cw * 2.2 : ww + cw * 1.2), y - size * 0.55, cw, size * 1.1);
+        }
+      }
     }
   });
   ctx.restore();

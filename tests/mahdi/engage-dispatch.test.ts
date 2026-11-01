@@ -134,7 +134,7 @@ describe("dispatchEngagement", () => {
     expect((await dispatchEngagement(makeDb(recent), at("08:05"))).sent).toBe(0);
   });
 
-  it("does nothing for someone with no device, and nothing before migration 0098 (no log table)", async () => {
+  it("does nothing for someone with no device, and nothing before migration 0102 (no log table)", async () => {
     const { dispatchEngagement } = await import("@/lib/mahdi/server/engage");
     const none = base();
     none.mahdi_push_subscriptions = [];

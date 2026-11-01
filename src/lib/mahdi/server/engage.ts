@@ -2,7 +2,7 @@
 // سلسلتك في خطر، اشتقنالك). It runs inside the 15-minute tick that already sends the habit reminders. For each person with a device:
 // which kinds are due now (their own day's hour, outside quiet hours, switched on, allowed today)? Each kind at most once a day and at
 // most ENGAGE_DAILY_MAX of them in a day, the most important first; nothing is sent twice because every send is first CLAIMED in
-// `mahdi_push_log` (migration 0098; before it, nothing here runs).
+// `mahdi_push_log` (migration 0102; before it, nothing here runs).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
 import { addDays, buildTimeline, dayGoals, dayStreak, daysSinceLastActivity, dueSlot, inQuietHours, minuteOfDayIn, toMinutes, todayIn } from "../engine";
@@ -74,7 +74,7 @@ export async function dispatchEngagement(db: SupabaseClient, now: Date = new Dat
   const since = addDays(todayIn("Etc/GMT+12", now), -COMEBACK_EVERY_DAYS);
   for (const ids of chunks(dueUsers)) {
     const { data, error } = await db.from("mahdi_push_log").select("user_id, kind, day").in("user_id", ids).gte("day", since);
-    if (error) return result; // migration 0098 has not run: nothing here is sent
+    if (error) return result; // migration 0102 has not run: nothing here is sent
     for (const r of data ?? []) (sentLog.get(r.user_id) ?? sentLog.set(r.user_id, []).get(r.user_id)!).push({ kind: r.kind, day: r.day });
   }
 

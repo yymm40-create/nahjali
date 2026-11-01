@@ -23,7 +23,7 @@ export const PUT = mahdiRoute(async (req: Request) => {
   if (mode !== "off" && reminderSlots(mode, times).length === 0) throw new UserError(t.errors.invalid, 400);
 
   const row = { user_id: user.id, mode, times, quiet_start: quietStart, quiet_end: quietEnd, habit_reminders: parseBool(body.habitReminders) };
-  // «تنبيهات تجيبك للتطبيق»: what the person switched off (needs migration 0098; the rest is saved without it)
+  // «تنبيهات تجيبك للتطبيق»: what the person switched off (needs migration 0102; the rest is saved without it)
   const engage = parseEngage(body.engage);
   const withEngage = "engage" in body ? await supabase.from("mahdi_notification_settings").upsert({ ...row, engage }) : null;
   const missing = withEngage?.error && ["42703", "PGRST204"].includes((withEngage.error as { code?: string }).code ?? "");

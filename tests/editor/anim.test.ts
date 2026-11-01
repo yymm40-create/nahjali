@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { apply, applyAll } from "@/lib/editor/commands";
 import { FONT_BY_ID, FONT_LIST, fontFile, isFont } from "@/lib/editor/fonts";
-import { animAt, emptyTimeline, kashida, readAnim, readTimeline } from "@/lib/editor/model";
+import { animAt, colorFilter, emptyTimeline, kashida, NEUTRAL_COLOR, readAnim, readTimeline } from "@/lib/editor/model";
 import { lib, main, video } from "./helpers";
 
 const assets = lib(video("v", 4000));
@@ -33,7 +33,7 @@ describe("entrances and exits", () => {
     expect(readAnim({ in: "words", out: "kashida" }, false)).toBeNull();
     expect(readAnim({ in: "words", out: "kashida" }, true)).toMatchObject({ in: "words", out: "kashida", inMs: 900, outMs: 650 });
     expect(readAnim({ in: "kenburns" }, true)).toBeNull();
-    expect(readAnim({ in: "pop", inMs: 99999 }, false)?.inMs).toBe(3000);
+    expect(readAnim({ in: "pop", inMs: 99999 }, false)?.inMs).toBe(8000);
   });
 
   it("are removed from a sound track's clips when read", () => {
@@ -74,5 +74,24 @@ describe("the font catalogue", () => {
     expect(readTimeline(raw).tracks.find((x) => x.kind === "text")!.clips[0].text!.font).toBe("lalezar");
     raw.tracks.find((x: { kind: string }) => x.kind === "text").clips[0].text.font = "evil";
     expect(readTimeline(raw).tracks.find((x) => x.kind === "text")!.clips[0].text!.font).toBe("readex");
+  });
+});
+
+describe("«طباعة» and the eye-comfort look", () => {
+  it("types over its own length, then the words simply stand", () => {
+    const t = applyAll(emptyTimeline(), [{ type: "add_clip", assetId: "v" }], assets).timeline;
+    const c = { ...main(t).clips[0], anim: { in: "type" as const, out: null, inMs: 1000, outMs: 300 } };
+    expect(animAt(c, 0).type).toBe(0);
+    expect(animAt(c, 500).type).toBeCloseTo(0.5);
+    expect(animAt(c, 1500).type).toBeNull();
+  });
+
+  it("keeps a stored «طباعة» on a text and refuses it on a picture", () => {
+    expect(readAnim({ in: "type", inMs: 8000 }, true)).toMatchObject({ in: "type", inMs: 8000 });
+    expect(readAnim({ in: "type" }, false)).toBeNull();
+  });
+
+  it("«مريح للعين» softens the picture", () => {
+    expect(colorFilter({ ...NEUTRAL_COLOR, preset: "comfort" })).toContain("contrast(0.9)");
   });
 });

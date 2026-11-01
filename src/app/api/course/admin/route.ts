@@ -28,7 +28,8 @@ export const GET = handle(async (req: Request) => {
   return NextResponse.json({
     settings,
     now: Date.now(),
-    phase: offersAt(settings, Date.now()).phase,
+    // the clock's phase is the clock course's (with none chosen, every course has its one price)
+    phase: settings.ladderCourseId ? offersAt(settings, Date.now(), undefined, undefined, settings.ladderCourseId).phase : "C",
     orders,
     telegram: { token: telegramReady(), chat: !!ownerChat(), ready: telegramFull() },
   });

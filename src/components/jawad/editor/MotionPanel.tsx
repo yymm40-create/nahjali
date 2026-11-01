@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import { clipLength, formatTime, type Clip } from "@/lib/editor/model";
-import { MOTION_ENTERS, MOTION_KINDS, MOTION_LIMITS, MOTION_THEMES, motionColors, type MotionColors, type MotionEl, type MotionEnter, type MotionItem, type MotionThemeId } from "@/lib/editor/motion-elements";
+import { AMBIENT_SHAPES, MOTION_ENTERS, MOTION_KINDS, MOTION_LIMITS, MOTION_THEMES, motionColors, type MotionColors, type MotionEl, type MotionEnter, type MotionItem, type MotionThemeId } from "@/lib/editor/motion-elements";
 import FontPicker from "./FontPicker";
 import type { Run } from "./Inspector";
 import type { PlayerLike } from "./Timeline";
@@ -58,7 +58,26 @@ export default function MotionPanel({ clip, motion: m, locked, run, player }: { 
         ))}
       </div>
 
-      {tab === "el" && (
+      {tab === "el" && m.kind === "ambient" && (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold">الشكل</p>
+          <div className="grid grid-cols-2 gap-1">
+            {(Object.entries(AMBIENT_SHAPES) as [MotionEl["shape"], string][]).map(([id, label]) => (
+              <button key={id} type="button" disabled={locked} aria-pressed={m.shape === id} className={`jw-btn !min-h-8 text-xs ${m.shape === id ? "jw-btn-primary" : "jw-btn-quiet"}`} onClick={() => set({ shape: id }, "shape")}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <Range label="السرعة" value={Math.round(m.speed * 100)} min={25} max={200} disabled={locked} onChange={(v) => set({ speed: v / 100 }, "speed")} unit="%" />
+          <Range label="الحجم" value={Math.round(m.size * 100)} min={50} max={200} disabled={locked} onChange={(v) => set({ size: v / 100 }, "size")} unit="%" />
+          <label className="flex items-center justify-between text-xs">
+            <span>لون خلفية تحتها</span>
+            <input type="checkbox" checked={m.panel} disabled={locked} onChange={(e) => set({ panel: e.target.checked }, "panel")} />
+          </label>
+        </div>
+      )}
+
+      {tab === "el" && m.kind !== "ambient" && (
         <div className="space-y-3">
           <label className="block space-y-1">
             <span className="text-xs text-jw-muted">{m.kind === "phrase" ? "العبارة" : m.kind === "big" ? "الوصف تحت الرقم" : "العنوان"}</span>
