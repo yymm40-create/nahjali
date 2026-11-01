@@ -29,7 +29,7 @@ export const MAKE_KINDS: MakeKind[] = ["image", "video", "speech", "sfx", "music
 const CHOICES: Record<MakeKind, string[]> = {
   image: ["openai-gpt-image-2"],
   video: ["byteplus-seedance-2-5", "byteplus-seedance-2-0"],
-  speech: ["elevenlabs-eleven-v4", "minimax-speech-2-8", "openai-gpt-4o-mini-tts", "jawad-voice"],
+  speech: ["elevenlabs-eleven-v4", "openai-gpt-4o-mini-tts", "jawad-voice"],
   sfx: ["elevenlabs-sfx-v2"],
   music: ["elevenlabs-music-v2-5"],
 };
@@ -111,13 +111,13 @@ export function makeSettings(s: MakeSpec, projectRatio: number, voice: string | 
 }
 
 /** The speech providers by generator (a voice is spoken only where it lives). */
-const SPEECH_GEN: Record<string, string> = { jawad: "jawad-voice", elevenlabs: "elevenlabs-eleven-v4", minimax: "minimax-speech-2-8", openai: "openai-gpt-4o-mini-tts" };
-/** «openai: calm male» / «minimax: …»: the provider حيدرا ماكس asked for, and the rest of the words. */
-export function speechWish(voice: string): { provider: "jawad" | "elevenlabs" | "minimax" | "openai" | null; want: string } {
-  const m = /^\s*(jawad|openai|minimax|elevenlabs|eleven)\s*[:：]\s*/i.exec(voice);
+const SPEECH_GEN: Record<string, string> = { jawad: "jawad-voice", elevenlabs: "elevenlabs-eleven-v4", openai: "openai-gpt-4o-mini-tts" };
+/** «openai: calm male» / «jawad: …»: the provider حيدرا ماكس asked for, and the rest of the words. */
+export function speechWish(voice: string): { provider: "jawad" | "elevenlabs" | "openai" | null; want: string } {
+  const m = /^\s*(jawad|openai|elevenlabs|eleven)\s*[:：]\s*/i.exec(voice);
   if (!m) return { provider: null, want: voice };
   const k = m[1].toLowerCase();
-  return { provider: k === "eleven" ? "elevenlabs" : (k as "jawad" | "openai" | "minimax" | "elevenlabs"), want: voice.slice(m[0].length) };
+  return { provider: k === "eleven" ? "elevenlabs" : (k as "jawad" | "openai" | "elevenlabs"), want: voice.slice(m[0].length) };
 }
 
 /** A voice for the words: one of the person's own by its name, else a ready voice whose description fits best. */

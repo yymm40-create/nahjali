@@ -1,5 +1,5 @@
 // «حيدرة كت» — «بصمة صوتك» from the edit: a recording (the person's own voice from a clip, or recorded at the
-// microphone) becomes a voice of their JAWAD AI library, at MiniMax (no limit on the number of voices, Arabic) or
+// microphone) becomes a voice of their JAWAD AI library, in «صوت الجواد» (the site's own engine, no limit, Arabic) or
 // ElevenLabs. حيدرا ماكس can then speak any text with it («اقرأها بصوتي»), and his own replies can use it. Server only.
 
 import { randomUUID } from "crypto";
@@ -21,8 +21,8 @@ export async function voiceprint(p: EditorProject, user: { id: string }, owner: 
   stillOpen(p);
   if (b.consent !== true) throw new UserError("أكّد أن الصوت صوتك أو عندك إذن صاحبه.", 400);
   const seconds = Number(b.seconds) || 0;
-  // the site's own engine by default (free, no limit); MiniMax or ElevenLabs when asked
-  const provider = b.provider === "elevenlabs" ? "elevenlabs" : b.provider === "minimax" ? "minimax" : "jawad";
+  // the site's own engine by default (free, no limit); ElevenLabs when asked
+  const provider = b.provider === "elevenlabs" ? "elevenlabs" : "jawad";
   if (seconds < (provider === "elevenlabs" ? 3 : 10)) throw new UserError(provider === "elevenlabs" ? "البصمة تحتاج ٣ ثوانٍ على الأقل." : "البصمة تحتاج ١٠ ثوانٍ كلام على الأقل (الأفضل ٣٠–٦٠ ثانية).", 400);
   const wav = readWav(b.audio);
   const up = await uploadFromBuffer(user.id, new Uint8Array(wav), "voiceprint.wav");

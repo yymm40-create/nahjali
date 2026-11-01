@@ -49,13 +49,8 @@ const ELEVEN_TAGS: { group: string; at: "start" | "end"; tags: [string, string][
   },
 ];
 
-/** MiniMax's sounds, written in the line between ( ) where they happen. */
-const MINIMAX_TAGS: { group: string; at: "start" | "end"; tags: [string, string][] }[] = [
-  { group: "أصوات (MiniMax)", at: "end", tags: [["laughs", "😂 ضحكة"], ["sighs", "😮‍💨 تنهيدة"], ["gasps", "😲 شهقة"], ["sniffs", "🥲 شهقة بكاء"], ["groans", "😣 أنين"], ["coughs", "🤧 كحة"], ["clears throat", "تنحنح"], ["yawns", "🥱 تثاؤب"]] },
-];
-
 /** The tags of a voice engine (none for an engine that reads plain text, like GPT-4o mini TTS, or for sounds and music). */
-export const voiceTags = (generatorId: string | undefined) => (generatorId === "elevenlabs-eleven-v4" ? { list: ELEVEN_TAGS, open: "[", close: "]" } : generatorId?.startsWith("minimax-speech") ? { list: MINIMAX_TAGS, open: "(", close: ")" } : null);
+export const voiceTags = (generatorId: string | undefined) => (generatorId === "elevenlabs-eleven-v4" ? { list: ELEVEN_TAGS, open: "[", close: "]" } : null);
 
 type Recognizer = { lang: string; interimResults: boolean; continuous: boolean; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null; start: () => void; stop: () => void };
 const recognizer = (): Recognizer | null => {

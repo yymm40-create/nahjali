@@ -11,7 +11,6 @@
 import { findStyle } from "@config/film-styles";
 import { withStyle } from "@config/jawad/style-prompt";
 import { costOfLines } from "@config/coins";
-import { MINIMAX_PRICE, minimaxSpeech } from "./providers/minimax";
 import { jawadSpeak } from "./providers/jawad-voice";
 import { jawadReference, onceReferenceText } from "./voices";
 import { can, perksOf, permForGenerator } from "@/lib/access";
@@ -498,19 +497,6 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   }
 
   if (def.provider.id === "elevenlabs") return runEleven(job, def, refs);
-  if (def.provider.id === "minimax") {
-    const voice = await resolveVoice(job.user_id, String(s.voice));
-    if (!voice.ok) throw new ProviderError("rejected", voice.reason, `voice ${String(s.voice)}`);
-    if (voice.provider !== "minimax") throw new ProviderError("rejected", "هذا الصوت من ElevenLabs؛ اختر صوت MiniMax أو صوتًا نسخته في MiniMax.", `voice provider ${voice.provider}`);
-    const arabic = /[\u0600-\u06FF]/.test(job.prompt);
-    const emotion = String(s.emotion ?? "auto");
-    const r = await minimaxSpeech({ voiceId: voice.voiceId, text: job.prompt, model: "hd", speed: Number(s.speed) || 1, ...(emotion !== "auto" ? { emotion } : {}), ...(arabic ? { languageBoost: "Arabic" } : {}) });
-    await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
-    await saveOutput(job, 0, r.audio, "audio/mpeg", "mp3", { durationMs: r.durationMs ?? undefined });
-    await finishJob(job, "succeeded", { costUsd: (job.prompt.length / 1000) * MINIMAX_PRICE.hdPerKChars, units: { characters: job.prompt.length } });
-    return;
-  }
-
   if (def.provider.id === "jawad") {
     // «صوت الجواد»: the person's own reference recording speaks the text (VoiceStudio on our own server)
     const voice = await resolveVoice(job.user_id, String(s.voice));

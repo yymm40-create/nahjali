@@ -11,8 +11,8 @@ describe("the voice's own tags in «صناعة الصوت»", () => {
     const all = t.list.flatMap((g) => g.tags.map(([v]) => v));
     for (const v of ["sad", "angry", "fearful", "cheerful", "calm", "excited", "whispers", "shouts", "laughs", "crying", "sighs"]) expect(all).toContain(v);
   });
-  it("MiniMax has its sounds between ( ); engines without tags get none", () => {
-    expect(voiceTags("minimax-speech-2-8")?.open).toBe("(");
+  it("engines without tags get none (MiniMax is gone)", () => {
+    expect(voiceTags("minimax-speech-2-8")).toBeNull();
     expect(voiceTags("openai-gpt-4o-mini-tts")).toBeNull();
     expect(voiceTags("elevenlabs-sfx-v2")).toBeNull();
     expect(voiceTags(undefined)).toBeNull();
