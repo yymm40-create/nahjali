@@ -3,10 +3,9 @@
 // owner sets in /admin/credits (stored in jawad_settings under "credits").
 //
 // The ladder follows how the big AI studios price their credits (Higgsfield, OpenArt: a cheap way in, the tiers growing with more
-// credit per riyal, one highlighted «most popular» in the middle), with the owner's push to the next package: the first very cheap
-// (a try), the second high with almost no extra, the third only a little dearer than the second but with much more — so the second
-// makes the third look obvious. The extra balance stays modest: every riyal of balance already carries the site's margin, so a
-// bonus above ~25% would sell under cost.
+// credit per riyal, one highlighted «most popular» in the middle). No package gives extra balance (the owner, 1 November 2026):
+// every riyal transferred is exactly one riyal of balance — every riyal of balance already carries the site's margin, and an
+// extra on top ate it (on Claude's work a +18٪ left ~26٪ instead of 37.5٪).
 
 import { cleanPhone, waLink } from "./course";
 
@@ -15,7 +14,7 @@ export interface Pack {
   name: string;
   /** what the buyer transfers (riyals) */
   price: number;
-  /** what lands in the wallet (riyals) */
+  /** what lands in the wallet (riyals): always the price — no package gives extra balance */
   credit: number;
   /** a small badge («الأكثر طلبًا», «أفضل قيمة»), or "" */
   tag: string;
@@ -72,10 +71,10 @@ export const DEFAULT_PACKS: Pack[] = [
   { id: "try", name: "تجربة", price: 10, credit: 10, tag: "", note: "تجرب فيها الأقسام" },
   { id: "scene", name: "المشهد السينمائي", price: SCENE_PACK_SAR, credit: SCENE_PACK_SAR, tag: "", note: "مشهد ١٥ ثانية كامل: سيناريو، ٤ شيتات، فيديو 480p" },
   { id: "student", name: "الطالب الذكي", price: STUDENT_PACK_SAR, credit: STUDENT_PACK_SAR, tag: "", note: "ملخص أو شرح من ملف PDF قصير (٥–١٠ صفحات)" },
-  { id: "basic", name: "الأساسية", price: 99, credit: 100, tag: "", note: "للاستخدام الخفيف" },
-  { id: "pro", name: "المحترف", price: 119, credit: 140, tag: "الأكثر طلبًا", note: "صور وفيديوهات أسبوعية" },
-  { id: "studio", name: "الاستوديو", price: 279, credit: 330, tag: "", note: "لصنّاع المحتوى" },
-  { id: "business", name: "الأعمال", price: 549, credit: 660, tag: "أفضل قيمة", note: "للمتاجر والفرق" },
+  { id: "basic", name: "الأساسية", price: 99, credit: 99, tag: "", note: "للاستخدام الخفيف" },
+  { id: "pro", name: "المحترف", price: 119, credit: 119, tag: "الأكثر طلبًا", note: "صور وفيديوهات أسبوعية" },
+  { id: "studio", name: "الاستوديو", price: 279, credit: 279, tag: "", note: "لصنّاع المحتوى" },
+  { id: "business", name: "الأعمال", price: 549, credit: 549, tag: "أفضل قيمة", note: "للمتاجر والفرق" },
 ];
 
 /** Built-in packages added after owners had saved their own list: they appear in a saved list too (see readCreditSettings). */
@@ -90,9 +89,6 @@ export const CREDITS = {
   /** open orders (not confirmed nor rejected) one person may have */
   maxOpen: 4,
 } as const;
-
-/** The extra balance in percent («+18٪ مجانًا»). */
-export const bonusPct = (p: Pick<Pack, "price" | "credit">) => (p.credit > p.price && p.price > 0 ? Math.round((p.credit / p.price - 1) * 100) : 0);
 
 const int = (v: unknown, lo: number, hi: number) => {
   const n = Math.round(Number(v));
@@ -110,11 +106,11 @@ export function readCreditSettings(raw: unknown): CreditSettings {
     const p = x as Record<string, unknown>;
     const id = text(p.id, 24).toLowerCase().replace(/[^a-z0-9_-]/g, "");
     const price = int(p.price, 1, 100_000);
-    const credit = int(p.credit, 1, 200_000);
     const name = text(p.name, 30);
-    if (!id || seen.has(id) || !price || !credit || !name) continue;
+    if (!id || seen.has(id) || !price || !name) continue;
     seen.add(id);
-    packs.push({ id, name, price, credit, tag: text(p.tag, 20), note: text(p.note, 60) });
+    // no extra balance, even in a list saved while packages still had one: the balance is the price
+    packs.push({ id, name, price, credit: price, tag: text(p.tag, 20), note: text(p.note, 60) });
     if (packs.length >= CREDITS.maxPacks) break;
   }
   const removed = (Array.isArray(o.removed) ? o.removed : []).filter((x): x is string => typeof x === "string").slice(0, 20);

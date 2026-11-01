@@ -17,7 +17,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Riyal from "@/components/Riyal";
 import SmartCoin from "@/components/SmartCoin";
-import { bonusPct, CREDITS, packYield, supportLink, type Pack, type UnitPrices } from "@config/credits";
+import { CREDITS, packYield, supportLink, type Pack, type UnitPrices } from "@config/credits";
 import { waLink, type Bank } from "@config/course";
 import { track, visitorSource } from "@/lib/track";
 
@@ -324,7 +324,6 @@ export default function CreditsShop({
         <div className="pr-grid" ref={gridRef}>
           {packs.map((p, i) => {
             const star = p.id === featured;
-            const bonus = bonusPct(p);
             const mine = busy === p.id;
             return (
               <article key={p.id} className={`pr-card${star ? " star" : ""}${p.id === packs.find((q) => q.id !== featured)?.id ? " lead" : ""}`} aria-label={`باقة ${p.name}`}>
@@ -339,7 +338,6 @@ export default function CreditsShop({
                 </div>
                 <p className="pr-get">
                   يوصلك رصيد <Riyal halalas={p.credit * 100} size={14} className="pr-gn" />
-                  {bonus > 0 && <em>+{bonus}٪ مجانًا</em>}
                 </p>
                 <hr className="pr-hr" />
                 <ul className="pr-list">
