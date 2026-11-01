@@ -7,31 +7,9 @@ import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import type { NotificationSettings } from "@/lib/mahdi/types";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
+import { deviceState, disablePush, enablePush, type Device } from "@/lib/mahdi/client/push";
 
-const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
 const MODES = ["off", "daily", "every_12h", "every_6h", "custom"] as const;
-
-type Device = "checking" | "unsupported" | "needs-install" | "not-configured" | "denied" | "off" | "on";
-
-function keyToBytes(base64: string) {
-  const pad = "=".repeat((4 - (base64.length % 4)) % 4);
-  const raw = atob((base64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
-  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
-}
-
-/** Can this device get notifications, and are they on? */
-async function deviceState(): Promise<Device> {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
-    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const standalone = window.matchMedia("(display-mode: standalone)").matches;
-    return ios && !standalone ? "needs-install" : "unsupported";
-  }
-  if (!VAPID_PUBLIC) return "not-configured";
-  if (Notification.permission === "denied") return "denied";
-  const reg = await navigator.serviceWorker.getRegistration("/mahdi/");
-  const sub = await reg?.pushManager.getSubscription();
-  return sub && Notification.permission === "granted" ? "on" : "off";
-}
 
 /** Reminder settings, and turning notifications on for this device. */
 export default function NotificationsPage() {
@@ -52,22 +30,9 @@ export default function NotificationsPage() {
   async function enable() {
     setBusy(true);
     try {
-      const reg = await navigator.serviceWorker.register("/mahdi/sw.js", { scope: "/mahdi/" });
-      await navigator.serviceWorker.ready;
-      if ((await Notification.requestPermission()) !== "granted") return setDevice("denied");
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) {
-        try {
-          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(VAPID_PUBLIC) });
-        } catch {
-          // An old subscription made with other keys: drop it and try once more
-          await (await reg.pushManager.getSubscription())?.unsubscribe();
-          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(VAPID_PUBLIC) });
-        }
-      }
-      await mahdiFetch("/api/mahdi/notifications/subscribe", { method: "POST", json: sub.toJSON() });
-      setDevice("on");
-      toast(t.notify.enabled);
+      const r = await enablePush();
+      setDevice(r);
+      if (r === "on") toast(t.notify.enabled);
     } catch (e) {
       toast((e as Error).message || t.errors.generic);
     }
@@ -77,12 +42,7 @@ export default function NotificationsPage() {
   async function disable() {
     setBusy(true);
     try {
-      const reg = await navigator.serviceWorker.getRegistration("/mahdi/");
-      const sub = await reg?.pushManager.getSubscription();
-      if (sub) {
-        await mahdiFetch("/api/mahdi/notifications/subscribe", { method: "DELETE", json: { endpoint: sub.endpoint } });
-        await sub.unsubscribe();
-      }
+      await disablePush();
       setDevice("off");
       toast(t.notify.disabled);
     } catch (e) {

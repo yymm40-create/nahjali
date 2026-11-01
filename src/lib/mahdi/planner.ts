@@ -20,6 +20,8 @@ export interface PlanItem {
   /** none: that day only · weekly: every week on that weekday · monthly: every month on that date */
   repeat: PlanRepeat;
   note: string;
+  /** «اجعله تنبيهًا» (migration 0102): a phone notification at its start time on each of its days */
+  remind?: boolean;
 }
 
 /** Whether an item lands on a day: one-off on its day; weekly on its weekday from then on; monthly on its date (the month's last day when it has fewer). */
@@ -66,7 +68,8 @@ export function cleanPlanItem(raw: unknown): Omit<PlanItem, "id"> | null {
   // an end before the start is no end
   if (start && end && end <= start) end = null;
   const repeat = (PLAN_REPEATS as readonly unknown[]).includes(o.repeat) ? (o.repeat as PlanRepeat) : "none";
-  return { title, day, start, end, repeat, note: clipText(o.note, PLAN_LIMITS.noteMax) };
+  // an alert needs a time to be sent at
+  return { title, day, start, end, repeat, note: clipText(o.note, PLAN_LIMITS.noteMax), remind: Boolean(start) && o.remind === true };
 }
 
 /** The days of a week from its first day, for the weekly view. */

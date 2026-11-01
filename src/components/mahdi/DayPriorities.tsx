@@ -10,6 +10,7 @@ import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { habitStatus } from "@/lib/mahdi/client/derive";
 import type { DayTask, Habit } from "@/lib/mahdi/types";
+import AlertBell from "./AlertBell";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
 
@@ -136,8 +137,15 @@ export default function DayPriorities() {
                 </button>
                 <span className="min-w-0 flex-1">
                   <span className={`block truncate ${done ? "line-through m-muted" : "font-semibold"}`}>{x.title}</span>
-                  {h && <span className="block text-xs m-muted">↺ {h.name}</span>}
+                  {(x.at || h) && (
+                    <span className="m-num block text-xs m-muted">
+                      {x.at && <>🔔 {x.at}</>}
+                      {x.at && h && " · "}
+                      {h && <>↺ {h.name}</>}
+                    </span>
+                  )}
                 </span>
+                {!done && <AlertBell name={x.title} time={x.at} hint={t.alert.taskHint} onSave={(at) => call("PATCH", { id: x.id, at })} />}
                 <button type="button" className="m-icon-btn m-btn-ghost" aria-label={t.priorities.remove} onClick={() => void remove(x)}>
                   <Icon name="trash" size={16} />
                 </button>

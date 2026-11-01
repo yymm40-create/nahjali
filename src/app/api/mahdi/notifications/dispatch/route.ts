@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { dispatchReminders, dispatchTaskReminders, pushConfigured } from "@/lib/mahdi/server/notify";
+import { dispatchHabitAlerts, dispatchPlanAlerts, dispatchReminders, dispatchTaskReminders, pushConfigured } from "@/lib/mahdi/server/notify";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +28,10 @@ export async function POST(req: Request) {
     const habits = await dispatchReminders(db);
     // «مهام اليوم» at their times (never stops the habit reminders above)
     const tasks = await dispatchTaskReminders(db).catch((e) => (console.error("[mahdi dispatch tasks]", e), null));
-    return NextResponse.json({ ...habits, tasks });
+    // «اجعله تنبيهًا» on habits and planner events (each on its own, never stopping the others)
+    const habitAlerts = await dispatchHabitAlerts(db).catch((e) => (console.error("[mahdi dispatch habit alerts]", e), null));
+    const plan = await dispatchPlanAlerts(db).catch((e) => (console.error("[mahdi dispatch plan alerts]", e), null));
+    return NextResponse.json({ ...habits, tasks, habitAlerts, plan });
   } catch (err) {
     console.error("[mahdi dispatch]", err);
     return NextResponse.json({ error: "dispatch failed" }, { status: 500 });

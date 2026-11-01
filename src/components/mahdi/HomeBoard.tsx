@@ -27,6 +27,8 @@ import ProgressRing from "./ProgressRing";
 import ProjectForm from "./ProjectForm";
 import { useMahdi } from "./Provider";
 import ReadingCard from "./ReadingCard";
+import ReviewNote from "./ReviewNote";
+import { WeekNoteHome } from "./WeekNote";
 import DesignGoals from "./home/DesignGoals";
 import DesignQuick from "./home/DesignQuick";
 import EmergencySetup from "./EmergencySetup";
@@ -40,6 +42,7 @@ import { useReading } from "./useReading";
 
 const LOCAL = "mahdi:home-widgets";
 const DAILY_OFFERED = "mahdi:daily-offered";
+const NOTE_OFFERED = "mahdi:day-note-offered";
 
 function readLocal(): unknown {
   try {
@@ -91,20 +94,25 @@ export default function HomeBoard() {
     }
   };
 
-  // «آية اليوم ورواية اليوم» is offered ONCE to a person who arranged their home before it existed: it is put after «اضغط وأنجز»;
-  // if they take it off afterwards it stays off
+  // A card added after the person arranged their home is offered ONCE: «آية اليوم ورواية اليوم» after «اضغط وأنجز»,
+  // then «ملاحظاتي على يومي» after it (or first, when neither is there). If they take it off afterwards it stays off.
   useEffect(() => {
     if (!profile.homeWidgets && !local) return;
-    let offered = false;
-    try {
-      offered = localStorage.getItem(DAILY_OFFERED) === "1";
-      if (!offered) localStorage.setItem(DAILY_OFFERED, "1");
-    } catch {
-      offered = true;
-    }
-    if (offered || list.includes("daily")) return;
-    const at = list.indexOf("quick");
-    const t = setTimeout(() => void save(at >= 0 ? [...list.slice(0, at + 1), "daily", ...list.slice(at + 1)] : ["daily", ...list]), 0);
+    const offer = (key: string, id: WidgetId, next: WidgetId[], after: WidgetId) => {
+      let offered = false;
+      try {
+        offered = localStorage.getItem(key) === "1";
+        if (!offered) localStorage.setItem(key, "1");
+      } catch {
+        offered = true;
+      }
+      if (offered || next.includes(id)) return next;
+      const at = next.includes(after) ? next.indexOf(after) : next.indexOf("quick");
+      return at >= 0 ? [...next.slice(0, at + 1), id, ...next.slice(at + 1)] : [id, ...next];
+    };
+    const next = offer(NOTE_OFFERED, "dayNote", offer(DAILY_OFFERED, "daily", list, "quick"), "daily");
+    if (next.length === list.length) return;
+    const t = setTimeout(() => void save(next), 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [local, profile.homeWidgets]);
@@ -139,6 +147,9 @@ export default function HomeBoard() {
         </div>
       </header>
       {where === "horizon" && <ShrineArt shrineId={look.shrine?.id ?? profile.shrineId} style={design.art} className="m-shrine-horizon" label={shrineName ? `رسمة ${shrineName}` : undefined} />}
+
+      {/* «ملاحظاتي على أسبوعي»: at the top, once a week, on the day the person picked */}
+      <WeekNoteHome />
 
       {!hasProjects ? (
         <section className="m-card space-y-3 p-6 text-center">
@@ -207,6 +218,8 @@ function Widget({ id, list }: { id: WidgetId; list: WidgetId[] }) {
         return <StoriesBar />;
       case "daily":
         return <DailyCard />;
+      case "dayNote":
+        return <DayNote />;
     }
   })();
   if (!body) return null;
@@ -265,6 +278,12 @@ function ReadingGoal() {
 }
 
 // ───────────────────────────── the other cards ─────────────────────────────
+
+/** «ملاحظاتي على يومي»: today's own note, the same one as in the day's page and «حاسبوا أنفسكم». */
+function DayNote() {
+  const { state } = useMahdi();
+  return <ReviewNote kind="day" start={state.today} />;
+}
 
 function Week() {
   const { state, timeline } = useMahdi();

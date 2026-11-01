@@ -65,6 +65,9 @@ export default function MonthReport({ month }: { month?: string }) {
         )}
       </nav>
 
+      {/* the person's own note on the month: at the top, where it is seen */}
+      <ReviewNote kind="month" start={ms} />
+
       {s.required === 0 ? (
         <p className="m-card p-6 text-center m-muted">{t.reports.noData}</p>
       ) : (
@@ -148,8 +151,6 @@ export default function MonthReport({ month }: { month?: string }) {
           </div>
         </>
       )}
-
-      <ReviewNote kind="month" start={ms} />
     </div>
   );
 }

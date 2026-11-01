@@ -7,6 +7,7 @@ import { addDays, type ISODate } from "@/lib/mahdi/engine";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { fmtDate, fmtDateLong, t, weekdayName } from "@/lib/mahdi/i18n";
 import { itemsOn, PLAN_LIMITS, PLAN_REPEATS, timeText, weekDays, type PlanItem, type PlanRepeat } from "@/lib/mahdi/planner";
+import AlertBell from "./AlertBell";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
 
@@ -14,7 +15,11 @@ export interface PlannerApi {
   items: PlanItem[];
   ready: boolean;
   loaded: boolean;
+  /** «اجعله تنبيهًا» works (migration 0102) */
+  alerts: boolean;
   add: (item: Omit<PlanItem, "id">) => Promise<boolean>;
+  /** «اجعله تنبيهًا» on one item: a time turns it on (and becomes its start), null turns it off; throws on failure */
+  setAlert: (item: PlanItem, time: string | null) => Promise<void>;
   remove: (id: string) => Promise<void>;
 }
 
@@ -23,12 +28,14 @@ export function usePlanner(): PlannerApi {
   const [items, setItems] = useState<PlanItem[]>([]);
   const [ready, setReady] = useState(true);
   const [loaded, setLoaded] = useState(false);
+  const [alerts, setAlerts] = useState(false);
   useEffect(() => {
     let live = true;
-    mahdiFetch<{ ready: boolean; items: PlanItem[] }>("/api/mahdi/planner")
+    mahdiFetch<{ ready: boolean; alerts?: boolean; items: PlanItem[] }>("/api/mahdi/planner")
       .then((r) => {
         if (!live) return;
         setReady(r.ready);
+        setAlerts(Boolean(r.alerts));
         setItems(r.items);
         setLoaded(true);
       })
@@ -63,7 +70,12 @@ export function usePlanner(): PlannerApi {
     },
     [toast],
   );
-  return { items, ready, loaded, add, remove };
+  const setAlert = useCallback(async (item: PlanItem, time: string | null) => {
+    const next = time ? { ...item, start: time, end: item.end && item.end > time ? item.end : null, remind: true } : { ...item, remind: false };
+    const r = await mahdiFetch<{ item: PlanItem }>("/api/mahdi/planner", { method: "PATCH", json: next });
+    setItems((all) => all.map((x) => (x.id === item.id ? r.item : x)));
+  }, []);
+  return { items, ready, loaded, alerts, add, remove, setAlert };
 }
 
 /** The small text inside a day's square: the first two items, with their time. */
@@ -82,7 +94,7 @@ export function SquareText({ items }: { items: PlanItem[] }) {
   );
 }
 
-function PlanRow({ item, onRemove }: { item: PlanItem; onRemove: (id: string) => void }) {
+function PlanRow({ item, planner }: { item: PlanItem; planner: PlannerApi }) {
   return (
     <li className="flex items-start gap-2 text-sm">
       <span className="m-num w-20 shrink-0 text-xs m-muted">{timeText(item) || t.planner.noTime}</span>
@@ -91,7 +103,8 @@ function PlanRow({ item, onRemove }: { item: PlanItem; onRemove: (id: string) =>
         {item.note && <span className="block text-xs m-muted">{item.note}</span>}
         {item.repeat !== "none" && <span className="block text-xs m-muted">🔁 {t.planner.repeatNote[item.repeat]}</span>}
       </span>
-      <button type="button" className="m-icon-btn shrink-0" aria-label={t.planner.remove} title={item.repeat !== "none" ? t.planner.removeSeries : t.planner.remove} onClick={() => onRemove(item.id)}>
+      {planner.alerts && <AlertBell name={item.title} time={item.remind && item.start ? item.start : null} hint={t.alert.planHint} onSave={(time) => planner.setAlert(item, time)} />}
+      <button type="button" className="m-icon-btn shrink-0" aria-label={t.planner.remove} title={item.repeat !== "none" ? t.planner.removeSeries : t.planner.remove} onClick={() => void planner.remove(item.id)}>
         <Icon name="trash" size={16} />
       </button>
     </li>
@@ -113,7 +126,7 @@ export function PlanDay({ day, planner }: { day: ISODate; planner: PlannerApi })
         )}
       </div>
       {!planner.ready && <p className="text-sm m-muted">{t.planner.off}</p>}
-      {list.length === 0 ? <p className="text-sm m-muted">{t.planner.nothing}</p> : <ul className="space-y-2">{list.map((i) => <PlanRow key={i.id} item={i} onRemove={(id) => void planner.remove(id)} />)}</ul>}
+      {list.length === 0 ? <p className="text-sm m-muted">{t.planner.nothing}</p> : <ul className="space-y-2">{list.map((i) => <PlanRow key={i.id} item={i} planner={planner} />)}</ul>}
       {adding && <PlanForm key={day} day={day} onDone={() => setAdding(false)} planner={planner} />}
     </section>
   );
@@ -124,11 +137,12 @@ function PlanForm({ day, planner, onDone }: { day: ISODate; planner: PlannerApi;
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [repeat, setRepeat] = useState<PlanRepeat>("none");
+  const [remind, setRemind] = useState(false);
   const [busy, setBusy] = useState(false);
   async function submit() {
     if (!title.trim() || busy) return;
     setBusy(true);
-    const ok = await planner.add({ title, day, start: start || null, end: start && end ? end : null, repeat, note: "" });
+    const ok = await planner.add({ title, day, start: start || null, end: start && end ? end : null, repeat, note: "", remind: Boolean(start) && remind });
     setBusy(false);
     if (ok) onDone();
   }
@@ -154,6 +168,11 @@ function PlanForm({ day, planner, onDone }: { day: ISODate; planner: PlannerApi;
           </button>
         ))}
       </div>
+      {planner.alerts && start && (
+        <button type="button" className="m-option px-3 py-1 text-xs" aria-pressed={remind} onClick={() => setRemind((v) => !v)}>
+          🔔 {t.alert.make}
+        </button>
+      )}
       <div className="flex gap-2">
         <button type="button" className="m-btn m-btn-primary flex-1" disabled={!title.trim() || busy} onClick={() => void submit()}>
           {t.planner.save}

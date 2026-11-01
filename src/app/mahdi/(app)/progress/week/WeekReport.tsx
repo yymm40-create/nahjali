@@ -9,6 +9,7 @@ import { weekInsights } from "@/lib/mahdi/client/insights";
 import Icon from "@/components/mahdi/Icon";
 import EmergencySummary from "@/components/mahdi/EmergencySummary";
 import ReviewNote from "@/components/mahdi/ReviewNote";
+import { WeekNoteWhen } from "@/components/mahdi/WeekNote";
 import { BarRow, Delta, Insights, ProgressTabs, Tile } from "@/components/mahdi/Stats";
 import { useMahdi } from "@/components/mahdi/Provider";
 
@@ -51,6 +52,12 @@ export default function WeekReport({ start }: { start?: string }) {
           </Link>
         )}
       </nav>
+
+      {/* «ملاحظاتي على أسبوعي»: at the top, where it is seen; and the day it also comes to the home */}
+      <div className="space-y-2">
+        <ReviewNote kind="week" start={ws} />
+        <WeekNoteWhen />
+      </div>
 
       {s.required === 0 ? (
         <p className="m-card p-6 text-center m-muted">{t.reports.noData}</p>
@@ -142,8 +149,6 @@ export default function WeekReport({ start }: { start?: string }) {
           )}
         </>
       )}
-
-      <ReviewNote kind="week" start={ws} />
     </div>
   );
 }
