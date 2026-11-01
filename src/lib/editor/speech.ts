@@ -8,7 +8,6 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { elevenAlign, elevenSpeech, elevenTranscribe } from "@/lib/jawad/server/providers/elevenlabs";
-import { MINIMAX_READY_VOICES, minimaxReady, minimaxSpeech } from "@/lib/jawad/server/providers/minimax";
 import { openaiSpeech } from "@/lib/jawad/server/providers/openai";
 import { jawadSpeak, jawadVoiceReady } from "@/lib/jawad/server/providers/jawad-voice";
 import { jawadReference } from "@/lib/jawad/server/voices";
@@ -146,7 +145,7 @@ export async function voiceIn(p: EditorProject, who: Who, b: { audio?: unknown; 
 }
 
 /** Who speaks حيدرا ماكس's replies: a provider, or one of the person's own voices («v:<id>», a voiceprint included). */
-export type ReplyVoice = "auto" | "openai" | "minimax" | "elevenlabs" | "jawad" | `v:${string}`;
+export type ReplyVoice = "auto" | "openai" | "elevenlabs" | "jawad" | `v:${string}`;
 
 /**
  * حيدرا ماكس's reply said aloud: `{ text, voice? }` → `{ audio: base64 mp3, by }`. Claude writes the words but has no voice
@@ -188,18 +187,13 @@ export async function voiceOut(p: EditorProject, who: Who, b: { text?: unknown; 
       if (!process.env.OPENAI_API_KEY) throw new Error("no OpenAI key");
       return openaiSpeech({ model: "gpt-4o-mini-tts", input: spoken, voice: "marin", format: "mp3", instructions: arabic ? "Speak natural, warm Gulf Arabic, friendly and clear, at a relaxed conversational pace." : "Speak naturally and warmly." });
     },
-    minimax: async () => {
-      if (!minimaxReady()) throw new Error("no MiniMax");
-      const id = own?.provider === "minimax" ? own.id : MINIMAX_READY_VOICES[0].id;
-      return (await minimaxSpeech({ voiceId: id, text: spoken, ...(arabic ? { languageBoost: "Arabic" } : {}) })).audio;
-    },
     elevenlabs: async () => {
       const voiceId = own?.provider === "elevenlabs" ? own.id : (process.env.EDITOR_VOICE_ID || ELEVEN_DEFAULT_VOICE).replace(/^p:/, "");
       return Buffer.from(await elevenSpeech({ voiceId, text: spoken, model: "eleven_v4", stability: 0.5, ...(arabic ? { languageCode: "ar" } : {}) }));
     },
   };
   const first = own ? own.provider : want === "auto" || !(want in readers) ? "openai" : want;
-  const order = [first, ...["openai", "minimax", "elevenlabs"].filter((x) => x !== first)];
+  const order = [first, ...["openai", "elevenlabs"].filter((x) => x !== first)];
   const mimeOf = (by: string) => (by === "jawad" ? "audio/wav" : "audio/mpeg");
   const audio = await charged(who, "editor_price_voice", 1, "رد حيدرا ماكس بالصوت", async () => {
     let last: unknown = null;
