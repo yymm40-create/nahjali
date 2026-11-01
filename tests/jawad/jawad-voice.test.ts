@@ -51,6 +51,8 @@ describe("«صوت الجواد» provider (VoiceStudio)", () => {
         if (url === "https://vs.test:3900/v1/audio/speech") {
           const b = JSON.parse(String(init!.body));
           if (b.input === "sleep") return new Response("starting", { status: 503 });
+          // a serverless worker waking up: two «not ready» answers, then it speaks
+          if (b.input === "drowsy" && calls.filter((c) => c.url.endsWith("/v1/audio/speech")).length <= 2) return new Response("waking", { status: 502 });
           return new Response(wavOf(400), { headers: { "content-type": "audio/wav" } });
         }
         return new Response("nope", { status: 404 });
@@ -99,7 +101,16 @@ describe("«صوت الجواد» provider (VoiceStudio)", () => {
     expect(readWav(new Uint8Array(r.audio))!.rate).toBe(24000);
   });
 
+  it("waits for a sleeping serverless worker to wake, then speaks", async () => {
+    process.env.VOICESTUDIO_WAKE_MS = "200";
+    const { jawadSpeak } = await import("@/lib/jawad/server/providers/jawad-voice");
+    const r = await jawadSpeak({ refUrl: "https://ref/u/d.wav", refText: "x", text: "drowsy" });
+    expect(r.durationMs).toBe(400);
+    expect(calls.filter((c) => c.url.endsWith("/v1/audio/speech"))).toHaveLength(3);
+  });
+
   it("says a waking server plainly, and refuses when no server is set", async () => {
+    process.env.VOICESTUDIO_WAKE_MS = "0";
     const { jawadSpeak, jawadVoiceReady } = await import("@/lib/jawad/server/providers/jawad-voice");
     await expect(jawadSpeak({ refUrl: "https://ref/u/w.wav", refText: "x", text: "sleep" })).rejects.toMatchObject({ userMessage: expect.stringMatching(/يستيقظ/) });
     delete process.env.VOICESTUDIO_URL;
