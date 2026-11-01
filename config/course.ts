@@ -82,7 +82,7 @@ export interface CourseSettings {
   videoPath: string | null;
   videoUrl: string;
   posterPath: string | null;
-  /** the WhatsApp group: shown after «تم التحويل» (the owner approves each join request there); the recorded course only once confirmed */
+  /** the clock course's WhatsApp group: every buyer of it gets it after «تم التحويل» (the owner approves each join request there) */
   groupLink: string;
   recordedLink: string;
   /** the lesson-place course (learn_courses id) this page sells: a confirmed buyer gets THAT course only, never a later one */
@@ -252,6 +252,12 @@ export type Clock = Pick<CourseSettings, "launchAt" | "hoursA" | "hoursB" | "pri
 
 /** Is this the course whose prices follow the clock? */
 export const isLadder = (s: Pick<CourseSettings, "ladderCourseId">, courseId?: string | null) => !!courseId && !!s.ladderCourseId && courseId.toLowerCase() === s.ladderCourseId;
+
+/**
+ * The WhatsApp group link a buyer of this course gets (from «تم التحويل» on), or "". The owner, 1 November 2026: «الكل يدخل
+ * المجموعة» — every buyer of the clock course gets it, whatever they bought (live, recorded or the whole course).
+ */
+export const groupLinkFor = (s: Pick<CourseSettings, "ladderCourseId" | "groupLink">, courseId?: string | null) => (isLadder(s, courseId) ? s.groupLink : "");
 
 /** The clock course's offers: one phase's products (a price of 0 = not on sale), the usual price struck (the whole = live + recorded). */
 function ladderAt(s: Clock, now: number): Offers {

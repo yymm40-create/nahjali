@@ -176,14 +176,23 @@ describe("the clock course («دورة صانع المحتوى»): what the owne
     expect(t).not.toContain("دوراتي");
   });
 
-  it("gives the whole course both, and the recorded one only «دوراتي»", async () => {
+  it("gives the whole course both, and the recorded one «دوراتي» and the group (everyone joins it), never the live day", async () => {
     const { welcomeText } = await import("@/lib/course/telegram");
     const both = welcomeText(mine("combo"), L);
     expect(both).toContain("chat.whatsapp.com");
     expect(both).toContain("دوراتي");
     const rec = welcomeText(mine("recorded"), L);
-    expect(rec).not.toContain("chat.whatsapp.com");
+    expect(rec).toContain("https://chat.whatsapp.com/abc");
     expect(rec).not.toContain("نوفمبر");
     expect(rec).toContain("دوراتي");
+  });
+
+  it("gives the group link to every buyer of the clock course, and to nobody else", async () => {
+    const { groupLinkFor } = await import("@config/course");
+    expect(groupLinkFor(L, ID)).toBe("https://chat.whatsapp.com/abc");
+    expect(groupLinkFor(L, ID.toUpperCase())).toBe("https://chat.whatsapp.com/abc");
+    expect(groupLinkFor(L, "00b706a4-f437-4d78-9b12-64202af88dcd")).toBe("");
+    expect(groupLinkFor(L, null)).toBe("");
+    expect(groupLinkFor(settings, ID)).toBe("");
   });
 });

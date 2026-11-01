@@ -60,8 +60,9 @@ export function orderText(o: Order, state = ""): string {
 }
 
 /**
- * What the owner sends the buyer after confirming: the welcome with what they bought. On the clock course the live ticket gets the
- * live day and the WhatsApp group (no «دوراتي»: the recording isn't theirs), the whole course gets both, the recorded one «دوراتي».
+ * What the owner sends the buyer after confirming: the welcome with what they bought, and the WhatsApp group (every buyer gets it).
+ * On the clock course the live ticket gets the live day too (no «دوراتي»: the recording isn't theirs), the whole course gets the
+ * day and «دوراتي», the recorded one «دوراتي».
  */
 export function welcomeText(o: Order, s: CourseSettings): string {
   const ladder = isLadder(s, o.courseId);
@@ -69,7 +70,8 @@ export function welcomeText(o: Order, s: CourseSettings): string {
   const rec = !ladder || o.product !== "live";
   const lines = [`هلا ${o.name} 🌸 تم تأكيد اشتراكك في ${o.courseTitle || COURSE.name}${ladder ? ` (${PRODUCT_LABEL[o.product]})` : ""} ✅`];
   if (live && s.liveWhen) lines.push(`🗓️ البث المباشر: ${s.liveWhen}`);
-  if ((ladder ? live : true) && s.groupLink) lines.push(`رابط المجموعة: ${s.groupLink}`);
+  // the owner, 1 November 2026: «الكل يدخل المجموعة» — the recorded buyers of the clock course too
+  if (s.groupLink) lines.push(`رابط المجموعة: ${s.groupLink}`);
   if (rec) lines.push(`${ladder ? "والمسجلة تنزل لك" : "تلقاها الحين"} في حسابك في «دوراتي»: https://www.aljawadai.app${LEARN.base}`);
   if (o.bonus) lines.push(`وانضاف لرصيدك في الجواد ${o.bonus} زهرة هدية 🎁`);
   return lines.join("\n");

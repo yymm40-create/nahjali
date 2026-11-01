@@ -5,7 +5,7 @@ import { myCourse } from "@/lib/course/orders";
 import { loadSettings, publicView } from "@/lib/course/settings";
 import { jawadSession } from "@/lib/jawad/server/access";
 import { loadTree } from "@/lib/learn/server";
-import { DEFAULT_SETTINGS, isLadder, isProduct, type Product } from "@config/course";
+import { DEFAULT_SETTINGS, groupLinkFor, isLadder, isProduct, type Product } from "@config/course";
 import { JAWAD } from "@config/jawad/brand";
 import "../course.css";
 
@@ -35,11 +35,11 @@ export default async function CourseSalePage({ params, searchParams }: { params:
   const own = (mine?.orders ?? []).filter((o) => o.courseId === course.id);
   const orders: OrderView[] = own.map((o) => ({ id: o.id, product: o.product, status: o.status, amount: o.amount, bonus: o.bonus, lockedUntil: o.lockedUntil, name: o.name, phone: o.phone }));
   const confirmed = own.some((o) => o.status === "confirmed");
-  // the clock course («دورة صانع المحتوى»): its own words, its terms, and its live group for the live / whole-course buyers
+  // the clock course («دورة صانع المحتوى»): its own words, its terms, and its WhatsApp group for every buyer of it
   const ladder = isLadder(s, course.id);
   const paid = own.filter((o) => o.status === "transferred" || o.status === "confirmed");
   const products: Product[] = [...new Set(own.filter((o) => o.status === "confirmed").flatMap((o): Product[] => (o.product === "combo" ? ["combo", "live", "recorded"] : [o.product])))];
-  const groupLink = ladder && paid.some((o) => o.product === "live" || o.product === "combo") ? s.groupLink : "";
+  const groupLink = paid.length ? groupLinkFor(s, course.id) : "";
   const unlocked: Unlocked | null = paid.length ? { confirmed, products: ladder ? products : confirmed ? ["recorded"] : [], groupLink, recordedLink: "" } : null;
   const pub = publicView(s);
   const view = ladder

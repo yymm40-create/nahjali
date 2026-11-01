@@ -303,7 +303,8 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
                     <li>🔒 تحويل بنكي مباشر</li>
                     {hasLifetimeAccess(sel.product) && <li>♾️ تسجيل الدورة مدى الحياة</li>}
                     {sel.product !== "recorded" && <li>🎥 حضور مباشر{ladder && s.liveWhen ? ` · ${s.liveWhen}` : ""}</li>}
-                    {hasLifetimeAccess(sel.product) ? <li>📚 تظهر في «دوراتي» بعد التأكيد</li> : <li>💬 رابط مجموعة البث بعد التحويل</li>}
+                    {hasLifetimeAccess(sel.product) && <li>📚 تظهر في «دوراتي» بعد التأكيد</li>}
+                    {ladder && <li>💬 رابط مجموعة الواتساب بعد التحويل</li>}
                   </ul>
                 </div>
               </>
