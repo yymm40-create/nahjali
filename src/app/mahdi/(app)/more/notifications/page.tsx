@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
+import { ENGAGE, ENGAGE_DAILY_MAX, engageOn } from "@/lib/mahdi/engage";
+import { readHints, writeHints, type HintPrefs } from "@/lib/mahdi/client/review-hints";
 import type { NotificationSettings } from "@/lib/mahdi/types";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
@@ -33,6 +35,49 @@ async function deviceState(): Promise<Device> {
   return sub && Notification.permission === "granted" ? "on" : "off";
 }
 
+interface Status {
+  configured: boolean;
+  cronSecret: boolean;
+  devices: number;
+  admin: boolean;
+  heartbeatReady?: boolean;
+  runs?: { ran_at: string; age_min: number; checked: number; sent: number; engage_sent: number }[];
+  devicesAll?: number;
+  engageLastDay?: number | null;
+}
+
+const ago = (m: number) => {
+  return m < 1 ? "الحين" : m < 60 ? `قبل ${m} دقيقة` : m < 1440 ? `قبل ${Math.round(m / 60)} ساعة` : `قبل ${Math.round(m / 1440)} يوم`;
+};
+
+/** The state of the system, for the owner: are the keys set, did the 15-minute dispatcher run lately, how many devices. */
+function SystemStatus({ status }: { status: Status }) {
+  const last = status.runs?.[0]?.age_min;
+  const alive = last !== undefined && last < 40;
+  const rows: [string, boolean | null, string][] = [
+    ["مفاتيح الإشعارات (VAPID) في الموقع", status.configured, status.configured ? "موجودة" : "ناقصة: ضعها في إعدادات الموقع"],
+    ["كلمة سر المجدوِل (MAHDI_CRON_SECRET)", status.cronSecret, status.cronSecret ? "موجودة" : "ناقصة أو قصيرة"],
+    ["المجدوِل (كل ١٥ دقيقة)", status.heartbeatReady ? alive : null, !status.heartbeatReady ? "ما نعرف: شغّل ملف 0098" : last !== undefined ? `آخر تشغيل ${ago(last)}` : "ما اشتغل ولا مرة: شغّل ملف 0009 (الجدولة)"],
+  ];
+  return (
+    <section className="m-card space-y-3 p-5" aria-labelledby="sys-title">
+      <h2 id="sys-title" className="font-semibold">حالة نظام الإشعارات (للمالك)</h2>
+      <ul className="space-y-2 text-sm">
+        {rows.map(([label, ok, note]) => (
+          <li key={label} className="flex items-center justify-between gap-3">
+            <span>{label}</span>
+            <span className="m-num font-semibold" style={{ color: ok === null ? "var(--m-muted)" : ok ? "var(--m-success)" : "var(--m-warning)" }}>{ok === null ? "؟" : ok ? "✓" : "✗"} {note}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="m-num m-muted text-xs">
+        أجهزة مشتركة: {status.devicesAll ?? "؟"} · آخر ٢٤ ساعة أُرسل {status.engageLastDay ?? "؟"} تنبيه جذب
+        {status.runs?.length ? ` · آخر تشغيل أرسل ${status.runs[0].sent} تذكير و${status.runs[0].engage_sent} تنبيه جذب` : ""}
+      </p>
+    </section>
+  );
+}
+
 /** Reminder settings, and turning notifications on for this device. */
 export default function NotificationsPage() {
   const { state, store, toast } = useMahdi();
@@ -40,11 +85,16 @@ export default function NotificationsPage() {
   const [form, setForm] = useState<NotificationSettings>(saved);
   const [busy, setBusy] = useState(false);
   const [device, setDevice] = useState<Device>("checking");
+  const [status, setStatus] = useState<Status | null>(null);
+  const [hints, setHints] = useState<HintPrefs | null>(null);
 
   useEffect(() => {
     let live = true;
     deviceState().then((d) => live && setDevice(d));
+    mahdiFetch<Status>("/api/mahdi/notifications/status").then((s) => live && setStatus(s)).catch(() => {});
+    const id = setTimeout(() => live && setHints(readHints()), 0);
     return () => {
+      clearTimeout(id);
       live = false;
     };
   }, []);
@@ -230,8 +280,55 @@ export default function NotificationsPage() {
           </>
         )}
 
+        <fieldset className="space-y-3 border-t pt-4" style={{ borderColor: "var(--m-line)" }}>
+          <legend className="m-label">تنبيهات تجيبك للتطبيق</legend>
+          <p className="text-sm m-muted">تجيك على جهازك (إذا فعّلته فوق) بحد أقصى {ENGAGE_DAILY_MAX} في اليوم، وتحترم وقت الهدوء. شيل اللي ما تبيه.</p>
+          {ENGAGE.map((e) => (
+            <label key={e.id} className="flex min-h-12 items-start justify-between gap-4">
+              <span>
+                <span className="block font-semibold">{e.ar}</span>
+                <span className="block text-sm m-muted">{e.hint} · <span className="m-num" dir="ltr">{e.at}</span></span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                className="mt-1 size-6 shrink-0 accent-[var(--m-gold)]"
+                checked={engageOn(form.engage, e.id)}
+                onChange={(ev) =>
+                  setForm((f) => {
+                    const next = { ...(f.engage ?? {}) };
+                    if (ev.target.checked) delete next[e.id];
+                    else next[e.id] = false;
+                    return { ...f, engage: next };
+                  })
+                }
+              />
+            </label>
+          ))}
+        </fieldset>
+
         <button className="m-btn m-btn-primary w-full" disabled={busy || !dirty}>{busy ? t.common.saving : t.common.save}</button>
       </form>
+
+      {hints && (
+        <section className="m-card space-y-3 p-5" aria-labelledby="hint-title">
+          <h2 id="hint-title" className="font-semibold">بطاقات التذكير في الرئيسية</h2>
+          <p className="text-sm m-muted">بطاقة «اكتب ملاحظتك» تطلع في الرئيسية آخر اليوم وآخر الأسبوع. تنحفظ على هذا الجهاز.</p>
+          {(
+            [
+              ["day", "ملاحظة يومك"],
+              ["week", "ملاحظة أسبوعك"],
+            ] as const
+          ).map(([k, label]) => (
+            <label key={k} className="flex min-h-11 items-center justify-between gap-4">
+              <span className="font-semibold">{label}</span>
+              <input type="checkbox" role="switch" className="size-6 shrink-0 accent-[var(--m-gold)]" checked={hints[k]} onChange={(e) => setHints(writeHints({ [k]: e.target.checked }))} />
+            </label>
+          ))}
+        </section>
+      )}
+
+      {status?.admin && <SystemStatus status={status} />}
     </div>
   );
 }

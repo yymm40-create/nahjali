@@ -2,6 +2,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { HISTORY_DAYS } from "@config/mahdi";
 import { addDays, todayIn } from "../engine";
+import { parseEngage } from "../engage";
 import type { Challenge, DayTask, Milestone, NotificationSettings, Phrase, Profile, Shrine, Snapshot } from "../types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadGroupPlan } from "./group-program";
@@ -197,7 +198,7 @@ async function loadExtras(supabase: SupabaseClient, logsFrom: string): Promise<P
       logs,
     },
     notifications: n
-      ? { mode: n.mode, times: n.times, quietStart: n.quiet_start, quietEnd: n.quiet_end, habitReminders: n.habit_reminders }
+      ? { mode: n.mode, times: n.times, quietStart: n.quiet_start, quietEnd: n.quiet_end, habitReminders: n.habit_reminders, engage: parseEngage(n.engage) }
       : DEFAULT_NOTIFICATIONS,
   };
 }
