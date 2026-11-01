@@ -112,6 +112,9 @@ export async function codeEdit(d: CodeDeps, request: string): Promise<CodeOutcom
   if (!last) throw new Error("ما طلع من البرنامج شي.");
   // a program cuts and arranges: the background / colour key are the person's own settings, never changed by it
   const cmds = asksAboutBackdrop(request) ? last.cmds : withoutBackdropEdits(last.cmds as { type?: string; patch?: Record<string, unknown> }[]).cmds;
+  // the person may have edited the timeline while the program was written and reviewed: its cuts were judged on the
+  // timeline as it was, so they go on only while they still mean the same thing there
+  if (d.timeline() !== start && JSON.stringify(d.timeline().tracks) !== JSON.stringify(start.tracks)) throw new Error("التايملاين تغيّر وأنا أشتغل، فما طبّقت التقطيع عشان ما يخرّب تعديلك (القصّات محسوبة على التايملاين قبل التعديل). اطلبه مرة ثانية.");
   const applied = d.run(cmds as typeof last.cmds, { label: `حيدرا ماكس: ${request.slice(0, 40)}` });
   if (!applied) throw new Error("ما قدرت أطبّق التقطيع على التايملاين.");
   const lens = `${sec(duration(start))} → ${sec(duration(last.after))}`;

@@ -184,19 +184,19 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await labPicture(p, who, b, new URL(req.url).origin));
     case "lab_plan":
       b.__at = Date.now();
-      return b.stream ? labResponse((onText) => labPlan(p, who, b, onText), b.watch === true) : NextResponse.json(await labPlan(p, who, b));
+      return b.stream ? labResponse((onText, signal) => labPlan(p, who, { ...b, __signal: signal }, onText), b.watch === true) : NextResponse.json(await labPlan(p, who, { ...b, __signal: req.signal }));
     case "lab_chat":
       b.__at = Date.now();
-      return b.stream ? labResponse((onText) => labChat(p, who, b, onText), b.watch === true) : NextResponse.json(await labChat(p, who, b));
+      return b.stream ? labResponse((onText, signal) => labChat(p, who, { ...b, __signal: signal }, onText), b.watch === true) : NextResponse.json(await labChat(p, who, { ...b, __signal: req.signal }));
     // «🌐 ابحث»: a real web search for حيدرا ماكس, brought by the page to the next step
     case "lab_search":
       return NextResponse.json(await labSearch(p, who, b));
     case "lab_write":
       b.__at = Date.now();
-      return b.stream ? labResponse((onText) => labWrite(p, who, b, onText), b.watch === true) : NextResponse.json(await labWrite(p, who, b));
+      return b.stream ? labResponse((onText, signal) => labWrite(p, who, { ...b, __signal: signal }, onText), b.watch === true) : NextResponse.json(await labWrite(p, who, { ...b, __signal: req.signal }));
     case "lab_review":
       b.__at = Date.now();
-      return b.stream ? labResponse(() => labReview(p, who, b)) : NextResponse.json(await labReview(p, who, b));
+      return b.stream ? labResponse((_, signal) => labReview(p, who, { ...b, __signal: signal })) : NextResponse.json(await labReview(p, who, { ...b, __signal: req.signal }));
     // «Claude Code»: حيدرا ماكس executes cuts, arrangement and colour as programs the browser runs (write · fix · review)
     case "code_edit_write":
       return NextResponse.json(await codeEditWrite(p, who, b));

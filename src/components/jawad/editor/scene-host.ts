@@ -184,6 +184,12 @@ export class SceneHost {
 
   destroy() {
     window.removeEventListener("message", this.listener);
+    // whatever still waits on this scene is told it is gone (a draft or a preview awaiting a frame would hang forever)
+    const gone = () => new DOMException("the scene was closed", "AbortError");
+    for (const w of this.waits.values()) w.no(gone());
+    for (const w of this.sounds.values()) w.no(gone());
+    this.loading?.no(gone());
+    this.loading = null;
     this.waits.clear();
     this.sounds.clear();
     this.frameEl.remove();

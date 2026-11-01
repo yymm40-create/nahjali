@@ -89,6 +89,9 @@ const exemplarsText = () => EXEMPLARS.map((e) => `<example name="${e.name}" show
 const planText = (p: LabPlan) => JSON.stringify(p, null, 1);
 const outputBudget = (model: unknown) => claudeModelOf(model).key === "haiku" ? 64_000 : 128_000;
 
+/** The page's own end of the request (set by the route): when the person cancels, the step's Claude call stops with it. */
+const stepSignal = (b: Record<string, unknown>) => (b.__signal instanceof AbortSignal ? b.__signal : undefined);
+
 /**
  * How long one request may read Claude's reply before it hands back what it has: the platform ends a request at
  * 800 s, counted from its start (`b.__at`, stamped by the route), and the step's own work before Claude is in that.
@@ -114,7 +117,8 @@ async function ask<T>(who: Who, b: Record<string, unknown>, label: string, parts
     b.model,
     label,
     () =>
-      callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: turn }], schema, maxTokens, effort: level, fallback: true, resume: { stopAt }, rawText: Boolean(written), onText }).catch((e) => {
+      callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: turn }], schema, maxTokens, effort: level, fallback: true, resume: { stopAt }, rawText: Boolean(written), onText, signal: stepSignal(b) }).catch((e) => {
+        if (stepSignal(b)?.aborted) throw new UserError("⏹️ وقّفت الطلب.", 499);
         console.error("motion lab", label, e);
         throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يكمل الموشن الحين. جرّب مرة ثانية.", who.email), 502);
       }),
