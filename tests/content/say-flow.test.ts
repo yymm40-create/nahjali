@@ -21,7 +21,7 @@ vi.mock("@/lib/content/chats", async (orig) => {
     ...real,
     getChat: vi.fn(async () => (db.chat ? structuredClone(db.chat) : null)),
     saveChat: vi.fn(async (_u: string, id: string | null, patch: { messages: Turn[]; record?: string; pending?: unknown; addUsd?: number }) => {
-      const c = (db.chat as Chat | null) ?? ({ id: "chat-1", title: "t", record: "", pending: null, usd: 0, updatedAt: "", messages: [] } as Chat);
+      const c = (db.chat as Chat | null) ?? ({ id: "chat-1", title: "t", record: "", pending: null, usd: 0, spentHalalas: 0, updatedAt: "", messages: [] } as Chat);
       c.messages = structuredClone(patch.messages);
       if (patch.record !== undefined) c.record = patch.record;
       if (patch.pending !== undefined) c.pending = structuredClone(patch.pending) as Chat["pending"];
@@ -91,7 +91,7 @@ describe("what he is given", () => {
 
   it("an earlier answer reaches him with the buttons he offered and the state of its carousel", async () => {
     db.chat = {
-      id: "chat-1", title: "t", record: "REC", pending: null, usd: 0, updatedAt: "",
+      id: "chat-1", title: "t", record: "REC", pending: null, usd: 0, spentHalalas: 0, updatedAt: "",
       messages: [
         { role: "user", text: "أبي كاروسيل" },
         {
@@ -171,7 +171,7 @@ describe("his answer", () => {
 
   it("a second carousel asks again; the pick of the first does not carry over", async () => {
     const turns = (maker?: "code") => ({
-      id: "chat-1", title: "t", record: "", pending: null, usd: 0, updatedAt: "",
+      id: "chat-1", title: "t", record: "", pending: null, usd: 0, spentHalalas: 0, updatedAt: "",
       messages: [
         { role: "user", text: MAKER_CODE },
         { role: "assistant", text: "تمام", slides: { aspect: "1:1", items: [{ n: 1, fileId: "f1", name: "slide-01", text: "t" }], todo: [], failed: [], running: false, total: 1, styleId: "", templateId: "", ...(maker ? { maker } : {}) } },
@@ -184,7 +184,7 @@ describe("his answer", () => {
 
   it("slides drawn again go back to the way the carousel was made, whatever the answer says", async () => {
     const made = (maker?: "code") => ({
-      id: "chat-1", title: "t", record: "", pending: null, usd: 0, updatedAt: "",
+      id: "chat-1", title: "t", record: "", pending: null, usd: 0, spentHalalas: 0, updatedAt: "",
       messages: [
         { role: "user", text: "أبي كاروسيل" },
         { role: "assistant", text: "تمام", slides: { aspect: "1:1", items: [{ n: 1, fileId: "f1", name: "slide-01", text: "t" }], todo: [], failed: [], running: false, total: 1, styleId: "", templateId: "", ...(maker ? { maker } : {}) } },
@@ -202,7 +202,7 @@ describe("his answer", () => {
 
   it("slides drawn again: only those slides, in the carousel that exists, with its style kept", async () => {
     db.chat = {
-      id: "chat-1", title: "t", record: "", pending: null, usd: 0, updatedAt: "",
+      id: "chat-1", title: "t", record: "", pending: null, usd: 0, spentHalalas: 0, updatedAt: "",
       messages: [
         { role: "user", text: "أبي كاروسيل" },
         { role: "assistant", text: "تمام", slides: { aspect: "9:16", items: [{ n: 1, fileId: "f1", name: "slide-01", text: "t" }, { n: 2, fileId: "f2", name: "slide-02", text: "t", flag: "حرف مقطوع" }], todo: [], failed: [{ n: 3, reason: "r", text: "t", prompt: "p" }], running: false, total: 3, styleId: "ghibli", templateId: "scrapbook", report: "قديم" } },

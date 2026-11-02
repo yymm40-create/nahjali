@@ -144,6 +144,9 @@ export interface Reply {
   editor: { id: string; title: string; lab?: string } | null;
   /** pictures or videos were handed to جواد (the page calls the media step) */
   media: MediaItem[] | null;
+  /** what this conversation had taken from the wallet BEFORE this turn (halalas); the route adds this turn's own
+   * charge and sends the person the new total */
+  spentHalalas: number;
 }
 
 const KIND_AR = { image: "صورة", video: "فيديو", audio: "صوت", doc: "ملف PDF" } as const;
@@ -300,7 +303,7 @@ export async function say(userId: string, chatId: string | null, message: string
 
   const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : undefined, pending, addUsd: usd });
   usd = Math.round(usd * 10000) / 10000;
-  return { chatId: id, text: reply.text, questions: reply.questions ?? null, usd, pending: pending ? { total: pending.slides.length, mode: pending.mode, todo: pending.slides.map((x) => x.n) } : null, editor, media };
+  return { chatId: id, text: reply.text, questions: reply.questions ?? null, usd, pending: pending ? { total: pending.slides.length, mode: pending.mode, todo: pending.slides.map((x) => x.n) } : null, editor, media, spentHalalas: before?.spentHalalas ?? 0 };
 }
 
 /**

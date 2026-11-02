@@ -688,7 +688,10 @@ export async function outputAction(user: User, id: string, b: Body) {
     // «محادثة مع صادق»: one message, answered now (paid by its real use, like every robot's turn)
     case "chat": {
       const r = await robotTurn(user, b.model, "محادثة مع صادق (الطالب الذكي)", () => chatTurn(user.id, o, b.message, isAdmin(user.email)));
-      return { messages: r.messages, coins: r.coins };
+      // exactly what this conversation has taken from the wallet now (never an estimate), read back next time too
+      const spent = r.spentHalalas + r.coins;
+      await saveOutput(o.id, { content: { messages: r.messages, spentHalalas: spent } });
+      return { messages: r.messages, coins: r.coins, spent };
     }
     // «صادق يصنع من المحادثة»: the student presses the card under his message. Nothing was made or charged before.
     case "chat_make": {

@@ -4,6 +4,7 @@ import { claudeTrouble } from "@/lib/film/anthropic";
 import { requireContentUser } from "@/lib/content/access";
 import { say } from "@/lib/content/chat";
 import { robotTurn } from "@/lib/claude-run";
+import { addChatSpent } from "@/lib/chat-spend";
 import { CONTENT } from "@config/content";
 import { isAdmin } from "@config/site";
 
@@ -22,7 +23,10 @@ export const POST = handle(async (req: Request) => {
   if (message.length > CONTENT.messageMax) throw new UserError(`الرسالة أطول من ${CONTENT.messageMax} حرف.`);
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   try {
-    return NextResponse.json(await robotTurn(user, b.model, "محادثة محمد باقر", () => say(user.id, chatId, message, attachments, user.email), { said: message, reply: (r) => r.text }));
+    const r = await robotTurn(user, b.model, "محادثة محمد باقر", () => say(user.id, chatId, message, attachments, user.email), { said: message, reply: (r) => r.text });
+    // exactly what this conversation has taken from the wallet now, this reply's real charge included (never an estimate)
+    const spent = await addChatSpent("content_chats", "id", r.chatId, r.spentHalalas, r.coins);
+    return NextResponse.json({ ...r, spent });
   } catch (e) {
     if (e instanceof UserError) throw e;
     const why = claudeTrouble(e);

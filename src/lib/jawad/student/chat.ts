@@ -35,8 +35,11 @@ const HISTORY = 30;
 /** A request to look outside the material. */
 const WANTS_SEARCH = /ابحث|دوّر|دور لي|من النت|من الإنترنت|من الانترنت|مصادر|مصدر|آخر الأخبار|أحدث|search/i;
 
+/** What was really taken from the wallet across this conversation so far (halalas, not an estimate). */
+export const spentOf = (o: Pick<Output, "content">): number => Math.max(0, Number((o.content as { spentHalalas?: unknown } | null)?.spentHalalas) || 0);
+
 /** The student says something to صادق in this conversation; returns the conversation with his answer, and its cost. */
-export async function chatTurn(userId: string, o: Output, raw: unknown, leader: boolean): Promise<{ messages: ChatMsg[]; usd: number }> {
+export async function chatTurn(userId: string, o: Output, raw: unknown, leader: boolean): Promise<{ messages: ChatMsg[]; usd: number; spentHalalas: number }> {
   if (o.kind !== "chat") throw new UserError("هذا الناتج مو محادثة.", 400);
   const said = String(raw ?? "").trim().slice(0, MESSAGE_MAX);
   if (!said) throw new UserError("اكتب رسالتك.");
@@ -113,6 +116,7 @@ export async function chatTurn(userId: string, o: Output, raw: unknown, leader: 
   // his markers become an offer under his words (a button), never an action by themselves
   const { text: answer, offer } = splitOffer(r.text, chatMakeKinds());
   const messages: ChatMsg[] = [...before, { role: "user", text: said, at: now }, { role: "assistant", text: withNote(answer, mem.fresh), at: now, ...(sources.length ? { sources } : {}), ...(offer ? { offer } : {}) }];
-  await saveOutput(o.id, { content: { messages }, status: "done", approved: true, error: null });
-  return { messages, usd };
+  // spentHalalas: added by the route once it knows this turn's real charge (robotTurn settles after chatTurn returns)
+  await saveOutput(o.id, { content: { messages, spentHalalas: spentOf(o) }, status: "done", approved: true, error: null });
+  return { messages, usd, spentHalalas: spentOf(o) };
 }

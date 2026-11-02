@@ -137,6 +137,9 @@ export default function GamesChat({ name, persona, loginHref }: { name: string; 
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [mine, setMine] = useState<{ id: string; title: string; link: string; chatId: string | null }[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
+  // exactly what was taken from the wallet in THIS conversation so far (halalas, not an estimate); read back from
+  // the server with the chat, so it survives a reload — 0 for a new one
+  const [spent, setSpent] = useState(0);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
@@ -176,9 +179,10 @@ export default function GamesChat({ name, persona, loginHref }: { name: string; 
   async function open(id: string) {
     setSide(false);
     try {
-      const r = await api<{ chat: { id: string; messages: Msg[]; mode?: Mode } }>(`/api/games/chats?id=${id}`);
+      const r = await api<{ chat: { id: string; messages: Msg[]; mode?: Mode; spentHalalas?: number } }>(`/api/games/chats?id=${id}`);
       setChatId(r.chat.id);
       setMsgs(r.chat.messages);
+      setSpent(Math.max(0, Number(r.chat.spentHalalas) || 0));
       setMode(r.chat.mode ?? "");
       setSheet(false);
       setStartError("");
@@ -186,7 +190,7 @@ export default function GamesChat({ name, persona, loginHref }: { name: string; 
       setMsgs([{ role: "assistant", text: e instanceof Error ? e.message : "تعذّر فتح المحادثة.", error: true }]);
     }
   }
-  const fresh = () => { setChatId(null); setMsgs([]); setSide(false); setMode(""); setSheet(false); setStartError(""); };
+  const fresh = () => { setChatId(null); setMsgs([]); setSide(false); setMode(""); setSheet(false); setStartError(""); setSpent(0); };
 
   const [claude] = useClaudeModel();
 
@@ -198,8 +202,9 @@ export default function GamesChat({ name, persona, loginHref }: { name: string; 
     setMode(way);
     setMsgs((m) => [...m, { role: "user", text: message }]);
     try {
-      const r = await postJson<{ chatId: string; text: string }>("/api/games/chat", { chatId, message, model: claude.id, ...(way ? { mode: way } : {}) });
+      const r = await postJson<{ chatId: string; text: string; spent?: number }>("/api/games/chat", { chatId, message, model: claude.id, ...(way ? { mode: way } : {}) });
       setChatId(r.chatId);
+      setSpent(Math.max(0, Number(r.spent) || 0));
       setMsgs((m) => [...m, { role: "assistant", text: r.text }]);
       void refresh();
     } catch (e) {
@@ -353,7 +358,7 @@ export default function GamesChat({ name, persona, loginHref }: { name: string; 
                 <span>{mode === "prompt" ? "أو قنبر يعطيك البرومبت في المحادثة" : "الموقع يبنيها لك ويعطيك رابط تلعبها"}</span>
               </div>
             )}
-            <ClaudeModelPicker className="gm-claude" disabled={busy} />
+            <ClaudeModelPicker className="gm-claude" disabled={busy} spent={spent} />
             <form className="gm-compose" onSubmit={(e) => { e.preventDefault(); void send(); }}>
               <MicButton onText={(t) => setQ((v) => (v.trim() ? `${v.trim()} ${t}` : t))} disabled={busy} className="gm-send" />
               <textarea

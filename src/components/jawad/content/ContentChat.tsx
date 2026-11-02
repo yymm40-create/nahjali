@@ -430,6 +430,9 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  // exactly what was taken from the wallet in THIS conversation so far (halalas, not an estimate); read back from
+  // the server with the chat, so it survives a reload — 0 for a new one
+  const [spent, setSpent] = useState(0);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<"" | "writing" | "producing">("");
   /** what «Claude Code» is doing on the slide it draws now */
@@ -541,9 +544,10 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   async function open(id: string, quiet = false) {
     setSide(false);
     try {
-      const r = await api<{ chat: { id: string; messages: Msg[]; pending: Pending | null } }>(`/api/content/chats?id=${id}`);
+      const r = await api<{ chat: { id: string; messages: Msg[]; pending: Pending | null; spent?: number } }>(`/api/content/chats?id=${id}`);
       setChatId(r.chat.id);
       setMsgs(r.chat.messages);
+      setSpent(Math.max(0, Number(r.chat.spent) || 0));
       setQ(store.get(draftKey(r.chat.id)) ?? "");
       // a carousel ordered before the page was left: drawn on from where it stopped
       if (r.chat.pending) void runProduce(r.chat.id);
@@ -558,7 +562,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       setMsgs([{ role: "assistant", text: e instanceof Error ? e.message : "تعذّر فتح المحادثة.", error: true }]);
     }
   }
-  const fresh = () => { setChatId(null); setMsgs([]); setQ(store.get(draftKey(null)) ?? ""); setPending([]); setSide(false); };
+  const fresh = () => { setChatId(null); setMsgs([]); setQ(store.get(draftKey(null)) ?? ""); setPending([]); setSide(false); setSpent(0); };
 
   // back on the page: the conversation of the address (?chat=) or of the last visit opens again
   useEffect(() => {
@@ -625,8 +629,9 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     let produceId: string | null = null;
     let mediaId: string | null = null;
     try {
-      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string; lab?: string } | null; media: MediaView[] | null }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id), model: claude.id });
+      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string; lab?: string } | null; media: MediaView[] | null; spent?: number }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id), model: claude.id });
       setChatId(r.chatId);
+      setSpent(Math.max(0, Number(r.spent) || 0));
       setMsgs((m) => {
         const copy = [...m];
         const reply: Msg = { role: "assistant", text: r.text, questions: r.questions ?? undefined, editor: r.editor ?? undefined, ...(r.media ? { media: { items: r.media } } : {}) };
@@ -796,7 +801,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                   ))}
                 </div>
               )}
-              <ClaudeModelPicker className="ct-claude" disabled={!!busy} />
+              <ClaudeModelPicker className="ct-claude" disabled={!!busy} spent={spent} />
               <div className="ct-compose-row">
                 <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/mpeg,audio/wav,application/pdf" onChange={(e) => void attach(e.target.files)} />
                 <button type="button" className="ct-attach" aria-label="أرفق حتى 20 ملفًا" title="أرفق حتى 20 صورة أو فيديو أو صوت أو PDF" disabled={uploading || !!busy || pending.length >= JAWAD_ATTACHMENT_LIMIT} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>

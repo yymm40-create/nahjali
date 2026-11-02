@@ -4,6 +4,7 @@ import { claudeWhy } from "@/lib/film/anthropic";
 import { robotTurn } from "@/lib/claude-run";
 import { requireKharqUser } from "@/lib/kharq/access";
 import { consultTeam, goOn, say } from "@/lib/kharq/chat";
+import { addChatSpent } from "@/lib/chat-spend";
 import { KHARQ } from "@config/kharq";
 
 export const dynamic = "force-dynamic";
@@ -27,11 +28,13 @@ export const POST = handle(async (req: Request) => {
     const chatId = b.chatId;
     const origin = new URL(req.url).origin;
     try {
-      return NextResponse.json(
+      const r =
         b.step === "team"
           ? await robotTurn(user, b.model, `فريق ${KHARQ.persona}`, () => consultTeam({ userId: user.id, chatId, email: user.email ?? null }))
-          : await robotTurn(user, b.model, `محادثة ${KHARQ.persona}`, () => goOn({ userId: user.id, chatId, email: user.email ?? null, origin, auto })),
-      );
+          : await robotTurn(user, b.model, `محادثة ${KHARQ.persona}`, () => goOn({ userId: user.id, chatId, email: user.email ?? null, origin, auto }));
+      // exactly what this conversation has taken from the wallet now, this reply's real charge included (never an estimate)
+      const spent = await addChatSpent("kharq_chats", "id", chatId, r.spentHalalas, r.coins);
+      return NextResponse.json({ ...r, spent });
     } catch (e) {
       if (e instanceof UserError) throw e;
       if (e instanceof Error && e.message === "chat not found") throw new UserError("ما لقينا هذي المحادثة.", 404);
@@ -46,9 +49,9 @@ export const POST = handle(async (req: Request) => {
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   const origin = new URL(req.url).origin;
   try {
-    return NextResponse.json(
-      await robotTurn(user, b.model, `محادثة ${KHARQ.persona}`, () => say({ userId: user.id, chatId, message, email: user.email ?? null, attachments, origin, auto })),
-    );
+    const r = await robotTurn(user, b.model, `محادثة ${KHARQ.persona}`, () => say({ userId: user.id, chatId, message, email: user.email ?? null, attachments, origin, auto }));
+    const spent = await addChatSpent("kharq_chats", "id", r.chatId, r.spentHalalas, r.coins);
+    return NextResponse.json({ ...r, spent });
   } catch (e) {
     if (e instanceof UserError) throw e;
     if (e instanceof Error && e.message === "chat not found") throw new UserError("ما لقينا هذي المحادثة.", 404);

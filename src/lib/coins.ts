@@ -190,24 +190,31 @@ export async function chargeAfter(userId: string, jobId: string, costUsd: number
   return taken;
 }
 
-/** On success: the held coins become the real charge (what was not used is given back; more is taken only while the wallet has it). */
-export async function settleCoins(jobId: string, costUsd: number, claude: ChargeKind = false) {
+/**
+ * On success: the held coins become the real charge (what was not used is given back; more is taken only while the
+ * wallet has it). Returns the exact halalas this one job really cost (whoever paid: a person, a team, or a free
+ * account's recorded value) — e.g. for «سجاد»'s own conversations, added to that chat's running «أُخذ منك» total.
+ */
+export async function settleCoins(jobId: string, costUsd: number, claude: ChargeKind = false): Promise<number> {
   await loadPricing();
   const team = await settleTeamCoins(jobId, costUsd, claude);
   const r = await reserved(jobId);
   if (!r) {
+    const charged = priceOf(costUsd, claude);
     // a free account's job: its value at the site's prices goes on the record kept for it
-    await db().from("site_free_usage").update({ halalas: priceOf(costUsd, claude) }).eq("ref", jobId).then(() => {}, () => {});
+    await db().from("site_free_usage").update({ halalas: charged }).eq("ref", jobId).then(() => {}, () => {});
     // and what it really cost, for the net profit (whose it was: the free record, or the team job's)
     const free = team ? null : ((await db().from("site_free_usage").select("user_id,label").eq("ref", jobId).limit(1).maybeSingle()).data as { user_id: string; label: string } | null);
     await logCost(team?.userId ?? free?.user_id ?? null, jobId, team?.label ?? free?.label ?? "", costUsd);
-    return;
+    return charged;
   }
   await logCost(r.userId, jobId, r.label, costUsd);
-  if (r.held < 0) return;
-  const diff = r.held - priceOf(costUsd, claude, await atCostFor(r.userId));
+  if (r.held < 0) return 0;
+  const charged = priceOf(costUsd, claude, await atCostFor(r.userId));
+  const diff = r.held - charged;
   if (diff > 0) await adjust(r.userId, diff, "settle", jobId, r.label, true);
   else if (diff < 0) await takeUpTo(r.userId, -diff, "settle", jobId, r.label);
+  return charged;
 }
 
 /** On failure: every held coin goes back (failed operations cost nothing). */

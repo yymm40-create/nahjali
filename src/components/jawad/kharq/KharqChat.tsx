@@ -112,6 +112,9 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  // exactly what was taken from the wallet in THIS conversation so far (halalas, not an estimate); read back from
+  // the server with the chat, so it survives a reload — 0 for a new one
+  const [spent, setSpent] = useState(0);
   const [links, setLinks] = useState<Record<string, string>>({});
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [pending, setPending] = useState<FileView[]>([]);
@@ -146,14 +149,15 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => { if (msgs.length || busy) end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs, busy]);
 
-  const fresh = () => { setChatId(null); setMsgs([]); setLinks({}); setPicked({}); setPending([]); setSide(false); };
+  const fresh = () => { setChatId(null); setMsgs([]); setLinks({}); setPicked({}); setPending([]); setSide(false); setSpent(0); };
 
   async function open(id: string) {
     setSide(false);
     try {
-      const r = await api<{ chat: { id: string; messages: Msg[] }; links: Record<string, string> }>(`/api/kharq/chats?id=${id}`);
+      const r = await api<{ chat: { id: string; messages: Msg[]; spent?: number }; links: Record<string, string> }>(`/api/kharq/chats?id=${id}`);
       setChatId(r.chat.id);
       setMsgs(r.chat.messages);
+      setSpent(Math.max(0, Number(r.chat.spent) || 0));
       setLinks(r.links ?? {});
       setPicked({});
       setPending([]);
@@ -208,8 +212,9 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
     setBusy(true);
     setMsgs((m) => [...m, { role: "user", text: message || "(ملفات مرفقة)", files: files.length ? files : undefined }]);
     try {
-      const r = await postJson<{ chatId: string; turn: Msg }>("/api/kharq/chat", { chatId, message, model: claude.id, attachments: files.map((f) => f.id), auto });
+      const r = await postJson<{ chatId: string; turn: Msg; spent?: number }>("/api/kharq/chat", { chatId, message, model: claude.id, attachments: files.map((f) => f.id), auto });
       setChatId(r.chatId);
+      setSpent(Math.max(0, Number(r.spent) || 0));
       setMsgs((m) => [...m, r.turn]);
       void refresh();
       await after(r.chatId, r.turn);
@@ -229,10 +234,12 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
     let t = turn;
     for (let round = 0; round < 3 && t.consult?.some((c) => c.state === "pending"); round++) {
       setTeam(t.consult.map((c) => findAgent(c.agent)?.name ?? c.agent).join(" و"));
-      const done = await postJson<{ consult: Consult[] }>("/api/kharq/chat", { chatId: cid, step: "team", model: claude.id });
+      const done = await postJson<{ consult: Consult[]; spent?: number }>("/api/kharq/chat", { chatId: cid, step: "team", model: claude.id });
+      setSpent(Math.max(0, Number(done.spent) || 0));
       setMsgs((m) => m.map((x, i) => (i === m.length - 1 && x.role === "assistant" ? { ...x, consult: done.consult } : x)));
       setTeam(null);
-      const next = await postJson<{ chatId: string; turn: Msg }>("/api/kharq/chat", { chatId: cid, step: "go", model: claude.id, auto });
+      const next = await postJson<{ chatId: string; turn: Msg; spent?: number }>("/api/kharq/chat", { chatId: cid, step: "go", model: claude.id, auto });
+      setSpent(Math.max(0, Number(next.spent) || 0));
       setMsgs((m) => [...m, next.turn]);
       t = next.turn;
     }
@@ -533,7 +540,7 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
                 </div>
               )}
               <div className="kh-claude">
-                <ClaudeModelPicker disabled={busy} />
+                <ClaudeModelPicker disabled={busy} spent={spent} />
                 <p className="kh-dim" style={{ margin: "4px 0 0" }}>هذا الفرع يفكّر بأقصى جهد في كل ردّ؛ وللمشاريع الضخمة اختر «العبقري» أو «الأصيل».</p>
                 <label className="kh-auto">
                   <input type="checkbox" checked={auto} onChange={flipAuto} />

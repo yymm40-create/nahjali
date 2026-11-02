@@ -96,6 +96,9 @@ export default function IslamicChat({ name, loginHref }: { name: string; loginHr
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
   const [memory, setMemory] = useState(true);
+  // exactly what was taken from the wallet in THIS conversation so far (halalas, not an estimate); read back from
+  // the server with the chat, so it survives a reload — 0 for a new one
+  const [spent, setSpent] = useState(0);
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -134,12 +137,13 @@ export default function IslamicChat({ name, loginHref }: { name: string; loginHr
       if (r.chat) {
         setChatId(r.chat.id);
         setMsgs(r.chat.messages);
+        setSpent(Math.max(0, Number(r.chat.spentHalalas) || 0));
       }
     } catch {
       setError("تعذّر فتح المحادثة.");
     }
   };
-  const fresh = () => { setChatId(null); setMsgs([]); setError(null); };
+  const fresh = () => { setChatId(null); setMsgs([]); setError(null); setSpent(0); };
   const remove = async (id: string) => {
     if (!confirm("نحذف هذي المحادثة؟")) return;
     await fetch(`/api/islamic/chats?id=${id}`, { method: "DELETE" }).catch(() => null);
@@ -156,9 +160,10 @@ export default function IslamicChat({ name, loginHref }: { name: string; loginHr
     setQ("");
     setBusy(how);
     try {
-      const r = await post<Answer & { chatId: string | null }>("/api/islamic/ask", { question, history, chatId, mode: how, model: claude.id });
+      const r = await post<Answer & { chatId: string | null; spent?: number }>("/api/islamic/ask", { question, history, chatId, mode: how, model: claude.id });
       setMsgs((m) => [...m, { role: "assistant", text: r.answer, mode: r.mode, sources: r.sources, found: r.found, searches: r.searches }]);
       if (r.chatId) setChatId(r.chatId);
+      setSpent(Math.max(0, Number(r.spent) || 0));
       void refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -275,7 +280,7 @@ export default function IslamicChat({ name, loginHref }: { name: string; loginHr
             )}
             <div ref={end} />
           </div>
-          <ClaudeModelPicker className="sticky bottom-[8.5rem]" disabled={!!busy} />
+          <ClaudeModelPicker className="sticky bottom-[8.5rem]" disabled={!!busy} spent={spent} />
           <div className="sticky bottom-[5.25rem] flex flex-wrap justify-center gap-1.5" role="radiogroup" aria-label="وش تبي؟">
             {MODES.map((x) => (
               <button key={x.id} type="button" role="radio" aria-checked={mode === x.id} title={x.hint} disabled={!!busy} className={`jw-chip text-xs ${mode === x.id ? "!border-jw-accent !bg-jw-accent/15 font-bold" : ""}`} onClick={() => setMode(x.id)}>

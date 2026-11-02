@@ -4,6 +4,7 @@ import { claudeTrouble } from "@/lib/film/anthropic";
 import { requireDesignerUser } from "@/lib/designer/access";
 import { say } from "@/lib/designer/chat";
 import { robotTurn } from "@/lib/claude-run";
+import { addChatSpent } from "@/lib/chat-spend";
 import { DESIGNER } from "@config/designer";
 import { isAdmin } from "@config/site";
 
@@ -22,7 +23,9 @@ export const POST = handle(async (req: Request) => {
   if (message.length > DESIGNER.messageMax) throw new UserError(`الرسالة أطول من ${DESIGNER.messageMax} حرف.`);
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   try {
-    return NextResponse.json(await robotTurn(user, b.model, "محادثة كاظم", () => say(user.id, chatId, message, attachments, user.email), { said: message, reply: (r) => r.text }));
+    const r = await robotTurn(user, b.model, "محادثة كاظم", () => say(user.id, chatId, message, attachments, user.email), { said: message, reply: (r) => r.text });
+    const spent = await addChatSpent("designer_chats", "id", r.chatId, r.spentHalalas, r.coins);
+    return NextResponse.json({ ...r, spent });
   } catch (e) {
     if (e instanceof UserError) throw e;
     const why = claudeTrouble(e);

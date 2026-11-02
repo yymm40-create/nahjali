@@ -8,6 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, claudeWhy, type ClaudeTurn } from "@/lib/film/anthropic";
 import { claudeCharged, type Who } from "./pricing";
 import { stillOpen, type EditorProject } from "./server";
+import { addChatSpent } from "@/lib/chat-spend";
 
 const db = () => createAdminClient();
 
@@ -25,6 +26,8 @@ export interface Chat {
   chats: number;
   /** false until the owner runs the migration: the page then keeps the chat on the device only */
   stored: boolean;
+  /** exactly what was taken from the wallet across this edit's whole conversation, handoffs included (halalas, not an estimate) */
+  spentHalalas: number;
 }
 
 /** Kept per conversation (older ones are dropped from the start; a handoff keeps their substance). */
@@ -47,12 +50,12 @@ export function readMessages(v: unknown): ChatMsg[] {
 }
 
 export async function loadChat(p: EditorProject): Promise<Chat> {
-  const { data, error } = await db().from("editor_chats").select("messages,handoff,chats").eq("project_id", p.id).maybeSingle();
-  if (error) return { messages: [], handoff: null, chats: 1, stored: false };
-  return { messages: readMessages(data?.messages), handoff: data?.handoff ?? null, chats: Number(data?.chats ?? 1), stored: true };
+  const { data, error } = await db().from("editor_chats").select("messages,handoff,chats,spent_halalas").eq("project_id", p.id).maybeSingle();
+  if (error) return { messages: [], handoff: null, chats: 1, stored: false, spentHalalas: 0 };
+  return { messages: readMessages(data?.messages), handoff: data?.handoff ?? null, chats: Number(data?.chats ?? 1), stored: true, spentHalalas: Math.max(0, Number(data?.spent_halalas ?? 0)) };
 }
 
-async function saveChat(p: EditorProject, c: Omit<Chat, "stored">) {
+async function saveChat(p: EditorProject, c: Omit<Chat, "stored" | "spentHalalas">) {
   const { error } = await db()
     .from("editor_chats")
     .upsert({ project_id: p.id, user_id: p.user_id, messages: c.messages.slice(-CHAT_MAX), handoff: c.handoff, chats: c.chats, updated_at: new Date().toISOString() });
@@ -135,5 +138,7 @@ export async function handOff(p: EditorProject, who: Who, b: { messages?: unknow
   );
   const next = { messages: [], handoff: r.data.summary.trim().slice(0, 8000), chats: c.chats + 1 };
   if (stored.stored && !(await saveChat(p, next))) throw new UserError("ما قدرنا نحفظ؛ جرّب مرة ثانية.", 500);
-  return { ...next, stored: stored.stored };
+  // writing the handoff is itself part of this edit's conversation: its own real charge joins the running total
+  const spentHalalas = stored.stored ? await addChatSpent("editor_chats", "project_id", p.id, stored.spentHalalas, r.coins) : stored.spentHalalas + r.coins;
+  return { ...next, stored: stored.stored, spentHalalas };
 }

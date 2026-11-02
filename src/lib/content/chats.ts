@@ -144,6 +144,8 @@ export interface Chat {
   record: string;
   pending: PendingProduce | null;
   usd: number;
+  /** exactly what was taken from the wallet across this whole conversation (halalas, not an estimate) */
+  spentHalalas: number;
   updatedAt: string;
 }
 
@@ -300,6 +302,7 @@ const view = (r: Record<string, unknown>): Chat => ({
   record: str(r.record, 20_000),
   pending: readPending(r.pending),
   usd: Number(r.usd ?? 0),
+  spentHalalas: Math.max(0, Number(r.spent_halalas ?? 0)),
   updatedAt: String(r.updated_at ?? ""),
 });
 

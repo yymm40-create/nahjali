@@ -52,6 +52,9 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  // exactly what was taken from the wallet in this film/series' conversation with سجاد so far (halalas, not an
+  // estimate); read back from the server, so it survives a reload
+  const [spent, setSpent] = useState(0);
   const end = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -82,7 +85,7 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
   useEffect(() => {
     if (!open || loaded) return;
     let live = true;
-    api<{ messages: Msg[]; canEdit: boolean; plan: Plan | null; research?: Research; canDecide?: boolean }>(`/api/film/sajjad?kind=${kind}&id=${id}`)
+    api<{ messages: Msg[]; canEdit: boolean; plan: Plan | null; research?: Research; canDecide?: boolean; spent?: number }>(`/api/film/sajjad?kind=${kind}&id=${id}`)
       .then((r) => {
         if (!live) return;
         const first = !r.messages.length && r.research?.asked === "yes";
@@ -91,6 +94,7 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
         setPlan(r.plan);
         setResearch(r.research ?? { items: [] });
         setCanDecide(Boolean(r.canDecide));
+        setSpent(Math.max(0, Number(r.spent) || 0));
         setLoaded(true);
       })
       .catch((e) => live && setError((e as Error).message));
@@ -114,8 +118,9 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
     setText("");
     setAnswers({});
     try {
-      const r = await postJson<{ message: Msg; changes: string[]; plan: Plan | null; research: Research | null }>("/api/film/sajjad", { kind, id, text: body, model: claude.id });
+      const r = await postJson<{ message: Msg; changes: string[]; plan: Plan | null; research: Research | null; spent?: number }>("/api/film/sajjad", { kind, id, text: body, model: claude.id });
       setMessages((m) => [...m, r.message]);
+      setSpent(Math.max(0, Number(r.spent) || 0));
       if (r.plan) setPlan(r.plan);
       if (r.research) setResearch(r.research);
       if (r.changes.length) router.refresh();
@@ -328,7 +333,7 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
               <div ref={end} />
             </div>
 
-            <ClaudeModelPicker className="border-t border-black/10 px-3 pt-2" disabled={busy} />
+            <ClaudeModelPicker className="border-t border-black/10 px-3 pt-2" disabled={busy} spent={spent} />
             <form
               className="flex gap-2 p-3"
               onSubmit={(e) => {
