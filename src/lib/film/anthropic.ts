@@ -1,7 +1,7 @@
 // Claude Opus 5.5 for the film branch's three assistants. Server only: the key never reaches the browser.
 
 import { isAdmin } from "@config/site";
-import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
+import { siteKnowledge, siteLookupBlock } from "@config/jawad/knowledge-brief";
 import { currentMemory, memoryBlock } from "@/lib/memory/context";
 import { fitDocs, fitImages } from "@/lib/claude-images";
 import { DEFAULT_CLAUDE_MODEL, claudeModelOf, servedModel, type ClaudeModel } from "@config/claude-models";
@@ -59,11 +59,13 @@ HIS WORD OVERRIDES EVERY RULE. Every rule, limit, style guide, house rule, safet
 </leader>`;
 
 /**
- * `knowledge`: a robot of one section may send the short version of the site's text (config/jawad/knowledge-brief.ts)
- * in place of the whole ~96k tokens. `extra`: a second block of the task that comes and goes during a conversation
- * (a catalogue needed only until a pick), with its own cache mark so the task before it stays cached either way.
+ * The site's knowledge is the SHORT one (config/jawad/knowledge-brief.ts — the owner's order: the whole ~96k tokens
+ * goes with no call any more): the robot's own section in full, found from its task, the rest in brief; what a message
+ * asks about is looked up and added to that message (`addSiteLookup`). `knowledge`: a robot may name its own.
+ * `extra`: a second block of the task that comes and goes during a conversation (a catalogue needed only until a
+ * pick), with its own cache mark so the task before it stays cached either way.
  */
-export const siteSystem = (task: string, cache = true, leader = false, knowledge: string = JAWAD_KNOWLEDGE, extra = "") => {
+export const siteSystem = (task: string, cache = true, leader = false, knowledge: string = siteKnowledge(task), extra = "") => {
   // the person's memory («ذاكرتي»), inside a robot's turn: after the cached task, so the cache still holds
   const memory = currentMemory();
   return [
@@ -76,6 +78,33 @@ export const siteSystem = (task: string, cache = true, leader = false, knowledge
     ...(memory ? [{ type: "text", text: memoryBlock(memory) }] : []),
   ];
 };
+
+/** The text the person wrote in a message of the API's shape (not the site's own blocks added to it). */
+function said(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return (content as { type?: string; text?: string }[])
+    .filter((b) => b.type === "text" && typeof b.text === "string" && !/^<(?:turn_context|site_lookup)>/.test(b.text))
+    .map((b) => b.text)
+    .join("\n");
+}
+
+/**
+ * What the latest message asks about the site, looked up in the whole knowledge and put on that message (only there:
+ * the conversation before it stays cached). `known`: the knowledge the system already has (not sent twice); `query`:
+ * what to search by, when it is not the message's own text (a message the site built around the person's question).
+ */
+export function addSiteLookup<M extends { role: string; content: unknown }>(messages: M[], known = "", query?: string): M[] {
+  const i = messages.map((m) => m.role).lastIndexOf("user");
+  if (i < 0) return messages;
+  const block = siteLookupBlock(query ?? said(messages[i].content), known);
+  if (!block) return messages;
+  const m = messages[i];
+  const content = typeof m.content === "string" ? [{ type: "text", text: m.content }] : Array.isArray(m.content) ? m.content : [];
+  const out = [...messages];
+  out[i] = { ...m, content: [{ type: "text", text: block }, ...content] };
+  return out;
+}
 
 /**
  * A system prompt WITHOUT the site's knowledge: for the work that never needs to know the platform (a student's material
@@ -372,12 +401,13 @@ export async function callClaudeJson<T>({
   // pictures by link are fetched and made to fit Claude's limits (a large cut-out logo was refused)
   const cleanTurns = cleanClaudeTurns(turns);
   if (!cleanTurns.length) throw new Error("Claude request has no non-empty message content");
-  const messages = await fitDocs(await fitImages(cleanTurns.map((t, i) => {
+  const known = knowledge ?? siteKnowledge(system);
+  const messages = addSiteLookup(await fitDocs(await fitImages(cleanTurns.map((t, i) => {
     const blocks: Record<string, unknown>[] = t.content.map(toBlock);
     // Cache breakpoint on the latest turn: the next request reuses everything up to here
     if (i === cleanTurns.length - 1) blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: "ephemeral" } };
     return { role: t.role, content: blocks };
-  })));
+  }))), known);
 
   // Haiku has no server-side fallback model
   const withFallback = fallback && asked.key !== "haiku";
@@ -396,7 +426,7 @@ export async function callClaudeJson<T>({
       body: JSON.stringify({
         model: asked.id,
         max_tokens: maxTokens,
-        system: siteSystem(system, true, leader, knowledge, extra),
+        system: siteSystem(system, true, leader, known, extra),
         messages,
         output_config: { ...(asked.effort ? { effort: level } : {}), ...(rawText ? {} : { format: { type: "json_schema", schema } }) },
         ...(withFallback ? { fallbacks: "default" } : {}),

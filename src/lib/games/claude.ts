@@ -1,7 +1,8 @@
 // «صانع الألعاب الذكي» — one conversation turn with Claude (plain text, not JSON): the system text, the turns so far,
 // the answer and what it cost. Server only.
 
-import { AGAIN, brokenLink, claudeCost, nap, siteSystem, withModel, type ClaudeUsage } from "@/lib/film/anthropic";
+import { addSiteLookup, AGAIN, brokenLink, claudeCost, nap, siteSystem, withModel, type ClaudeUsage } from "@/lib/film/anthropic";
+import { siteKnowledge } from "@config/jawad/knowledge-brief";
 import { currentClaude } from "@/lib/film/claude-model";
 
 export interface Turn {
@@ -124,11 +125,12 @@ async function talkOnce(o: Parameters<typeof talk>[0], wait: number): Promise<Sa
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
   const asked = currentClaude();
-  const messages = o.turns.map((t, i) => ({
+  // what the latest message asks about the site rides on it (the site's knowledge is the short one)
+  const messages = addSiteLookup(o.turns.map((t, i) => ({
     role: t.role,
     // the last turn carries the cache mark: the next message reuses everything before it
     content: [{ type: "text", text: t.text, ...(i === o.turns.length - 1 ? { cache_control: { type: "ephemeral" } } : {}) }],
-  }));
+  })), siteKnowledge(o.system));
   const res = await fetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },

@@ -6,7 +6,8 @@
 
 import { remember, withNote } from "@/lib/robot-handoff";
 import { ISLAMIC_IDENTITY, ISLAMIC_KV } from "@config/islamic";
-import { callClaudeJson, claudeCost, claudeFetch, isLeader, siteSystem, withModel, type ClaudeUsage } from "@/lib/film/anthropic";
+import { addSiteLookup, callClaudeJson, claudeCost, claudeFetch, isLeader, siteSystem, withModel, type ClaudeUsage } from "@/lib/film/anthropic";
+import { siteKnowledge } from "@config/jawad/knowledge-brief";
 import { currentClaude } from "@/lib/film/claude-model";
 import { isPrimary, KIND_LABEL, type IslamicMode } from "./text";
 import { kvAll, logAnswer, search, searchScoped, type Passage } from "./library";
@@ -157,7 +158,7 @@ export async function ask(userId: string | null, question: string, history: Turn
     {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: model.id, max_tokens: mode === "research" ? 16000 : 8000, system: siteSystem(system, true, isLeader(email)), messages: turns, output_config: { ...(model.effort ? { effort: mode === "research" ? "high" : "medium" } : {}), format: { type: "json_schema", schema: SCHEMA } } }),
+      body: JSON.stringify({ model: model.id, max_tokens: mode === "research" ? 16000 : 8000, system: siteSystem(system, true, isLeader(email)), messages: addSiteLookup(turns, siteKnowledge(system), q), output_config: { ...(model.effort ? { effort: mode === "research" ? "high" : "medium" } : {}), format: { type: "json_schema", schema: SCHEMA } } }),
     },
     undefined,
     mode === "research" ? 300_000 : 170_000,

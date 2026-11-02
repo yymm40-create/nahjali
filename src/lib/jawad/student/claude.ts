@@ -4,7 +4,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { claudeCost, lightSystem, siteSystem, withModel, type ClaudeUsage } from "@/lib/film/anthropic";
 import { STUDENT } from "@config/jawad/student";
-import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
+import { sectionKnowledge } from "@config/jawad/knowledge-brief";
 import { claudeModelOf, type ClaudeModel } from "@config/claude-models";
 import { fitImages } from "@/lib/claude-images";
 
@@ -231,6 +231,7 @@ export async function tokenRatioOf(text: string): Promise<number> {
 export function claudeCeilingUsd(inputChars: number, maxOut: number, extraInputTokens = 0, o: { knowledge?: boolean; model?: ClaudeModel } = {}) {
   const m = o.model ?? studentModel();
   const perChar = ratios.getStore() ?? TOKENS_PER_CHAR;
-  const knowledge = o.knowledge ? JAWAD_KNOWLEDGE.length * TOKENS_PER_CHAR * m.rates.cacheWrite5m : 0;
+  // the short knowledge (the whole text goes with no call) and the largest lookup a message can add
+  const knowledge = o.knowledge ? (sectionKnowledge("الطالب الذكي").length + 7000) * TOKENS_PER_CHAR * m.rates.cacheWrite5m : 0;
   return (knowledge + (inputChars * perChar + extraInputTokens + 3000) * m.rates.input + maxOut * m.rates.output) / 1e6;
 }

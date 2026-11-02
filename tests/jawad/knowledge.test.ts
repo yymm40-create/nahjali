@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
+import { siteKnowledge } from "@config/jawad/knowledge-brief";
 import { DEFAULT_SECTIONS } from "@config/jawad/sections";
 import { GENERATORS } from "@config/jawad/generators";
 import { OUTPUT_KINDS } from "@config/jawad/student";
@@ -29,10 +30,11 @@ describe("site knowledge for Claude", () => {
   });
 
   it("comes first with its own cache mark, and the task after it keeps one too", () => {
+    // the SHORT knowledge (the owner's order: the whole text goes with no call any more)
     const s = siteSystem("TASK");
-    expect(s[0]).toEqual({ type: "text", text: JAWAD_KNOWLEDGE, cache_control: { type: "ephemeral" } });
+    expect(s[0]).toEqual({ type: "text", text: siteKnowledge("TASK"), cache_control: { type: "ephemeral" } });
     expect(s[1]).toEqual({ type: "text", text: "TASK", cache_control: { type: "ephemeral" } });
-    expect(siteSystem("TASK", false)[0]).toEqual({ type: "text", text: JAWAD_KNOWLEDGE });
+    expect(siteSystem("TASK", false)[0]).toEqual({ type: "text", text: siteKnowledge("TASK") });
     expect(siteSystem("TASK", false)[1]).toEqual({ type: "text", text: "TASK" });
   });
 });

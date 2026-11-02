@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { STUDENT } from "@config/jawad/student";
 import { claudeModelOf } from "@config/claude-models";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
+import { sectionKnowledge, siteKnowledge } from "@config/jawad/knowledge-brief";
 import { lightSystem, siteSystem } from "@/lib/film/anthropic";
 import { claudeCeilingUsd, studentModel, tokenRatioOf, withTokenRatio, TOKENS_PER_CHAR } from "@/lib/jawad/student/claude";
 
@@ -25,7 +26,8 @@ describe("what a student's call carries", () => {
 
   it("the site's text, where it is carried, has its own cache mark (a different task reads it from the cache)", () => {
     const sys = siteSystem("TASK") as { text: string; cache_control?: unknown }[];
-    expect(sys[0].text).toBe(JAWAD_KNOWLEDGE);
+    expect(sys[0].text).toBe(siteKnowledge("TASK"));
+    expect(sys[0].text.length).toBeLessThan(JAWAD_KNOWLEDGE.length / 4);
     expect(sys[0].cache_control).toEqual({ type: "ephemeral" });
     // a call that asked for no cache keeps none at all
     expect((siteSystem("TASK", false) as { cache_control?: unknown }[]).some((b) => b.cache_control)).toBe(false);
@@ -49,7 +51,7 @@ describe("the ceilings", () => {
   it("the site's text is counted (once, as a cache write) for the calls that still carry it", () => {
     const m = studentModel().rates;
     const withKnowledge = claudeCeilingUsd(0, 0, 0, { knowledge: true });
-    expect(withKnowledge - claudeCeilingUsd(0, 0)).toBeCloseTo((JAWAD_KNOWLEDGE.length * TOKENS_PER_CHAR * m.cacheWrite5m) / 1e6, 10);
+    expect(withKnowledge - claudeCeilingUsd(0, 0)).toBeCloseTo(((sectionKnowledge("الطالب الذكي").length + 7000) * TOKENS_PER_CHAR * m.cacheWrite5m) / 1e6, 10);
   });
 
   it("follow the material's real tokens-per-character when it is known", () => {
