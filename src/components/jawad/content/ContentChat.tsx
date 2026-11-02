@@ -13,6 +13,7 @@ import { useClaudeModel } from "@/components/robots/claude-model";
 import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
+import { isAttachOption } from "@/lib/chat-options";
 import { answerLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, DELEGATE_LINE, moodLine, motionLine, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
 import CarouselTable, { type CarouselItem } from "./CarouselTable";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
@@ -214,7 +215,7 @@ export function Gallery({ kind, items, onPick, onNone, onWrite }: { kind: Galler
 }
 
 /** The questions of an answer as buttons. One plain question sends on a press; a batch collects the answers first. */
-export function Questions({ questions, gal, disabled, onSend, onWrite }: { questions: Question[]; gal: Galleries | null; disabled: boolean; onSend: (text: string) => void; onWrite: () => void }) {
+export function Questions({ questions, gal, disabled, onSend, onWrite, onAttach }: { questions: Question[]; gal: Galleries | null; disabled: boolean; onSend: (text: string) => void; onWrite: () => void; onAttach?: (text: string) => void }) {
   const [picked, setPicked] = useState<Record<number, string[]>>({});
   const [other, setOther] = useState<Record<number, string>>({});
   const [openOther, setOpenOther] = useState<Record<number, boolean>>({});
@@ -227,7 +228,7 @@ export function Questions({ questions, gal, disabled, onSend, onWrite }: { quest
 
   // one plain question: a press sends it
   if (questions.length === 1 && questions[0].kind === "choice" && !questions[0].multi) {
-    return <QuickReplies cls="ct" options={questions[0].options} disabled={disabled} onPick={(o) => onSend(o)} onWrite={onWrite} />;
+    return <QuickReplies cls="ct" options={questions[0].options} disabled={disabled} onPick={(o) => onSend(o)} onWrite={onWrite} onAttach={onAttach} />;
   }
 
   const toggle = (qi: number, o: string, multi: boolean) =>
@@ -259,7 +260,12 @@ export function Questions({ questions, gal, disabled, onSend, onWrite }: { quest
           {q.kind === "choice" ? (
             <div className="ct-opts">
               {q.options.map((o) => (
-                <button key={o} type="button" className="ct-opt" aria-pressed={(picked[qi] ?? []).includes(o)} disabled={disabled} onClick={() => toggle(qi, o, q.multi)}>
+                <button key={o} type="button" className="ct-opt" aria-pressed={(picked[qi] ?? []).includes(o)} disabled={disabled} onClick={() => {
+                  // «أرفقه الآن» in a batch: picked like any answer, and the file picker opens (the files go with the answers)
+                  if (onAttach && isAttachOption(o) && !(picked[qi] ?? []).includes(o)) onAttach("");
+                  toggle(qi, o, q.multi);
+                }}>
+                  {onAttach && isAttachOption(o) && <span aria-hidden>📎 </span>}
                   <Swatches text={o} cls="ct" />
                 </button>
               ))}
@@ -631,6 +637,12 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     if (restored.current) store.set(draftKey(chatId), q.trim() ? q : null);
   }, [q, chatId]);
 
+  /** «أرفقه الآن» pressed: its words wait in the box and the file picker opens; the person sends once the files are in. */
+  function attachFor(option: string) {
+    if (option) setQ((v) => (v.trim() ? v : option));
+    picker.current?.click();
+  }
+
   async function attach(files: FileList | null) {
     if (!files?.length) return;
     setUploading(true);
@@ -658,8 +670,9 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     claudeId.current = claude.id;
   }, [claude.id]);
 
-  async function send(text = q) {
-    const message = text.trim();
+  /** A press (an option, a card) sends its text with what is in the box: the words written there and the files attached. */
+  async function send(text?: string) {
+    const message = (text === undefined ? q : [text, q].map((x) => x.trim()).filter(Boolean).join("\n")).trim();
     if ((!message && !pending.length) || busy || uploading) return;
     const files = pending;
     setQ("");
@@ -811,7 +824,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                     </div>
                   )}
                   {i === lastAssistant && !busy && !loginHref && m.questions?.length ? (
-                    <Questions key={`q${i}-${msgs.length}`} questions={m.questions} gal={gal} disabled={!!busy} onSend={(t) => void send(t)} onWrite={() => box.current?.focus()} />
+                    <Questions key={`q${i}-${msgs.length}`} questions={m.questions} gal={gal} disabled={!!busy || uploading} onSend={(t) => void send(t)} onWrite={() => box.current?.focus()} onAttach={attachFor} />
                   ) : null}
                   {m.role === "assistant" && !m.error && (
                     <div className="ct-actions"><button className="ct-mini" onClick={() => navigator.clipboard?.writeText(m.text).catch(() => null)}>انسخ</button></div>

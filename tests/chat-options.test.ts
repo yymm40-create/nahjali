@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hexColors, OPTIONS_CLOSE, OPTIONS_OPEN, OPTIONS_RULE, splitColors, splitOptions } from "@/lib/chat-options";
+import { hexColors, isAttachOption, OPTIONS_CLOSE, OPTIONS_OPEN, OPTIONS_RULE, splitColors, splitOptions } from "@/lib/chat-options";
 
 describe("clickable answers", () => {
   it("takes the options block off the reply and returns its options", () => {
@@ -35,5 +35,14 @@ describe("colours as swatches", () => {
   it("cuts a text into plain runs and colours", () => {
     expect(splitColors("أ #ff0000 ب")).toEqual([{ text: "أ ", color: false }, { text: "#FF0000", color: true }, { text: " ب", color: false }]);
     expect(splitColors("نص فقط")).toEqual([{ text: "نص فقط", color: false }]);
+  });
+});
+
+describe("«attach it now» options open the file picker", () => {
+  it("knows the options that mean attaching", () => {
+    for (const o of ["أرفقه الآن", "ارفقها الحين", "بأرفق الشعار", "سأرفق صورتي", "أضيف صوري", "أرسل الصورة", "أرفع الفيديو", "عندي صورة مرفقة"]) expect(isAttachOption(o), o).toBe(true);
+  });
+  it("leaves the others alone", () => {
+    for (const o of ["سوّوها لي من الصفر", "ما عندي شعار", "لا، بدون صور", "ما بأرفق شي", "كحلي وذهبي — #0B1F3A #D4AF37", "أبي لعبة جماعية", "أرسل الإجابات"]) expect(isAttachOption(o), o).toBe(false);
   });
 });

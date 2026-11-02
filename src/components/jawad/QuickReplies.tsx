@@ -4,7 +4,7 @@
 // focus). Colours in an option (#RRGGBB) are drawn as swatches. The chats style them with their own prefix:
 // `${cls}-opts`, `${cls}-opt`, `${cls}-opt-write`, `${cls}-sw`.
 
-import { splitColors } from "@/lib/chat-options";
+import { isAttachOption, splitColors } from "@/lib/chat-options";
 
 export function Swatches({ text, cls }: { text: string; cls: string }) {
   return (
@@ -23,12 +23,14 @@ export function Swatches({ text, cls }: { text: string; cls: string }) {
   );
 }
 
-export default function QuickReplies({ options, onPick, onWrite, disabled, cls }: { options: string[]; onPick: (text: string) => void; onWrite: () => void; disabled?: boolean; cls: string }) {
+/** With `onAttach`, an option that means «I'll attach it now» opens the file picker instead of sending. */
+export default function QuickReplies({ options, onPick, onWrite, onAttach, disabled, cls }: { options: string[]; onPick: (text: string) => void; onWrite: () => void; onAttach?: (text: string) => void; disabled?: boolean; cls: string }) {
   if (!options.length) return null;
   return (
     <div className={`${cls}-opts`} role="group" aria-label="اختر إجابة">
       {options.map((o) => (
-        <button key={o} type="button" className={`${cls}-opt`} disabled={disabled} onClick={() => onPick(o)}>
+        <button key={o} type="button" className={`${cls}-opt`} disabled={disabled} onClick={() => (onAttach && isAttachOption(o) ? onAttach(o) : onPick(o))}>
+          {onAttach && isAttachOption(o) && <span aria-hidden>📎 </span>}
           <Swatches text={o} cls={cls} />
         </button>
       ))}

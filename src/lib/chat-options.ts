@@ -49,3 +49,13 @@ export function splitColors(s: string): { text: string; color: boolean }[] {
   if (last < s.length) out.push({ text: s.slice(last), color: false });
   return out;
 }
+
+/**
+ * An option that means «I'll attach it now» (أرفقه الآن، أضيف صوري، أرسل الصورة…): pressing it opens the file picker
+ * instead of sending, so the person attaches first and sends the option with the files.
+ */
+export function isAttachOption(o: string): boolean {
+  const t = o.replace(/[ًٌٍَُِّْـ]/g, "");
+  if (/(?:^|\s)(?:لا|ما|بدون|بلا|مو)\s+(?:\S+\s+)?(?:س|ب|ح)?(?:[أا]رفق|[أا]ضيف|[أا]رسل)/.test(t)) return false;
+  return /(?:^|\s)(?:س|ب|ح)?[أا]رفق|مرفق|(?:[أا]ضيف|[أا]رسل|[أا]رفع|[نت]رفع)\s*(?:ها|ه)?\s*(?:صور|صورت|ملف|فيديو|شعار|لقط|الصور|الملف|الفيديو|الشعار|اللقط)|(?:[أا]رسلها|[أا]رسله|[أا]رفعها|[أا]رفعه|[أا]ضيفها|[أا]ضيفه)\s*(?:ال)?[آا]ن/.test(t);
+}
