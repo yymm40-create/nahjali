@@ -13,7 +13,7 @@ import { openaiImage } from "@/lib/jawad/server/providers/openai";
 import { resolveVoice } from "@/lib/jawad/server/voices";
 import { UserError } from "@/lib/api";
 import { checkMp3, joinMp3, splitForSpeech, stripTashkeel } from "./audio";
-import { askJson, claudeCeilingUsd, tokenRatioOf, withTokenRatio } from "./claude";
+import { askJson, claudeCeilingUsd, tokenRatioOf, withTokenRatio, type StudentPart } from "./claude";
 import { allChars, allText, basedOn, levelLine, loadCtx, researchText, scopeRules, segText, understandingText, type Ctx } from "./context";
 import { getFile, getOutput, joinText, putFile, saveOutput, sdb, sources, type Output } from "./db";
 import type { Handler, Job, StepResult } from "./jobs";
@@ -22,10 +22,11 @@ import { docDocx } from "./render/docx";
 import { brochureHtml, docHtml, quizHtml, transcriptHtml } from "./render/html";
 import { colorsOf } from "./render/css";
 import { designFonts, fitPdf, fontFacesData, framePdf, htmlToPdf, slidesPdf, slidesPptx } from "./render/server";
-import { countWords, frontPages, MAX_REFITS, maxChapters, refitRatio, wordBudget, type PageSize } from "./pages";
+import { countWords, frontPages, MAX_REFITS, maxChapters, refitRatio, resizeTargets, wordBudget, type PageSize } from "./pages";
+import { chapterSig, contentKey, keptChapters } from "./keep";
 import { drawSlide, picturesPdf, picturesPptx, slideImageUsd, slideSig, type SlideQuality } from "./slide-images";
 import { capSlides } from "./draw";
-import { asDesigned, deckContent, deckFiles, deckSlideUsd, deckStep, deckTodo, deckUsd, redesignSlide } from "./deck-make";
+import { asDesigned, deckContent, deckFiles, deckSlideUsd, deckStep, deckTodo, deckUsd, redesignSlide, slotPatch } from "./deck-make";
 import { isMax, maxFinal, maxUsd } from "./max-make";
 import { slidesSource } from "./max-sources";
 import { capacityOf, compactionLine } from "./capacity";
@@ -107,14 +108,17 @@ export async function estimate(userId: string, o: Output, action: string, chapte
   return partsUsd(await estimateParts(userId, o, action, chapter));
 }
 
+/** The chapters a missed page count is most likely fitted with (keep.ts / pages.ts): the two with the most material. */
+const REFIT_CHAPTERS = 2;
+
 /** The estimate split by kind, so each part is charged its own profit (Claude 40٪, GPT Image 2 pictures 30٪, sound the general). */
-export async function estimateParts(userId: string, o: Output, action: string, chapter = -1): Promise<StepParts> {
+export async function estimateParts(userId: string, o: Output, action: string, chapter = -1, questions: number[] = []): Promise<StepParts> {
   if (o.kind === "transcript") return parts();
   const c = await loadCtx(userId, o.project_id);
   // every ceiling below is made from the REAL tokens-per-character of this student's material (Anthropic's counter),
   // not a guess of one token for two characters: Arabic reads cheaper than that
   return withTokenRatio(await tokenRatioOf(allText(c)), async () => {
-    const base = await estimateBase(c, o, action, chapter);
+    const base = await estimateBase(c, o, action, chapter, questions);
     // «حيدرا ماكس»: the pages' design and check come on top of what the output costs to write (slides count it themselves)
     if (isMax(o) && o.kind !== "slides" && (action === "final" || action === "revise")) {
       return { ...base, claude: base.claude + (action === "revise" && chapter >= 0 ? deckSlideUsd(o.kind === "quiz" ? "a4" : "a4l") : maxUsd(o, 0)) };
@@ -123,7 +127,7 @@ export async function estimateParts(userId: string, o: Output, action: string, c
   });
 }
 
-async function estimateBase(c: Ctx, o: Output, action: string, chapter = -1): Promise<StepParts> {
+async function estimateBase(c: Ctx, o: Output, action: string, chapter = -1, questions: number[] = []): Promise<StepParts> {
   const chars = allChars(c) + (c.research ? 20_000 : 0);
   // «خطبة المنبر»: the verse's tafsir read from the book and put in plain words
   if (action === "tafsir") return parts(tafsirCeilingUsd());
@@ -167,22 +171,69 @@ async function estimateBase(c: Ctx, o: Output, action: string, chapter = -1): Pr
     const n = p.files.reduce((s, f) => s + f.text.length, 0);
     return parts(0, 0, (n / 1000) * ELEVEN_PRICE.v4PerKChars * 1.02 + 0.01);
   }
-  if (o.kind === "quiz") return parts(claudeCeilingUsd(Math.min(chars, 300_000), 12000) * Math.max(1, (plan as QuizPlan).rows.length));
+  if (o.kind === "quiz") {
+    // a request that names its questions («السؤال ٣»): only those are written again, from their own material
+    if (action === "revise" && questions.length) {
+      const qs = (o.content as { questions?: Question[] } | null)?.questions ?? [];
+      const segs = [...new Set(questions.flatMap((i) => qs[i]?.segments ?? []))];
+      return parts(claudeCeilingUsd((segs.length ? segChars(c, segs) : Math.min(chars, 300_000)) + (c.research ? 15_000 : 0) + 1500 * questions.length, 8000));
+    }
+    // the whole quiz written again (a request), or the rows still to write: a quiz already written that is only printed
+    // again (its design or sheets changed) costs nothing
+    const rows = (plan as QuizPlan).rows.length;
+    const done = action === "revise" ? 0 : Math.min(rows, Number((o.content as { rowsDone?: number } | null)?.rowsDone ?? 0));
+    return parts(rows && done >= rows ? 0 : claudeCeilingUsd(Math.min(chars, 300_000), 12000) * Math.max(1, rows - done));
+  }
   // summary / explain / book
   const p = plan as DocPlan;
   const verbatim = o.kind === "book" && o.settings.writing === "verbatim";
   const chapterUsd = (i: number) => (verbatim ? 0 : claudeCeilingUsd(segChars(c, p.chapters[i].segments) + (c.research ? 15_000 : 0) + 4000, 14000));
-  if (action === "trial") return parts(chapterUsd(0), imgs(p.chapters, 1));
+  // chapters already written (the trial's, or kept from before a new plan or a printing change) are not paid again
+  const written = (o.content as Doc | null)?.chapters ?? [];
+  if (action === "trial") return parts(written[0] ? 0 : chapterUsd(0), imgs(p.chapters, 1));
   if (action === "revise") {
     return parts(chapter >= 0 && chapter < p.chapters.length ? chapterUsd(chapter) : p.chapters.reduce((s, _, i) => s + chapterUsd(i), 0));
   }
-  const done = (o.content as Doc | null)?.chapters?.length ?? 0;
-  // a page count may need the chapters written once more to land on it: held, and given back when not needed
-  const refit = pagesOf(o.settings) && !verbatim ? p.chapters.reduce((s, _, i) => s + chapterUsd(i), 0) : 0;
-  return parts(p.chapters.reduce((s, _, i) => s + (i < done ? 0 : chapterUsd(i)), 0) + refit, imgs(p.chapters));
+  // a page count the type alone can't reach has one or two chapters (the most material) made longer or shorter, up to
+  // MAX_REFITS times: held, and given back when not needed (it was a hold for rewriting every chapter)
+  const all = p.chapters.reduce((s, _, i) => s + chapterUsd(i), 0);
+  const biggest = p.chapters.map((_, i) => chapterUsd(i)).sort((a, b) => b - a).slice(0, REFIT_CHAPTERS).reduce((a, b) => a + b, 0);
+  const refit = pagesOf(o.settings) && !verbatim ? Math.min(all, biggest * MAX_REFITS) : 0;
+  return parts(p.chapters.reduce((s, _, i) => s + (written[i] ? 0 : chapterUsd(i)), 0) + refit, imgs(p.chapters));
 }
 
 const segChars = (c: Ctx, ids: string[]) => ids.reduce((s, id) => s + (c.seg.get(id)?.text.length ?? 0), 0);
+
+// ───────────────────────────── chapters kept across a new plan (keep.ts) ─────────────────────────────
+
+/** What a chapter is written from: the same under a new plan means it would be written the same, so it is kept. */
+export function docChapterSig(c: Ctx, o: Output, ch: { purpose: string; segments: string[] }) {
+  return chapterSig({
+    purpose: ch.purpose,
+    segments: ch.segments,
+    texts: ch.segments.map((id) => c.seg.get(id)?.text ?? ""),
+    rules: `${levelLine(c, o)}\n${scopeRules(c)}\nresearch:${c.research ? c.project.research_version : 0}`,
+    settings: contentKey(o.kind, o.settings),
+  });
+}
+
+/**
+ * Written chapters given the signature of the plan they were written from, where they have none yet (written before
+ * signatures existed). Right only while the settings and the text are still the ones they were written with: the
+ * callers stamp before saving new settings, and never a stale output.
+ */
+export function stampSigs(c: Ctx, o: Output, doc: Doc | null, plan: DocPlan | null): Doc | null {
+  if (!doc?.chapters || !plan?.chapters || !isPaged(o.kind)) return doc;
+  return { ...doc, chapters: doc.chapters.map((ch, i) => (ch && !ch.sig && plan.chapters[i] ? { ...ch, sig: docChapterSig(c, o, plan.chapters[i]) } : ch)) };
+}
+
+/** The written chapters a new plan keeps (by signature, under their new titles), as the output's content; null when none. */
+export function keepWritten(c: Ctx, o: Output, doc: Doc | null, plan: DocPlan): Doc | null {
+  if (!isPaged(o.kind) || (o.kind === "book" && o.settings.writing === "verbatim")) return null;
+  const chapters = keptChapters(doc, plan.chapters.map((ch) => docChapterSig(c, o, ch)), plan.chapters.map((ch) => ch.title));
+  // a chapter not kept is an empty place (null) that the final step writes
+  return chapters ? { title: plan.title, subtitle: plan.subtitle, chapters: chapters as Chapter[] } : null;
+}
 
 // ───────────────────────────── plans ─────────────────────────────
 
@@ -260,10 +311,16 @@ async function planStep(job: Job): Promise<StepResult> {
   const o = await getOutput(job.user_id, job.output_id!);
   const c = await loadCtx(job.user_id, o.project_id);
   const note = String(job.input.note ?? "");
-  const prev = job.input.previous ? JSON.stringify(o.plan) : "";
-  const revision = prev ? `\nYour previous plan (revise it, keep what the student did not ask to change):\n${prev}` : "";
+  const prev = job.input.previous && o.plan ? JSON.stringify(o.plan) : "";
+  // the previous plan goes with every new one (a request, or settings changed): what still fits stays the same, so the
+  // chapters written from it are kept and not paid again (keep.ts)
+  const revision = prev ? `\nYour previous plan for this output (made before the request or the settings below). Revise it: keep every part that still fits the settings and requests exactly as it is (same title, purpose and segments), and change only what they need:\n${prev}` : "";
   const noteLine = note ? `\nThe student now asks: ${note}` : "";
   const base = `${levelLine(c, o)}\nOutput settings chosen by the student:\n${settingsText(o)}${requestsText(o)}${revision}${noteLine}`;
+  // the material first, with a cache mark: it is the same for every plan of this output, so a plan asked again within
+  // minutes (a revision, a changed setting, a slide map with the wrong count) reads it at the cache rate. What changes
+  // (the settings, the requests, the previous plan) comes after it.
+  const material: StudentPart = { type: "text", text: `UNDERSTANDING:\n${understandingText(c)}\n\nMATERIAL:\n${allText(c)}\n${researchText(c)}`, cache: true };
 
   if (o.kind === "audio") return audioPrepStep(job, o, c);
   if (o.kind === "mindmap") return mapPlanStep(o, c, base, STUDENT_FIRST);
@@ -296,8 +353,10 @@ async function planStep(job: Job): Promise<StepResult> {
       ? `\nPAGE COUNT (the student's, kept exactly): the finished file is EXACTLY ${pages} page${pages > 1 ? "s" : ""} (${pageSize(o)}), about ${wordBudget(pages, pageSize(o), [1]).total} words of body text in all${frontPages(pages, 2).cover ? ", plus a cover" : ", with the title at the top of the first page (no cover)"}. Plan at most ${maxChapters(pages)} chapter${maxChapters(pages) > 1 ? "s" : ""}, sized for that length: choose what matters most when the material is longer than the pages, and go deeper when it is shorter.`
       : "";
     const r = await askJson<{ title: string; subtitle: string; chapters: { title: string; purpose: string; segments: string[]; imageIdea: string }[] }>({
-      system: `You plan ${what} of the student's material, in Arabic.\n${methodLine(o.kind, studyAudience(c.project.level, readBrief(c.project.brief).purpose))}\n Return a title (the document's main title), a subtitle (one line under it saying what it is and for whom) and ordered chapters with clear, short titles; each chapter says what it will cover (purpose) and lists the ids of ALL material segments it draws on. Every segment of the material must be used by some chapter unless the settings say to leave something out. imageIdea: a short idea for an illustrative visual (or empty if none fits). Density: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}.${pagesLine}\n${STUDENT_FIRST}\n${scopeRules(c)}`,
-      parts: [{ type: "text", text: `${base}\n\nUNDERSTANDING:\n${understandingText(c)}\n\nMATERIAL:\n${allText(c)}\n${researchText(c)}` }],
+      // the density and the page count are settings: they go with the request (after the cached material), so the
+      // system stays the same for every plan of this output
+      system: `You plan ${what} of the student's material, in Arabic.\n${methodLine(o.kind, studyAudience(c.project.level, readBrief(c.project.brief).purpose))}\n Return a title (the document's main title), a subtitle (one line under it saying what it is and for whom) and ordered chapters with clear, short titles; each chapter says what it will cover (purpose) and lists the ids of ALL material segments it draws on. Every segment of the material must be used by some chapter unless the settings say to leave something out. imageIdea: a short idea for an illustrative visual (or empty if none fits). The density and any page count are given after the material.\n${STUDENT_FIRST}\n${scopeRules(c)}`,
+      parts: [material, { type: "text", text: `${base}\n\nDensity: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}.${pagesLine}` }],
       schema: DOC_PLAN_SCHEMA,
     });
     const valid = new Set(c.seg.keys());
@@ -310,7 +369,19 @@ async function planStep(job: Job): Promise<StepResult> {
     // review asks the student when it doesn't (and the autopilot waits for the answer instead of writing padding or a squeeze)
     const capacity = capacityOf(o.kind, countWords(allText(c)) + countWords(researchText(c)), pages, pageSize(o));
     const kept = Object.fromEntries(Object.entries(o.settings).filter(([k]) => k !== "_capacity"));
-    await saveOutput(o.id, { plan, plan_approved: false, status: "plan_review", content: null, based_on: basedOn(c), settings: capacity ? { ...kept, _capacity: capacity } : kept }, { kind: "plan", snapshot: plan, userId: o.user_id });
+    // the chapters already written whose plan and writing inputs did not change are kept (renamed when their title
+    // changed): only the new or changed ones are written (and paid) again
+    const content = keepWritten(c, o, o.content as Doc | null, plan);
+    // a kept chapter keeps the picture it had (a book's pictures are paid): found by the same signature in the old plan
+    const old = (o.plan as DocPlan | null)?.chapters ?? [];
+    if (content && old.length) {
+      const oldSigs = old.map((ch) => docChapterSig(c, o, ch));
+      plan.chapters.forEach((ch, i) => {
+        const j = content.chapters[i] ? oldSigs.indexOf(docChapterSig(c, o, ch)) : -1;
+        if (j >= 0 && old[j].image?.path) ch.image = old[j].image;
+      });
+    }
+    await saveOutput(o.id, { plan, plan_approved: false, status: "plan_review", content, based_on: basedOn(c), settings: capacity ? { ...kept, _capacity: capacity } : kept }, { kind: "plan", snapshot: plan, userId: o.user_id });
     return { done: true, usd: r.usd, stage: "الخطة جاهزة" };
   }
 
@@ -318,9 +389,11 @@ async function planStep(job: Job): Promise<StepResult> {
     const s = o.settings;
     const notes = s.notesMode === "notes" ? "Keep the slide text short and put the explanation in the speaker notes." : s.notesMode === "both" ? "Text on the slide and a fuller explanation in the speaker notes." : "Put the explanation on the slides; speaker notes may stay short.";
     const want = Number(s.count) > 0 ? Math.round(Number(s.count)) : 0;
+    // the count, density and notes are settings: after the cached material, so the map asked again reads it from the cache
+    const rules = `Slide count: ${Number(s.count) > 0 ? `EXACTLY ${Number(s.count)} slides (the student's number, kept literally: no more, no fewer)` : "as the material needs"}. Density: ${DENSITY[String(s.density ?? "medium")] ?? DENSITY.medium} — ${Number(s.count) > 0 ? "fit the material into that number: choose and merge, never more words per slide than fit (at most ~7 lines)" : "when there is more to say, use MORE slides, never more words per slide than fit (at most ~7 lines)"}. ${notes}`;
     const ask = (again: string) => askJson<SlidePlan & { slides: (SlidePlan["slides"][number] & { visual: string })[] }>({
-      system: `You write the complete SLIDE MAP of a presentation from the student's material, in Arabic. For every slide: title, the idea, the layout (title = opening slide, section = a part divider, bullets, cards = 2–6 parallel units written "label: text", compare = a table written as rows "cell | cell | cell" with the header row first, quote = exact words from the material, image = a visual with a few points), the final text lines of the slide, the proposed visual, speaker notes, and how it relates to the slides before and after. Slide count: ${Number(s.count) > 0 ? `EXACTLY ${Number(s.count)} slides (the student's number, kept literally: no more, no fewer)` : "as the material needs"}. Density: ${DENSITY[String(s.density ?? "medium")] ?? DENSITY.medium} — ${Number(s.count) > 0 ? "fit the material into that number: choose and merge, never more words per slide than fit (at most ~7 lines)" : "when there is more to say, use MORE slides, never more words per slide than fit (at most ~7 lines)"}. ${notes}\n${STUDENT_FIRST}\n${scopeRules(c)}\nAdditions and research go on their own slides or lines that say so ("إضافة:" / "من البحث:").`,
-      parts: [{ type: "text", text: `${base}${again}\n\nUNDERSTANDING:\n${understandingText(c)}\n\nMATERIAL:\n${allText(c)}\n${researchText(c)}` }],
+      system: `You write the complete SLIDE MAP of a presentation from the student's material, in Arabic. For every slide: title, the idea, the layout (title = opening slide, section = a part divider, bullets, cards = 2–6 parallel units written "label: text", compare = a table written as rows "cell | cell | cell" with the header row first, quote = exact words from the material, image = a visual with a few points), the final text lines of the slide, the proposed visual, speaker notes, and how it relates to the slides before and after. The slide count, density and notes are given after the material.\n${STUDENT_FIRST}\n${scopeRules(c)}\nAdditions and research go on their own slides or lines that say so ("إضافة:" / "من البحث:").`,
+      parts: [material, { type: "text", text: `${base}\n\n${rules}${again}` }],
       schema: SLIDE_SCHEMA,
     });
     let r = await ask("");
@@ -335,7 +408,17 @@ async function planStep(job: Job): Promise<StepResult> {
     if (want && r.data.slides.length > want) r = { ...r, data: { ...r.data, slides: capSlides(r.data.slides, want) } };
     const valid = new Set(c.seg.keys());
     const plan: SlidePlan = { title: r.data.title, subtitle: r.data.subtitle, slides: r.data.slides.map((sl) => ({ ...sl, segments: sl.segments.filter((x) => valid.has(x)), image: { ...emptyImage(), prompt: sl.visual } })) };
-    await saveOutput(o.id, { plan, plan_approved: false, status: "plan_review", content: null, files: {}, based_on: basedOn(c) }, { kind: "plan", snapshot: plan, userId: o.user_id });
+    // what was made from the previous map and still matches is kept, so it is not drawn or designed (and paid) again: a
+    // slide picture drawn from the same content and look, and the designed deck (its pages carry their own signatures;
+    // a page whose content changed is designed again)
+    const before = (o.plan as SlidePlan | null)?.slides ?? [];
+    for (const sl of plan.slides) {
+      const sig = slideSig(sl, designOf(o), pictureQuality(o));
+      const hit = before.find((x) => x.rendered?.path && x.rendered.sig === sig);
+      if (hit) sl.rendered = hit.rendered;
+    }
+    const content = asDesigned(o) && o.content ? slotPatch(o, { manual: false }) : null;
+    await saveOutput(o.id, { plan, plan_approved: false, status: "plan_review", content, files: {}, based_on: basedOn(c) }, { kind: "plan", snapshot: plan, userId: o.user_id });
     return { done: true, usd: r.usd, stage: "خريطة الشرائح جاهزة" };
   }
 
@@ -357,7 +440,7 @@ async function planStep(job: Job): Promise<StepResult> {
     const roles = fold === "bi" ? "1 = cover, 2 and 3 = content, 4 = back" : "1 = cover, 2 and 3 and 4 = content, 5 = the front flap (the panel that opens first: a short hook, a question or the outline), 6 = back";
     const r = await askJson<{ title: string; subtitle: string; panels: { role: string; title: string; text: string[]; visual: string; segments: string[] }[] }>({
       system: `You plan a school BROCHURE («مطوية») from the student's material, in Arabic: one A4 sheet printed on both sides and folded ${fold === "bi" ? "in two (4 panels)" : "in three (6 panels)"}. Return a title, a one-line subtitle and EXACTLY ${n} panels in reading order (${roles}). A brochure is read standing up, so every panel is SHORT and scannable: a clear panel title, then 3–5 short lines (a sentence or a list item each; ~40–55 words in all for a content panel; the cover has only a catchy line, at most 15 words). Build it like the brochures used in schools: an opening that states the topic, content panels that each carry ONE idea (definition, importance, kinds, steps, examples…), a «هل تعلم؟» line written "هل تعلم؟ …" in one content panel, and the back panel with a short conclusion or advice and the sources, written "المراجع: …" (only sources really in the material or the research). Only what the material says${c.project.allow_additions ? " (you may add a little where additions are allowed)" : ""}. visual: a short idea for a picture that suits the panel (cover and content panels), or empty.\n${STUDENT_FIRST}\n${scopeRules(c)}`,
-      parts: [{ type: "text", text: `${base}\n\nUNDERSTANDING:\n${understandingText(c)}\n\nMATERIAL:\n${allText(c)}\n${researchText(c)}` }],
+      parts: [material, { type: "text", text: base }],
       schema: BROCHURE_SCHEMA,
       maxTokens: 6000,
     });
@@ -669,7 +752,7 @@ async function trialStep(job: Job): Promise<StepResult> {
   const doc = (o.content as Doc | null) ?? { title: plan.title, subtitle: plan.subtitle, chapters: [] };
   if (!doc.chapters[0]) {
     const r = await writeChapter(c, o, plan, 0);
-    doc.chapters[0] = r.chapter;
+    doc.chapters[0] = { ...r.chapter, sig: docChapterSig(c, o, plan.chapters[0]) };
     await saveOutput(o.id, { content: doc });
     return { done: false, usd: r.usd, stage: "كتابة الفصل الأول للنسخة التجريبية" };
   }
@@ -707,7 +790,27 @@ async function quizStep(job: Job, o: Output, c: Ctx): Promise<StepResult> {
   const plan = o.plan as QuizPlan;
   const content = (o.content as { questions: Question[]; rowsDone: number } | null) ?? { questions: [], rowsDone: 0 };
   const revising = job.kind === "revise";
-  if (revising && !job.progress.reset) {
+  // a request that names its questions («عدّل السؤال ٣»): only those are written again, with the current ones and the
+  // request; the other questions stay exactly as they are
+  const only = revising ? ((job.input.questions as number[] | undefined) ?? []).filter((i) => Number.isInteger(i) && i >= 0 && i < content.questions.length) : [];
+  if (only.length && !job.progress.rewritten) {
+    const s = o.settings;
+    const segs = [...new Set(only.flatMap((i) => content.questions[i].segments))];
+    const r = await askJson<{ questions: Question[] }>({
+      system: `You revise some questions of a quiz in Arabic, from the student's material, as the student asks. Return exactly ${only.length} question${only.length > 1 ? "s" : ""}, in the order given, each replacing the question with the same number: change only what the request needs and keep the rest of it as it is. Types: mcq = multiple choice with 4 options, tf = true/false with options ["صح","خطأ"], short = short answer, essay = essay, long = long answer${s.customType ? `, custom = ${String(s.customType)}` : ""}. Difficulty: ${String(s.difficulty ?? "medium")}${s.difficultyNote ? ` (${String(s.difficultyNote)})` : ""}. Every question has the correct answer and an explanation that points to the material, and lists the segment ids it is based on. ${c.project.allow_additions ? "You may go slightly beyond the material (additions allowed)." : "Ask only about what the material says."} No question may repeat another question of the quiz.${requestsText(o)}\n${STUDENT_FIRST}`,
+      parts: [{ type: "text", text: `QUESTIONS TO REVISE:\n${only.map((i) => `${i + 1}. ${JSON.stringify(content.questions[i])}`).join("\n")}\n\nThe student's request: ${String(job.input.note ?? "")}\nThe quiz's other questions (do not repeat them): ${content.questions.filter((_, i) => !only.includes(i)).map((q) => q.question).join(" | ") || "none"}\n\nMATERIAL:\n${segText(c, segs.length ? segs : [...c.seg.keys()])}\n${researchText(c)}` }],
+      schema: QUESTIONS_SCHEMA,
+      maxTokens: 8000,
+    });
+    const valid = new Set(c.seg.keys());
+    only.forEach((qi, k) => {
+      const q = r.data.questions[k];
+      if (q) content.questions[qi] = { ...q, segments: q.segments.filter((x) => valid.has(x)) };
+    });
+    await saveOutput(o.id, { content });
+    return { done: false, usd: r.usd, progress: { rewritten: true }, stage: only.length === 1 ? `تعديل السؤال ${only[0] + 1}` : `تعديل ${only.length} أسئلة` };
+  }
+  if (revising && !only.length && !job.progress.reset) {
     await saveOutput(o.id, { content: { questions: [], rowsDone: 0 } });
     return { done: false, progress: { reset: true }, stage: "إعادة إنشاء الأسئلة" };
   }
@@ -879,21 +982,24 @@ async function finalStep(job: Job): Promise<StepResult> {
   const doc = (o.content as Doc | null) ?? { title: plan.title, subtitle: plan.subtitle, chapters: [] };
   const revise = job.kind === "revise" ? { note: String(job.input.note ?? ""), chapter: Number(job.input.chapter ?? -1), kind: String(job.input.requestKind ?? "edit") } : null;
   const words = chapterWords(c, o, plan);
-  // a page count missed by the type alone: every chapter is rewritten to its new length (progress.refit)
-  const refit = job.progress.refit as { n: number; done: number[] } | undefined;
+  // a page count missed by the type alone: the chapters picked for it (the most material first, usually one or two) are
+  // made longer or shorter to their target words (progress.refit; a refit started before targets were kept does them all)
+  const refit = job.progress.refit as { n: number; done: number[]; todo?: { i: number; words: number }[] } | undefined;
+  const refitTodo = refit ? (refit.todo ?? plan.chapters.map((_, i) => ({ i, words: words?.[i] ?? 0 }))).filter((t) => !refit.done.includes(t.i) && doc.chapters[t.i]) : [];
   const todo = refit
-    ? plan.chapters.map((_, i) => i).filter((i) => !refit.done.includes(i))
+    ? refitTodo.map((t) => t.i)
     : revise
       ? (revise.chapter >= 0 ? [revise.chapter] : plan.chapters.map((_, i) => i)).filter((i) => !((job.progress.revised as number[] | undefined) ?? []).includes(i))
       : plan.chapters.map((_, i) => i).filter((i) => !doc.chapters[i]);
   if (todo.length) {
     const i = todo[0];
-    const w = words?.[i];
+    const w = (refit ? refitTodo[0].words : 0) || words?.[i];
     const resize = refit && doc.chapters[i] && w ? { note: `غيّر طول هذا الفصل إلى حوالي ${w} كلمة (الآن ${countWords(docText({ title: "", subtitle: "", chapters: [doc.chapters[i]] }))}) ليطلع الملف بعدد الصفحات المطلوب بالضبط. حافظ على الأفكار والترتيب: اختصر أو وسّع الشرح فقط.`, current: doc.chapters[i], kind: "edit" } : undefined;
     const r = await writeChapter(c, o, plan, i, resize ?? (revise && doc.chapters[i] ? { note: revise.note, current: doc.chapters[i], kind: revise.kind } : undefined), w);
-    doc.chapters[i] = r.chapter;
+    // a chapter revised or resized keeps the signature of what it was written from (a later plan can keep it)
+    doc.chapters[i] = { ...r.chapter, sig: doc.chapters[i]?.sig ?? docChapterSig(c, o, plan.chapters[i]) };
     await saveOutput(o.id, { content: doc });
-    if (refit) return { done: false, usd: r.usd, stage: `ضبط عدد الصفحات: الفصل ${i + 1} من ${plan.chapters.length}`, progress: { ...job.progress, refit: { ...refit, done: [...refit.done, i] } } };
+    if (refit) return { done: false, usd: r.usd, stage: `ضبط عدد الصفحات: الفصل ${i + 1} (${refit.done.length + 1} من ${refit.done.length + refitTodo.length})`, progress: { ...job.progress, refit: { ...refit, done: [...refit.done, i] } } };
     const revised = [...((job.progress.revised as number[] | undefined) ?? []), i];
     return { done: false, usd: r.usd, stage: `${revise ? "تعديل" : "كتابة"} الفصل ${i + 1} من ${plan.chapters.length}`, progress: { ...job.progress, revised } };
   }
@@ -914,12 +1020,14 @@ async function finalStep(job: Job): Promise<StepResult> {
   const want = pagesOf(o.settings);
   const pdf = await renderDoc(o, c, doc, plan, false);
   if (want && pdf.pages !== want && words && !revise) {
-    // the type at its limit still misses the count: the chapters are written again, shorter or longer (twice at most)
-    const n = ((job.progress.refit as { n: number } | undefined)?.n ?? 0) + 1;
+    // the type at its limit (fitPdf) still misses the count: only as many chapters as the difference needs — the ones
+    // with the most material, usually one or two — are made shorter or longer (twice at most), never all of them again
+    const n = (refit?.n ?? 0) + 1;
     if (n <= MAX_REFITS) {
-      const k = (Number(o.settings._wordScale) || 1) * refitRatio(want, pdf.pages, frontPages(want, plan.chapters.length).count);
-      await saveOutput(o.id, { settings: { ...o.settings, _wordScale: Math.round(k * 1000) / 1000 } });
-      return { done: false, stage: `الملف طلع ${pdf.pages} صفحة بدل ${want}: يعيد ضبط الطول`, progress: { ...job.progress, refit: { n, done: [] } } };
+      const ratio = refitRatio(want, pdf.pages, frontPages(want, plan.chapters.length).count);
+      const now = doc.chapters.map((ch) => countWords(docText({ title: "", subtitle: "", chapters: [{ title: "", blocks: ch.blocks }] })));
+      const targets = resizeTargets(now, plan.chapters.map((ch) => segChars(c, ch.segments)), ratio);
+      if (targets.length) return { done: false, stage: `الملف طلع ${pdf.pages} صفحة بدل ${want}: يضبط طول ${targets.length === 1 ? "فصل واحد" : `${targets.length} فصول`} فقط`, progress: { ...job.progress, refit: { n, todo: targets, done: [] } } };
     }
   }
   const files: Record<string, string> = { ...o.files, pdf: pdf.path };

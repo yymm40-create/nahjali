@@ -12,13 +12,18 @@ import { fitImages } from "@/lib/claude-images";
 export const studentModel = (): ClaudeModel => claudeModelOf(STUDENT.model);
 
 export type StudentPart =
-  | { type: "text"; text: string }
+  /**
+   * `cache`: a cache mark after this text — put the big part that stays the same between calls (the material, the
+   * understanding, the research) FIRST with it, and what changes (settings, requests, the previous plan) after it, so a
+   * second call within minutes (a plan revised, a slide map asked again) reads the material at the cache rate
+   */
+  | { type: "text"; text: string; cache?: boolean }
   | { type: "image"; url: string }
   | { type: "pdf"; base64: string };
 
 const toBlock = (p: StudentPart) =>
   p.type === "text"
-    ? { type: "text", text: p.text }
+    ? { type: "text", text: p.text, ...(p.cache ? { cache_control: { type: "ephemeral" } } : {}) }
     : p.type === "image"
       ? { type: "image", source: { type: "url", url: p.url } }
       : { type: "document", source: { type: "base64", media_type: "application/pdf", data: p.base64 } };

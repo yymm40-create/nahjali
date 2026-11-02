@@ -4,8 +4,9 @@ import { useBranch } from "./branch";
 import { useEffect, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { settingsLine } from "@/lib/jawad/student/summary";
+import { isWritten, settingsChange, stable, wishOf, type SettingsChange } from "@/lib/jawad/student/keep";
 import CapacityAsk from "./CapacityAsk";
-import { BROCHURE_FOLDS, DENSITIES, DESIGNED_KINDS, FORMATS, MAX_NAME, maxAvailable, maxOn, OUTPUT_STATUS, QUESTION_TYPES, STUDENT, emptyWish, formatOf, type Design, type DesignWish, type OutputKind } from "@config/jawad/student";
+import { BROCHURE_FOLDS, DENSITIES, DESIGNED_KINDS, FORMATS, MAX_NAME, maxAvailable, maxOn, OUTPUT_STATUS, pagesOf, QUESTION_TYPES, STUDENT, formatOf, type DesignWish, type OutputKind } from "@config/jawad/student";
 import { readSermonLength, SERMON_LENGTHS } from "@config/jawad/khateeb";
 import type { AudioPlan, BrochurePlan, Doc, DocPlan, QuizPlan, SlidePlan } from "@/lib/jawad/student/model";
 import type { OutputView } from "./client";
@@ -21,28 +22,43 @@ import SermonPlan from "./SermonPlan";
 
 type S = Record<string, unknown>;
 const str = (v: unknown, d = "") => (typeof v === "string" ? v : d);
-/** JSON with sorted keys: the database returns the same settings with its keys in another order. */
-const stable = (v: unknown): string =>
-  Array.isArray(v) ? `[${v.map(stable).join(",")}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable((v as S)[k])}`).join(",")}}` : JSON.stringify(v) ?? "null";
 
-/** The design an output was made with, as the design step's answers (so going back starts from what it is now). */
-function wishOf(d: unknown): DesignWish {
-  const x = d as Design | undefined;
-  if (!x?.main) return emptyWish();
-  return { style: x.main, ideas: x.custom?.description ?? "", heading: x.fonts?.heading ?? "", body: x.fonts?.body ?? "", frame: x.frame !== false };
+/** The output's text is all written (and approved as a plan): a printing change only prints it again. */
+const written = (o: OutputView) => o.planApproved && isWritten(o.kind, o.plan, o.content, o.files.length > 0);
+
+/**
+ * What saving a change will do, said before the student saves (keep.ts decides the same on the server): the owner's
+ * rule — a page count or a design changed never has the whole output written (and paid) again.
+ */
+function changeLine(o: OutputView, change: SettingsChange, next: S): string {
+  const pages = pagesOf(next);
+  if (change === "none") return "ما تغيّر شي: يبقى الناتج كما هو.";
+  if (change === "content") return `ينصنع من جديد بإعداداتك الجديدة، ويُخصم بسعره. ملفاتك الحالية تبقى لين تجهز الجديدة.`;
+  if (!written(o)) return "تنحفظ الإعدادات وتبقى الخطة كما هي، بدون أي كلفة الحين.";
+  if (o.kind === "sermon") return "نفس نص الخطبة: يرجع لاعتمادك ويُصنع الملف منه بالإعدادات الجديدة، بدون كتابة جديدة.";
+  if (change === "fit" && pages) return `نفس النص والخطة: يُطبع الملف ويُضبط على ${pages.toLocaleString("ar")} صفحة بحجم الخط أولًا (بدون كتابة)، وإذا ما كفى يُعدَّل طول فصل أو فصلين فقط — مو كل الناتج.`;
+  return "نفس النص والخطة: يُطبع الملف من جديد بإعداداتك الجديدة، بدون كتابة جديدة.";
 }
 
 /**
- * «ارجع وغيّر»: back to an output's questions and design (also once it is made). Saving plans and makes it again from
- * the start with the new answers; its files stay until the new ones are ready.
+ * «ارجع وغيّر»: back to an output's questions and design (also once it is made). Saving does only what the change needs
+ * (keep.ts): a design, format or page count prints the same text again; a change to what is written plans and makes it
+ * again with the new answers. Its files stay until the new ones are ready.
  */
-function Remake({ p, o, onDone, onClose }: { p: ProjectHook; o: OutputView; onDone: () => void; onClose: () => void }) {
+function Remake({ p, o, onDone, onClose }: { p: ProjectHook; o: OutputView; onDone: (change: SettingsChange) => void; onClose: () => void }) {
   const kind = o.kind as OutputKind;
   const [s, setS] = useState<S>(() => ({ ...defaults(kind, p.state.project.level), ...o.settings }));
   const [wish, setWish] = useState<DesignWish>(() => wishOf(o.settings.design));
   const [extra, setExtra] = useState(str(o.settings.extra));
   const { busy, error, run } = useAsync();
   const designed = DESIGNED_KINDS.includes(o.kind);
+  // what saving will do: the settings as they will be saved, and a changed design wish counts as a printing change
+  const { design: _d0, ...asked } = s;
+  void _d0;
+  const next: S = { ...o.settings, ...asked, extra };
+  const wishChanged = designed && stable(wish) !== stable(wishOf(o.settings.design));
+  const found = settingsChange(o.kind, o.settings, next, o.plan);
+  const change: SettingsChange = found === "none" && wishChanged ? (maxOn(o.settings) ? "content" : "render") : found;
   return (
     <div className="space-y-4 rounded-2xl border border-violet-200 bg-violet-50/40 p-4">
       <h3 className="font-bold">↩ ارجع وغيّر «{o.title}»</h3>
@@ -58,7 +74,7 @@ function Remake({ p, o, onDone, onClose }: { p: ProjectHook; o: OutputView; onDo
         <textarea className="jw-textarea" rows={2} value={extra} onChange={(e) => setExtra(e.target.value)} />
       </label>
       <ErrorLine error={error} />
-      <p className="text-xs text-jw-faint">ينصنع من جديد بإعداداتك الجديدة، ويُخصم بسعره. ملفاتك الحالية تبقى لين تجهز الجديدة.</p>
+      <p className="text-xs text-jw-faint">{changeLine(o, change, next)}</p>
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -73,12 +89,12 @@ function Remake({ p, o, onDone, onClose }: { p: ProjectHook; o: OutputView; onDo
                 const dep = p.state.outputs.find((x) => x.kind === rest.source || x.id === rest.source);
                 rest.source = dep ? dep.id : "text";
               }
-              await p.actOutput(o.id, { action: "settings", settings: { ...rest, extra }, ...(designed ? { design: wish } : {}) });
-              onDone();
+              const r = (await p.actOutput(o.id, { action: "settings", settings: { ...rest, extra }, ...(designed ? { design: wish } : {}) })) as { change?: SettingsChange };
+              onDone(r?.change ?? change);
             })
           }
         >
-          <Icon name="sparkles" size={16} /> احفظ وأعد الصنع
+          <Icon name="sparkles" size={16} /> {change === "content" ? "احفظ وأعد الصنع" : change === "none" ? "تم" : written(o) ? "احفظ واطبع من جديد" : "احفظ"}
         </button>
         <button type="button" className="jw-btn" disabled={busy} onClick={onClose}>
           إلغاء
@@ -144,7 +160,7 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
         </p>
       )}
       {o.kind !== "transcript" && !mine && !running && (back ? (
-        <Remake p={p} o={o} onClose={() => setBack(false)} onDone={() => { setBack(false); onRemade?.(); }} />
+        <Remake p={p} o={o} onClose={() => setBack(false)} onDone={(change) => { setBack(false); if (change !== "none") onRemade?.(); }} />
       ) : (
         <button type="button" className="jw-btn" onClick={() => setBack(true)}>
           ↩ ارجع وغيّر الأسئلة والتصميم
@@ -172,7 +188,9 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
             <button type="button" className="jw-btn jw-btn-primary" disabled={!settingsDirty || busy} onClick={() => run(() => act({ action: "settings", settings }))}>
               <Icon name="check" size={16} /> احفظ الإعدادات
             </button>
-            {o.plan !== null && settingsDirty && <p className="text-xs text-jw-faint">بعد تغيير الإعدادات أعد إعداد الخطة لتُبنى عليها.</p>}
+            {o.plan !== null && settingsDirty && (
+              <p className="text-xs text-jw-faint">{settingsChange(o.kind, o.settings, settings, o.plan) === "content" ? "بعد تغيير الإعدادات أعد إعداد الخطة لتُبنى عليها." : changeLine(o, settingsChange(o.kind, o.settings, settings, o.plan), settings)}</p>
+            )}
           </div>
         </details>
       )}
@@ -254,7 +272,13 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
         </div>
       )}
       {o.status === "ready" && !mine && (
-        <PaidButton label={o.kind === "audio" ? "ولّد الصوت" : "ابدأ التصنيع"} what={o.kind === "audio" ? "إرسال النص المعتمد إلى ElevenLabs مقطعًا مقطعًا." : "إنشاء الناتج كاملًا على الخطة المعتمدة."} disabled={running} run={(b) => act({ action: "final", ...b })} />
+        // a text already written (a printing or page-count change): the file is made again from it, nothing written
+        <PaidButton
+          label={o.kind === "audio" ? "ولّد الصوت" : written(o) ? "اطبع الملف من جديد" : "ابدأ التصنيع"}
+          what={o.kind === "audio" ? "إرسال النص المعتمد إلى ElevenLabs مقطعًا مقطعًا." : written(o) ? (pagesOf(o.settings) ? `نفس النص والخطة: يُطبع الملف ويُضبط على ${pagesOf(o.settings).toLocaleString("ar")} صفحة بحجم الخط، وإذا ما كفى يُعدَّل طول فصل أو فصلين فقط. المبلغ محجوز ويرجع لك اللي ما انصرف.` : "نفس النص والخطة: يُطبع الملف بإعداداتك الجديدة بدون كتابة جديدة.") : "إنشاء الناتج كاملًا على الخطة المعتمدة."}
+          disabled={running}
+          run={(b) => act({ action: "final", ...b })}
+        />
       )}
 
       {/* ───────── result ───────── */}
