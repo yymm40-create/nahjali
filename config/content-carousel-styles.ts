@@ -1,4 +1,4 @@
-// «صانع المحتوى» — جدول ستايلات الكاروسيل: 100 looks, sorted by niche, that the person picks from INSTEAD of being asked about
+// «صانع المحتوى» — جدول ستايلات الكاروسيل: 120 looks, sorted by niche, that the person picks from INSTEAD of being asked about
 // colours, fonts and margins (the owner's order, 2 November 2026). Each one is a complete look: its colours, type and the
 // anatomy of its slides go verbatim into every slide's brief, whoever makes it (GPT Image 2 or «حيدرا ماكس»). A style that
 // shows realistic pictures has a `photoIdea`: the person is asked whether they add their own or it is made from zero.
@@ -7,9 +7,10 @@
 // Where they come from: the owner's Instagram research of 1 November 2026 (likes read on the posts, since a carousel's views
 // are not public, so the "winner" of a niche is the strongest thing seen, not a measurement) plus 2026 carousel guides.
 // The samples in /public/content/carousel-styles were painted with GPT Image 2 from these same descriptions.
+// Styles 101-120 (the owner's order, same day): a childlike 3D look, the shape of what a 7 to 9 year old loves; no winner marked, nothing measured.
 // What those 100 slides taught is written down in CAROUSEL_GPT_CRAFT and CAROUSEL_CODE_CRAFT.
 
-export const CAROUSEL_NICHES = ["تعليمي وشرح", "تسويق وبزنس", "علم نفس وتطوير ذات", "اقتباسات وتحفيز", "كوميدي وترفيه", "سفر ولايف ستايل", "طعام ووصفات", "تقنية وذكاء اصطناعي", "منتجات وبراندات", "صحة ولياقة", "مال وأعمال شخصية", "تفاعلي"] as const;
+export const CAROUSEL_NICHES = ["تعليمي وشرح", "تسويق وبزنس", "علم نفس وتطوير ذات", "اقتباسات وتحفيز", "كوميدي وترفيه", "سفر ولايف ستايل", "طعام ووصفات", "تقنية وذكاء اصطناعي", "منتجات وبراندات", "صحة ولياقة", "مال وأعمال شخصية", "تفاعلي", "3D طفولي"] as const;
 export type CarouselNiche = (typeof CAROUSEL_NICHES)[number];
 
 export interface CarouselStyle {
@@ -1243,6 +1244,227 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     closing: "A new pair with the request to comment how many they found.",
     code: "The scene is photo1 painted once; place it twice and draw the differences and circles in code so they are exact.",
   },
+  // ───────── 3D طفولي ─────────
+  {
+    id: "clay-world", n: 101, niche: "3D طفولي", name: "عالم الصلصال", words: 10,
+    description: "كل شيء في الشريحة معجون بالصلصال: الأرض والأشجار والحروف، وبصمات الأصابع باينة عليها. دافئ ويشبه شغل اليد.",
+    bestFor: "شرح العلوم والأسئلة البسيطة للأطفال والأهالي",
+    look: "Handmade plasticine claymation world, soft fingerprint dents on every surface, chunky rounded shapes, warm studio light, sky blue #7CC6F2, grass green #8BD450, sun yellow #FFD23F.",
+    type: "Huge chunky rounded Arabic headline that looks moulded from dark blue clay, few words only.",
+    cover: "A small clay scene with the question as huge clay letters.",
+    body: "One clay object large with one short answer line under it.",
+    closing: "A clay character waving with a request to share the answer.",
+    code: "The clay scene is photo1 painted by GPT Image 2 with an empty sky; Haidara writes the Arabic in code in a heavy rounded font with a soft shadow.",
+  },
+  {
+    id: "wood-blocks", n: 102, niche: "3D طفولي", name: "المكعبات الخشبية", words: 8,
+    description: "مكعبات خشب ملونة مرصوصة عليها الأرقام والحروف، كأنها على طاولة صف أول ابتدائي.",
+    bestFor: "الحروف والأرقام والجمع وأساسيات أي موضوع",
+    look: "Glossy painted wooden toy cubes with rounded edges on a warm cream #FFF4DF table, primary red #E94B3C, blue #2F80ED, yellow #F9C80E, green #27AE60, soft window light, shallow depth of field.",
+    type: "Bold rounded Arabic and Arabic numerals carved on the faces of the cubes, plus one large dark Arabic line above.",
+    cover: "A tower of cubes with the topic as a large line above.",
+    body: "Cubes spelling the one idea of the slide, one colour per number.",
+    closing: "Cubes falling playfully with a short invitation.",
+    code: "The cubes are painted by GPT Image 2 with their words in the brief; for exact digits, paint plain cubes and let Haidara place the characters in code.",
+  },
+  {
+    id: "toy-bricks", n: 103, niche: "3D طفولي", name: "قطع البناء", words: 10,
+    description: "فكرتك مبنية من قطع بناء بلاستيك لامعة، والعنوان نفسه مركّب من القطع.",
+    bestFor: "الخطوات والخطط وكيف نبني عادة أو مشروع",
+    look: "Shiny plastic toy building bricks with round studs, generic and unbranded, bright red #E3342F, yellow #FFCC00, blue #1E6FD9 on a clean light baseplate, soft top light, miniature feel.",
+    type: "Bold blocky Arabic in one solid colour placed on a flat smooth white plate, very large.",
+    cover: "A small brick house half built with the promise on a white plate.",
+    body: "One new brick layer per step with a one-line step on the plate.",
+    closing: "The finished build with a request to save the steps.",
+    code: "Paint the brick scene with an empty white plate via GPT Image 2 and let Haidara write on the plate in code.",
+  },
+  {
+    id: "balloon-letters", n: 104, niche: "3D طفولي", name: "حروف البالون", words: 6,
+    description: "الكلام نفسه بالونات منفوخة لامعة تطير في سماء حلوة، مبهجة من أول نظرة.",
+    bestFor: "المناسبات والمسابقات والإعلانات المرحة",
+    look: "Inflated glossy foil balloon letters with pinched seams and soft reflections on a candy gradient from pink #FF9AC9 to baby blue #9ADCFF, little confetti and strings.",
+    type: "The Arabic headline itself is built as giant inflated foil balloons, very few connected words.",
+    cover: "Two or three balloon words filling the slide.",
+    body: "One short balloon word and a small line of normal bold text under it.",
+    closing: "A bunch of balloons with a short thank you and a question.",
+    code: "Balloon type must be painted by GPT Image 2; Haidara only adds the small line under it in code. Check the connected letters of every sample.",
+  },
+  {
+    id: "candy-land", n: 105, niche: "3D طفولي", name: "بلاد الحلوى", words: 10,
+    description: "عالم من الحلوى: جبال آيس كريم وأشجار مصاصات وأنهار شوكولاتة، بألوان باستيل لذيذة.",
+    bestFor: "التغذية والأسنان ومحتوى الأهالي بطريقة لطيفة",
+    look: "Candy land 3D world, glossy lollipop trees, ice cream mountains, pastel pink #FFC2DC, mint #BDF3DF, butter yellow #FFEFA6, soft dreamy light, sugary shine.",
+    type: "Huge rounded white Arabic with a dark pink outline, like icing on a cake.",
+    cover: "The candy valley with the question written in icing.",
+    body: "One sweet large with one short advice line.",
+    closing: "A smiling tooth or candy with the request to share with parents.",
+    code: "The candy world is photo1 from GPT Image 2 with a clear sky; Haidara writes the icing-like text in code with a thick outline.",
+  },
+  {
+    id: "cute-dino", n: 106, niche: "3D طفولي", name: "الديناصور الصغير", words: 9,
+    description: "ديناصور صغير ممتلئ بعيون كبيرة هو بطل كل شريحة، يشرح ويسأل ويتفاجأ.",
+    bestFor: "المعلومات الغريبة والتاريخ وأسئلة «هل تعرف؟»",
+    look: "Chubby baby dinosaur mascot in soft 3D with huge shiny eyes, lime #A5D84F skin, on a warm prehistoric pastel scene with peach #FFD5B0 sky and round ferns.",
+    type: "Bold rounded dark green Arabic in a large white speech bubble with a soft 3D edge.",
+    cover: "The dinosaur looking surprised with the question in a big bubble.",
+    body: "The dinosaur pointing at one object, with the answer in the bubble.",
+    closing: "The dinosaur waving with a request to follow for the next fact.",
+    code: "Keep one mascot: paint it once via GPT Image 2 and pass it as the reference for each slide; Haidara draws the bubble and the words in code.",
+  },
+  {
+    id: "toy-space", n: 107, niche: "3D طفولي", name: "فضاء الألعاب", words: 9,
+    description: "صاروخ لعبة وكواكب مدورة مبتسمة في فضاء بنفسجي، كأنه معلق فوق سرير طفل.",
+    bestFor: "العلوم والأحلام والأهداف الكبيرة",
+    look: "Toy solar system in soft 3D: smiling round planets, chubby red and white rocket, deep violet #3B2A8C sky with chunky golden #FFC93C stars.",
+    type: "Huge rounded white Arabic glowing softly, with one word in star yellow.",
+    cover: "The rocket taking off with the question above it.",
+    body: "One planet large with its fact and a small orbit line.",
+    closing: "The rocket going far away with the question for the comments.",
+    code: "Paint the toy space as photo1 via GPT Image 2 leaving the top clear; Haidara writes the words and counts in code.",
+  },
+  {
+    id: "school-friends", n: 108, niche: "3D طفولي", name: "أصحاب الحقيبة", words: 9,
+    description: "قلم ومسطرة وممحاة وحقيبة بعيون وأيدي، يتكلمون كأنهم أصحاب في الفصل.",
+    bestFor: "المدرسة والمذاكرة والتنظيم",
+    look: "Chunky 3D school supplies with cute faces and tiny arms, mustard pencil #F9B233, teal backpack #1FB5A8, coral eraser #FF7F6E on a soft sky #D8F1FF classroom background.",
+    type: "Bold rounded dark navy Arabic, large, on a small chalk-green board or directly on the background.",
+    cover: "The whole group gathered around the backpack with the title above.",
+    body: "One character large with the one tip it gives.",
+    closing: "The group waving with a checklist question.",
+    code: "Characters from GPT Image 2 with the top clear; Haidara writes the tip in code in a rounded font.",
+  },
+  {
+    id: "happy-fruit", n: 109, niche: "3D طفولي", name: "الفواكه المبتسمة", words: 9,
+    description: "فواكه ممتلئة لامعة بوجوه ضاحكة، كل وحدة تعرّف بنفسها وفائدتها.",
+    bestFor: "الأكل الصحي والفيتامينات وعادات الطعام",
+    look: "Glossy chubby 3D fruits with cheerful faces, juicy orange #FF9F1C, apple red #E63946, kiwi green #80B918 on a clean fresh background #FFF8E7, with soft shadows.",
+    type: "Bold rounded Arabic in deep green, very large, with one fruit-coloured word.",
+    cover: "A happy pile of fruits with the question above.",
+    body: "One fruit large with one fact in a short line.",
+    closing: "All the fruits in a basket with a question about the favourite.",
+    code: "Each fruit is painted via GPT Image 2 on the plain background; Haidara writes the fact in code.",
+  },
+  {
+    id: "fluffy-monsters", n: 110, niche: "3D طفولي", name: "الوحوش الناعمة", words: 8,
+    description: "وحوش فرو صغيرة بعين وحدة أو ثلاث عيون، لطيفة وليست مخيفة، تمثل المشاعر.",
+    bestFor: "المشاعر والخوف والغضب والتعامل معها",
+    look: "Soft fluffy furry little monsters in 3D, visible fur strands, big silly eyes, purple #8E5BE8, turquoise #2BC4C4, pink #FF7AB6 on a dim cosy bedroom with warm night-light.",
+    type: "Huge rounded white Arabic with a soft glow, short sentences.",
+    cover: "A small monster under a bed with the feeling as the title.",
+    body: "The monster shrinking or changing with one short step.",
+    closing: "The monster hugging a pillow with a kind closing line.",
+    code: "Paint the monster once and use it as a reference; Haidara writes the short sentence in code over the dark part of the room.",
+  },
+  {
+    id: "dream-clouds", n: 111, niche: "3D طفولي", name: "الغيوم الحالمة", words: 9,
+    description: "غيوم قطن ناعمة وقوس قزح ثلاثي الأبعاد في سماء باستيل، هادية وجميلة.",
+    bestFor: "الطبيعة والرسائل اللطيفة وقصص ما قبل النوم",
+    look: "Puffy cotton 3D clouds with a chunky rainbow arch, pastel lilac #D9C8FF, baby blue #BFE6FF, peach #FFD9C7, soft glowing light, gentle and calm.",
+    type: "Rounded dark indigo Arabic, large and light in weight, with lots of air around it.",
+    cover: "A big cloud with a rainbow and the question.",
+    body: "A cloud doing one thing in the story, with one short line.",
+    closing: "A sleeping cloud with a kind closing line.",
+    code: "The cloud scene comes from GPT Image 2; Haidara writes on the empty sky in code with soft letter spacing.",
+  },
+  {
+    id: "little-robot", n: 112, niche: "3D طفولي", name: "الروبوت الصغير", words: 9,
+    description: "روبوت صغير مدور بشاشة وجه يبتسم، يشرح التقنية للأطفال خطوة خطوة.",
+    bestFor: "البرمجة والذكاء الاصطناعي للأطفال والمبتدئين",
+    look: "Small round shiny toy robot in 3D with a glowing screen face and stubby arms, white and cyan #22D3EE on a playful navy #16213E workshop with chunky gears.",
+    type: "Bold rounded white Arabic, large, with a numbered cyan round badge for each step.",
+    cover: "The robot waving with the question above.",
+    body: "The robot doing one action with a numbered step.",
+    closing: "The robot holding a heart with a request to try it.",
+    code: "Keep the robot as a reference from GPT Image 2; Haidara draws the step badge and writes the words in code.",
+  },
+  {
+    id: "board-game", n: 113, niche: "3D طفولي", name: "لوحة اللعب", words: 9,
+    description: "لوحة لعبة ثلاثية الأبعاد بخانات وقطع ونرد، والقارئ يتقدم خانة مع كل سحبة.",
+    bestFor: "العادات والتحديات والمراحل",
+    look: "Colourful 3D board game seen from a high angle, rounded path tiles, chunky pawns and a big white die with soft shadows, coral #FF6B6B, sunny #FFD93D, teal #4ECDC4 on a mint #E8FFF5 table.",
+    type: "Bold rounded dark Arabic, large; the number of each tile on the tile itself.",
+    cover: "The whole winding board with the name of the game.",
+    body: "One tile close up with the pawn on it and one task.",
+    closing: "The finish tile with a star and a request to tag a friend.",
+    code: "Paint the board with empty tiles; Haidara places the numbers and the tasks in code so they stay exact.",
+  },
+  {
+    id: "under-sea", n: 114, niche: "3D طفولي", name: "قاع البحر", words: 8,
+    description: "أسماك وحوت وأخطبوط صغار بعيون لامعة تحت ماء فيروزي تدخله خيوط الضوء.",
+    bestFor: "الحيوانات والمعلومات المدهشة",
+    look: "Cute underwater 3D world, chubby sea creatures with shiny eyes, turquoise #19C2C9 water, coral pink #FF8FA3, sand #FBE7B2, sun rays and round bubbles.",
+    type: "Huge rounded white Arabic with bubbles around it.",
+    cover: "Sea friends swimming with the question over the water.",
+    body: "One creature large with its name in big letters.",
+    closing: "All of them around a treasure chest with a question.",
+    code: "The sea is painted via GPT Image 2 with clear water on top; Haidara writes the words in code.",
+  },
+  {
+    id: "popup-book", n: 115, niche: "3D طفولي", name: "الكتاب المنبثق", words: 9,
+    description: "كتاب قصص مفتوح تطلع من صفحاته بيوت وأشجار ورقية، كأنها مسرح صغير.",
+    bestFor: "القصص والحكايات والدروس الأخلاقية",
+    look: "Open pop-up storybook with layered paper cut scenery rising from the pages, soft paper shadows, warm cream #FFF3D6 paper, forest green #5BA56B, sky #A9DDF3, red #E85D4A.",
+    type: "Friendly rounded dark brown Arabic printed on the book's page or a paper banner, large.",
+    cover: "The book open on the title of the story on a paper banner.",
+    body: "One scene rising with one sentence of the story.",
+    closing: "The book closing with the lesson of the story.",
+    code: "Paint the book with an empty paper banner; Haidara writes the story line on it in code.",
+  },
+  {
+    id: "felt-toys", n: 116, niche: "3D طفولي", name: "دمى اللباد", words: 9,
+    description: "كل شيء لباد مخيط بخيوط باينة، ناعم ويخلي الواحد يبي يلمسه.",
+    bestFor: "الهدوء والمشاعر ونصائح الأهل",
+    look: "Soft handmade felt and plush toys with visible stitches, wool texture, sage #A8C69F, dusty rose #E8A6A1, warm oat #EFE3C8 background, soft cosy light.",
+    type: "Rounded dark Arabic, large, as if stitched onto a felt patch.",
+    cover: "A felt character on a felt patch with the question.",
+    body: "The character doing one calming action with one line.",
+    closing: "The character with a felt heart and a kind line.",
+    code: "Felt art comes as a picture from GPT Image 2; Haidara writes on the empty patch in code.",
+  },
+  {
+    id: "treasure-island", n: 117, niche: "3D طفولي", name: "جزيرة الكنز", words: 8,
+    description: "جزيرة صغيرة ثلاثية الأبعاد في مكعب أو فقاعة كأنها مجسم، فيها نخلة وكنز وطريق منقط.",
+    bestFor: "الألغاز والتحديات والرحلات",
+    look: "Tiny low-poly 3D diorama island floating on a clean turquoise #5CE1E6 background, palm tree, dotted red path, wooden chest, sandy #F6D186 and grass #6FCF6F, soft toy-like light.",
+    type: "Bold rounded dark navy Arabic above the diorama, large, with a treasure-gold word.",
+    cover: "The whole island from afar with the riddle above it.",
+    body: "A close view of one place on the island with one clue.",
+    closing: "The open chest with the answer and a request for a guess.",
+    code: "Each diorama is a picture from GPT Image 2 with a clean background; Haidara writes the clue in code.",
+  },
+  {
+    id: "happy-farm", n: 118, niche: "3D طفولي", name: "المزرعة السعيدة", words: 8,
+    description: "بقرة وخروف ودجاجة ممتلئون في مزرعة خضراء، وكل حيوان يعرّف بنفسه.",
+    bestFor: "الحيوانات ومن أين يجي أكلنا",
+    look: "Chubby cartoon 3D farm animals on rolling green hills, red barn #D64545, grass #8ED16F, sky #BDE8FF, puffy clouds, sunny toy-like light.",
+    type: "Bold rounded dark brown Arabic, large, on a small wooden sign.",
+    cover: "The animals in front of the barn with the question on a wooden sign.",
+    body: "One or more animals large with one answer on the sign.",
+    closing: "The animals waving goodbye with a question.",
+    code: "Paint the farm with an empty wooden sign; Haidara writes on the sign in code.",
+  },
+  {
+    id: "toy-train", n: 119, niche: "3D طفولي", name: "قطار الحروف", words: 8,
+    description: "قطار خشب ملوّن يمشي على سكة لعبة، وكل عربة تحمل فكرة أو حرفًا.",
+    bestFor: "الحروف والقوائم المرتبة والتسلسل",
+    look: "Painted wooden toy train on a curved toy track, bright red #E94F37, sunny #F6C90E, blue #3F88C5, on a soft cream-green #EAF6D9 play mat with tiny trees and a little station.",
+    type: "Big rounded dark Arabic letters riding in the wagons, and a large line above.",
+    cover: "The train with the wagons in a line and the title above.",
+    body: "One wagon large with its letter or item at a station.",
+    closing: "The train arriving at the last station with a question.",
+    code: "Paint the train with empty wagons when exact words are needed; Haidara places the letters in code.",
+  },
+  {
+    id: "little-hero", n: 120, niche: "3D طفولي", name: "البطل الصغير", words: 7,
+    description: "ولد بشكل لعبة في عالم كرتوني سينمائي ضخم، يعطي إحساس فيلم أطفال كامل.",
+    bestFor: "التحفيز والأحلام وقصص الإنجاز",
+    look: "Stylised toy-like cartoon boy, oversized head and big eyes, clearly not realistic, in a warm cinematic animated-film world, golden hour #FFB347 with teal #1F7A8C shadows, dramatic soft light.",
+    type: "Huge bold white rounded Arabic with cinematic glow, very few words.",
+    cover: "The little hero facing something huge with a short brave line.",
+    body: "The hero taking one step with one short line.",
+    closing: "The hero looking at the sky with a short line and a question.",
+    code: "Keep the hero as a reference from GPT Image 2; Haidara writes the short line in code over the dark part of the scene.",
+  },
 ];
 
 export const findCarouselStyle = (id: string) => CAROUSEL_STYLES.find((s) => s.id === id);
@@ -1267,7 +1489,7 @@ export const CAROUSEL_GPT_CRAFT = `كيف تكتب توجيه GPT Image 2 لشر
 
 /** What «حيدرا ماكس» always follows when he makes a carousel slide in code. */
 export const CAROUSEL_CODE_CRAFT =
-  "CAROUSEL CRAFT: this slide must stop a thumb on a phone: one idea readable in a second, type large enough to fill the width unless the style says small. NEVER imitate a photograph, a realistic person, food, a place or a realistic object by drawing it in code, because it looks cheap: anything realistic comes to you as photo1 (fit it to the frame and only grade or mask it). In code you draw what code does beautifully: type, flat colour, grids, charts, paper grain, frames, stickers, tags, arrows, bubbles. Never show a realistic adult woman.";
+  "CAROUSEL CRAFT: this slide must stop a thumb on a phone: one idea readable in a second, type large enough to fill the width unless the style says small. NEVER imitate a photograph, a realistic person, food, a place, a realistic object or a 3D render by drawing it in code, because it looks cheap: anything realistic or 3D comes to you as photo1 (fit it to the frame and only grade or mask it). In code you draw what code does beautifully: type, flat colour, grids, charts, paper grain, frames, stickers, tags, arrows, bubbles. Never show a realistic adult woman.";
 
 /** The look of a style, as it goes into a slide's brief. */
 export function carouselStyleBlock(s: CarouselStyle): string {
