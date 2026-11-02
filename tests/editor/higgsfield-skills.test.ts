@@ -52,11 +52,15 @@ describe("the owner's two Higgsfield skills, installed verbatim", () => {
     for (const r of HF_REFS) expect(HF_LAB_TEXT).toContain(r.id);
     const director = read("src/lib/editor/scene/director.ts");
     expect(director).toContain("${HF_LAB_TEXT}");
-    expect(director).toContain("openRefs([...ALWAYS_AT_PLAN, ...choicesRefs(choices)])");
-    // writing and review open the plan's files and, like the plan, the owner's taste files
-    // the write opens the always-on taste files and the plan's skills; a fix opens none, a review only the plan's skills
-    expect(director.match(/openRefs\(\[\.\.\.new Set\(\[\.\.\.ALWAYS_AT_PLAN, \.\.\.knownRefs\(plan\.skillRefs\)\]\)\]\)/g)?.length).toBe(1);
-    expect(director).toContain("openRefs(knownRefs(plan.skillRefs))");
+    // the owner's taste files are their own cached part (the same bytes at the plan and the write); the picks' files and
+    // the plan's skill files are opened without them, the plan's in ONE block shared by the write and every review round
+    expect(director).toContain('const tastePart = (): ClaudePart => ({ type: "text", text: openRefs(ALWAYS_AT_PLAN, Infinity).text, cache: true });');
+    expect(director).toContain("openRefs(choicesRefs(choices).filter((id) => !ALWAYS_AT_PLAN.includes(id)))");
+    expect(director).toContain("openRefs(knownRefs(plan.skillRefs).filter((id) => !ALWAYS_AT_PLAN.includes(id)))");
+    expect(director.match(/\.\.\.skillRefsPart\(plan\)/g)?.length).toBe(2);
+    expect(director).toContain("...(previous ? [] : [tastePart(), exemplarsPart(), ...skillRefsPart(plan)])");
+    // the cap: a call opens at most ~64k characters of the skills besides the taste files
+    expect(OPEN_BUDGET).toBeLessThanOrEqual(64_000);
     // the taste files both skills say to read first are always opened at the plan
     const atPlan = openRefs(ALWAYS_AT_PLAN);
     expect(atPlan.opened).toEqual(ALWAYS_AT_PLAN);

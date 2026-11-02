@@ -94,7 +94,8 @@ describe("«🎬 مختبر الموشن» on the server", () => {
     expect(critique.review.worst[0].fix).toBe("عمق");
     expect(critique.code).toBe("");
     expect(s.calls[2].text).toContain("A separate writing step");
-    expect(s.calls[2].maxTokens).toBe(12000);
+    // 32k: a critique cut at max_tokens was asked again whole at low thought (paid twice, thought less)
+    expect(s.calls[2].maxTokens).toBe(32000);
     await expect(labReview(project, who, { plan: {}, code: EXEMPLARS[1].code, sheets: [], stills: [] })).rejects.toThrow(/صور/);
   });
 });

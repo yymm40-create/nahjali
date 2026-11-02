@@ -53,7 +53,9 @@ async function ask<T>(who: Who, model: unknown, label: string, parts: ClaudePart
     model,
     label,
     () =>
-      callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema, maxTokens, effort: "high", fallback: true, onText }).catch((e) => {
+      // `cacheTail: false`: each call is one request whose turn (the frames, the program, the views) is never sent again —
+      // the 25 % cache-write premium on it bought nothing; the system is still cached for the next round
+      callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema, maxTokens, effort: "high", fallback: true, onText, cacheTail: false }).catch((e) => {
         console.error("motion lab cover", label, e);
         throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يكمل الكفر الحين. جرّب مرة ثانية.", who.email), 502);
       }),

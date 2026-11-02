@@ -6,10 +6,14 @@ import { SCENE_CONTRACT } from "@/lib/editor/scene/skill";
 
 // «💬 مختبر الموشن» as a conversation, and the finished piece kept editable (its texts and colours are params).
 
-const s = vi.hoisted(() => ({ calls: [] as { text: string; maxTokens: number; effort?: string; schema: { properties: Record<string, unknown> } }[], reply: {} as unknown }));
+type Turn = { role: string; content: string | { type: string; text?: string }[] };
+const s = vi.hoisted(() => ({ calls: [] as { text: string; turns: Turn[]; cacheTtl?: string; cacheTail?: boolean; maxTokens: number; effort?: string; schema: { properties: Record<string, unknown> } }[], reply: {} as unknown }));
 vi.mock("@/lib/film/anthropic", () => ({
-  callClaudeJson: async (a: { turns: { content: { type: string; text?: string }[] }[]; maxTokens: number; effort?: string; schema: { properties: Record<string, unknown> } }) => {
-    s.calls.push({ text: a.turns[0].content.filter((p) => p.type === "text").map((p) => p.text).join("\n"), maxTokens: a.maxTokens, effort: a.effort, schema: a.schema });
+  callClaudeJson: async (a: { turns: Turn[]; turnNote?: string; cacheTtl?: string; cacheTail?: boolean; maxTokens: number; effort?: string; schema: { properties: Record<string, unknown> } }) => {
+    // the latest turn as Claude gets it: this message's facts (turnNote) first, then its own text
+    const last = a.turns[a.turns.length - 1].content;
+    const said = typeof last === "string" ? last : last.filter((p) => p.type === "text").map((p) => p.text).join("\n");
+    s.calls.push({ text: [a.turnNote ?? "", said].join("\n"), turns: a.turns, cacheTtl: a.cacheTtl, cacheTail: a.cacheTail, maxTokens: a.maxTokens, effort: a.effort, schema: a.schema });
     return { data: s.reply, raw: "", usage: { input_tokens: 1, output_tokens: 1 } };
   },
   claudeCost: () => 0.01,
@@ -35,8 +39,15 @@ describe("the lab as a conversation", () => {
     if (!("reply" in r)) throw new Error("cut");
     expect(r.action).toBe("plan");
     expect(r.brief).toBe("إعلان لتطبيقي");
-    expect(s.calls[0].text).toContain("THE CONVERSATION SO FAR:\nالشخص: أبي شي ذهبي");
+    // the conversation goes as real turns before the new message (cached by their own mark), never inside its text
+    expect(s.calls[0].turns[0]).toEqual({ role: "user", content: "أبي شي ذهبي" });
+    expect(s.calls[0].turns).toHaveLength(2);
+    expect(s.calls[0].text).not.toContain("THE CONVERSATION SO FAR");
+    expect(s.calls[0].text).toContain("THEIR NEW MESSAGE: إعلان لتطبيقي");
     expect(s.calls[0].text).toContain("There is no plan yet.");
+    // the next note comes after a build the person watched: an hour's cache; the latest turn is never sent again
+    expect(s.calls[0].cacheTtl).toBe("1h");
+    expect(s.calls[0].cacheTail).toBe(false);
   });
 
   it("with a piece, a change comes back as the whole revised program, and an attached logo is drawn as the real picture", async () => {

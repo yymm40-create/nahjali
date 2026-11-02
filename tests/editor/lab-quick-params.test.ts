@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { quickParams, type ParamField } from "@/lib/editor/scene/quick-params";
+import { accentField, plainBrief, quickChoices, quickParams, type ParamField } from "@/lib/editor/scene/quick-params";
 
 // «خلّ اللون ذهبي» on a scene that exposes the colour (or the text) as a param: set on the page, no call to حيدرا ماكس.
 // Anything less sure goes to him as before.
@@ -53,5 +53,35 @@ describe("a note that is only a param", () => {
     expect(quickParams("اكتب «مرحبا»", many, {})).toBeNull();
     // a scene with no params
     expect(quickParams("خل اللون ذهبي", [], {})).toBeNull();
+  });
+
+  it("a plain «اللون» on a piece with several colours is the plan's accent", () => {
+    expect(quickParams("خلّ اللون ذهبي", many, {}, "#e8572a")?.values).toEqual({ accent: "#d4af37" });
+    // found by its own value, or else by its id or label
+    expect(accentField(many, "#E8572A")?.id).toBe("accent");
+    expect(accentField([{ id: "c1", label: "لون الخلفية", type: "color", value: "#000000" }, { id: "c2", label: "اللون الأساسي", type: "color", value: "#123456" }], "#ffffff")?.id).toBe("c2");
+    expect(accentField([{ id: "c1", label: "أ", type: "color", value: "#000000" }, { id: "c2", label: "ب", type: "color", value: "#111111" }], "#ffffff")).toBeNull();
+    // only for «اللون» said plainly; a named field still wins
+    expect(quickParams("خليه ذهبي", many, {}, "#e8572a")).toBeNull();
+    expect(quickParams("خل الخلفية سودا", many, {}, "#e8572a")?.field.id).toBe("bg");
+  });
+
+  it("a colour or a text that could go on several: chips to pick which, each one then set on the page", () => {
+    const colour = quickChoices("خليه ذهبي", many, {});
+    expect(colour).toEqual(["لون الخلفية ذهبي", "لون التمييز ذهبي"]);
+    expect(colour!.map((c) => quickParams(c, many, {})?.values)).toEqual([{ bg: "#d4af37" }, { accent: "#d4af37" }]);
+    const words = quickChoices("خل النص «مرحبا»", many, {});
+    expect(words).toEqual(["العنوان «مرحبا»", "السطر الثاني «مرحبا»"]);
+    expect(quickParams(words![1], many, {})?.values).toEqual({ sub: "مرحبا" });
+    // already sure, or not a param note at all: no chips
+    expect(quickChoices("خلّ اللون ذهبي", one, {})).toBeNull();
+    expect(quickChoices("خلّ اللون ذهبي", many, {}, "#e8572a")).toBeNull();
+    expect(quickChoices("كبّر الشعار", many, {})).toBeNull();
+    expect(quickChoices("خل الشعار ذهبي", many, {})).toBeNull();
+  });
+
+  it("the first message that is plainly a brief, not a question or a greeting", () => {
+    for (const m of ["إعلان لتطبيق توصيل قهوة", "ممكن تسوي لي موشن لمتجري", "سو لي فيديو عن العيد"]) expect(plainBrief(m), m).toBe(true);
+    for (const m of ["وش تقدر تسوي", "كيف أبدأ هنا", "تقدر تسوي إعلان؟", "هلا والله كيفك", "شكرا لك يا بطل", "إعلان قهوة", ""]) expect(plainBrief(m), m).toBe(false);
   });
 });

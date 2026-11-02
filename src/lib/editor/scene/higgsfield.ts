@@ -8,8 +8,13 @@
 import { HF_REFS, HF_SKILLS, type HfRef } from "@/lib/editor/higgsfield-skills-text";
 
 const BY_ID = new Map(HF_REFS.map((r) => [r.id, r]));
-/** What one call may open from the skills (characters): enough for several sections, never the whole handbook. */
-export const OPEN_BUDGET = 160_000;
+/**
+ * What one call may open from the skills (characters), besides the always-open taste files: several sections in the
+ * plan's order, the most relevant first (a big one that does not fit is skipped and the smaller ones after it still
+ * open). 64k holds a usual set (transitions, techniques, code engine, launch film, ease math ≈ 62k); it was 160k, and a
+ * write and every review round could carry ~40k tokens of files.
+ */
+export const OPEN_BUDGET = 64_000;
 /** Opened at every plan: both skills say to read the client's taste before designing. */
 export const ALWAYS_AT_PLAN = ["higgsfield-motion/references/client-taste.md", "higgsfield-motion-saas/references/client-taste.md"];
 
