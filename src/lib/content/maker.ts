@@ -1,4 +1,5 @@
 import { findCarouselStyle, type CarouselStyle } from "@config/content-carousel-styles";
+import { findContentFont, type ContentFont } from "@config/content-fonts";
 import { findTemplate } from "@config/content-templates";
 import type { Question, Turn } from "./chats";
 
@@ -13,6 +14,10 @@ export const MAKER_QUESTION = { label: MAKER_LABEL, kind: "choice" as const, opt
 /** The first step of a carousel: the table of 103 styles, in place of questions about colours and margins. */
 export const CAROUSEL_LABEL = "اختر ستايل الكاروسيل";
 export const CAROUSEL_QUESTION: Question = { label: CAROUSEL_LABEL, kind: "carousels", options: [], multi: false };
+
+/** After the style: the font, from the list of 50 (a style with a ready font offers it first). */
+export const FONT_LABEL = "اختر الخط";
+export const FONT_QUESTION: Question = { label: FONT_LABEL, kind: "fonts", options: [], multi: false };
 
 /** A style with realistic pictures: the person adds their own, or it is made from zero. */
 export const PHOTOS_LABEL = "هذا الستايل فيه صور واقعية: تضيف صورك أو نسويها لك؟";
@@ -71,6 +76,30 @@ export function pickedCarousel(history: Turn[]): { id: string; style: CarouselSt
   return null;
 }
 
+const FONT_MARK = /\[خط:([a-z0-9-]+)\]/g;
+
+/**
+ * The font picked for the carousel about to be made: a font of the list, "style" (the style's ready font, resolved to
+ * it), "auto" («محمد باقر» picks), or null when not picked yet.
+ */
+export function pickedFont(history: Turn[]): { id: string; font: ContentFont | null } | null {
+  const turns = sinceLastCarousel(history);
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i].role !== "user") continue;
+    const id = [...turns[i].text.matchAll(FONT_MARK)].map((m) => m[1]).at(-1);
+    if (!id) continue;
+    if (id === "auto") return { id, font: null };
+    if (id === "style") {
+      const ready = pickedCarousel(history)?.style?.font;
+      const f = ready ? findContentFont(ready) : undefined;
+      return f ? { id: f.id, font: f } : { id: "auto", font: null };
+    }
+    const f = findContentFont(id);
+    if (f) return { id, font: f };
+  }
+  return null;
+}
+
 /** Whether the person chose to add their own pictures, or to have them made from zero (null: not asked yet). */
 export const pickedPhotos = (history: Turn[]): "mine" | "make" | null => {
   const hit = lastPressed(history, PHOTOS_LABEL, [PHOTOS_MINE, PHOTOS_MAKE]);
@@ -87,7 +116,7 @@ export interface CarouselHold {
 
 /**
  * What still stops a new carousel from being made, in order: the style, then (a realistic style) the person's pictures,
- * then who makes it. Null when nothing does. The server decides this from what was pressed, not from what the model says.
+ * then the font, then who makes it. Null when nothing does. The server decides this from what was pressed, not from what the model says.
  */
 export function carouselHold(history: Turn[]): CarouselHold | null {
   const pick = pickedCarousel(history);
@@ -96,6 +125,12 @@ export function carouselHold(history: Turn[]): CarouselHold | null {
     const photos = pickedPhotos(history);
     if (!photos) return { question: PHOTOS_QUESTION, note: `⏸️ ستايل «${pick.style.name}» فيه صور واقعية. ${pick.style.photoIdea}` };
     if (photos === "mine" && !attachedPictures(history).length) return { question: PHOTOS_QUESTION, note: `⏸️ اخترت إضافة صورك ولم تصلني صورة بعد: أرفقها بزر 📎 ثم أرسل. ${pick.style.photoIdea}` };
+  }
+  // a conversation that began with the older template gallery is not stopped for a font either
+  const fromTable = sinceLastCarousel(history).some((x) => x.role === "user" && /\[كاروسيل:[a-z0-9-]+\]/.test(x.text));
+  if (fromTable && !pickedFont(history)) {
+    const ready = pick.style?.font ? findContentFont(pick.style.font) : undefined;
+    return { question: FONT_QUESTION, note: ready ? `⏸️ اختر الخط: هذا الستايل معه خط جاهز «${ready.name}»، أو اختر غيره من القائمة.` : "⏸️ اختر الخط من القائمة، أو خلني أختاره لك." };
   }
   if (!pickedMaker(history)) return { question: MAKER_QUESTION, note: "⏸️ آخر خطوة قبل التصنيع: اختر من يصمم الشرائح، وبعدها أبدأ." };
   return null;

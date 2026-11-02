@@ -1,4 +1,4 @@
-// Screenshots and checks of the table of carousel styles at phone and desktop sizes: node scripts/content-preview/run.mjs [outDir]
+// Screenshots and checks of the table of carousel styles and the list of fonts at phone and desktop sizes: node scripts/content-preview/run.mjs [outDir]
 import { build } from "esbuild";
 import { createServer } from "node:http";
 import { mkdirSync, readFileSync, existsSync } from "node:fs";
@@ -61,6 +61,25 @@ await new Promise((r) => setTimeout(r, 900));
 await page.screenshot({ path: join(out, "recommended.png") });
 const first = await page.evaluate(() => document.querySelector(".ct-ctable .niche th").textContent);
 if (!first.includes("ترشيحات")) { bad++; console.log("  ✗ recommendations are not first"); }
+// the list of fonts after the style: the style's ready font first, every font written in itself
+for (const [name, w, h] of [["fonts-phone", 390, 844], ["fonts-desk", 1280, 900]]) {
+  const fp = await browser.newPage();
+  await fp.setViewport({ width: w, height: h, isMobile: w < 700, hasTouch: w < 700 });
+  fp.on("pageerror", (e) => { bad++; console.log("  pageerror:", e.message); });
+  await fp.goto(`http://127.0.0.1:${port}/?fonts=1`);
+  await new Promise((r) => setTimeout(r, 2500));
+  const o = await fp.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth, rows: document.querySelectorAll(".ct-ftable tbody tr:not(.niche)").length, first: document.querySelector(".ct-ftable .niche th")?.textContent ?? "", loaded: [...document.fonts].filter((f) => f.family.startsWith("jw-") && f.status === "loaded").length }));
+  if (o.sw > o.iw) { bad++; console.log(`  ✗ ${name}: sideways overflow ${o.sw} > ${o.iw}`); }
+  if (o.rows !== 51) { bad++; console.log(`  ✗ ${name}: ${o.rows} font rows`); }
+  if (!o.first.includes("خط الستايل")) { bad++; console.log(`  ✗ ${name}: the ready font is not first («${o.first}»)`); }
+  if (o.loaded < 4) { bad++; console.log(`  ✗ ${name}: only ${o.loaded} fonts loaded`); }
+  await fp.screenshot({ path: join(out, `${name}.png`) });
+  await fp.evaluate(() => [...document.querySelectorAll(".ct-ftable .ct-ctable-ways button")][0].click());
+  await new Promise((r) => setTimeout(r, 200));
+  const sent = await fp.$eval("#log", (e) => e.textContent);
+  if (!/\[خط:style\]/.test(sent)) { bad++; console.log(`  ✗ ${name}: ready font sent «${sent}»`); }
+  await fp.close();
+}
 await browser.close();
 server.close();
 console.log(bad ? `✗ ${bad} problem(s) — ${out}` : `✓ all good — ${out}`);

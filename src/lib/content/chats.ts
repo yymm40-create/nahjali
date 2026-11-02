@@ -4,6 +4,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CONTENT, type CarouselAspect } from "@config/content";
 import { findCarouselStyle } from "@config/content-carousel-styles";
+import { findContentFont } from "@config/content-fonts";
 
 const db = () => createAdminClient();
 
@@ -58,6 +59,8 @@ export interface SlidesBlock {
   mix?: boolean;
   /** the style of the table of 50 this carousel follows */
   carouselId?: string;
+  /** the font of the list of 50 the carousel is written in */
+  fontId?: string;
 }
 
 /** One picture or video «محمد باقر» asked جواد for (outside a carousel), and where it stands. */
@@ -95,8 +98,8 @@ export interface MediaBlock {
 /** A question of a batch, answered by pressing (or writing). */
 export interface Question {
   label: string;
-  kind: "choice" | "templates" | "styles" | "motion" | "moods" | "palettes" | "carousels";
-  /** the answers of "choice"; with "carousels", the styles he recommends (their ids) */
+  kind: "choice" | "templates" | "styles" | "motion" | "moods" | "palettes" | "carousels" | "fonts";
+  /** the answers of "choice"; with "carousels", the styles he recommends (their ids); with "fonts", the fonts he recommends */
   options: string[];
   multi: boolean;
 }
@@ -140,6 +143,8 @@ export interface PendingProduce {
   mix?: boolean;
   /** the style of the table of 50 this carousel follows */
   carouselId?: string;
+  /** the font of the list of 50 the carousel is written in */
+  fontId?: string;
   /** made in this production so far */
   made: Slide[];
   failed: SlideFailure[];
@@ -215,9 +220,9 @@ export function readMedia(v: unknown): MediaItem[] {
 export function readQuestions(v: unknown): Question[] | undefined {
   const out = objs(v)
     .map((q): Question => {
-      const kind = q.kind === "templates" || q.kind === "styles" || q.kind === "motion" || q.kind === "moods" || q.kind === "palettes" || q.kind === "carousels" ? q.kind : "choice";
+      const kind = q.kind === "templates" || q.kind === "styles" || q.kind === "motion" || q.kind === "moods" || q.kind === "palettes" || q.kind === "carousels" || q.kind === "fonts" ? q.kind : "choice";
       const given = (Array.isArray(q.options) ? q.options : []).filter((o): o is string => typeof o === "string" && o.trim().length > 0).map((o) => o.trim());
-      const options = kind === "choice" ? given.map((o) => o.slice(0, 140)).slice(0, 8) : kind === "carousels" ? given.filter((o) => findCarouselStyle(o)).slice(0, 5) : [];
+      const options = kind === "choice" ? given.map((o) => o.slice(0, 140)).slice(0, 8) : kind === "carousels" ? given.filter((o) => findCarouselStyle(o)).slice(0, 5) : kind === "fonts" ? given.filter((o) => findContentFont(o)).slice(0, 5) : [];
       return { label: str(q.label, 120).trim(), kind, options, multi: q.multi === true && kind === "choice" };
     })
     .filter((q) => q.label && (q.kind !== "choice" || q.options.length > 0))
@@ -257,6 +262,7 @@ export function cleanHistory(raw: unknown): Turn[] {
         ...(s.maker === "code" ? { maker: "code" as const } : {}),
         ...(s.mix === true ? { mix: true } : {}),
         ...(typeof s.carouselId === "string" && findCarouselStyle(s.carouselId) ? { carouselId: s.carouselId } : {}),
+        ...(typeof s.fontId === "string" && findContentFont(s.fontId) ? { fontId: s.fontId } : {}),
         templateId: str(s.templateId, 60),
         ...(typeof s.report === "string" && s.report ? { report: s.report.slice(0, 4000) } : {}),
       };
@@ -293,6 +299,7 @@ export function readPending(v: unknown): PendingProduce | null {
     ...(p.maker === "code" ? { maker: "code" as const } : {}),
     ...(p.mix === true ? { mix: true } : {}),
     ...(typeof p.carouselId === "string" && findCarouselStyle(p.carouselId) ? { carouselId: p.carouselId } : {}),
+    ...(typeof p.fontId === "string" && findContentFont(p.fontId) ? { fontId: p.fontId } : {}),
     ...(p.arts && typeof p.arts === "object" && !Array.isArray(p.arts) ? { arts: Object.fromEntries(Object.entries(p.arts as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> } : {}),
     made: objs(p.made).filter((x) => typeof x.fileId === "string").map(readSlide),
     failed: objs(p.failed).map(readFailure),

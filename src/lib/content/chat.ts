@@ -18,6 +18,7 @@ import { contentExamplesBrief, nearestContentExamples } from "@config/content-ex
 import { nearestTemplateExamples, templateExamplesBrief } from "@config/content-template-examples";
 import { findTemplate } from "@config/content-templates";
 import { findCarouselStyle } from "@config/content-carousel-styles";
+import { findContentFont } from "@config/content-fonts";
 import { findStyle } from "@config/film-styles";
 import { cleanHistory, getChat, readMedia, readQuestions, saveChat, type Attachment, type MediaItem, type PendingProduce, type Turn } from "./chats";
 import { attachmentsOf, uploadLinks } from "./files";
@@ -25,7 +26,7 @@ import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, s
 import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
-import { attachedPictures, CAROUSEL_QUESTION, carouselHold, pickedCarousel, pickedMaker, pickedPhotos } from "./maker";
+import { attachedPictures, CAROUSEL_QUESTION, carouselHold, pickedCarousel, pickedFont, pickedMaker, pickedPhotos } from "./maker";
 import { lastSlidesAt } from "./produce";
 import { randomUUID } from "crypto";
 
@@ -46,8 +47,8 @@ export const ANSWER_SCHEMA = {
         required: ["label", "kind", "options", "multi"],
         properties: {
           label: { type: "string", description: "نص السؤال القصير" },
-          kind: { type: "string", enum: ["choice", "carousels", "templates", "styles", "motion", "moods", "palettes"], description: "choice: خيارات نصية؛ carousels: جدول ستايلات الكاروسيل (٥٠ ستايلًا بالنيش)، وهو أول سؤال في أي كاروسيل؛ templates: معرض قوالب الكاروسيل؛ styles: خريطة الستايلات (١٠٠ ستايل في ١٤ عائلة)؛ motion: معرض مهارات الموشن عند حيدرا ماكس؛ moods: معرض مشاعر الموشن؛ palettes: معرض الألوان (١٠٠ لوحة رباعية من Color Hunt)" },
-          options: { type: "array", items: { type: "string" }, description: "إجابات قصيرة (٢–٧) لـ choice؛ ولـ carousels معرّفات الستايلات التي ترشحها (حتى ٥) أو فارغة؛ وفارغة لبقية المعارض" },
+          kind: { type: "string", enum: ["choice", "carousels", "fonts", "templates", "styles", "motion", "moods", "palettes"], description: "choice: خيارات نصية؛ carousels: جدول ستايلات الكاروسيل بالنيش، وهو أول سؤال في أي كاروسيل؛ fonts: قائمة الخطوط العربية (٥٠ خطًا)، بعد الستايل؛ templates: معرض قوالب الكاروسيل؛ styles: خريطة الستايلات (١٠٠ ستايل في ١٤ عائلة)؛ motion: معرض مهارات الموشن عند حيدرا ماكس؛ moods: معرض مشاعر الموشن؛ palettes: معرض الألوان (١٠٠ لوحة رباعية من Color Hunt)" },
+          options: { type: "array", items: { type: "string" }, description: "إجابات قصيرة (٢–٧) لـ choice؛ ولـ carousels معرّفات الستايلات التي ترشحها (حتى ٥) أو فارغة؛ ولـ fonts معرّفات الخطوط التي ترشحها (حتى ٥) أو فارغة؛ وفارغة لبقية المعارض" },
           multi: { type: "boolean", description: "يجوز اختيار أكثر من إجابة" },
         },
       },
@@ -56,7 +57,7 @@ export const ANSWER_SCHEMA = {
     produce: {
       type: "object",
       additionalProperties: false,
-      required: ["on", "mode", "maker", "aspect", "carousel_id", "template_id", "style_id", "refs", "slides"],
+      required: ["on", "mode", "maker", "aspect", "carousel_id", "font_id", "template_id", "style_id", "refs", "slides"],
       description: "إنتاج كاروسيل: العميل يختار من يصمم شرائحه: «حيدرا ماكس» بالكود، أو GPT Image 2 يرسم كل شريحة كاملة بكتابتها، أو GPT Image 2 للصور وحيدرا ماكس للكتابة. فقط بعد طلب صريح واختيار العميل. on=false بدون إنتاج.",
       properties: {
         on: { type: "boolean" },
@@ -64,6 +65,7 @@ export const ANSWER_SCHEMA = {
         maker: { type: "string", enum: ["code", "gpt", "mix"], description: "من يصمم الشرائح، كما اختاره العميل: code = حيدرا ماكس بالكود؛ gpt = GPT Image 2 يرسم كل شريحة كاملة بكتابتها؛ mix = GPT Image 2 يرسم صورة كل شريحة بلا كتابة وحيدرا ماكس يكتب عليها. في mode=fix يُهمل (تُعاد بطريقة الكاروسيل الأصلي)." },
         aspect: { type: "string", enum: ["1:1", "2:3", "9:16", "16:9"] },
         carousel_id: { type: "string", description: "معرّف ستايل الكاروسيل الذي اختاره العميل من الجدول، أو فارغ إذا طلب شكلًا غير الموجود" },
+        font_id: { type: "string", description: "معرّف الخط من قائمة الخطوط: الذي اختاره العميل، أو الذي اخترته أنت إذا ترك لك الاختيار" },
         template_id: { type: "string", description: "معرّف القالب الذي اختاره العميل، أو فارغ" },
         style_id: { type: "string", description: "معرّف الستايل الكرتوني الذي اختاره العميل، أو فارغ" },
         refs: { type: "array", items: { type: "string" }, description: "معرّفات (id) صور العميل المرفقة التي تُسلَّم إلى جواد مع كل شريحة (شعار، صورة، منتج)، أو فارغة" },
@@ -131,7 +133,7 @@ interface Answer {
   reply: string;
   questions: unknown;
   record: string;
-  produce: { on: boolean; mode: string; maker?: string; aspect: string; carousel_id?: string; template_id: string; style_id: string; refs?: string[]; slides: { n: number; text: string; prompt: string; picture?: string }[] };
+  produce: { on: boolean; mode: string; maker?: string; aspect: string; carousel_id?: string; font_id?: string; template_id: string; style_id: string; refs?: string[]; slides: { n: number; text: string; prompt: string; picture?: string }[] };
   generate?: { on: boolean; items: { kind: string; name: string; prompt: string; aspect: string; quality: string; resolution: string; seconds: number; with_sound: boolean; refs: string[] }[] };
   handoff: { on: boolean; title: string; shape: string; package: string; storyboard?: string };
 }
@@ -157,7 +159,7 @@ const KIND_AR = { image: "صورة", video: "فيديو", audio: "صوت", doc: 
 function assistantNote(t: Turn): string {
   const parts: string[] = [];
   if (t.questions?.length) {
-    parts.push(`[الأسئلة التي عُرضت للعميل كأزرار: ${t.questions.map((q, i) => `${i + 1}) ${q.label}${q.kind === "carousels" ? " (جدول ستايلات الكاروسيل)" : q.kind === "templates" ? " (معرض القوالب)" : q.kind === "styles" ? " (معرض الستايلات الكرتونية)" : q.kind === "motion" ? " (معرض مهارات الموشن)" : q.kind === "moods" ? " (معرض مشاعر الموشن)" : q.kind === "palettes" ? " (معرض الألوان)" : `: ${q.options.join(" | ")}`}`).join("؛ ")}]`);
+    parts.push(`[الأسئلة التي عُرضت للعميل كأزرار: ${t.questions.map((q, i) => `${i + 1}) ${q.label}${q.kind === "carousels" ? " (جدول ستايلات الكاروسيل)" : q.kind === "fonts" ? " (قائمة الخطوط)" : q.kind === "templates" ? " (معرض القوالب)" : q.kind === "styles" ? " (معرض الستايلات الكرتونية)" : q.kind === "motion" ? " (معرض مهارات الموشن)" : q.kind === "moods" ? " (معرض مشاعر الموشن)" : q.kind === "palettes" ? " (معرض الألوان)" : `: ${q.options.join(" | ")}`}`).join("؛ ")}]`);
   }
   const s = t.slides;
   if (s) {
@@ -249,23 +251,26 @@ export async function say(userId: string, chatId: string | null, message: string
     if (slides.length && fixAt >= 0) {
       // draw these slides again in the carousel that exists
       const block = history[fixAt].slides!;
-      pending = { id: randomUUID(), aspect: block.aspect, slides, at: fixAt, styleId: styleId || block.styleId, templateId: templateId || block.templateId, ...(block.carouselId ? { carouselId: block.carouselId } : {}), mode: "fix", ...code, made: [], failed: [], carry: block.failed.filter((f) => !slides.some((x) => x.n === f.n)) };
+      pending = { id: randomUUID(), aspect: block.aspect, slides, at: fixAt, styleId: styleId || block.styleId, templateId: templateId || block.templateId, ...(block.carouselId ? { carouselId: block.carouselId } : {}), ...(block.fontId ? { fontId: block.fontId } : {}), mode: "fix", ...code, made: [], failed: [], carry: block.failed.filter((f) => !slides.some((x) => x.n === f.n)) };
       messages[fixAt] = { ...history[fixAt], slides: { ...block, todo: slides.map((x) => x.n), failed: pending.carry, running: true, report: undefined } };
     } else if (slides.length && hold) {
       // nothing is made until they choose: the question goes out, and their answer brings the slides back
       // (the table he offered himself, with his recommendations, stands in for the plain one)
-      const own = hold.question.kind === "carousels" && questions?.some((q) => q.kind === "carousels");
+      const own = (hold.question.kind === "carousels" || hold.question.kind === "fonts") && questions?.some((q) => q.kind === hold.question.kind);
       reply.questions = own ? questions : [...(questions ?? []).filter((q) => q.label !== hold.question.label), hold.question].slice(-6);
       reply.text += `\n\n${hold.note}`;
     } else if (slides.length) {
       const pick = pickedCarousel(history);
       const carouselId = pick?.style?.id ?? "";
+      // the font they picked; "auto" leaves it to the answer's own choice of a font of the list
+      const font = pickedFont(history);
+      const fontId = font?.font?.id ?? (a.produce.font_id && findContentFont(a.produce.font_id) ? a.produce.font_id : "");
       const mine = new Set(history.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
       const named = (Array.isArray(a.produce.refs) ? a.produce.refs : []).filter((r) => mine.has(r));
       // they chose to add their own pictures: those go with the slides even if the answer forgot to name them
       const refs = (named.length || pickedPhotos(history) !== "mine" ? named : attachedPictures(history).map((f) => f.id)).slice(0, 6);
-      pending = { id: randomUUID(), aspect, slides, at, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(refs.length ? { refs } : {}), mode: "all", ...code, made: [], failed: [], carry: [] };
-      reply.slides = { aspect, items: [], todo: slides.map((x) => x.n), failed: [], running: true, total: slides.length, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...code };
+      pending = { id: randomUUID(), aspect, slides, at, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(refs.length ? { refs } : {}), mode: "all", ...code, made: [], failed: [], carry: [] };
+      reply.slides = { aspect, items: [], todo: slides.map((x) => x.n), failed: [], running: true, total: slides.length, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...code };
     }
   }
 

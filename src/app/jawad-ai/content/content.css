@@ -595,6 +595,9 @@
 .ct-ctable .tag.gold { border-color: var(--ct-amber); color: var(--ct-amber); }
 .ct-ctable .act { width: 76px; }
 .ct-ctable .act .ct-send { height: 38px; min-width: 0; width: 100%; padding: 0 10px; }
+.ct-ftable .sample { width: 44%; }
+.ct-ftable .sample span { display: block; font-size: 30px; line-height: 1.5; color: #fff; transition: opacity 0.2s; }
+.ct-ftable .sample small { display: block; font-size: 16px; line-height: 1.7; color: #e8dfd2; transition: opacity 0.2s; }
 .ct-ctable-big { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .ct-ctable-big img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 10px; background: #000; }
 @media (max-width: 640px) {

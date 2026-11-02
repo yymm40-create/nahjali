@@ -1,12 +1,14 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { CONTENT_FONTS, findContentFont, FONT_GROUPS, fontBlock, FONT_PIN, pinnedFont } from "@config/content-fonts";
+import { FONT_BY_ID } from "@/lib/editor/fonts";
 import { CAROUSEL_CODE_CRAFT, CAROUSEL_GPT_CRAFT, CAROUSEL_NICHES, CAROUSEL_STYLES, carouselSample, carouselStyleBlock, carouselStyleForCode, findCarouselStyle, NO_REALISTIC_WOMEN } from "@config/content-carousel-styles";
 import { CONTENT_PLATFORM_RULES, CONTENT_TOOLS } from "@config/content";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 import { readQuestions, type Turn } from "@/lib/content/chats";
-import { CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, stripMarks } from "@/lib/content/marks";
+import { CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, FONT_AUTO_LINE, fontLine, fontStyleLine, stripMarks } from "@/lib/content/marks";
 import { answerLine } from "@/lib/content/marks";
-import { attachedPictures, carouselHold, CAROUSEL_LABEL, MAKER_CODE, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE, pickedCarousel, pickedMaker, pickedPhotos } from "@/lib/content/maker";
+import { attachedPictures, carouselHold, CAROUSEL_LABEL, FONT_LABEL, MAKER_CODE, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE, pickedCarousel, pickedFont, pickedMaker, pickedPhotos } from "@/lib/content/maker";
 import { slidePrompt } from "@/lib/content/produce";
 import { catalogBlock, chosenBlock, chosenIds } from "@/lib/content/persona";
 
@@ -92,7 +94,7 @@ describe("what محمد باقر knows", () => {
   });
 
   it("the rules: no questions about colours and margins, the three makers, the realistic question", () => {
-    for (const t of ["لا تسأل العميل عن الألوان ولا الخطوط ولا الهوامش", MAKER_CODE, MAKER_GPT, MAKER_MIX, "أعطه الفكرة"]) expect(CONTENT_PLATFORM_RULES).toContain(t);
+    for (const t of ["لا تسأل العميل عن الألوان ولا الهوامش", MAKER_CODE, MAKER_GPT, MAKER_MIX, "أعطه الفكرة"]) expect(CONTENT_PLATFORM_RULES).toContain(t);
     expect(CONTENT_TOOLS).toContain('kind="carousels"');
     expect(CONTENT_TOOLS).toContain('"mix"');
     expect(CONTENT_TOOLS).toContain('"carousel_id"');
@@ -137,19 +139,35 @@ describe("what stops a new carousel", () => {
   const REAL = carouselLine({ id: "notebook", name: "الدفتر" });
   const FLAT = carouselLine({ id: "white-text", name: "ب" });
 
-  it("goes in order: the style, then the pictures, then who makes it", () => {
+  const FONT = fontLine({ id: "cairo", name: "القاهرة" });
+
+  it("goes in order: the style, then the pictures, then the font, then who makes it", () => {
     expect(carouselHold([user("أنتج")])?.question.label).toBe(CAROUSEL_LABEL);
     expect(carouselHold([user(CAROUSEL_HELP_LINE)])?.question.label).toBe(CAROUSEL_LABEL);
     expect(carouselHold([user(REAL)])?.question.label).toBe(PHOTOS_LABEL);
-    expect(carouselHold([user(REAL), user(PHOTOS_MAKE)])?.question.label).toBe(MAKER_LABEL);
-    expect(carouselHold([user(REAL), user(PHOTOS_MAKE), user(MAKER_MIX)])).toBeNull();
-    expect(carouselHold([user(FLAT)])?.question.label).toBe(MAKER_LABEL);
-    expect(carouselHold([user(FLAT), user(MAKER_CODE)])).toBeNull();
+    expect(carouselHold([user(REAL), user(PHOTOS_MAKE)])?.question.label).toBe(FONT_LABEL);
+    expect(carouselHold([user(REAL), user(PHOTOS_MAKE), user(FONT)])?.question.label).toBe(MAKER_LABEL);
+    expect(carouselHold([user(REAL), user(PHOTOS_MAKE), user(FONT), user(MAKER_MIX)])).toBeNull();
+    expect(carouselHold([user(FLAT)])?.question.label).toBe(FONT_LABEL);
+    expect(carouselHold([user(FLAT), user(FONT_AUTO_LINE)])?.question.label).toBe(MAKER_LABEL);
+    expect(carouselHold([user(FLAT), user(FONT_AUTO_LINE), user(MAKER_CODE)])).toBeNull();
+  });
+
+  it("offers the style's ready font first, and reads the pick", () => {
+    const soft = carouselLine({ id: "soft-3d", name: "ثري دي ناعم" });
+    expect(carouselHold([user(soft)])?.note).toContain("بالو بهايجان");
+    expect(pickedFont([user(soft), user(fontStyleLine("بالو بهايجان"))])).toEqual({ id: "baloo-bhaijaan-2", font: findContentFont("baloo-bhaijaan-2") });
+    expect(pickedFont([user(FLAT), user(fontStyleLine("x"))])?.id).toBe("alexandria");
+    // a style with no ready font: "the style's font" is left to him
+    expect(pickedFont([user(carouselLine({ id: "screenshot-steps", name: "ل" })), user(fontStyleLine("x"))])).toEqual({ id: "auto", font: null });
+    expect(pickedFont([user(FLAT), user(FONT)])?.font?.name).toBe("القاهرة");
+    expect(pickedFont([user(FLAT), user("أبي خط القاهرة")])).toBeNull();
+    expect(stripMarks(FONT)).toBe("• الخط: «القاهرة»");
   });
 
   it("wants the pictures themselves when they chose to add them", () => {
-    expect(carouselHold([user(REAL), user(PHOTOS_MINE), user(MAKER_GPT)])?.note).toContain("أرفقها بزر 📎");
-    const withPics = [user(REAL), user(PHOTOS_MINE), user("هذي", picture), user(MAKER_GPT)];
+    expect(carouselHold([user(REAL), user(PHOTOS_MINE), user(FONT), user(MAKER_GPT)])?.note).toContain("أرفقها بزر 📎");
+    const withPics = [user(REAL), user(PHOTOS_MINE), user("هذي", picture), user(FONT), user(MAKER_GPT)];
     expect(carouselHold(withPics)).toBeNull();
     expect(attachedPictures(withPics).map((f) => f.id)).toEqual(["p1"]);
   });
@@ -167,10 +185,47 @@ describe("what stops a new carousel", () => {
     expect(pickedCarousel([user(FLAT), user(MAKER_GPT), done])).toBeNull();
     expect(pickedMaker([user(FLAT), user(MAKER_GPT), done])).toBeNull();
     expect(carouselHold([user(FLAT), user(MAKER_GPT), done, user("كاروسيل ثاني")])?.question.label).toBe(CAROUSEL_LABEL);
+    expect(pickedFont([user(FLAT), user(FONT), done])).toBeNull();
   });
 
   it("does not stop a conversation that began with the older template gallery", () => {
     expect(pickedCarousel([user("• القالب: «دفتر قصاصات» [قالب:scrapbook]")])).toEqual({ id: "own", style: null });
     expect(carouselHold([user("• القالب: «دفتر قصاصات» [قالب:scrapbook]"), user(MAKER_GPT)])).toBeNull();
+  });
+});
+
+// The list of 50 Arabic fonts after the style (the owner's order): fonts the site can really load.
+describe("the 50 fonts", () => {
+  it("are 50 fonts of the catalogue, each once, in every group, with one strongest per group", () => {
+    expect(CONTENT_FONTS).toHaveLength(50);
+    expect(new Set(CONTENT_FONTS.map((f) => f.id)).size).toBe(50);
+    for (const f of CONTENT_FONTS) expect(FONT_BY_ID.has(f.id), f.id).toBe(true);
+    expect(new Set(CONTENT_FONTS.map((f) => f.group))).toEqual(new Set(FONT_GROUPS));
+    for (const g of FONT_GROUPS) expect(CONTENT_FONTS.filter((f) => f.group === g && f.top), g).toHaveLength(1);
+    for (const f of CONTENT_FONTS) expect(f.gpt.length, f.id).toBeGreaterThan(20);
+  });
+
+  it("some styles come with a ready font of the list", () => {
+    const withFont = CAROUSEL_STYLES.filter((s) => s.font);
+    expect(withFont.length).toBeGreaterThanOrEqual(20);
+    for (const s of withFont) expect(findContentFont(s.font!), s.id).toBeDefined();
+    expect(findCarouselStyle("soft-3d")?.font).toBe("baloo-bhaijaan-2");
+  });
+
+  it("goes into the slide: in words for GPT Image 2, pinned for حيدرا ماكس", () => {
+    const f = findContentFont("amiri")!;
+    const p = slidePrompt({ n: 1, total: 3, prompt: "x", styleId: "", carouselId: "newspaper", fontId: "amiri", withRef: false });
+    expect(p).toContain(fontBlock(f));
+    expect(pinnedFont(`${FONT_PIN("amiri")} ${fontBlock(f)}`)).toBe("amiri");
+    expect(pinnedFont("[FONT_ID:nope]")).toBeNull();
+  });
+
+  it("محمد باقر knows the list and the pick", () => {
+    expect(catalogBlock()).toContain('kind="fonts"');
+    expect(catalogBlock()).toContain("baloo-bhaijaan-2");
+    expect(chosenBlock(chosenIds([carouselLine({ id: "soft-3d", name: "ث" }), fontStyleLine("ب")]))).toContain("الخط الذي اختاره العميل: بالو بهايجان");
+    expect(chosenBlock(chosenIds([FONT_AUTO_LINE]))).toContain("العميل ترك الخط لك");
+    expect(readQuestions([{ label: "اختر الخط", kind: "fonts", options: ["cairo", "nope"], multi: false }])).toEqual([{ label: "اختر الخط", kind: "fonts", options: ["cairo"], multi: false }]);
+    expect(JAWAD_KNOWLEDGE).toContain("قائمة الخطوط");
   });
 });

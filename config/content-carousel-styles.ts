@@ -36,12 +36,14 @@ export interface CarouselStyle {
   code: string;
   /** it shows realistic pictures: what the person could add of their own (asked before it is made) */
   photoIdea?: string;
+  /** its ready font (config/content-fonts.ts), offered first when the person picks the font */
+  font?: string;
 }
 
 export const CAROUSEL_STYLES: CarouselStyle[] = [
   // ───────── تعليمي وشرح ─────────
   {
-    id: "notebook", n: 1, niche: "تعليمي وشرح", name: "الدفتر", winner: true, words: 22,
+    id: "notebook", n: 1, niche: "تعليمي وشرح", name: "الدفتر", winner: true, words: 22, font: "playpen-sans-arabic",
     description: "صفحة دفتر سلك حقيقية مصوّرة من فوق، بخط يد أزرق وتظليل فوسفوري وسهم مرسوم، كأنها ملاحظات شخص تثق فيه.",
     bestFor: "الشرح والملخصات والنصائح التي يحفظها الناس",
     look: "Overhead photograph of a real spiral-bound grid-paper notebook on a warm wooden desk, soft window light with leaf shadows, a pencil and a yellow sticky note near the page. Ink #1B3A8F, highlighter #FFE135 and #FF8FC0.",
@@ -53,7 +55,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     photoIdea: "صوّر صفحة من دفترك أو مكتبك من فوق، ونكتب عليها الكلام، أو نسوي لك الدفتر من الصفر.",
   },
   {
-    id: "white-text", n: 2, niche: "تعليمي وشرح", name: "الشريحة البيضاء", words: 16,
+    id: "white-text", n: 2, niche: "تعليمي وشرح", name: "الشريحة البيضاء", words: 16, font: "alexandria",
     description: "أبيض وكلام أسود عريض فقط، بلا أي صورة أو زخرفة. يبدو بسيطًا لكنه يوقف السكرول لأنه مختلف عن كل ما حوله.",
     bestFor: "الأفكار القوية والقوائم القصيرة والحسابات الجادة",
     look: "Pure white background #FFFFFF, nothing but huge black text #111111, flush right, wide margins, Swiss discipline, no pictures, no icons, no decoration.",
@@ -111,7 +113,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
 
   // ───────── تسويق وبزنس ─────────
   {
-    id: "editorial", n: 7, niche: "تسويق وبزنس", name: "الإديتوريال المجلي", winner: true, words: 24,
+    id: "editorial", n: 7, niche: "تسويق وبزنس", name: "الإديتوريال المجلي", winner: true, words: 24, font: "markazi-text",
     description: "غلاف مجلة راقٍ: بورتريه أبيض وأسود يتداخل مع عنوان عربي ضخم بالأحمر الغامق، وداخله صفحات بأعمدة.",
     bestFor: "المسوقين والمصممين والحسابات التي تريد مظهرًا فخمًا",
     look: "High-end magazine on off-white paper #F1ECE2: dramatic black-and-white studio portrait of a man cut out, overlapping a huge deep-red #8E1B1B Arabic serif headline; thin black rules, award-winning art direction.",
@@ -123,7 +125,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     photoIdea: "أرسل صورة لك بخلفية سادة، أو صورة منتجك، ونحولها أبيض وأسود فوق العنوان مثل غلاف المجلة، أو نصنع لك صورة من الصفر.",
   },
   {
-    id: "sharp-deck", n: 8, niche: "تسويق وبزنس", name: "العرض التقديمي الحاد", words: 14,
+    id: "sharp-deck", n: 8, niche: "تسويق وبزنس", name: "العرض التقديمي الحاد", words: 14, font: "ibm-plex-sans-arabic",
     description: "أسود صافٍ وكلام أبيض ضخم مع خط ليموني واحد، مثل شريحة عرض على مسرح.",
     bestFor: "الأفكار الجريئة في التسويق والأعمال ولينكدإن",
     look: "Keynote slide on pure black #000000, huge white #FFFFFF Arabic, one thin acid-lime #C6F135 accent only: an underline or a thin line chart with no labels.",
@@ -191,7 +193,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     code: "The painting is photo1; set the gold numeral and the title in code with a gradient scrim behind them.",
   },
   {
-    id: "tweet-dark", n: 14, niche: "علم نفس وتطوير ذات", name: "لقطة التويت الداكنة", words: 12,
+    id: "tweet-dark", n: 14, niche: "علم نفس وتطوير ذات", name: "لقطة التويت الداكنة", words: 12, font: "almarai",
     description: "منشور بالوضع الداكن على أسود، باسم وعلامة توثيق وجملة ضخمة. يبان ككلام إنسان، مو كتصميم.",
     bestFor: "الجمل القوية والآراء والنفسيات",
     look: "A dark-mode social media post filling a pure black #000000 slide: a small round ink-portrait avatar at the top right, a display name in white and a blue verified badge #1D9BF0. No logo of any platform.",
@@ -214,7 +216,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     photoIdea: "أرسل صورة قديمة من طفولتك أو من مكان تحبه، ونكتب عليها، أو نصنع لك صورة بهذا الشعور من الصفر.",
   },
   {
-    id: "loud-question", n: 16, niche: "علم نفس وتطوير ذات", name: "السؤال الاستفزازي", words: 10,
+    id: "loud-question", n: 16, niche: "علم نفس وتطوير ذات", name: "السؤال الاستفزازي", words: 10, font: "lalezar",
     description: "أصفر نيون وكلام أسود ضخم يملأ الشريحة من الحافة للحافة. صوته عالٍ ويُرى من بعيد.",
     bestFor: "تبسيط المفاهيم الصعبة والأسئلة المباشرة",
     look: "Full neon yellow #FAFF00 background on the cover, black #000000 on inner slides, giant ultra-black Arabic filling the slide edge to edge, tightly stacked. One flat icon at most. Raw and loud.",
@@ -239,7 +241,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     photoIdea: "صوّر ورقة بيضاء على جدار بيتك أو مكتبك ونطبع الجملة عليها، أو نسوي لك المشهد من الصفر.",
   },
   {
-    id: "grainy-gradient", n: 18, niche: "اقتباسات وتحفيز", name: "التدرج الحبيبي", words: 10,
+    id: "grainy-gradient", n: 18, niche: "اقتباسات وتحفيز", name: "التدرج الحبيبي", words: 10, font: "el-messiri",
     description: "تدرج ألوان حالم بحبيبات فيلم وسطر رفيع في المنتصف. هادئ جدًا.",
     bestFor: "التأملات والعبارات الهادئة",
     look: "Dreamy grainy gradient with heavy film noise and nothing else: peach #FF9E7A, lilac #B79CE8 and electric blue #1F4DFF on one slide, mint #A8D8B0 and coral #F58F6C on the next.",
@@ -275,7 +277,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
 
   // ───────── كوميدي وترفيه ─────────
   {
-    id: "comic-4", n: 21, niche: "كوميدي وترفيه", name: "الكوميكس ٤ مربعات", winner: true, words: 22,
+    id: "comic-4", n: 21, niche: "كوميدي وترفيه", name: "الكوميكس ٤ مربعات", winner: true, words: 22, font: "baloo-bhaijaan-2",
     description: "أربعة مربعات بخط أسود سميك وألوان مسطحة وشخصيات بسيطة، والنكتة مكتملة في الشريحة نفسها.",
     bestFor: "النكت والمواقف من الحياة والعمل",
     look: "Modern webcomic with 4 equal panels and white gutters, thick black ink outlines, flat bold colours (cyan #3CC8F0, warm orange #FF9F1C, lilac #B59CE8), simple funny round-headed male characters, professional comic artist quality.",
@@ -297,7 +299,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     code: "Better painted: photo1 is the whole comic with empty caption boxes and no writing; set each caption yourself inside its box.",
   },
   {
-    id: "meme", n: 23, niche: "كوميدي وترفيه", name: "الميم", words: 10,
+    id: "meme", n: 23, niche: "كوميدي وترفيه", name: "الميم", words: 10, font: "cairo",
     description: "صورة موقف واقعية بكلام أبيض سميك فوق وتحت. يصل بسرعة ويُرسل للأصحاب.",
     bestFor: "المواقف اليومية التي يقول عنها الناس: هذا أنا",
     look: "Classic meme layout: a dark candid photograph of an exhausted or shocked man lit by a phone or laptop screen, bold white text with a black outline at the top and the bottom.",
@@ -309,7 +311,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     photoIdea: "أرسل صورتك بتعبير مضحك أو صورة من يومك، ونكتب عليها، أو نصنع لك صورة موقف من الصفر.",
   },
   {
-    id: "phone-chat", n: 24, niche: "كوميدي وترفيه", name: "محادثة آيفون", words: 20,
+    id: "phone-chat", n: 24, niche: "كوميدي وترفيه", name: "محادثة آيفون", words: 20, font: "ibm-plex-sans-arabic",
     description: "شاشة رسائل بفقاعات زرقاء ورمادية، والقصة تتكشف رسالة رسالة.",
     bestFor: "القصص القصيرة والمواقف والمبيعات بأسلوب حوار",
     look: "An exact phone messages screen on white #FFFFFF: a contact name at the top, grey bubbles #E9E9EB on the left, blue bubbles #0A84FF on the right.",
@@ -382,7 +384,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     photoIdea: "أرسل صورة بانوراما من جوالك أو صورة عريضة لمكانك ونقسمها على الشرائح، أو نصنع لك المشهد من الصفر.",
   },
   {
-    id: "newspaper", n: 30, niche: "سفر ولايف ستايل", name: "الجريدة", words: 12,
+    id: "newspaper", n: 30, niche: "سفر ولايف ستايل", name: "الجريدة", words: 12, font: "amiri",
     description: "صفحة جريدة قديمة حقيقية بعنوان ضخم وصورة منقطة، ودائرة حمراء بالقلم حول الخبر.",
     bestFor: "الأخبار والقصص والتحليلات ولفت الانتباه",
     look: "Photograph of an old Arabic broadsheet newspaper on a table with coffee: greyish paper #DAD6CC, black ink, a black-and-white halftone photo of a man or an object, columns of tiny grey lines instead of words, a thick red marker circle #D21F1F.",
@@ -667,7 +669,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     photoIdea: "صوّر بطاقاتك الحقيقية على طاولتك ونكتب عليها، أو نصنع لك البطاقات من الصفر.",
   },
   {
-    id: "open-textbook", n: 53, niche: "تعليمي وشرح", name: "الكتاب المفتوح", words: 16,
+    id: "open-textbook", n: 53, niche: "تعليمي وشرح", name: "الكتاب المفتوح", words: 16, font: "noto-naskh-arabic",
     description: "كتاب حقيقي مفتوح وسطر مظلل بالفوسفوري، وملاحظة بالقلم في الهامش. كأنك تقرأ مع الشخص.",
     bestFor: "الملخصات والاقتباسات من الكتب والمراجع",
     look: "Photograph of an open hardcover book on a desk in warm lamp light, cream pages #F3EAD3 with lines of plain grey text bars instead of real words, one passage highlighted in yellow #FFF04D, a pencil note in the margin.",
@@ -738,7 +740,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     photoIdea: "صوّر سبورتك البيضاء بعد الاجتماع كما هي، أو نصنع لك السبورة من الصفر ونرسم عليها.",
   },
   {
-    id: "expert-quote", n: 59, niche: "تسويق وبزنس", name: "اقتباس الخبير", words: 22,
+    id: "expert-quote", n: 59, niche: "تسويق وبزنس", name: "اقتباس الخبير", words: 22, font: "readex-pro",
     description: "صورة الشخص الاحترافية مع اقتباس كبير بعلامتي تنصيص واسمه ومنصبه. الأسلوب المهني للينكدإن.",
     bestFor: "آراء الخبراء وبناء العلامة الشخصية",
     look: "Clean professional layout: a charcoal #1E293B left panel with a sharp studio portrait of a man in a suit, an off-white #F8FAFC right panel with a huge quotation mark in teal #0F766E and the quote; a thin name and title line.",
@@ -763,7 +765,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
 
   // ───────── علم نفس وتطوير ذات (٥١–١٠٠) ─────────
   {
-    id: "anatomy-engraving", n: 61, niche: "علم نفس وتطوير ذات", name: "النقش التشريحي", words: 14,
+    id: "anatomy-engraving", n: 61, niche: "علم نفس وتطوير ذات", name: "النقش التشريحي", words: 14, font: "amiri",
     description: "رسوم تشريحية قديمة بخطوط حفر دقيقة على ورق عتيق: دماغ، قلب، يد. علمي وغامض معًا.",
     bestFor: "علم النفس والعادات وكيف يعمل العقل",
     look: "Vintage anatomical engraving: fine cross-hatched line drawings of a brain, a heart or a hand in sepia ink on aged paper #E9DCC0, small Latin-style numbering marks, museum plate feel.",
@@ -848,7 +850,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     photoIdea: "أرسل لقطة من فيديوك بلون سينمائي لنضع عليها الترجمة، أو نصنع لك اللقطة من الصفر.",
   },
   {
-    id: "calligraphy-poem", n: 68, niche: "اقتباسات وتحفيز", name: "بيت الشعر بالخط", words: 12,
+    id: "calligraphy-poem", n: 68, niche: "اقتباسات وتحفيز", name: "بيت الشعر بالخط", words: 12, font: "aref-ruqaa",
     description: "بيت شعر عربي بخط الثلث أو الديواني الحقيقي على خلفية داكنة، مع زخرفة رفيعة واسم الشاعر.",
     bestFor: "الشعر والحكم العربية والأدب",
     look: "Deep green #0F2E25 or ink-black background with a subtle paper grain, one verse in masterful Arabic calligraphy in gold #C9A45C with a thin gold rule under it, a small ornament.",
@@ -859,7 +861,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     code: "Set the verse in the catalogue's best calligraphic font, large, with a soft gold gradient; draw the rule and ornament thin; never fake calligraphy with shapes.",
   },
   {
-    id: "chrome-y2k", n: 69, niche: "اقتباسات وتحفيز", name: "الكروم Y2K", words: 8,
+    id: "chrome-y2k", n: 69, niche: "اقتباسات وتحفيز", name: "الكروم Y2K", words: 8, font: "lemonada",
     description: "حروف معدنية لامعة بانعكاسات زرقاء وفضية وفقاعات زجاجية، بروح ألعاب وأغلفة الألفية.",
     bestFor: "الشباب والموضة والموسيقى والعبارات الجريئة",
     look: "Y2K chrome: liquid-metal silver lettering with sharp blue #4FB3FF and magenta #FF4FD8 reflections, glossy glass bubbles, a lens flare, on a gradient of deep blue to black; airbrushed finish.",
@@ -884,7 +886,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
 
   // ───────── كوميدي وترفيه (٥١–١٠٠) ─────────
   {
-    id: "search-bar", n: 71, niche: "كوميدي وترفيه", name: "شريط البحث", words: 14,
+    id: "search-bar", n: 71, niche: "كوميدي وترفيه", name: "شريط البحث", words: 14, font: "tajawal",
     description: "شريط بحث بأسلوب محركات البحث واقتراحات تكمل الجملة بشكل مضحك أو صادم.",
     bestFor: "النكت والحقائق الاجتماعية والمحتوى الخفيف",
     look: "A clean white #FFFFFF page with a large rounded search bar, a magnifier icon, a blinking cursor, and a dropdown list of suggestions with a small clock icon beside each; no logos.",
@@ -895,7 +897,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     code: "Pure code: draw the bar, icons, cursor and dropdown exactly; the suggestions large.",
   },
   {
-    id: "notifications", n: 72, niche: "كوميدي وترفيه", name: "كومة الإشعارات", words: 14,
+    id: "notifications", n: 72, niche: "كوميدي وترفيه", name: "كومة الإشعارات", words: 14, font: "tajawal",
     description: "شاشة قفل جوال وعليها إشعارات متراكمة من تطبيقات وهمية، كل إشعار نكتة أو حقيقة.",
     bestFor: "الحياة اليومية والعادات والسخرية الخفيفة",
     look: "A phone lock screen with a dark blurred wallpaper #1A1D2E, the time large at the top, and a stack of rounded notification cards, each with a coloured app square (no real logos), an app name and a message.",
@@ -1065,7 +1067,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
 
   // ───────── تقنية وذكاء اصطناعي (٥١–١٠٠) ─────────
   {
-    id: "ai-chat", n: 86, niche: "تقنية وذكاء اصطناعي", name: "محادثة الذكاء الاصطناعي", words: 18,
+    id: "ai-chat", n: 86, niche: "تقنية وذكاء اصطناعي", name: "محادثة الذكاء الاصطناعي", words: 18, font: "readex-pro",
     description: "واجهة دردشة مع مساعد ذكي: سؤال المستخدم ورد المساعد، بأسلوب الشاشة الحقيقية. يشرح البرومبت ونتيجته.",
     bestFor: "شرح البرومبتات وأدوات الذكاء الاصطناعي",
     look: "A clean AI chat interface on soft grey #F4F4F5: a user message in a rounded dark bubble on the right, the assistant's reply as plain text with a small sparkle icon, a text box at the bottom; no logos.",
@@ -1246,7 +1248,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
   },
   // ───────── 3D طفولي: main looks, not topics; any subject is drawn in the look ─────────
   {
-    id: "soft-3d", n: 101, niche: "3D طفولي", name: "ثري دي ناعم", words: 10,
+    id: "soft-3d", n: 101, niche: "3D طفولي", name: "ثري دي ناعم", words: 10, font: "baloo-bhaijaan-2",
     description: "كل عناصر الموضوع تتحول لمجسمات ثلاثية الأبعاد ناعمة ولامعة كأنها ألعاب، بألوان فاتحة وظلال خفيفة. ينفع لأي موضوع.",
     bestFor: "أي موضوع تبي تبسطه وتخليه مرح: شرح، نصايح، خطوات، أرقام",
     look: "Cute soft 3D render, glossy rounded toy-like objects with smooth plastic and matte clay materials, pastel background, soft global illumination, gentle contact shadows, playful proportions, clean composition with lots of empty space; the objects are whatever the topic needs.",
@@ -1257,7 +1259,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     code: "The 3D scene is painted by GPT Image 2 with empty space for the words; Haidara writes the Arabic in code in a heavy rounded font. Never draw the 3D objects in code.",
   },
   {
-    id: "animated-film", n: 102, niche: "3D طفولي", name: "ستايل بيكسار", words: 10,
+    id: "animated-film", n: 102, niche: "3D طفولي", name: "ستايل بيكسار", words: 10, font: "lemonada",
     description: "لقطة كأنها من فيلم أنيميشن عائلي: شخصية كرتونية بعيون كبيرة وتعابير واضحة، وإضاءة سينمائية دافية. الموضوع يصير قصة.",
     bestFor: "القصص والمواقف اليومية والمشاعر وأي فكرة تنشرح بشخصية",
     look: "Still frame from a modern 3D animated family feature film: stylized cartoon character (a boy, an old man, an animal or a talking object) with big expressive eyes and exaggerated proportions, soft subsurface skin, rich cinematic warm lighting, detailed but simple set, shallow depth of field; never a realistic person and never a woman.",
@@ -1268,7 +1270,7 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     code: "Keep the character as a reference from the first GPT Image 2 slide so it stays the same; Haidara writes the Arabic in code over the calm part of the frame.",
   },
   {
-    id: "claymation", n: 103, niche: "3D طفولي", name: "الصلصال", words: 10,
+    id: "claymation", n: 103, niche: "3D طفولي", name: "الصلصال", words: 10, font: "marhey",
     description: "كل شيء في الشريحة معمول من صلصال ملون، وبصمات الأصابع باينة عليه، كأنه فيلم ستوب موشن. دافي ويشبه شغل اليد.",
     bestFor: "أي موضوع تبي له إحساس يدوي ولطيف: علوم، عادات، قصص قصيرة",
     look: "Handmade plasticine claymation stop-motion look, every object and character moulded from colourful clay with visible fingerprint dents and soft rounded edges, warm studio light, simple clay set with a plain clay backdrop; the objects are whatever the topic needs.",
