@@ -10,8 +10,10 @@ import type { ClaudeModelKey } from "@config/claude-models";
 export interface PagePerks {
   atCost: boolean;
   claudeModel: ClaudeModelKey | null;
+  /** the robots' replies cost this person nothing (the owner, an unlimited account): a conversation shows its value instead */
+  free: boolean;
 }
-const NONE: PagePerks = { atCost: false, claudeModel: null };
+const NONE: PagePerks = { atCost: false, claudeModel: null, free: false };
 const KEY = "jw-perks";
 const KEEP_MS = 120_000;
 
@@ -40,7 +42,7 @@ function start() {
   fetch("/api/access/perks", { cache: "no-store" })
     .then((r) => (r.ok ? (r.json() as Promise<Partial<PagePerks>>) : NONE))
     .then((j) => {
-      value = { atCost: j.atCost === true, claudeModel: (j.claudeModel as ClaudeModelKey | null | undefined) ?? null };
+      value = { atCost: j.atCost === true, claudeModel: (j.claudeModel as ClaudeModelKey | null | undefined) ?? null, free: j.free === true };
       try {
         sessionStorage.setItem(KEY, JSON.stringify({ v: value, at: Date.now() }));
       } catch {

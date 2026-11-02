@@ -343,6 +343,9 @@ export interface ClaudeBill {
   free: boolean;
   /** halalas charged after `settle` */
   charged: number;
+  /** after `settle`: the reply's value in halalas — exactly what was taken from a paying wallet, or (a free account:
+   * the owner, an unlimited one) what it would have cost at the site's price; a conversation's running total adds these */
+  worth: number;
   /** after the reply: takes the real usage (USD) plus the platform's profit — never throws over a short balance */
   settle: (usd: number) => Promise<number>;
   /** the reply failed: what was held for it goes back */
@@ -360,9 +363,11 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
   const bill: ClaudeBill = {
     free: true,
     charged: 0,
+    worth: 0,
     settle: async (usd: number) => {
       const ref = `claude:${crypto.randomUUID()}`;
-      await logFree(who.id, ref, label, claudeHalalas(usd, undefined, kind));
+      bill.worth = usd > 0 ? claudeHalalas(usd, undefined, kind) : 0;
+      await logFree(who.id, ref, label, bill.worth);
       await logCost(who.id, ref, label, usd);
       return 0;
     },
@@ -384,9 +389,10 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
   }
   let open = true;
   const back = (coins: number) => (who.team ? adjustTeam(who.team, who.id, coins, "refund", ref, label, true) : adjust(who.id, coins, "refund", ref, label, true));
-  return {
+  const paid: ClaudeBill = {
     free: false,
     charged: 0,
+    worth: 0,
     settle: async (usd: number) => {
       if (!open) return 0;
       open = false;
@@ -396,7 +402,8 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
       let charged = Math.min(coins, held);
       if (held > coins) await back(held - coins);
       else if (coins > held) charged += who.team ? await takeTeamUpTo(who.team, who.id, coins - held, "settle", ref, label) : await takeUpTo(who.id, coins - held, "settle", ref, label);
-      bill.charged = charged;
+      paid.charged = charged;
+      paid.worth = charged;
       return charged;
     },
     release: async () => {
@@ -405,4 +412,5 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
       if (held > 0) await back(held);
     },
   };
+  return paid;
 }

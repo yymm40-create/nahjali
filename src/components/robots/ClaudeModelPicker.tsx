@@ -30,7 +30,7 @@ export default function ClaudeModelPicker({ className = "", disabled = false, sp
         disabled={disabled}
         style={{ border: line, borderRadius: 999, padding: "2px 10px", background: "transparent", color: "inherit", cursor: "pointer", fontSize: 12 }}
       >
-        🧠 {model.name} · <Coined text={spent > 0 ? `أُخذ منك ${coinStr(spent)} في هذي المحادثة` : `≈ ${coinStr(reply(model))} للرد`} size={12} /> {open ? "▴" : "▾"}
+        🧠 {model.name} · <Coined text={spent > 0 ? (perks.free ? `قيمة هذي المحادثة ${coinStr(spent)} (مجانية لك)` : `أُخذ منك ${coinStr(spent)} في هذي المحادثة`) : `≈ ${coinStr(reply(model))} للرد`} size={12} /> {open ? "▴" : "▾"}
       </button>
       {open && (
         <div style={{ marginTop: 6, border: line, borderRadius: 12, padding: 10 }}>
@@ -59,7 +59,9 @@ export default function ClaudeModelPicker({ className = "", disabled = false, sp
             ))}
           </div>
           <p style={{ margin: "8px 0 0" }}>💡 {model.advice}</p>
-          {spent > 0 && <p style={{ margin: "4px 0 0", fontWeight: 700 }}>💰 أُخذ منك بالضبط <Coined text={coinStr(spent)} size={12} /> في هذي المحادثة لين الحين.</p>}
+          {spent > 0 && (perks.free
+            ? <p style={{ margin: "4px 0 0", fontWeight: 700 }}>💰 قيمة هذي المحادثة بالضبط <Coined text={coinStr(spent)} size={12} /> لين الحين — مجانية لك، ما ينخصم من رصيدك شي.</p>
+            : <p style={{ margin: "4px 0 0", fontWeight: 700 }}>💰 أُخذ منك بالضبط <Coined text={coinStr(spent)} size={12} /> في هذي المحادثة لين الحين.</p>)}
           <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
             {spent > 0 ? "كل رد" : "الرد العادي"} تقريبًا <Coined text={coinStr(reply(model))} size={12} />، ويختلف حسب طول المحادثة والموديل. {perks.atCost ? "الخصم من رصيدك هو تكلفة الاستخدام الفعلية (مدخلات ومخرجات) بدون أي ربح." : `الخصم من رصيدك هو تكلفة الاستخدام الفعلية + ${CLAUDE_MARGIN_PCT}٪ فقط ربح للمنصة.`}
           </p>

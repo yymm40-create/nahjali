@@ -805,7 +805,7 @@ export default function MotionLab({
       const payload = { action, model: claude.id, ...body, stream: true, ...(partialRaw ? { partialRaw } : {}), ...(cap ? { effortCap: cap } : {}) };
       // watched: every piece he writes reaches the page as he writes it (the program grows in the conversation)
       let written = partialRaw;
-      const asked = watch ? postWatch<T & { error?: string; partialRaw?: string; noProgress?: boolean; effortUsed?: string; coins?: number }>(url, payload, (piece) => watch((written += piece)), outer) : postJson<T & { error?: string; partialRaw?: string; noProgress?: boolean; effortUsed?: string; coins?: number }>(url, payload, outer);
+      const asked = watch ? postWatch<T & { error?: string; partialRaw?: string; noProgress?: boolean; effortUsed?: string; coins?: number; worth?: number }>(url, payload, (piece) => watch((written += piece)), outer) : postJson<T & { error?: string; partialRaw?: string; noProgress?: boolean; effortUsed?: string; coins?: number; worth?: number }>(url, payload, outer);
       const result = await asked.catch((e: unknown) => {
         if (outer?.aborted) throw new DOMException("cancelled", "AbortError");
         throw e;
@@ -815,7 +815,7 @@ export default function MotionLab({
       if (!result || Object.keys(result).length === 0) throw new Error("انقطع رد الخادم قبل ما يكتمل (الخطوة أخذت أطول من وقت الطلب عند المنصة). جرّب مرة ثانية.");
       // every leg (even one cut off by the platform's own clock and continued next request) is its own real Claude
       // charge: all of them join this conversation's exact «أُخذ منك» total
-      setSpent((s) => s + Math.max(0, Number(result.coins) || 0));
+      setSpent((s) => s + Math.max(0, Number(result.worth ?? result.coins) || 0));
       if (typeof result.partialRaw !== "string") {
         savePart(store, "", "");
         return result;
@@ -1433,9 +1433,9 @@ export default function MotionLab({
   /** «🌐 ابحث»: a real web search (like Claude's own); what it found is shown and goes with the next step. */
   const searchWeb = async (query: string) => {
     workLine(`🌐 أبحث في الإنترنت: «${query.slice(0, 80)}»…`);
-    let r: { text: string; sources: string[]; coins: number };
+    let r: { text: string; sources: string[]; coins: number; worth?: number };
     try {
-      r = await postJson<{ text: string; sources: string[]; coins: number }>(
+      r = await postJson<{ text: string; sources: string[]; coins: number; worth?: number }>(
         `/api/jawad/editor/projects/${projectId}`,
         { action: "lab_search", model: claude.id, query, about: plan ? `${plan.title} — ${plan.idea}` : brief.slice(0, 600) },
         abort.current?.signal,
@@ -1446,7 +1446,7 @@ export default function MotionLab({
       workLine(`⚠️ ما قدرت أبحث الحين (${e instanceof Error ? e.message : e}) — أكمل بدون البحث.`);
       return "";
     }
-    setSpent((s) => s + Math.max(0, Number(r.coins) || 0));
+    setSpent((s) => s + Math.max(0, Number(r.worth ?? r.coins) || 0));
     post({ k: "search", query, text: r.text, sources: r.sources });
     const found = `${r.text}${r.sources.length ? `\nالمصادر: ${r.sources.join(" ، ")}` : ""}`;
     setResearch(found);

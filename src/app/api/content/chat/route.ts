@@ -25,7 +25,7 @@ export const POST = handle(async (req: Request) => {
   try {
     const r = await robotTurn(user, b.model, "محادثة محمد باقر", () => say(user.id, chatId, message, attachments, user.email), { said: message, reply: (r) => r.text });
     // exactly what this conversation has taken from the wallet now, this reply's real charge included (never an estimate)
-    const spent = await addChatSpent("content_chats", "id", r.chatId, r.spentHalalas, r.coins);
+    const spent = await addChatSpent("content_chats", "id", r.chatId, r.spentHalalas, r.worth);
     return NextResponse.json({ ...r, spent });
   } catch (e) {
     if (e instanceof UserError) throw e;

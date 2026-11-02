@@ -55,7 +55,7 @@ export async function remembering<T>(userId: string, run: () => Promise<T>, memo
   return out;
 }
 
-export async function robotTurn<T extends { usd: number }>(user: RobotUser, modelId: unknown, label: string, run: () => Promise<T>, memo?: Memo<T>, options: RobotTurnOptions = {}): Promise<T & { model: string; coins: number }> {
+export async function robotTurn<T extends { usd: number }>(user: RobotUser, modelId: unknown, label: string, run: () => Promise<T>, memo?: Memo<T>, options: RobotTurnOptions = {}): Promise<T & { model: string; coins: number; worth: number }> {
   // a code may cap the model (the owner's «الأكواد»): a dearer pick is served by the ceiling's model
   const model = claudeModelOf(await claudeFor(user.email, modelId));
   const bill = await claudeMeter({ id: user.id, email: user.email, owner: isAdmin(user.email), team: user.team }, model, label, options.price ?? "claude");
@@ -67,5 +67,6 @@ export async function robotTurn<T extends { usd: number }>(user: RobotUser, mode
     console.error("claude settle failed", e);
     return 0;
   });
-  return { ...out, model: model.id, coins };
+  // `worth`: what was taken, or for a free account what it would have cost — a conversation's running total adds it
+  return { ...out, model: model.id, coins, worth: bill.worth };
 }

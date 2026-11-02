@@ -94,7 +94,7 @@ const outputBudget = (model: unknown) => claudeModelOf(model).key === "haiku" ? 
  * 800 s, counted from its start (`b.__at`, stamped by the route), and the step's own work before Claude is in that.
  */
 const WINDOW_MS = 660_000;
-type Asked<T> = { data: T; coins: number; model: string; partialRaw?: undefined } | { data?: undefined; coins: number; model: string; partialRaw: string; noProgress: boolean; effortUsed: string };
+type Asked<T> = { data: T; coins: number; worth: number; model: string; partialRaw?: undefined } | { data?: undefined; coins: number; worth: number; model: string; partialRaw: string; noProgress: boolean; effortUsed: string };
 
 /**
  * One Claude step of the lab. A reply the request's time cannot hold comes back as `partialRaw` (the JSON written so far),
@@ -125,12 +125,12 @@ async function ask<T>(who: Who, b: Record<string, unknown>, label: string, parts
   );
   if (r.partial) {
     const now = stitchCode(written, r.raw);
-    return { partialRaw: now, noProgress: now.length <= written.length, effortUsed: level, coins: r.coins, model: r.model };
+    return { partialRaw: now, noProgress: now.length <= written.length, effortUsed: level, coins: r.coins, worth: r.worth, model: r.model };
   }
-  if (!written) return { data: r.data, coins: r.coins, model: r.model };
+  if (!written) return { data: r.data, coins: r.coins, worth: r.worth, model: r.model };
   const whole = stitchCode(written, r.raw);
   try {
-    return { data: JSON.parse(whole) as T, coins: r.coins, model: r.model };
+    return { data: JSON.parse(whole) as T, coins: r.coins, worth: r.worth, model: r.model };
   } catch {
     console.error("motion lab", label, "continued reply is not JSON", whole.slice(-200));
     throw new UserError("ما قدرت أجمع رد حيدرا ماكس بعد ما انقطع. جرّب مرة ثانية.", 502);
@@ -176,7 +176,7 @@ ${openRefs([...ALWAYS_AT_PLAN, ...choicesRefs(choices)]).text}`,
   if (r.partialRaw !== undefined) return r;
   // the picks ride with the plan, so writing and review see them too
   const plan = { ...readPlan(r.data, seconds, assets.map((a) => a.id), foot?.seconds), choices, ...(foot ? { narration: [] } : {}) };
-  return { plan, say: text(r.data.say, 600), coins: r.coins, model: r.model };
+  return { plan, say: text(r.data.say, 600), coins: r.coins, worth: r.worth, model: r.model };
 }
 
 /** 2 · WRITE: the scene program on the kit, from the approved plan (or a fix of the last one, from its errors). */
@@ -214,7 +214,7 @@ ${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text
   const r = await ask<{ code: string; notes: string }>(who, b, previous ? "مختبر الموشن · تصليح" : "مختبر الموشن · كتابة المشهد", parts, CODE_SCHEMA, outputBudget(b.model), previous ? "medium" : "high", onText);
   if (r.partialRaw !== undefined) return r;
   const chk = checkScene(r.data.code);
-  return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), coins: r.coins, model: r.model };
+  return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), coins: r.coins, worth: r.worth, model: r.model };
 }
 
 /** 3 · REVIEW: he looks at what the browser rendered, scores it, and rewrites it when it is below the bar. */
@@ -253,7 +253,7 @@ ${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text
   if (r.partialRaw !== undefined) return r;
   const review = readReview(r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkScene(r.data.code) : null;
-  return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };
+  return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, worth: r.worth, model: r.model };
 }
 
 /**
@@ -331,6 +331,7 @@ ${code ? `THE CURRENT PROGRAM:\n${code}` : ""}${footagePart(b, Boolean(code))}${
     problems: revised?.problems ?? [],
     search,
     coins: r.coins,
+    worth: r.worth,
     model: r.model,
   };
 }
@@ -354,7 +355,7 @@ export async function labSearch(p: EditorProject, who: Who, b: Record<string, un
       }),
     (x) => x.usd,
   );
-  return { text: text(r.text, 6000), sources: r.sources, coins: r.coins, model: r.model };
+  return { text: text(r.text, 6000), sources: r.sources, coins: r.coins, worth: r.worth, model: r.model };
 }
 
 /** What a revised program must keep (said briefly; the full contract is in the system prompt). */

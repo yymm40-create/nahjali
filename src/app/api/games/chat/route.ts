@@ -24,7 +24,7 @@ export const POST = handle(async (req: Request) => {
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   try {
     const r = await robotTurn(user, b.model, "محادثة قنبر", () => say(user.id, chatId, message, user.email, modeOf(b.mode) || null), { said: message, reply: (r) => r.text });
-    const spent = await addChatSpent("games_chats", "id", r.chatId, r.spentHalalas, r.coins);
+    const spent = await addChatSpent("games_chats", "id", r.chatId, r.spentHalalas, r.worth);
     return NextResponse.json({ ...r, spent });
   } catch (e) {
     const why = claudeTrouble(e);
