@@ -139,6 +139,6 @@ export async function handOff(p: EditorProject, who: Who, b: { messages?: unknow
   const next = { messages: [], handoff: r.data.summary.trim().slice(0, 8000), chats: c.chats + 1 };
   if (stored.stored && !(await saveChat(p, next))) throw new UserError("ما قدرنا نحفظ؛ جرّب مرة ثانية.", 500);
   // writing the handoff is itself part of this edit's conversation: its own real charge joins the running total
-  const spentHalalas = stored.stored ? await addChatSpent("editor_chats", "project_id", p.id, stored.spentHalalas, r.coins) : stored.spentHalalas + r.coins;
+  const spentHalalas = stored.stored ? await addChatSpent("editor_chats", "project_id", p.id, stored.spentHalalas, r.worth) : stored.spentHalalas + r.worth;
   return { ...next, stored: stored.stored, spentHalalas };
 }

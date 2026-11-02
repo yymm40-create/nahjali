@@ -34,7 +34,7 @@ export const POST = handle(async (req: Request) => {
     const messages: ChatTurn[] = [...before, { role: "user", text: question, mode }, { role: "assistant", text: r.answer, mode, sources: r.sources, found: r.found }];
     const id = await saveChat(user.id, kept?.id ?? null, messages, r.usd);
     // exactly what this conversation has taken from the wallet now, this reply's real charge included (never an estimate)
-    const spent = id ? await addChatSpent("islamic_chats", "id", id, kept?.spentHalalas ?? 0, r.coins) : (kept?.spentHalalas ?? 0) + r.coins;
+    const spent = id ? await addChatSpent("islamic_chats", "id", id, kept?.spentHalalas ?? 0, r.worth) : (kept?.spentHalalas ?? 0) + r.worth;
     return NextResponse.json({ ...r, chatId: id, spent });
   } catch (e) {
     const why = claudeTrouble(e);

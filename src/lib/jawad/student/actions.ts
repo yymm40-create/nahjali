@@ -689,7 +689,7 @@ export async function outputAction(user: User, id: string, b: Body) {
     case "chat": {
       const r = await robotTurn(user, b.model, "محادثة مع صادق (الطالب الذكي)", () => chatTurn(user.id, o, b.message, isAdmin(user.email)));
       // exactly what this conversation has taken from the wallet now (never an estimate), read back next time too
-      const spent = r.spentHalalas + r.coins;
+      const spent = r.spentHalalas + r.worth;
       await saveOutput(o.id, { content: { messages: r.messages, spentHalalas: spent } });
       return { messages: r.messages, coins: r.coins, spent };
     }

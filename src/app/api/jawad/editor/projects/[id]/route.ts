@@ -209,7 +209,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await codeGradeReview(p, who, b));
     case "assistant": {
       const r = await claudeCharged(who, b.model, "محادثة حيدرا ماكس", () => assist(p, who, b, new URL(req.url).origin), (r) => r.usd, { said: String(b.message ?? ""), reply: (r) => r.reply });
-      const spent = await addChatSpent("editor_chats", "project_id", p.id, r.spentHalalas, r.coins);
+      const spent = await addChatSpent("editor_chats", "project_id", p.id, r.spentHalalas, r.worth);
       return NextResponse.json({ ...r, spent });
     }
     case "fix_link":

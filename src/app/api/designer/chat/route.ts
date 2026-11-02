@@ -24,7 +24,7 @@ export const POST = handle(async (req: Request) => {
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   try {
     const r = await robotTurn(user, b.model, "محادثة كاظم", () => say(user.id, chatId, message, attachments, user.email), { said: message, reply: (r) => r.text });
-    const spent = await addChatSpent("designer_chats", "id", r.chatId, r.spentHalalas, r.coins);
+    const spent = await addChatSpent("designer_chats", "id", r.chatId, r.spentHalalas, r.worth);
     return NextResponse.json({ ...r, spent });
   } catch (e) {
     if (e instanceof UserError) throw e;

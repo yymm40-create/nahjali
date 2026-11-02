@@ -252,7 +252,7 @@ export default function AssistantChat({
     setPending([]);
     setBusy(true);
     try {
-      const r = await post<AssistantAnswer & { coins?: number }>("/api/jawad/assistant", {
+      const r = await post<AssistantAnswer & { coins?: number; worth?: number }>("/api/jawad/assistant", {
         chatId,
         sectionId: section.id,
         messages: history,
@@ -264,7 +264,7 @@ export default function AssistantChat({
       if (requestSession !== session.current) return;
       if (!r.ok) throw new Error(r.body.error ?? "تعذّر على جواد الرد الآن.");
       // exactly what this reply really took (the server's real usage + its margin, to the halala) — added to this chat's running total
-      setSpent((s) => s + Math.max(0, Number(r.body.coins) || 0));
+      setSpent((s) => s + Math.max(0, Number(r.body.worth ?? r.body.coins) || 0));
       const views = ready.map((p) => p.view!);
       const set = r.body.set ?? {};
       const hasChange = Object.keys(set).some((k) => k !== "thumbnail");

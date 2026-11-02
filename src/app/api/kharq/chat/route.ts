@@ -33,7 +33,7 @@ export const POST = handle(async (req: Request) => {
           ? await robotTurn(user, b.model, `فريق ${KHARQ.persona}`, () => consultTeam({ userId: user.id, chatId, email: user.email ?? null }))
           : await robotTurn(user, b.model, `محادثة ${KHARQ.persona}`, () => goOn({ userId: user.id, chatId, email: user.email ?? null, origin, auto }));
       // exactly what this conversation has taken from the wallet now, this reply's real charge included (never an estimate)
-      const spent = await addChatSpent("kharq_chats", "id", chatId, r.spentHalalas, r.coins);
+      const spent = await addChatSpent("kharq_chats", "id", chatId, r.spentHalalas, r.worth);
       return NextResponse.json({ ...r, spent });
     } catch (e) {
       if (e instanceof UserError) throw e;
@@ -50,7 +50,7 @@ export const POST = handle(async (req: Request) => {
   const origin = new URL(req.url).origin;
   try {
     const r = await robotTurn(user, b.model, `محادثة ${KHARQ.persona}`, () => say({ userId: user.id, chatId, message, email: user.email ?? null, attachments, origin, auto }));
-    const spent = await addChatSpent("kharq_chats", "id", r.chatId, r.spentHalalas, r.coins);
+    const spent = await addChatSpent("kharq_chats", "id", r.chatId, r.spentHalalas, r.worth);
     return NextResponse.json({ ...r, spent });
   } catch (e) {
     if (e instanceof UserError) throw e;
