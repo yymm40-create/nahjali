@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { refundCoins, reserveCoins, reserveTeamCoins, settleCoins } from "@/lib/coins";
 import { giveAttempt, teamPayment, teamSeriesOf } from "./team";
 import { serviceKind } from "./credits";
+import { claudeCost, type ClaudeUsage } from "./anthropic";
 
 /** What a coin movement says in the user's history. */
 const COIN_LABELS: Record<string, string> = {
@@ -131,6 +132,33 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
     throw e;
   }
   return { job, created: true };
+}
+
+/**
+ * One Claude reply's tokens, split the way the bill is (fresh input, cache written — 5-minute / 1-hour when the API says
+ * — cache read, output): stored next to its `cost_usd` so the owner can see whether a step's conversation was read from
+ * the cache or written again (only the cost and the total were kept, which can't tell a cache hit from a miss).
+ */
+export function replyTokens(u: ClaudeUsage) {
+  const split = u.cache_creation && (u.cache_creation.ephemeral_5m_input_tokens != null || u.cache_creation.ephemeral_1h_input_tokens != null);
+  return {
+    input_tokens: u.input_tokens ?? 0,
+    cache_creation_input_tokens: u.cache_creation_input_tokens ?? 0,
+    ...(split ? { cache_creation: { ephemeral_5m_input_tokens: u.cache_creation!.ephemeral_5m_input_tokens ?? 0, ephemeral_1h_input_tokens: u.cache_creation!.ephemeral_1h_input_tokens ?? 0 } } : {}),
+    cache_read_input_tokens: u.cache_read_input_tokens ?? 0,
+    output_tokens: u.output_tokens ?? 0,
+  };
+}
+
+/**
+ * The same split as one compact log line (`film reply <what> <project> in= w5m= w1h= read= out= usd=`): for the replies
+ * with no stored version to hold it (سجاد, a batch's total), and so the server log alone shows the cache at work.
+ */
+export function logReplyTokens(what: string, projectId: string, u: ClaudeUsage) {
+  const t = replyTokens(u);
+  const w1h = t.cache_creation?.ephemeral_1h_input_tokens ?? 0;
+  const w5m = t.cache_creation?.ephemeral_5m_input_tokens ?? t.cache_creation_input_tokens - w1h;
+  console.info(`film reply ${what} ${projectId} in=${t.input_tokens} w5m=${w5m} w1h=${w1h} read=${t.cache_read_input_tokens} out=${t.output_tokens} usd=${claudeCost(u).toFixed(4)}`);
 }
 
 /** Success: the job is done and its real cost replaces the estimate. */

@@ -9,7 +9,7 @@ import { addMessage, stageTurns } from "./conversation";
 import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { approvedImages, latestJob, sheetAssets } from "./sheets";
-import { failJob, startJob, succeedJob } from "./usage";
+import { failJob, logReplyTokens, replyTokens, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
 import { filmVideoToStudio, studioVideoToFilm } from "./studio-link";
 import { checkLipsyncs } from "./lipsync";
@@ -798,7 +798,11 @@ export async function runDirectorReply(projectId: string, jobId: string) {
     const { turns, usd: handoffUsd } = await stageTurns(projectId, STAGE, { robot: "المخرج الذكي", pin: (c) => c.includes(SUPER_DIRECTOR_MARK), once: [SUPER_DIRECTOR, "(مهارة «المخرج الخارق»: نصها الكامل في رسالة لاحقة)"] });
     if (turns.at(-1)?.role !== "user") throw new Error("nothing to answer");
     const system = `${DIRECTOR_PROMPT}\n\n${DIRECTOR_APP_INTEGRATION(superDirectorOn(versions))}`;
-    const result = await callClaudeJson<Reply>({ system, turns, schema: DIRECTOR_SCHEMA, maxTokens: MAX_TOKENS });
+    // an hour's cache: the director's replies are spaced by Seedance renders and the person watching them (often more than
+    // 5 minutes), so on the 5-minute cache most replies wrote the whole conversation again (measured: 6 replies ≈ $2.10
+    // cold vs ≈ $1.02 kept for an hour — the 2× write is paid once, every later reply reads)
+    const result = await callClaudeJson<Reply>({ system, turns, schema: DIRECTOR_SCHEMA, maxTokens: MAX_TOKENS, cacheTtl: "1h" });
+    logReplyTokens("director", projectId, result.usage);
     const r = result.data;
     const kind = KIND_FOR(r);
     // Questions about one generation (after video notes) belong to it, like the generation itself
@@ -830,6 +834,8 @@ export async function runDirectorReply(projectId: string, jobId: string) {
         generate_audio: isGen ? r.generate_audio : undefined,
         // what this reply cost (shown on its card, in coins)
         cost_usd: claudeCost(result.usage),
+        // its tokens by kind, so a cache hit or miss can be checked against the cost
+        usage: replyTokens(result.usage),
       },
       // A note (e.g. "the generation set is complete") needs no approval
       status: kind === "dir_note" ? "approved" : "awaiting_approval",

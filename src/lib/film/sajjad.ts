@@ -16,7 +16,7 @@ import { castOf, upsertCast } from "./series-cast";
 import { seriesPaid } from "./series-pay";
 import { getOwnedProject } from "./access";
 import { rewindSummary, REWIND_POINTS, type RewindPoint } from "./rewind";
-import { failJob, startJob, succeedJob } from "./usage";
+import { failJob, logReplyTokens, startJob, succeedJob } from "./usage";
 import { rightsText } from "./team-rights";
 import { FILM_STAGES } from "@config/film";
 import { CHAT_GUIDANCE } from "@config/jawad/chat-guidance";
@@ -346,7 +346,12 @@ export async function askSajjad(kind: unknown, id: unknown, user: { id: string; 
     const turns = mem.turns;
     // the plain Messages API: the Managed Agent path posted the whole system, schema and conversation again into a session
     // that already held every earlier copy (quadratic), was always priced as Opus, and on a failure paid twice
-    let r: { data: Reply; usage: ClaudeUsage } = await callClaudeJson<Reply>({ system, turns, turnNote, schema: SCHEMA, maxTokens: 16000, effort: "medium", leader: isLeader(user.email) });
+    // an hour's cache: the person works on the scene between questions (often more than 5 minutes), and the 5-minute cache
+    // was gone by the next one — the whole conversation was written again each time. No mark on the latest turn: it
+    // starts with this message's CONTEXT (turnNote), which is never stored, so the next question's prefix differs there
+    // and the write (2× on the hour's cache) was never read; the mark on the turn before it is what the next one reads
+    let r: { data: Reply; usage: ClaudeUsage } = await callClaudeJson<Reply>({ system, turns, turnNote, schema: SCHEMA, maxTokens: 16000, effort: "medium", leader: isLeader(user.email), cacheTtl: "1h", cacheTail: false });
+    logReplyTokens("sajjad", key, r.usage);
     let usd = mem.usd + claudeCost(r.usage);
     if (mem.fresh) r = { ...r, data: { ...r.data, reply: withNote(r.data.reply, true) } };
     let found: Research | null = null;

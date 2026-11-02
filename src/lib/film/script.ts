@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
 import { stageTurns } from "./conversation";
 import { currentClaude, withClaude } from "./claude-model";
-import { failJob, JOB_STALE_MS, startJob, succeedJob } from "./usage";
+import { failJob, JOB_STALE_MS, logReplyTokens, replyTokens, startJob, succeedJob } from "./usage";
 import type { FilmJob, FilmProject } from "./types";
 import { readResearch, researchText } from "./research";
 import { watchAfterScreenplay } from "./watch";
@@ -253,8 +253,11 @@ export async function runScriptJob(projectId: string, jobId: string) {
     let usage;
     let result;
     try {
-      result = await callClaudeJson<ScriptReply>({ system: SYSTEM, turns, schema: SCREENWRITER_SCHEMA, maxTokens: MAX_TOKENS });
+      // an hour's cache: the person reads each deliverable (the story, the screenplay) before answering, often for more than
+      // 5 minutes, and the 5-minute cache was gone by then — the whole conversation was written again on the next reply
+      result = await callClaudeJson<ScriptReply>({ system: SYSTEM, turns, schema: SCREENWRITER_SCHEMA, maxTokens: MAX_TOKENS, cacheTtl: "1h" });
       usage = result.usage;
+      logReplyTokens("screenwriter", projectId, usage);
     } catch (err) {
       await failJob(jobId, err);
       return;
@@ -289,7 +292,7 @@ export async function runScriptJob(projectId: string, jobId: string) {
       kind,
       version: (same.at(-1)?.version ?? 0) + 1,
       body: reply.content,
-      data: { notes: reply.notes, questions: kind === "questions" ? reply.questions : undefined, cost_usd: claudeCost(usage) },
+      data: { notes: reply.notes, questions: kind === "questions" ? reply.questions : undefined, cost_usd: claudeCost(usage), usage: replyTokens(usage) },
       status: isHandoff ? "approved" : "awaiting_approval",
       approved_at: isHandoff ? new Date().toISOString() : null,
       created_by: "assistant",
