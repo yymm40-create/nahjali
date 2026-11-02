@@ -1,7 +1,7 @@
 "use client";
 
 // «صانع المحتوى» — the desk and the conversation with «محمد باقر»: chats on the side, cards to start from, his
-// questions as buttons (and the two galleries: carousel templates and the 24 cartoon styles), the messages with the
+// questions as buttons (the table of 100 carousel styles, and the galleries), the messages with the
 // person's attachments, the carousel's slides appearing as they are drawn (each downloadable, each with its check and
 // a way to draw it again), and the edit rooms he opens in «حيدرة كت». The look is content.css.
 
@@ -13,20 +13,21 @@ import { useClaudeModel } from "@/components/robots/claude-model";
 import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
-import { answerLine, DELEGATE_LINE, moodLine, motionLine, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
+import { answerLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, DELEGATE_LINE, moodLine, motionLine, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
+import CarouselTable, { type CarouselItem } from "./CarouselTable";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { drawWithCode, smallJpeg } from "@/components/claude-code/draw";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean }
 interface FailView { n: number; reason: string; detail?: string; text: string }
-interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code" }
+interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code"; mix?: boolean }
 interface MediaView {
   id: string; kind: "image" | "video"; name: string; aspect: string; refs?: string[]; state: "todo" | "running" | "done" | "failed";
   url?: string | null; download?: string | null; error?: string; detail?: string; transient?: boolean; tries?: number;
   desk?: { generator: string; coins: number; free: boolean };
 }
-interface Question { label: string; kind: "choice" | "templates" | "styles" | "motion" | "moods" | "palettes"; options: string[]; multi: boolean }
+interface Question { label: string; kind: "choice" | "templates" | "styles" | "motion" | "moods" | "palettes" | "carousels"; options: string[]; multi: boolean }
 interface Msg {
   role: "user" | "assistant";
   text: string;
@@ -41,7 +42,7 @@ interface ChatItem { id: string; title: string }
 interface Pending { total: number; mode: "all" | "fix"; todo: number[] }
 interface Palette { name: string; bg: string; text: string; primary: string; accent: string }
 interface GalleryItem { id: string; group: string; name: string; description: string; bestFor: string; image: string | null; icon?: string; palettes?: Palette[]; structures?: string[]; swatch?: string[] }
-interface Galleries { templates: GalleryItem[]; styles: GalleryItem[]; motion?: GalleryItem[]; moods?: GalleryItem[]; palettes?: GalleryItem[] }
+interface Galleries { templates: GalleryItem[]; styles: GalleryItem[]; motion?: GalleryItem[]; moods?: GalleryItem[]; palettes?: GalleryItem[]; carousels?: CarouselItem[]; niches?: string[] }
 type GalleryKind = "templates" | "styles" | "motion" | "moods" | "palettes";
 
 /** What each gallery says on its buttons, and the line a pick becomes in the message. */
@@ -217,7 +218,11 @@ export function Questions({ questions, gal, disabled, onSend, onWrite }: { quest
   const [picked, setPicked] = useState<Record<number, string[]>>({});
   const [other, setOther] = useState<Record<number, string>>({});
   const [openOther, setOpenOther] = useState<Record<number, boolean>>({});
-  const [gallery, setGallery] = useState<number | null>(null);
+  // the table of carousel styles opens by itself: it is the question
+  const [gallery, setGallery] = useState<number | null>(() => {
+    const i = questions.findIndex((x) => x.kind === "carousels");
+    return i < 0 ? null : i;
+  });
   const [lines, setLines] = useState<Record<number, string>>({});
 
   // one plain question: a press sends it
@@ -239,6 +244,12 @@ export function Questions({ questions, gal, disabled, onSend, onWrite }: { quest
   const answered = questions.map((_, i) => answerOf(i)).filter((x): x is string => !!x);
   const send = (delegate: boolean) => onSend([...answered, ...(delegate ? [DELEGATE_LINE] : [])].join("\n"));
   const chosenName = (qi: number) => (lines[qi] ? stripMarks(lines[qi]).replace(/^•\s*[^:]+:\s*/, "") : "");
+  // a pick in the table: alone it sends at once; with other questions it waits for their answers
+  const pickCarousel = (qi: number, line: string) => {
+    if (questions.length === 1) return onSend(line);
+    setLines((s) => ({ ...s, [qi]: line }));
+    setGallery(null);
+  };
 
   return (
     <div className="ct-qs">
@@ -254,6 +265,30 @@ export function Questions({ questions, gal, disabled, onSend, onWrite }: { quest
               ))}
               <button type="button" className="ct-opt ct-opt-write" aria-pressed={!!openOther[qi]} disabled={disabled} onClick={() => setOpenOther((s) => ({ ...s, [qi]: !s[qi] }))}>✍️ غير ذلك</button>
               {openOther[qi] && <input className="ct-inline" dir="auto" value={other[qi] ?? ""} placeholder="اكتب إجابتك" onChange={(e) => setOther((s) => ({ ...s, [qi]: e.target.value.slice(0, 200) }))} />}
+            </div>
+          ) : q.kind === "carousels" ? (
+            <div className="ct-opts">
+              <button type="button" className="ct-opt" aria-pressed={gallery === qi} disabled={disabled} onClick={() => setGallery(gallery === qi ? null : qi)}>
+                📋 {gallery === qi ? "أغلق جدول الستايلات" : "افتح جدول الستايلات (١٠٠ ستايل بالنيش)"}
+              </button>
+              {chosenName(qi) && (
+                <span className="ct-chip ct-picked">✓ {chosenName(qi)} <button type="button" aria-label="ألغِ" onClick={() => setLines((s) => { const n = { ...s }; delete n[qi]; return n; })}>✕</button></span>
+              )}
+              {gallery === qi && (
+                gal?.carousels ? (
+                  <CarouselTable
+                    items={gal.carousels}
+                    niches={gal.niches ?? []}
+                    recommended={q.options}
+                    disabled={disabled}
+                    onPick={(i) => pickCarousel(qi, carouselLine({ id: i.id, name: i.name }))}
+                    onHelp={() => onSend([...answered, CAROUSEL_HELP_LINE].join("\n"))}
+                    onOwn={(what) => pickCarousel(qi, carouselOwnLine(what))}
+                  />
+                ) : (
+                  <p className="muted">جاري تحميل الجدول…</p>
+                )
+              )}
             </div>
           ) : (
             <div className="ct-opts">
@@ -300,7 +335,12 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, step }: { s:
         <div className="ct-progress" role="status" aria-live="polite">
           <span className="ct-spin" aria-hidden />
           <div>
-            {s.maker === "code" ? (
+            {s.maker === "code" && s.mix ? (
+              <>
+                <b>🖼️ GPT Image 2 يرسم الصور وحيدرا ماكس يكتب عليها… ({done} من {s.total})</b>
+                <small>{step ? `${step} — ` : ""}جواد يولّد صورة كل شريحة بدون كتابة، وحيدرا ماكس يكتب عليها الكلام العربي بالكود ويراجعه. لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
+              </>
+            ) : s.maker === "code" ? (
               <>
                 <b>🧑‍💻 حيدرا ماكس يرسم الشرائح بالكود… ({done} من {s.total})</b>
                 <small>{step ? `${step} — ` : ""}يكتب برنامج كل شريحة ويرسمها هنا في صفحتك ويشوفها ويعيد كتابتها لين تنجح (دقايق للشريحة). لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
@@ -484,8 +524,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const runProduce = useCallback(async (id: string, retry?: number[] | "failed") => {
     setBusy("producing");
     let first = true;
-    type Step = { aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[] } };
-    const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}) }));
+    type Step = { aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean } };
+    const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}), ...(r.code?.mix || old?.mix ? { mix: true } : {}) }));
     try {
       for (let guard = 0; guard < 80; guard++) {
         let r = await postJson<Step>("/api/content/produce", { chatId: id, ...(first && retry ? { retry } : {}) });
@@ -495,7 +535,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
           // «حيدرا ماكس»: the slide is drawn here in code (its painted picture placed in it), looked at and rewritten, then sent back
           const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
           if (r.code.photos?.length) setCodeStep(`🖼️ صورة الشريحة ${r.code.n} جاهزة من GPT Image 2 (بدون كتابة)`);
-          const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "content", onStep: (st) => setCodeStep(st.text) });
+          const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "content", onStep: (st) => setCodeStep(st.text) });
           setCodeStep(null);
           r = await postJson<Step>("/api/content/produce", { chatId: id, n: r.code.n, png: drawn.png, rounds: drawn.rounds, scores: drawn.scores });
           show(r);
