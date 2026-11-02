@@ -1,7 +1,7 @@
 "use client";
 
 // «صانع المحتوى» — the desk and the conversation with «محمد باقر»: chats on the side, cards to start from, his
-// questions as buttons (the table of 103 carousel styles, and the galleries), the messages with the
+// questions as buttons (the table of 103 carousel styles, the list of 50 fonts, and the galleries), the messages with the
 // person's attachments, the carousel's slides appearing as they are drawn (each downloadable, each with its check and
 // a way to draw it again), and the edit rooms he opens in «حيدرة كت». The look is content.css.
 
@@ -13,8 +13,9 @@ import { useClaudeModel } from "@/components/robots/claude-model";
 import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
-import { answerLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, DELEGATE_LINE, moodLine, motionLine, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
+import { answerLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, DELEGATE_LINE, FONT_AUTO_LINE, fontLine, fontStyleLine, moodLine, motionLine, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
 import CarouselTable, { type CarouselItem } from "./CarouselTable";
+import FontTable, { type FontItem } from "./FontTable";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { drawWithCode, smallJpeg } from "@/components/claude-code/draw";
 
@@ -27,7 +28,7 @@ interface MediaView {
   url?: string | null; download?: string | null; error?: string; detail?: string; transient?: boolean; tries?: number;
   desk?: { generator: string; coins: number; free: boolean };
 }
-interface Question { label: string; kind: "choice" | "templates" | "styles" | "motion" | "moods" | "palettes" | "carousels"; options: string[]; multi: boolean }
+interface Question { label: string; kind: "choice" | "templates" | "styles" | "motion" | "moods" | "palettes" | "carousels" | "fonts"; options: string[]; multi: boolean }
 interface Msg {
   role: "user" | "assistant";
   text: string;
@@ -42,7 +43,7 @@ interface ChatItem { id: string; title: string }
 interface Pending { total: number; mode: "all" | "fix"; todo: number[] }
 interface Palette { name: string; bg: string; text: string; primary: string; accent: string }
 interface GalleryItem { id: string; group: string; name: string; description: string; bestFor: string; image: string | null; icon?: string; palettes?: Palette[]; structures?: string[]; swatch?: string[] }
-interface Galleries { templates: GalleryItem[]; styles: GalleryItem[]; motion?: GalleryItem[]; moods?: GalleryItem[]; palettes?: GalleryItem[]; carousels?: CarouselItem[]; niches?: string[] }
+interface Galleries { templates: GalleryItem[]; styles: GalleryItem[]; motion?: GalleryItem[]; moods?: GalleryItem[]; palettes?: GalleryItem[]; carousels?: (CarouselItem & { font?: string })[]; niches?: string[]; fonts?: FontItem[]; fontGroups?: string[] }
 type GalleryKind = "templates" | "styles" | "motion" | "moods" | "palettes";
 
 /** What each gallery says on its buttons, and the line a pick becomes in the message. */
@@ -213,14 +214,24 @@ export function Gallery({ kind, items, onPick, onNone, onWrite }: { kind: Galler
   );
 }
 
+/** The carousel style picked in the messages before message `at` (its [كاروسيل:id] mark), for the font that comes with it. */
+const styleBefore = (msgs: Msg[], at: number) => {
+  for (let k = at - 1; k >= 0; k--) {
+    if (msgs[k].role !== "user") continue;
+    const id = [...msgs[k].text.matchAll(/\[كاروسيل:([a-z0-9-]+)\]/g)].at(-1)?.[1];
+    if (id) return id;
+  }
+  return null;
+};
+
 /** The questions of an answer as buttons. One plain question sends on a press; a batch collects the answers first. */
-export function Questions({ questions, gal, disabled, onSend, onWrite }: { questions: Question[]; gal: Galleries | null; disabled: boolean; onSend: (text: string) => void; onWrite: () => void }) {
+export function Questions({ questions, gal, styleId, disabled, onSend, onWrite }: { questions: Question[]; gal: Galleries | null; styleId?: string | null; disabled: boolean; onSend: (text: string) => void; onWrite: () => void }) {
   const [picked, setPicked] = useState<Record<number, string[]>>({});
   const [other, setOther] = useState<Record<number, string>>({});
   const [openOther, setOpenOther] = useState<Record<number, boolean>>({});
-  // the table of carousel styles opens by itself: it is the question
+  // the table of carousel styles (or the list of fonts) opens by itself: it is the question
   const [gallery, setGallery] = useState<number | null>(() => {
-    const i = questions.findIndex((x) => x.kind === "carousels");
+    const i = questions.findIndex((x) => x.kind === "carousels" || x.kind === "fonts");
     return i < 0 ? null : i;
   });
   const [lines, setLines] = useState<Record<number, string>>({});
@@ -244,6 +255,9 @@ export function Questions({ questions, gal, disabled, onSend, onWrite }: { quest
   const answered = questions.map((_, i) => answerOf(i)).filter((x): x is string => !!x);
   const send = (delegate: boolean) => onSend([...answered, ...(delegate ? [DELEGATE_LINE] : [])].join("\n"));
   const chosenName = (qi: number) => (lines[qi] ? stripMarks(lines[qi]).replace(/^•\s*[^:]+:\s*/, "") : "");
+  // the chosen style's ready font, offered first in the list of fonts
+  const readyId = styleId ? gal?.carousels?.find((c) => c.id === styleId)?.font : undefined;
+  const readyFont = readyId ? (gal?.fonts?.find((f) => f.id === readyId) ?? null) : null;
   // a pick in the table: alone it sends at once; with other questions it waits for their answers
   const pickCarousel = (qi: number, line: string) => {
     if (questions.length === 1) return onSend(line);
@@ -265,6 +279,31 @@ export function Questions({ questions, gal, disabled, onSend, onWrite }: { quest
               ))}
               <button type="button" className="ct-opt ct-opt-write" aria-pressed={!!openOther[qi]} disabled={disabled} onClick={() => setOpenOther((s) => ({ ...s, [qi]: !s[qi] }))}>✍️ غير ذلك</button>
               {openOther[qi] && <input className="ct-inline" dir="auto" value={other[qi] ?? ""} placeholder="اكتب إجابتك" onChange={(e) => setOther((s) => ({ ...s, [qi]: e.target.value.slice(0, 200) }))} />}
+            </div>
+          ) : q.kind === "fonts" ? (
+            <div className="ct-opts">
+              <button type="button" className="ct-opt" aria-pressed={gallery === qi} disabled={disabled} onClick={() => setGallery(gallery === qi ? null : qi)}>
+                🔤 {gallery === qi ? "أغلق قائمة الخطوط" : "افتح قائمة الخطوط (٥٠ خطًا عربيًا)"}
+              </button>
+              {chosenName(qi) && (
+                <span className="ct-chip ct-picked">✓ {chosenName(qi)} <button type="button" aria-label="ألغِ" onClick={() => setLines((s) => { const n = { ...s }; delete n[qi]; return n; })}>✕</button></span>
+              )}
+              {gallery === qi && (
+                gal?.fonts ? (
+                  <FontTable
+                    items={gal.fonts}
+                    groups={gal.fontGroups ?? []}
+                    ready={readyFont}
+                    recommended={q.options}
+                    disabled={disabled}
+                    onPick={(f) => pickCarousel(qi, fontLine({ id: f.id, name: f.name }))}
+                    onReady={(f) => pickCarousel(qi, fontStyleLine(f.name))}
+                    onAuto={() => pickCarousel(qi, FONT_AUTO_LINE)}
+                  />
+                ) : (
+                  <p className="muted">جاري تحميل الخطوط…</p>
+                )
+              )}
             </div>
           ) : q.kind === "carousels" ? (
             <div className="ct-opts">
@@ -811,7 +850,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                     </div>
                   )}
                   {i === lastAssistant && !busy && !loginHref && m.questions?.length ? (
-                    <Questions key={`q${i}-${msgs.length}`} questions={m.questions} gal={gal} disabled={!!busy} onSend={(t) => void send(t)} onWrite={() => box.current?.focus()} />
+                    <Questions key={`q${i}-${msgs.length}`} questions={m.questions} gal={gal} styleId={styleBefore(msgs, i)} disabled={!!busy} onSend={(t) => void send(t)} onWrite={() => box.current?.focus()} />
                   ) : null}
                   {m.role === "assistant" && !m.error && (
                     <div className="ct-actions"><button className="ct-mini" onClick={() => navigator.clipboard?.writeText(m.text).catch(() => null)}>انسخ</button></div>

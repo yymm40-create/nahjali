@@ -21,6 +21,7 @@ import { unlimitedFor } from "@/lib/access";
 import { deskImage, deskReference, DeskError, type DeskOutput, type DeskReceipt, type DeskWho } from "./jawad";
 import { ARABIC_TEXT_RULES } from "@config/content-templates";
 import { carouselStyleBlock, carouselStyleForCode, findCarouselStyle, NO_REALISTIC_WOMEN } from "@config/content-carousel-styles";
+import { findContentFont, FONT_PIN, fontBlock } from "@config/content-fonts";
 import { NO_TEXT_RULE } from "@config/designer";
 import { findStyle } from "@config/film-styles";
 import { getChat, saveChat, type Chat, type PendingProduce, type Slide, type SlideFailure, type SlidesBlock } from "./chats";
@@ -92,9 +93,10 @@ export const reasonOf = (e: unknown) =>
 const detailOf = (e: unknown) => (e instanceof DeskError ? e.detail || e.reason : e instanceof Error ? e.message : String(e)).slice(0, 300);
 
 /** The full prompt of one slide: where it stands, the design (Baqir's), the style (verbatim), the slide, the rules. */
-export function slidePrompt(o: { n: number; total: number; prompt: string; styleId: string; carouselId?: string; withRef: boolean; userRefs?: number; fix?: string }): string {
+export function slidePrompt(o: { n: number; total: number; prompt: string; styleId: string; carouselId?: string; fontId?: string; withRef: boolean; userRefs?: number; fix?: string }): string {
   const style = o.styleId ? findStyle(o.styleId) : null;
   const car = o.carouselId ? findCarouselStyle(o.carouselId) : null;
+  const font = o.fontId ? findContentFont(o.fontId) : null;
   return [
     o.withRef
       ? o.n === 1
@@ -103,6 +105,7 @@ export function slidePrompt(o: { n: number; total: number; prompt: string; style
       : `Slide ${o.n} of ${o.total} of a carousel (the first: it sets the design system every other slide will copy).`,
     o.userRefs ? `The client's own attached picture${o.userRefs > 1 ? "s are" : " is"} also given as reference${o.userRefs > 1 ? "s" : ""} (named ref1${o.userRefs > 1 ? "…" : ""}): use ${o.userRefs > 1 ? "them" : "it"} where the slide's brief asks (a logo, a photo, a product), exactly as ${o.userRefs > 1 ? "they are" : "it is"}, without redrawing or altering ${o.userRefs > 1 ? "them" : "it"}.` : "",
     car ? carouselStyleBlock(car) : "",
+    font ? fontBlock(font) : "",
     style ? `ILLUSTRATION STYLE (verbatim; applies to every drawn character, object and scene — not to the lettering layout): ${style.text}` : "",
     o.prompt,
     ARABIC_TEXT_RULES,
@@ -151,7 +154,7 @@ async function makeSlide(c: { userId: string; chatId: string; owner: boolean; t0
       const r = await deskImage(c.who, {
         key: `c-${randomUUID().replace(/-/g, "")}`,
         kind: "image",
-        prompt: slidePrompt({ n: s.n, total: c.total, prompt: s.prompt, styleId: p.styleId, carouselId: p.carouselId, withRef: !!ref, userRefs: mine.length, fix }),
+        prompt: slidePrompt({ n: s.n, total: c.total, prompt: s.prompt, styleId: p.styleId, carouselId: p.carouselId, fontId: p.fontId, withRef: !!ref, userRefs: mine.length, fix }),
         aspect: p.aspect,
         resolution: IMAGE_TIER,
         quality: IMAGE_QUALITY,
@@ -246,6 +249,7 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
     ...(block.maker === "code" ? { maker: "code" as const } : {}),
     ...(block.mix ? { mix: true } : {}),
     ...(block.carouselId ? { carouselId: block.carouselId } : {}),
+    ...(block.fontId ? { fontId: block.fontId } : {}),
     made: [],
     failed: [],
     carry: block.failed.filter((f) => !slides.some((s) => s.n === f.n)),
@@ -338,6 +342,7 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
     ...(p.maker === "code" ? { maker: "code" as const } : {}),
     ...(p.mix ? { mix: true } : {}),
     ...(p.carouselId ? { carouselId: p.carouselId } : {}),
+    ...(p.fontId ? { fontId: p.fontId } : {}),
     ...(old?.report && left.length ? { report: old.report } : {}),
   };
   let report: string | null = null;
@@ -366,6 +371,7 @@ const pictureFrom = (prompt: string) => `The full picture of this slide, with ca
 async function codeSlide(userId: string, chatId: string, messages: Chat["messages"], p: PendingProduce, s: PendingProduce["slides"][number], total: number, slide1: Slide | null, who: DeskWho): Promise<CodeSlide> {
   let art = p.arts?.[String(s.n)] ?? null;
   const car = p.carouselId ? findCarouselStyle(p.carouselId) : null;
+  const font = p.fontId ? findContentFont(p.fontId) : null;
   // the third way paints every slide; so does a realistic style with no pictures of the person's: realistic things are never drawn in code
   const hasOwn = (p.refs?.length ?? 0) > 0;
   const brief = s.picture ?? (p.mix || (car?.photoIdea && !hasOwn) ? pictureFrom(s.prompt) : "");
@@ -403,14 +409,14 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
   const mine = [...(await uploadLinks(userId, list.filter((a) => a.kind === "image").map((a) => a.id))).values()];
   refs.push(...mine);
   const artUrl = art ? (links.get(art) ?? null) : null;
-  const prompt = slidePrompt({ n: s.n, total, prompt: s.prompt, styleId: p.styleId, carouselId: p.carouselId, withRef: refs.length > mine.length, userRefs: mine.length });
+  const prompt = slidePrompt({ n: s.n, total, prompt: s.prompt, styleId: p.styleId, carouselId: p.carouselId, fontId: p.fontId, withRef: refs.length > mine.length, userRefs: mine.length });
   return {
     n: s.n,
     prompt: artUrl ? `${prompt}\n\n${p.mix ? MIX_NOTE : ART_NOTE}` : prompt,
     aspect: p.aspect,
     refs: refs.slice(0, 4),
     photos: artUrl ? [artUrl] : [],
-    ...(car ? { style: carouselStyleForCode(car) } : {}),
+    ...(car || font ? { style: [font ? `${FONT_PIN(font.id)} ${fontBlock(font)}` : "", car ? carouselStyleForCode(car) : ""].filter(Boolean).join("\n") } : {}),
     ...(p.mix ? { mix: true } : {}),
   };
 }
