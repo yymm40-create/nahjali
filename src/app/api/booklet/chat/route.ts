@@ -4,6 +4,7 @@ import { claudeTrouble } from "@/lib/film/anthropic";
 import { robotTurn } from "@/lib/claude-run";
 import { requireBookletUser } from "@/lib/tables-booklet/access";
 import { sayToNoor } from "@/lib/tables-booklet/server";
+import { addChatSpent } from "@/lib/chat-spend";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 180;
@@ -16,7 +17,9 @@ export const POST = handle(async (req: Request) => {
   const b = (await req.json().catch(() => ({}))) as { chatId?: unknown; audience?: unknown; message?: unknown; model?: unknown };
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   try {
-    return NextResponse.json(await robotTurn(user, b.model, "مصمم كتيب الجداول (عباس/زينب)", () => sayToNoor(user, chatId, b.audience, String(b.message ?? ""))));
+    const r = await robotTurn(user, b.model, "مصمم كتيب الجداول (عباس/زينب)", () => sayToNoor(user, chatId, b.audience, String(b.message ?? "")));
+    const spent = await addChatSpent("booklet_chats", "id", r.chat.id, r.chat.spentHalalas, r.coins);
+    return NextResponse.json({ ...r, spent });
   } catch (e) {
     if (e instanceof UserError) throw e;
     const why = claudeTrouble(e);

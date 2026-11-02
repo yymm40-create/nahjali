@@ -84,7 +84,7 @@ describe("الربح حسب النوع: Claude وحيدرا ماكس ٦٠٪، GP
   });
 });
 
-describe("«أسبوع العرض»: ١٠٪ على كل شي إلا شغل Claude (٦٠٪) حتى نهاية ٢ نوفمبر ٢٠٢٦، بعدها يرجع الربح المعتاد", () => {
+describe("«أسبوع العرض»: ١٠٪ على كل شي إلا شغل Claude (٦٠٪) حتى نهاية ١٦ نوفمبر ٢٠٢٦، بعدها يرجع الربح المعتاد", () => {
   it("is 10٪ on every kind but Claude's during the week, over the owner's settings, and the struck price shows the usual one", async () => {
     const { PROMO, promoActive, setPromoClock, setPricing } = await import("@config/coins");
     setPricing({ marginPct: 50, imageMarginPct: 45, videoMarginPct: 55 });
@@ -97,7 +97,10 @@ describe("«أسبوع العرض»: ١٠٪ على كل شي إلا شغل Claud
       // «سيدنس الواقعي» stays at its own 10٪
       const rf = generatorById("seedance-real-face");
       if (rf) expect(priceKindOf(rf)).toBe("video");
-      // the week ends by itself
+      // extended two weeks: still on the 16th, ends by itself at the end of it (Saudi time)
+      expect(PROMO.until).toBe(Date.parse("2026-11-16T21:00:00Z"));
+      setPromoClock(() => Date.parse("2026-11-16T20:59:00Z"));
+      expect(promoActive()).toBe(true);
       setPromoClock(() => PROMO.until);
       expect(promoActive()).toBe(false);
       expect([marginFor("image"), marginFor("video"), marginFor("other"), marginFor("claude")]).toEqual([45, 55, 50, 60]);

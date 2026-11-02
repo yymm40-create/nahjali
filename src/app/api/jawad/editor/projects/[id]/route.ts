@@ -4,6 +4,7 @@ import { readLabSource, saveLabSource } from "@/lib/editor/lab-source";
 import { NextResponse } from "next/server";
 import { handOff, loadChat } from "@/lib/editor/chat";
 import { claudeCharged } from "@/lib/editor/pricing";
+import { addChatSpent } from "@/lib/chat-spend";
 import { approveFixesConfirm, approveFixesUrl, linkForFix } from "@/lib/editor/smart";
 import { handle, UserError } from "@/lib/api";
 import { requireEditorApiUser } from "@/lib/jawad/server/access";
@@ -206,8 +207,11 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await codeGradeWrite(p, who, b));
     case "code_grade_review":
       return NextResponse.json(await codeGradeReview(p, who, b));
-    case "assistant":
-      return NextResponse.json(await claudeCharged(who, b.model, "محادثة حيدرا ماكس", () => assist(p, who, b, new URL(req.url).origin), (r) => r.usd, { said: String(b.message ?? ""), reply: (r) => r.reply }));
+    case "assistant": {
+      const r = await claudeCharged(who, b.model, "محادثة حيدرا ماكس", () => assist(p, who, b, new URL(req.url).origin), (r) => r.usd, { said: String(b.message ?? ""), reply: (r) => r.reply });
+      const spent = await addChatSpent("editor_chats", "project_id", p.id, r.spentHalalas, r.coins);
+      return NextResponse.json({ ...r, spent });
+    }
     case "fix_link":
       return NextResponse.json({ asset: await linkForFix(p, user, b) });
     // حيدرا ماكس approved the smart edits of a film video: the exported version goes to سجاد (upload, then confirm)

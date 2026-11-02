@@ -132,11 +132,14 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
   return { job, created: true };
 }
 
-/** Success: the job is done and its real cost replaces the estimate. */
-export async function succeedJob(jobId: string, actual: { costUsd: number; units?: number; providerTaskId?: string | null }) {
+/** Success: the job is done and its real cost replaces the estimate. Returns the exact halalas really charged. */
+export async function succeedJob(jobId: string, actual: { costUsd: number; units?: number; providerTaskId?: string | null }): Promise<number> {
   const db = createAdminClient();
   const { data: kind } = await db.from("film_jobs").select("service").eq("id", jobId).maybeSingle();
-  await settleCoins(jobId, actual.costUsd, serviceKind(kind?.service)).catch((e) => console.error("coin settle failed", e));
+  const charged = await settleCoins(jobId, actual.costUsd, serviceKind(kind?.service)).catch((e) => {
+    console.error("coin settle failed", e);
+    return 0;
+  });
   const now = new Date().toISOString();
   await db
     .from("film_jobs")
@@ -147,6 +150,7 @@ export async function succeedJob(jobId: string, actual: { costUsd: number; units
     .update({ state: "settled", actual_cost_usd: actual.costUsd, settled_at: now, ...(actual.units != null ? { units: actual.units } : {}) })
     .eq("job_id", jobId)
     .eq("state", "reserved");
+  return charged;
 }
 
 /**
