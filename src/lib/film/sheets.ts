@@ -1,9 +1,9 @@
 import { after } from "next/server";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
+import { callClaudeJson, claudeCost, totalTokens, type ClaudeTurn } from "./anthropic";
 import { currentClaude, withClaude } from "./claude-model";
-import { addMessage, buildTurns } from "./conversation";
+import { addMessage, stageTurns } from "./conversation";
 import { generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
 import { failJob, JOB_STALE_MS, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
@@ -761,10 +761,15 @@ const KIND_BY_STAGE: Record<number, SheetKind> = { 2: "sheet_understanding", 3: 
 
 export async function runSheetReply(projectId: string, jobId: string) {
   try {
-    const turns = await buildTurns(projectId, STAGE);
+    // capped and trimmed (lib/film/conversation): a picture is sent again only while it is still needed — the master's,
+    // and a person's photos whose sheet is not drawn yet — and earlier versions of a sheet's prompt read as a stub
+    const assets = await sheetAssets(projectId);
+    const drawn = approvedImages(assets);
+    const needed = new Set([drawn[MASTER_ID]?.id, ...assets.filter((a) => a.kind === "upload" && a.status !== "rejected" && !drawn[a.ref_key]).map((a) => a.id)].filter(Boolean) as string[]);
+    const { turns, usd: handoffUsd } = await stageTurns(projectId, STAGE, { robot: "صانع الشيت الذكي", keepImage: (id) => needed.has(id) });
     if (turns.at(-1)?.role !== "user") throw new Error("nothing to answer");
     const { data: lastAsk } = await db().from("film_messages").select("content").eq("project_id", projectId).eq("stage", STAGE).eq("role", "user").order("created_at", { ascending: false }).limit(1).maybeSingle();
-    if (String(lastAsk?.content ?? "").startsWith(BATCH_REQUEST)) return await runSheetBatch(projectId, jobId, turns);
+    if (String(lastAsk?.content ?? "").startsWith(BATCH_REQUEST)) return await runSheetBatch(projectId, jobId, turns, handoffUsd);
     const result = await callClaudeJson<Reply>({ system: SYSTEM, turns, schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS });
     const r = result.data;
     const { data: asked } = await db()
@@ -823,7 +828,7 @@ export async function runSheetReply(projectId: string, jobId: string) {
       const images = approvedImages(await sheetAssets(projectId));
       if (map.length && map.every((m) => images[m.id])) await client.from("film_projects").update({ stage: "director" }).eq("id", projectId);
     }
-    await succeedJob(jobId, { costUsd: claudeCost(result.usage), units: totalTokens(result.usage) });
+    await succeedJob(jobId, { costUsd: claudeCost(result.usage) + handoffUsd, units: totalTokens(result.usage) });
   } catch (err) {
     console.error("sheet maker reply failed", err);
     await failJob(jobId, err);
@@ -835,13 +840,12 @@ export async function runSheetReply(projectId: string, jobId: string) {
  * conversation, each delivered as that sheet's Stage 6 prompt (awaiting approval). The replies join the conversation
  * as one message, so later edits and the handoff see them all.
  */
-async function runSheetBatch(projectId: string, jobId: string, turns: Awaited<ReturnType<typeof buildTurns>>) {
+async function runSheetBatch(projectId: string, jobId: string, turns: ClaudeTurn[], handoffUsd = 0) {
   const client = db();
   const versions = await sheetVersions(projectId);
   const pending = pendingSheets(versions);
   if (!pending.length) throw new Error("no sheets left to write");
-  const results = await Promise.allSettled(
-    pending.map(async (item) => {
+  const one = async (item: (typeof pending)[number]) => {
       const ask = turns.map((t, i) =>
         i === turns.length - 1
           ? {
@@ -855,10 +859,12 @@ async function runSheetBatch(projectId: string, jobId: string, turns: Awaited<Re
       );
       const result = await callClaudeJson<Reply>({ system: SYSTEM, turns: ask, schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS });
       return { item, result };
-    }),
-  );
+  };
+  // the first sheet alone, then the rest together: requests sent all at once over the same long conversation each
+  // wrote it to the cache at full price; after the first one, the others read it from the cache (a tenth of the price)
+  const results = [...(await Promise.allSettled(pending.slice(0, 1).map(one))), ...(await Promise.allSettled(pending.slice(1).map(one)))];
   const done = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
-  const cost = done.reduce((n, d) => n + claudeCost(d.result.usage), 0);
+  const cost = done.reduce((n, d) => n + claudeCost(d.result.usage), handoffUsd);
   const tokens = done.reduce((n, d) => n + totalTokens(d.result.usage), 0);
   if (!done.length) {
     const why = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;

@@ -11,6 +11,7 @@ import { ADJUSTS, ADJUST_GROUPS, FILTERS, HSL_BANDS, HSL_PARTS, NO_ADJUST, PHOTO
 import { LAYER_EFFECTS } from "@config/designer";
 import { applyOp, applyOps, docChanges, readDoc, readOps, type Op, type PhotoDoc, type PhotoLayer, type ShapeLayer, type TextLayer } from "@/lib/photo/doc";
 import { postJson } from "@/lib/fetch";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import { loadFont, type FontDef } from "@/components/jawad/designer/LayerEditor";
 import { ProgramError, runGrade, runLayout, toBase64 } from "@/components/claude-code/compute-host";
 import { scopeOf } from "@/lib/editor/scopes";
@@ -99,6 +100,8 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
   const [askReturn, setAskReturn] = useState(false);
   const [focus, setFocus] = useState({ x: 50, y: 50 });
   const [msg, setMsg] = useState("");
+  // the person's Claude model (the 🧠 choice, kept on this device): زهراء answers and reads the picture with it
+  const [claude] = useClaudeModel();
   const [typing, setTyping] = useState(false);
   // the stage: «يناسب» or a zoom, and «قبل/بعد» held down to see the picture before any colouring
   const [zoom, setZoom] = useState<number | "fit">("fit");
@@ -369,7 +372,7 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
     setMissed([]);
     try {
       await flushSave();
-      const r = await postJson<{ pieces: Piece[]; ready: boolean; predicts: boolean }>("/api/photo/decompose", { projectId, step: "read" });
+      const r = await postJson<{ pieces: Piece[]; ready: boolean; predicts: boolean }>("/api/photo/decompose", { projectId, step: "read", model: claude.id });
       setPieces(r.pieces);
       setPicked(new Set(r.pieces.map((p) => p.id)));
       setPredicts(r.predicts);
@@ -607,7 +610,7 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
     setTyping(true);
     try {
       const preview = await previewB64();
-      const r = await postJson<{ reply: string; doc: PhotoDoc; changes: string[]; suggestions: string[]; jawad: Ask | null; code: { prompt: string; mode?: "grade" | "layout" } | null; returnTo: boolean }>("/api/photo/chat", { projectId, message, doc: docRef.current, preview });
+      const r = await postJson<{ reply: string; doc: PhotoDoc; changes: string[]; suggestions: string[]; jawad: Ask | null; code: { prompt: string; mode?: "grade" | "layout" } | null; returnTo: boolean }>("/api/photo/chat", { projectId, message, doc: docRef.current, preview, model: claude.id });
       const before = docRef.current;
       const next = readDoc(r.doc);
       if (docChanges(before, next).length) {

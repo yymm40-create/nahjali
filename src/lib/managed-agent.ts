@@ -90,8 +90,9 @@ async function events(sessionId: string) {
   return all;
 }
 
+// the model the agent itself is set to (on the console, not per request); its turns are priced from `list_cost` anyway
 const usageDelta = (before: SessionUsage | null | undefined, after: SessionUsage | null | undefined): ClaudeUsage => ({
-  model: "claude-opus-5-5",
+  model: process.env.CLAUDE_AGENT_MODEL || "claude-opus-5-5",
   input_tokens: Math.max(0, Number(after?.input_tokens ?? 0) - Number(before?.input_tokens ?? 0)),
   output_tokens: Math.max(0, Number(after?.output_tokens ?? 0) - Number(before?.output_tokens ?? 0)),
   cache_read_input_tokens: Math.max(0, Number(after?.cache_read_input_tokens ?? 0) - Number(before?.cache_read_input_tokens ?? 0)),

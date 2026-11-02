@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addFindings, decideFindings, parseFindings, readResearch, researchText, RESEARCH_LIMITS } from "@/lib/film/research";
+import { addFindings, decideFindings, parseFindings, readResearch, researchText, searchedBefore, RESEARCH_LIMITS } from "@/lib/film/research";
 
 describe("«بحث سجاد»: findings the person approves into the work", () => {
   it("reads Claude's findings by their «## » headings and drops the intro", () => {
@@ -33,5 +33,15 @@ describe("«بحث سجاد»: findings the person approves into the work", () =
   it("reads a missing or broken column as empty", () => {
     expect(readResearch(null)).toEqual({ items: [] });
     expect(readResearch({ asked: "maybe", items: [{ id: 1 }, { id: "a", title: "t", text: "x", status: "weird" }] }).items).toEqual([{ id: "a", title: "t", text: "x", status: "pending", sources: [], scope: "", at: "" }]);
+  });
+});
+
+describe("«بحث سجاد» is not paid for twice", () => {
+  it("knows a scope already searched (spaces aside), and nothing else", () => {
+    const r = { items: parseFindings("## الكوفة\nنص", [], "الكوفة زمن  الإمام") };
+    expect(searchedBefore(r, " الكوفة زمن الإمام\n")).toBe(true);
+    expect(searchedBefore(r, "أسواق البصرة")).toBe(false);
+    expect(searchedBefore({ items: [] }, "الكوفة زمن الإمام")).toBe(false);
+    expect(searchedBefore(r, "  ")).toBe(false);
   });
 });

@@ -18,7 +18,6 @@ import { FIGHT_METHOD, FIGHT_PLAYBOOK_ID, SCHOOLS_BRIEF, fightCasesBrief, neares
 import { TRANSFORM_METHOD, TRANSFORM_PLAYBOOK_ID, nearestTransformCases, transformCasesBrief } from "@config/jawad/video-transform";
 import { loadRuntime, sectionGenerators } from "./runtime";
 import { isUuid, uploadViews, type UploadRow } from "./uploads";
-import { managedAgentConfigured, managedAgentTurn, managedJson } from "@/lib/managed-agent";
 
 const db = () => createAdminClient();
 
@@ -126,10 +125,14 @@ export async function assistantTurn(user: { id: string; email?: string | null },
   };
   attached.forEach((u, i) => look(u, `Attachment ${i + 1} (sent with this message):`));
   for (const r of refs) look(uploads.get(r.uploadId)!, `Reference @${r.name} (already in the form):`);
-  for (const id of [...contextIds].reverse()) {
-    const upload = uploads.get(id);
-    if (upload) look(upload, `Earlier conversation image: ${upload.file_name}. Context only; not a numbered attachment for addRefs. Ask the person to reattach it if needed as a new form reference.`);
-  }
+  // pictures from EARLIER messages are named, not sent again: re-sending up to 20 images every turn paid for each of
+  // them again and again (Claude already looked at them in the turn they came with; its reply holds what it saw)
+  const earlierNames = [...contextIds]
+    .reverse()
+    .flatMap((id) => {
+      const u = uploads.get(id);
+      return u && !seen.has(id) ? [`${u.kind} ${u.file_name}`] : [];
+    });
 
   const state = [
     `FORM NOW (generator ${draft.generatorId}):`,
@@ -142,6 +145,7 @@ export async function assistantTurn(user: { id: string; email?: string | null },
     `style («الستايل»): ${draft.styleId ? `${draft.styleId} (${findStyle(draft.styleId)?.name})` : "none"}`,
     `references: ${refs.length ? refs.map(refLine).join("; ") : "none"}`,
     attached.length ? `ATTACHMENTS of this message: ${attached.map((u, i) => `${i + 1}. ${u.kind} ${u.file_name}${u.width && u.height ? ` ${u.width}×${u.height}` : ""}`).join("; ")}` : "No attachments in this message.",
+    earlierNames.length ? `Files from earlier messages (by name only; not numbered attachments for addRefs — ask the person to attach one again if it must go into the form): ${earlierNames.join("; ")}` : "",
     `Only the ${seen.size} image blocks supplied in this request are visible. Other images from history, videos and audio have NOT been inspected. Never infer their contents from filenames.`,
   ]
     .filter(Boolean)
@@ -160,56 +164,22 @@ export async function assistantTurn(user: { id: string; email?: string | null },
     : fight
       ? `${FIGHT_METHOD}\n\nTHE SCHOOLS:\n${SCHOOLS_BRIEF}\n\n${fightCasesBrief(nearestFightCases(lastText, 3))}`
       : examplesBrief(nearestExamples(lastText, section.output, 3, earlier));
+  // Earlier turns are plain text, the same bytes every message, so the conversation so far is read from the cache; only
+  // the latest message carries the pictures, and the form, recipe and examples go in as this turn's note (turnNote)
   const claudeTurns: ClaudeTurn[] = [...mem.lead, ...turns.map((t, i): ClaudeTurn => {
     if (i < turns.length - 1) return { role: t.role, content: t.text };
-    // The last message carries the form, the pictures, the recipe and the examples
-    return { role: "user", content: [...parts, { type: "text", text: [state, guide, examples, `THE PERSON'S MESSAGE:\n${t.text}`].filter(Boolean).join("\n\n") } as ClaudePart] };
+    return { role: "user", content: [...parts, { type: "text", text: `THE PERSON'S MESSAGE:\n${t.text}` } as ClaudePart] };
   })];
 
-  const system = assistantSystem(section.output, defs);
-  let data: AssistantRaw;
-  let usd = 0;
-  const chatId = String(b.chatId ?? "");
-  if (managedAgentConfigured() && isUuid(chatId)) {
-    try {
-      const content: ({ type: "text"; text: string } | { type: "image"; source: { type: "url"; url: string } })[] = [];
-      for (const turn of claudeTurns) {
-        const blocks = typeof turn.content === "string" ? [{ type: "text" as const, text: turn.content }] : turn.content;
-        content.push({ type: "text", text: `${turn.role === "user" ? "المستخدم" : "جواد"}:` });
-        for (const part of blocks) {
-          if (part.type === "text") content.push({ type: "text", text: part.text });
-          else if (part.type === "image") content.push({ type: "image", source: { type: "url", url: part.url } });
-        }
-      }
-      const managed = await managedAgentTurn({
-        userId: user.id,
-        contextType: "jawad",
-        contextKey: chatId,
-        title: `جواد · ${section.name}`,
-        content: [
-          {
-            type: "text",
-            text: `أنت الآن داخل محادثة جواد المستقلة رقم ${chatId}. لا تستخدم أي محادثة أخرى ولا تخلط ذاكرتها بهذه المحادثة. نفّذ تعليمات الاستوديو التالية بدقة، وأعد كائن JSON واحد فقط مطابقًا للمخطط؛ بلا Markdown ولا شرح خارجه.\n\nتعليمات جواد لهذه الشاشة:\n${system}\n\nJSON Schema:\n${JSON.stringify(ASSISTANT_SCHEMA)}\n\nالمحادثة والحالة الحالية:`,
-          },
-          ...content,
-        ],
-      });
-      data = managedJson<AssistantRaw>(managed.text);
-      usd = managed.usd;
-    } catch (error) {
-      console.error("managed assistant fallback", String(error).slice(0, 300));
-      const fallback = await callClaudeJson<AssistantRaw>({ system, turns: claudeTurns, schema: ASSISTANT_SCHEMA, maxTokens: 6000, effort: "medium", fallback: true, leader: isLeader(user.email) });
-      data = fallback.data;
-      usd = claudeCost(fallback.usage);
-    }
-  } else {
-    const fallback = await callClaudeJson<AssistantRaw>({ system, turns: claudeTurns, schema: ASSISTANT_SCHEMA, maxTokens: 6000, effort: "medium", fallback: true, leader: isLeader(user.email) }).catch((e) => {
-      console.error("assistant", String(e instanceof Error ? e.message : e).slice(0, 300));
-      throw new UserError("تعذّر على جواد الرد الآن؛ جرّب مرة ثانية.", 502);
-    });
-    data = fallback.data;
-    usd = claudeCost(fallback.usage);
-  }
+  // the plain Messages API (cached system + cached history). The Managed Agent path posted the whole system, schema and
+  // kept history again into a session that already held every earlier copy (each turn grew the session by the whole
+  // conversation), was always priced as Opus, and on a failure paid a second time here
+  const r = await callClaudeJson<AssistantRaw>({ system: assistantSystem(section.output, defs), turns: claudeTurns, turnNote: [state, guide, examples].filter(Boolean).join("\n\n"), schema: ASSISTANT_SCHEMA, maxTokens: 6000, effort: "medium", fallback: true, leader: isLeader(user.email) }).catch((e) => {
+    console.error("assistant", String(e instanceof Error ? e.message : e).slice(0, 300));
+    throw new UserError("تعذّر على جواد الرد الآن؛ جرّب مرة ثانية.", 502);
+  });
+  const data = r.data;
+  const usd = claudeCost(r.usage);
 
   const answer = checkAnswer(data, { defs, draft, attachments: attached.length });
   return { ...answer, reply: withNote(answer.reply, mem.fresh), attachments: attached.map((u) => ({ uploadId: u.id })), usd: usd + mem.usd };

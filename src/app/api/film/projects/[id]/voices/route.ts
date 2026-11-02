@@ -3,6 +3,8 @@ import { handle, UserError } from "@/lib/api";
 import { getOwnedProject, requireFilmApiUser } from "@/lib/film/access";
 import { castChoices, describeVoice, editLine, lineAudios, setCast, speakLine, voiceCast, voiceLines, voicesReady } from "@/lib/film/voices";
 import { ownTracks } from "@/lib/film/voice-track";
+import { withClaude } from "@/lib/film/claude-model";
+import { claudeFor } from "@/lib/access-perks";
 
 export const maxDuration = 120;
 
@@ -24,9 +26,11 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
     await setCast(project, user.id, b.speaker, b.voice);
     return NextResponse.json({ ok: true });
   }
+  // the person's model (its real usage is what the line costs), not always the default
+  const model = await claudeFor(user.email, b.model);
   // «✨ صوت جديد بالوصف»: the AI writes the voice of one speaker (designed and saved with JAWAD AI's voices)
-  if (b.action === "describe") return NextResponse.json(await describeVoice(project, b.speaker, b.hint));
-  if (b.action === "speak") return NextResponse.json(await speakLine(project, user, b.key, b.idempotencyKey, b.emotion, b.diction));
+  if (b.action === "describe") return NextResponse.json(await withClaude(model, () => describeVoice(project, b.speaker, b.hint)));
+  if (b.action === "speak") return NextResponse.json(await withClaude(model, () => speakLine(project, user, b.key, b.idempotencyKey, b.emotion, b.diction)));
   // «عدّل النص»: a line's words or diacritics corrected before it is spoken
   if (b.action === "edit_line") return NextResponse.json(await editLine(project, b.key, b.text));
   throw new UserError("طلب غير صحيح.", 400);

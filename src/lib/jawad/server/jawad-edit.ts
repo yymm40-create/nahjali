@@ -13,7 +13,7 @@ import { JAWAD_EDIT_IDENTITY } from "@config/jawad/smart-edit-training";
 import type { GeneratorDef } from "@config/jawad/types";
 import { directorProblems, directorPrompt, salvageDirector } from "../director";
 import { KEPT_RULES, LOCKS_SCHEMA, readLocks, type EditLock } from "../edit-locks";
-import { EDIT_TASK } from "./director";
+import { DIRECTOR_TRIES, EDIT_TASK, mechanicalOnly } from "./director";
 
 /** جواد's answer in a smart edit: his usual fields (only the prompt and the reply are used), the Chinese twin of a video prompt, and the locks. */
 export type EditRaw = AssistantRaw & { promptZh: string; kept: unknown };
@@ -43,7 +43,8 @@ export function editSystem(def: GeneratorDef, rules: string): string {
 const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
 /**
- * Asks جواد for the final prompt (up to three tries for a video, two for a picture: the mechanical faults go back to him).
+ * Asks جواد for the final prompt (up to two tries: a fault the machine repairs safely — a skill label, an @name that is no
+ * reference — is repaired here instead of re-sending the whole shot; the others go back to him once).
  * `parts` already hold the whole shot and the person's words; `extra` is the continuity checker; `problems` the picture's rules.
  */
 export async function jawadWritesEdit(o: {
@@ -62,7 +63,7 @@ export async function jawadWritesEdit(o: {
   problems?: (prompt: string) => string[];
 }): Promise<{ prompt: string; usd: number; attempts: number; kept: EditLock[]; reply: string }> {
   const video = o.def.output === "video";
-  const tries = video ? 3 : 2;
+  const tries = video ? DIRECTOR_TRIES : 2;
   const system = editSystem(o.def, o.rules);
   let turns: ClaudeTurn[] = [{ role: "user", content: [...o.parts, { type: "text", text: o.noLocks ? 'Leave "kept" empty: the picture itself stays as it is.' : KEPT_RULES }] }];
   const usage: ClaudeUsage[] = [];
@@ -82,13 +83,18 @@ export async function jawadWritesEdit(o: {
     if (!en) left = ['The "prompt" is empty: write the whole final prompt.'];
     else if (video) left = directorProblems({ en, zh: zh || "-" }, o.names);
     else left = o.problems?.(en) ?? [];
-    const final = video ? directorPrompt({ en, zh: zh || en }) : en;
+    let out = { en, zh: zh || en };
+    if (video && mechanicalOnly(left)) {
+      const fixed = salvageDirector(out, o.names);
+      if (fixed) [out, left] = [fixed, []];
+    }
+    const final = video ? directorPrompt(out) : en;
     // the locks he declared and the continuity checker read the prompt once the rules hold (a picture's last try is used as it is)
     if (!left.length && o.extra && (video || attempt < tries)) left = o.extra(final, lastKept);
     if (!left.length) return { prompt: final, usd: cost(), attempts: attempt, kept: lastKept, reply: checked.reply };
     turns = [...turns, { role: "assistant", content: r.raw }, { role: "user", content: `Fix these and return the complete JSON again:\n- ${left.join("\n- ")}` }];
   }
-  // a video still off after three tries: repaired where it is safe and used (an edit that works beats a refusal)
+  // a video still off after the last try: repaired where it is safe and used (an edit that works beats a refusal)
   const saved = video && last ? salvageDirector({ en: last.en, zh: last.zh }, o.names) : null;
   if (saved) {
     console.warn("jawad edit used after repair", { problems: left });

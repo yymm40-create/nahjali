@@ -78,6 +78,8 @@ export interface DirectorBody {
   prompt?: unknown;
   refs?: unknown;
   expectedCoins?: unknown;
+  /** the Claude model the person chose (config/claude-models.ts) */
+  model?: unknown;
 }
 
 export type DirectorResult = { kind: "done"; prompt: string; coins: number; balance: number | null } | { kind: "price_changed"; coins: number };
@@ -90,7 +92,7 @@ const MODE_EN: Record<string, string> = {
   omni_reference: "multiple references",
 };
 
-/** «المخرج الخارق»: checks, charges, asks Claude (once more if the answer breaks a rule), refunds on any failure. */
+/** «المخرج الخارق»: checks, charges, asks Claude (once more if the answer breaks a rule it can't be repaired of), refunds on any failure. */
 export async function improvePrompt(user: { id: string }, owner: boolean, b: DirectorBody): Promise<DirectorResult> {
   const key = String(b.idempotencyKey ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
@@ -191,32 +193,46 @@ export function settingsText(def: GeneratorDef, s: Settings, modeId: string, met
 }
 
 /**
- * Asks the Super Director (the skill + a website task) for an EN/ZH prompt, once more if the answer breaks a
- * website rule. Throws when it fails twice.
+ * A fault a machine repairs safely (the skill's <<<image_n>>> labels, an @name that is not a reference — salvageDirector):
+ * repaired at once instead of asking Claude again, which re-sent the whole skill and wrote the whole prompt again.
+ */
+const MECHANICAL = /not one of the given references|never <<<image_n>>>/;
+export const mechanicalOnly = (problems: string[]) => problems.length > 0 && problems.every((p) => MECHANICAL.test(p));
+
+/** How many times the Super Director is asked at most (the second only for a fault a machine can't repair). */
+export const DIRECTOR_TRIES = 2;
+
+/**
+ * Asks the Super Director (the skill + a website task) for an EN/ZH prompt, once more if the answer breaks a website rule
+ * that cannot be repaired here. Throws when even the repaired answer is empty.
  */
 export async function directorRun(task: string, parts: ClaudePart[], names: string[], extra?: (prompt: string) => string[]): Promise<{ prompt: string; usd: number; attempts: number }> {
   let turns: ClaudeTurn[] = [{ role: "user", content: parts }];
   const usage: ClaudeUsage[] = [];
   let last: DirectorOutput | null = null;
   let left: string[] = [];
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= DIRECTOR_TRIES; attempt++) {
     const r = await callClaudeJson<DirectorOutput>({ system: SUPER_DIRECTOR + task, turns, schema: SCHEMA, maxTokens: 16000 });
     usage.push(r.usage);
     last = r.data;
     left = directorProblems(r.data, names);
+    if (mechanicalOnly(left)) {
+      const fixed = salvageDirector(r.data, names);
+      if (fixed) [last, left] = [fixed, []];
+    }
     // the caller's own checks (e.g. the smart edit's locks), once the website's rules hold
-    if (!left.length && extra && r.data.en && r.data.zh) left = extra(directorPrompt(r.data));
-    if (!left.length) return { prompt: directorPrompt(r.data), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: attempt };
+    if (!left.length && extra && last.en && last.zh) left = extra(directorPrompt(last));
+    if (!left.length) return { prompt: directorPrompt(last), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: attempt };
     // Once more, with what to fix
     turns = [...turns, { role: "assistant", content: r.raw }, { role: "user", content: `Fix these and return the complete JSON again:\n- ${left.join("\n- ")}` }];
   }
-  // still off after three tries: repaired where it is safe and used (an edit that works beats a refusal)
+  // still off after the second try: repaired where it is safe and used (an edit that works beats a refusal)
   const saved = last ? salvageDirector(last, names) : null;
   if (saved) {
     console.warn("director answer used after repair", { problems: left });
-    return { prompt: directorPrompt(saved), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: 3 };
+    return { prompt: directorPrompt(saved), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: DIRECTOR_TRIES };
   }
-  throw new Error(`director answer broke the website rules three times: ${left.join(" | ").slice(0, 400)}`);
+  throw new Error(`director answer broke the website rules ${DIRECTOR_TRIES} times: ${left.join(" | ").slice(0, 400)}`);
 }
 
 async function refund(userId: string, coins: number, ref: string) {

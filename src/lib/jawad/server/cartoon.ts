@@ -107,7 +107,7 @@ ${WEBSITE_RULES}
 8. Made for a family audience: warm, safe and kind; nothing frightening, violent or romantic.`;
 
 /**
- * Each part of a character's story written by «المخرج الخارق» (in parallel, each knowing the whole story). A part he
+ * Each part of a character's story written by «المخرج الخارق» (the first, then the others in parallel; each knowing the whole story). A part he
  * could not write gets "" and the film falls back to its own plain prompt — never blocked. Returns the prompts and how
  * many were written (only those are paid).
  */
@@ -118,7 +118,7 @@ export async function directCartoon(input: CartoonInput): Promise<{ directed: st
   const settings = cartoonVideoSettings(input);
   const meta = [{ name: "character", kind: "image" as const, role: "reference" as const }, { name: "place", kind: "image" as const, role: "reference" as const }];
   const whole = input.scenes.map((text, i) => `Part ${i + 1} (seconds ${i * 15}–${(i + 1) * 15} of the whole film): ${text}`).join("\n");
-  const directed = await Promise.all(input.scenes.map(async (text, i) => {
+  const one = async (text: string, i: number) => {
     const parts: ClaudePart[] = [
       { type: "text", text: settingsText(def, { ...settings }, "omni_reference", meta) },
       { type: "text", text: [
@@ -137,7 +137,11 @@ export async function directCartoon(input: CartoonInput): Promise<{ directed: st
       console.error("cartoon director", error);
       return "";
     }
-  }));
+  };
+  // the first part alone, then the rest together: parts asked all at once each wrote the same long skill to the cache at
+  // full price; after the first one, the others read it from the cache (a tenth of the price)
+  const first = input.scenes.length ? [await one(input.scenes[0], 0)] : [];
+  const directed = [...first, ...(await Promise.all(input.scenes.slice(1).map((text, i) => one(text, i + 1))))];
   return { directed, written: directed.filter(Boolean).length };
 }
 

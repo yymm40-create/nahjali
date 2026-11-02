@@ -1,7 +1,8 @@
 import { after } from "next/server";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, claudeCost, totalTokens, type ClaudeTurn } from "./anthropic";
+import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
+import { stageTurns } from "./conversation";
 import { currentClaude, withClaude } from "./claude-model";
 import { failJob, JOB_STALE_MS, startJob, succeedJob } from "./usage";
 import type { FilmJob, FilmProject } from "./types";
@@ -243,13 +244,10 @@ async function markLaterStale(projectId: string, kind: ScriptKind, versions: Scr
 export async function runScriptJob(projectId: string, jobId: string) {
   try {
     const msgs = await messages(projectId);
-    // Merge back-to-back messages of the same side (e.g. a correction sent after a failed reply)
-    const turns: ClaudeTurn[] = [];
-    for (const m of msgs) {
-      const last = turns.at(-1);
-      if (last && last.role === m.role) last.content = `${last.content}\n\n${m.content}`;
-      else turns.push({ role: m.role, content: m.content });
-    }
+    // capped and trimmed (lib/film/conversation): the story message is always read in full, an earlier version of the
+    // screenplay that a revision replaced reads as a stub (each revision re-sent every full version before it), and a
+    // long conversation is read as the screenwriter's own handoff + the latest turns
+    const { turns, usd: handoffUsd } = await stageTurns(projectId, STAGE, { robot: "السيناريست الذكي" });
     if (turns.at(-1)?.role !== "user") throw new Error("nothing to answer");
 
     let usage;
@@ -305,7 +303,7 @@ export async function runScriptJob(projectId: string, jobId: string) {
       after(() => watchAfterScreenplay(projectId));
     }
 
-    await succeedJob(jobId, { costUsd: claudeCost(usage), units: totalTokens(usage) });
+    await succeedJob(jobId, { costUsd: claudeCost(usage) + handoffUsd, units: totalTokens(usage) });
   } catch (err) {
     console.error("screenwriter job failed", err);
     await failJob(jobId, err);

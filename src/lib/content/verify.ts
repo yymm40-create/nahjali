@@ -4,6 +4,7 @@
 
 import sharp from "sharp";
 import { callClaudeJson, claudeCost } from "@/lib/film/anthropic";
+import { withClaude } from "@/lib/film/claude-model";
 
 export interface SlideCheck {
   /** the picture passed every point (or could not be checked: see `checked`) */
@@ -49,20 +50,25 @@ const SYSTEM = `You inspect ONE generated slide of an Arabic carousel and report
 - cropped is true when any text touches or crosses the edge or is covered. extra_text is true for any word or letter not in EXPECTED (purely decorative shapes are fine).
 - problems: list only what is really wrong, in short Arabic. Do not praise. Do not invent problems.`;
 
+/** The model that checks a drawn slide (Haiku 5.5: images in, ~1/40 of Opus's price). */
+export const SLIDE_CHECK_MODEL = "claude-haiku-5-5";
+
 const withTimeout = <T>(p: Promise<T>, ms: number) => Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error("check timed out")), ms))]);
 
 /** Checks one slide picture against its approved text. Never throws: a failed check comes back `checked: false`. */
 export async function checkSlide(png: Buffer, expected: string): Promise<SlideCheck> {
   try {
     const jpeg = await sharp(png).resize({ width: 1280, height: 1280, fit: "inside", withoutEnlargement: true }).flatten({ background: "#ffffff" }).jpeg({ quality: 82 }).toBuffer();
+    // reading the text on a picture is an OCR check, not a creative job: the light model (it sees pictures) does it for a
+    // fraction of the price, whatever model the conversation that drew the slide runs on
     const r = await withTimeout(
-      callClaudeJson<Verdict>({
+      withClaude(SLIDE_CHECK_MODEL, () => callClaudeJson<Verdict>({
         system: SYSTEM,
         turns: [{ role: "user", content: [{ type: "text", text: `EXPECTED on-slide text (exactly):\n${expected.trim() || "(none)"}` }, { type: "image64", data: jpeg.toString("base64"), mediaType: "image/jpeg" }] }],
         schema: SCHEMA,
         maxTokens: 1200,
         effort: "low",
-      }),
+      })),
       35_000,
     );
     const v = r.data;

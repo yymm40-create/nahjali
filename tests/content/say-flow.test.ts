@@ -5,13 +5,14 @@ import { MAKER_CODE, MAKER_GPT, MAKER_LABEL } from "@/lib/content/maker";
 // One message to «محمد باقر» end to end, with Claude, the database and the editor replaced by stand-ins: what he is
 // given (the catalogues, what the person picked, the state of an earlier carousel) and what the site does with his
 // answer (the buttons, the carousel to draw, drawing slides again, the hand-over to حيدرا ماكس).
-const claude = vi.hoisted(() => ({ answer: null as unknown, calls: [] as { system: string; turns: { role: string; content: unknown }[] }[] }));
+// `system` here is what he reads in all: the fixed system and this turn's note (examples, picks, the record)
+const claude = vi.hoisted(() => ({ answer: null as unknown, calls: [] as { system: string; fixed: string; turns: { role: string; content: unknown }[] }[] }));
 const db = vi.hoisted(() => ({ chat: null as unknown, editorProjects: [] as unknown[], editorChats: [] as unknown[], assets: [] as unknown[] }));
 
 vi.mock("@/lib/film/anthropic", async (orig) => ({
   ...(await orig<typeof import("@/lib/film/anthropic")>()),
-  callClaudeJson: vi.fn(async (o: { system: string; turns: { role: string; content: unknown }[] }) => {
-    claude.calls.push({ system: o.system, turns: o.turns });
+  callClaudeJson: vi.fn(async (o: { system: string; turnNote?: string; turns: { role: string; content: unknown }[] }) => {
+    claude.calls.push({ system: `${o.system}\n\n${o.turnNote ?? ""}`, fixed: o.system, turns: o.turns });
     return { data: claude.answer, raw: "", usage: { input_tokens: 1000, output_tokens: 500 } };
   }),
 }));
@@ -110,6 +111,8 @@ describe("what he is given", () => {
     expect(earlier).toContain("لم تُصنع 2 (المزوّد مشغول)");
     expect(earlier).toContain("🔎 تقرير الفحص");
     expect(claude.calls[0].system).toContain("REC");
+    // the record rides with the turn: the system itself is the same on every message (so it and the history are cached)
+    expect(claude.calls[0].fixed).not.toContain("REC");
   });
 });
 
