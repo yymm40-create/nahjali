@@ -7,7 +7,7 @@ import type { Chat, Turn } from "@/lib/content/chats";
 // finds a mistake, what is kept when a slide fails, and a slide drawn again in a carousel that exists.
 const db = vi.hoisted(() => ({ chat: null as unknown, files: new Map<string, { path: string; name: string; meta: Record<string, unknown> }>(), deleted: [] as string[], next: 0 }));
 const gen = vi.hoisted(() => ({ calls: [] as { prompt: string; refs: number; key: string; kind: string }[], script: [] as (Error | "ok")[] }));
-const chk = vi.hoisted(() => ({ script: [] as ("ok" | "bad" | "unchecked")[], calls: [] as string[] }));
+const chk = vi.hoisted(() => ({ script: [] as ("ok" | "bad" | "unchecked" | "woman")[], calls: [] as string[] }));
 
 vi.mock("@/lib/content/jawad", async (orig) => {
   const real = await orig<typeof import("@/lib/content/jawad")>();
