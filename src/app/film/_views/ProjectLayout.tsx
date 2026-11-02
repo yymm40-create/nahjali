@@ -15,6 +15,8 @@ import ContinuityAlerts from "../series/ContinuityAlerts";
 import { openAlerts, readWatch } from "@/lib/film/watch";
 import Riyal from "@/components/Riyal";
 import FilmBackButton from "../FilmBackButton";
+import ProjectAccessBar, { type AccessBar } from "@/components/film/ProjectAccessBar";
+import { accessOfProject } from "@/lib/film/admin-access";
 
 /**
  * Every page of a film project lives inside the scene's one shell («المشهد»: the steps' rail, the meter, the library,
@@ -25,6 +27,8 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
   // Without access the page itself redirects
   if (!allowed) return children;
   const project = await requireProject(id, user.id);
+  const bar = await accessBar(project.id, project.user_id, user.id);
+  const access = bar ? <ProjectAccessBar bar={bar} /> : null;
   const { count } = await createAdminClient()
     .from("film_versions")
     .select("id", { count: "exact", head: true })
@@ -36,6 +40,7 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
     const [progress, impacts, cost] = await Promise.all([filmProgress(project), impactsOf(project.id), projectCost(project.id)]);
     return (
       <FilmStage projectId={id} title={project.title} kind={project.kind === "film" ? "film" : "scene"} stage={project.stage} videosOpen={Boolean(count)} cost={creditsByService(cost.byService)} progress={progress} impacts={impacts}>
+        {access}
         {children}
         {/* سجاد: the consultant, who knows this film */}
         <SajjadPanel kind="film" id={id} />
@@ -84,9 +89,21 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
       {project.series_id && (alerts.length > 0 || project.stage !== "screenwriter") && (
         <ContinuityAlerts seriesId={project.series_id} sceneId={id} sceneKind="film" canAct alerts={alerts.map((a) => ({ ...a }))} />
       )}
+      {access}
       {children}
       {/* سجاد: the consultant, who knows this film (and its series) */}
       <SajjadPanel kind="film" id={id} />
     </div>
   );
+}
+
+/** «اسمح للأدمن بالدخول»: the owner sees the admin he let in; the admin sees he works on someone else's project. */
+async function accessBar(projectId: string, ownerId: string, userId: string): Promise<AccessBar | null> {
+  const rows = (await accessOfProject(projectId)).filter((r) => r.status === "approved");
+  if (!rows.length) return null;
+  if (userId === ownerId) return { role: "owner", grants: rows.map((r) => ({ id: r.id })) };
+  const mine = rows.find((r) => r.admin_id === userId);
+  if (!mine) return null;
+  const { data } = await createAdminClient().auth.admin.getUserById(ownerId);
+  return { role: "admin", id: mine.id, ownerEmail: data.user?.email ?? "" };
 }

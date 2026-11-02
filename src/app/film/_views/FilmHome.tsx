@@ -6,13 +6,15 @@ import { requireFilmUser } from "@/lib/film/access";
 import type { FilmProject } from "@/lib/film/types";
 import { FILM_STAGES } from "@config/film";
 import { STEPS } from "../stage/steps";
+import { sharedWithAdmin } from "@/lib/film/admin-access";
+import { isAdmin } from "@config/site";
 
 const stageLabel = (key: string) => FILM_STAGES.find((s) => s.key === key)?.label ?? key;
 const stageIcon = (key: string) => FILM_STAGES.find((s) => s.key === key)?.icon ?? "🎞️";
 
 /** The screening room's lobby: start a scene, open one of yours, or go to the series. */
 export default async function FilmHomeView({ base }: { base: string }) {
-  const { allowed } = await requireFilmUser(base);
+  const { user, allowed } = await requireFilmUser(base);
 
   if (!allowed) {
     return (
@@ -33,6 +35,8 @@ export default async function FilmHomeView({ base }: { base: string }) {
   const { data } = await supabase.from("film_projects").select("*").order("updated_at", { ascending: false });
   // a series' scenes live in their series («المسلسل الذكي»)
   const projects = ((data ?? []) as FilmProject[]).filter((p) => !p.series_id);
+  // «اسمح للأدمن بالدخول»: the projects their owners let this admin into (worked on directly, in their owners' accounts)
+  const shared = isAdmin(user.email) ? await sharedWithAdmin(user.id) : [];
 
   return (
     <div className="fs">
@@ -82,6 +86,25 @@ export default async function FilmHomeView({ base }: { base: string }) {
             <p className="fs-glass p-4 text-sm font-bold text-muted">ما عندك مشاريع للحين. ابدأ «مشهد جديد» فوق، ومشاريعك تطلع هنا.</p>
           )}
         </section>
+
+        {shared.length > 0 && (
+          <section className="space-y-3" aria-labelledby="fs-shared">
+            <h2 id="fs-shared" className="fs-group">
+              🔑 مشاريع سمحوا لك فيها <small>({shared.length})</small>
+            </h2>
+            <p className="text-xs font-bold text-muted">كل تعديل تسويه هنا يصير في مشروع صاحبه نفسه، وتكلفته عليك.</p>
+            <div className="fs-posters">
+              {shared.map((p) => (
+                <Link key={p.id} href={`${base}/${p.id}`} className="fs-poster">
+                  <span className="ic" aria-hidden>{stageIcon(p.stage)}</span>
+                  <span className="st">{stageLabel(p.stage)}</span>
+                  <h3 className="line-clamp-3">{p.title}</h3>
+                  <p dir="ltr">{p.ownerEmail}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="fs-glass space-y-3 p-4" aria-label="كيف يمشي المشهد">
           <h2 className="font-black">كيف يمشي المشهد؟</h2>
