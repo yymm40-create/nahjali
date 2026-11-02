@@ -41,5 +41,12 @@ export function fontsBlock(): string {
  * library, then the project's record.
  */
 export function systemText(persona: string, parts: string[] = [], record = "") {
-  return [persona, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, fontsBlock(), libraryBlock(), HUSSEINI_MOURNING_FEED, ...parts, record ? `سجل المشروع الحالي (كما حفظته آخر مرة؛ حدّثه في "record" عند أي تغيير):\n${record}` : ""].filter(Boolean).join("\n\n");
+  return [persona, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, fontsBlock(), libraryBlock(), HUSSEINI_MOURNING_FEED, ...parts, recordText(record)].filter(Boolean).join("\n\n");
+}
+
+const recordText = (record: string) => (record ? `سجل المشروع الحالي (كما حفظته آخر مرة؛ حدّثه في "record" عند أي تغيير):\n${record}` : "");
+
+/** What changes from one message to the next (examples, the record): read with this turn, not in the system (cached). */
+export function turnText(parts: string[] = [], record = "") {
+  return [...parts, recordText(record)].filter(Boolean).join("\n\n");
 }

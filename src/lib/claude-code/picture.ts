@@ -11,7 +11,7 @@ import { callClaudeJson, claudeCost, claudeWhy, type ClaudePart } from "@/lib/fi
 import { FONT_BY_ID } from "@/lib/editor/fonts";
 import { checkScene, LAB_FONTS } from "@/lib/editor/scene/contract";
 import { MILLION_DOLLAR, SCENE_CONTRACT } from "@/lib/editor/scene/skill";
-import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS } from "./skill";
+import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, lastRound } from "./skill";
 import { PICTURE_RUBRIC, pictureSize } from "./picture-rubric";
 
 export { PICTURE_RUBRIC, PICTURE_SIZES, pictureSize } from "./picture-rubric";
@@ -117,7 +117,7 @@ export async function pictureReview(user: RobotUser, b: Record<string, unknown>)
   const parts: ClaudePart[] = [
     {
       type: "text",
-      text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}. Be a HARSH art director, not a proud author. Judge the picture you SEE below (rendered from THE PROGRAM), not what the code intends.
+      text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}.${lastRound(round)} Be a HARSH art director, not a proud author. Judge the picture you SEE below (rendered from THE PROGRAM), not what the code intends.
 THE REQUEST: ${prompt}
 ${text(b.style, 2000) ? `THE LOOK chosen: ${text(b.style, 2000)}` : ""}
 Score every criterion 1–10: ${PICTURE_RUBRIC.map((r) => `${r.id}: ${r.en}`).join(" | ")}. Name the worst problems and the exact fix. If ANY score is below ${CODE_PASS}, return the COMPLETE revised program; otherwise code = "".

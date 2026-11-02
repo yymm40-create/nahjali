@@ -24,7 +24,8 @@ describe("what a student's call carries", () => {
   });
 
   it("the site's text, where it is carried, has its own cache mark (a different task reads it from the cache)", () => {
-    const sys = siteSystem("TASK") as { text: string; cache_control?: unknown }[];
+    // (only the owner's calls carry the whole site text now; a customer's carry the short brief)
+    const sys = siteSystem("TASK", true, true) as { text: string; cache_control?: unknown }[];
     expect(sys[0].text).toBe(JAWAD_KNOWLEDGE);
     expect(sys[0].cache_control).toEqual({ type: "ephemeral" });
     // a call that asked for no cache keeps none at all

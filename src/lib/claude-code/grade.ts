@@ -8,7 +8,7 @@ import { robotTurn, type RobotUser } from "@/lib/claude-run";
 import { callClaudeJson, claudeCost, claudeWhy, type ClaudePart } from "@/lib/film/anthropic";
 import { checkProgram } from "./compute";
 import { readScope, scopeLine } from "@/lib/editor/scopes";
-import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, GRADE_CONTRACT, GRADE_RUBRIC } from "./skill";
+import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, lastRound, GRADE_CONTRACT, GRADE_RUBRIC } from "./skill";
 
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 /** A scope the page measured, as one line (or nothing when it sent none). */
@@ -79,7 +79,7 @@ export async function gradeReview(user: RobotUser, who: string, b: Record<string
   if (!code || !before || !after) throw new UserError("ما وصلتني الصور أو البرنامج.", 400);
   const round = Math.max(1, Math.min(CODE_ROUNDS, Math.round(Number(b.round) || 1)));
   const parts: ClaudePart[] = [
-    { type: "text", text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}. Be a HARSH colourist. Judge what you SEE after the grade against before.\nTHE LOOK ASKED FOR: ${request}\nScore every criterion 1–10: ${GRADE_RUBRIC.map((r) => `${r.id}: ${r.en}`).join(" | ")} (a single picture: "match" is how evenly the look holds across the picture). If ANY score is below ${CODE_PASS}, return the COMPLETE revised program; otherwise code = "".\nTHE PROGRAM:\n${code}` },
+    { type: "text", text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}.${lastRound(round)} Be a HARSH colourist. Judge what you SEE after the grade against before.\nTHE LOOK ASKED FOR: ${request}\nScore every criterion 1–10: ${GRADE_RUBRIC.map((r) => `${r.id}: ${r.en}`).join(" | ")} (a single picture: "match" is how evenly the look holds across the picture). If ANY score is below ${CODE_PASS}, return the COMPLETE revised program; otherwise code = "".\nTHE PROGRAM:\n${code}` },
     { type: "text", text: `BEFORE:${measured(b.scope, "BEFORE")}` },
     { type: "image64", data: before, mediaType: "image/jpeg" },
     { type: "text", text: `AFTER:${measured(b.scopeAfter, "AFTER")}\nStep 6 of the method: compare the AFTER numbers with BEFORE and with the targets, then your eyes.` },

@@ -20,7 +20,7 @@ import { findTemplate } from "@config/content-templates";
 import { findStyle } from "@config/film-styles";
 import { cleanHistory, getChat, readMedia, readQuestions, saveChat, type Attachment, type MediaItem, type PendingProduce, type Turn } from "./chats";
 import { attachmentsOf, uploadLinks } from "./files";
-import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, systemText } from "./persona";
+import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, systemText, turnText } from "./persona";
 import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
@@ -202,8 +202,10 @@ export async function say(userId: string, chatId: string | null, message: string
   // what the person picked in the galleries (all their messages), and the closest worked examples
   const ids = chosenIds(history.filter((t) => t.role === "user").map((t) => t.text));
   const ask = stripMarks(said || turns.find((t) => t.role === "user")?.text || "");
+  // the system stays the SAME every message (persona, rules, the catalogue: cached once); what changes per message —
+  // the nearest examples, the chosen blocks, the record — rides at the start of this turn (it re-wrote everything at
+  // full price each message when it sat in the system)
   const parts = [
-    catalogBlock(),
     // the motion skills, feelings and drawing tools: when the work is motion graphics
     ...(ids.motion || ids.mood || /موشن|motion|انترو|إنترو|تايبوغرافي|إنفوجرافيك|انفوجرافيك/i.test(`${ask} ${before?.record ?? ""}`) ? [motionCatalogBlock()] : []),
     chosenBlock(ids),
@@ -214,8 +216,9 @@ export async function say(userId: string, chatId: string | null, message: string
     ...(isMahdiAsk(`${history.filter((t) => t.role === "user").map((t) => t.text).join(" ")} ${before?.record ?? ""}`) ? [MAHDI_BRIEF] : []),
     ids.template || /كاروسيل|شرائح|carousel/i.test(ask + (before?.record ?? "")) ? templateExamplesBrief(nearestTemplateExamples(ask, ids.template && ids.template !== "none" ? ids.template : null, 2)) : "",
   ].filter(Boolean);
-  const system = systemText(persona.text, parts, before?.record ?? "");
-  const r = await callClaudeJson<Answer>({ system, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email) });
+  const system = systemText(persona.text, [catalogBlock()]);
+  const turnNote = turnText(parts, before?.record ?? "");
+  const r = await callClaudeJson<Answer>({ system, turnNote, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email) });
   const a = r.data;
   let usd = claudeCost(r.usage) + mem.usd;
   const questions = readQuestions(a.questions);

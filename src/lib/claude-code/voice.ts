@@ -7,7 +7,7 @@ import { UserError } from "@/lib/api";
 import { robotTurn, type RobotUser } from "@/lib/claude-run";
 import { callClaudeJson, claudeCost, claudeWhy, type ClaudePart } from "@/lib/film/anthropic";
 import { checkProgram } from "./compute";
-import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, VOICE_CONTRACT, VOICE_RUBRIC } from "./skill";
+import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, lastRound, VOICE_CONTRACT, VOICE_RUBRIC } from "./skill";
 
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 const png = (v: unknown) => (typeof v === "string" && /^[A-Za-z0-9+/=]+$/.test(v) && v.length < 800_000 ? v : null);
@@ -71,7 +71,7 @@ export async function voiceReview(user: RobotUser, who: string, b: Record<string
   if (!code || !before || !after) throw new UserError("ما وصلت القياسات أو البرنامج.", 400);
   const round = Math.max(1, Math.min(CODE_ROUNDS, Math.round(Number(b.round) || 1)));
   const parts: ClaudePart[] = [
-    { type: "text", text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}. Be a HARSH dialogue editor. You cannot hear: judge from the numbers and the two waveforms.\nWHAT IT IS FOR: ${text(b.purpose, 200) || "a voiceprint"}\nBEFORE: ${before}\nAFTER: ${after}\nScore every criterion 1–10: ${VOICE_RUBRIC.map((r) => `${r.id}: ${r.en}`).join(" | ")}. If ANY score is below ${CODE_PASS}, return the COMPLETE revised program; otherwise code = "".\nTHE PROGRAM:\n${code}` },
+    { type: "text", text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}.${lastRound(round)} Be a HARSH dialogue editor. You cannot hear: judge from the numbers and the two waveforms.\nWHAT IT IS FOR: ${text(b.purpose, 200) || "a voiceprint"}\nBEFORE: ${before}\nAFTER: ${after}\nScore every criterion 1–10: ${VOICE_RUBRIC.map((r) => `${r.id}: ${r.en}`).join(" | ")}. If ANY score is below ${CODE_PASS}, return the COMPLETE revised program; otherwise code = "".\nTHE PROGRAM:\n${code}` },
     ...pic("WAVEFORM BEFORE:", png(b.waveBefore)),
     ...pic("WAVEFORM AFTER:", png(b.waveAfter)),
   ];

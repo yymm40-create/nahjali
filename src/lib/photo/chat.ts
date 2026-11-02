@@ -10,7 +10,7 @@ import { PHOTO } from "@config/photo";
 import { nearestPhotoExamples, photoExamplesBrief } from "@config/photo-training";
 import { applyOps, describeDoc, docChanges, readDoc, readOps, type PhotoDoc } from "./doc";
 import { projectFiles } from "./files";
-import { fontIds, getPersona, systemText } from "./persona";
+import { fontIds, getPersona, systemText, turnText } from "./persona";
 import { getProject, saveProject, type PhotoTurn, type Source } from "./projects";
 import { UserError } from "@/lib/api";
 
@@ -101,7 +101,9 @@ export async function say(userId: string, email: string | null, p: { projectId: 
   const files = await projectFiles(userId, project.id);
   const info = new Map(files.filter((f) => f.width && f.height).map((f) => [f.id, { w: f.width, h: f.height }]));
   const persona = await getPersona();
-  const system = systemText(persona.text, [sourceBlock(project.source), photoExamplesBrief(nearestPhotoExamples(message, 3))].filter(Boolean), project.record);
+  // the same system every message (cached); the examples nearest this message and the record ride with this turn
+  const system = systemText(persona.text);
+  const turnNote = turnText([sourceBlock(project.source), photoExamplesBrief(nearestPhotoExamples(message, 3))].filter(Boolean), project.record);
 
   const preview = typeof p.preview === "string" && p.preview.length < 900_000 && /^[A-Za-z0-9+/]+=*$/.test(p.preview) ? p.preview : null;
   const text = [`حالة اللوحة الآن:\n${describeDoc(before, files.map((f) => ({ id: f.id, name: f.name, w: f.width, h: f.height, role: f.role })))}`, preview ? "(المعاينة مرفقة: هكذا تبدو اللوحة الآن)" : "(لا معاينة)", `رسالة العميل:\n${message}`].join("\n\n");
@@ -110,7 +112,7 @@ export async function say(userId: string, email: string | null, p: { projectId: 
   // a long conversation: her own handoff of everything before, then the latest turns (lib/robot-handoff)
   const mem = await remember({ key: `photo:${project.id}`, userId, robot: "زهراء (فوتو ماستر)", turns: project.messages.filter((t) => !t.note), window: PHOTO.historyTurns });
   const history: ClaudeTurn[] = [...mem.lead, ...mem.kept.map((t): ClaudeTurn => ({ role: t.role, content: t.text }))];
-  const r = await callClaudeJson<Answer>({ system, turns: [...history, { role: "user", content: parts }], schema: ANSWER_SCHEMA, maxTokens: PHOTO.maxTokens, effort: "medium", leader: isLeader(email) });
+  const r = await callClaudeJson<Answer>({ system, turnNote, turns: [...history, { role: "user", content: parts }], schema: ANSWER_SCHEMA, maxTokens: PHOTO.maxTokens, effort: "medium", leader: isLeader(email) });
   const a = r.data;
   const usd = claudeCost(r.usage) + mem.usd;
 

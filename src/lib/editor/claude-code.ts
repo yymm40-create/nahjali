@@ -11,7 +11,7 @@ import { checkProgram } from "@/lib/claude-code/compute";
 
 /** The two programs of the editor (the voice has its own, src/lib/claude-code/voice.ts). */
 type ProgramKind = "edit" | "grade";
-import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, EDIT_CONTRACT, EDIT_RUBRIC, GRADE_CONTRACT, GRADE_RUBRIC } from "@/lib/claude-code/skill";
+import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, lastRound, EDIT_CONTRACT, EDIT_RUBRIC, GRADE_CONTRACT, GRADE_RUBRIC } from "@/lib/claude-code/skill";
 import { context, type Spoken } from "./assistant-core";
 import { COMMANDS_GUIDE } from "./assistant-commands";
 import { GRADING_KNOW_HOW, gradeBrief } from "./assistant-guide";
@@ -128,7 +128,7 @@ export async function codeEditReview(p: EditorProject, who: Who, b: Record<strin
   const parts: ClaudePart[] = [
     {
       type: "text",
-      text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}. Be a HARSH editor, not a proud author. Judge what the program DID (the timeline after), not what it intends.
+      text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}.${lastRound(round)} Be a HARSH editor, not a proud author. Judge what the program DID (the timeline after), not what it intends.
 THE REQUEST: ${request}
 Score every criterion 1–10: ${scoresLine("edit")}. Name the worst problems and the exact fix. If ANY score is below ${CODE_PASS}, return the COMPLETE revised program; otherwise code = "".
 THE PROGRAM:
@@ -206,7 +206,7 @@ export async function codeGradeReview(p: EditorProject, who: Who, b: Record<stri
   const parts: ClaudePart[] = [
     {
       type: "text",
-      text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}. Be a HARSH colourist, not a proud author. Judge what you SEE after the grade (and the scopes), against the same moments before it (marked "as filmed": the clip as it looked before your program).
+      text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}.${lastRound(round)} Be a HARSH colourist, not a proud author. Judge what you SEE after the grade (and the scopes), against the same moments before it (marked "as filmed": the clip as it looked before your program).
 Step 6 of the method: compare the AFTER numbers (IRE, cast, the Oklab line: skin h and burning, clipped channels, chroma, near-whites) with BEFORE and with the targets, then your eyes. A number off its target is a problem to fix even when the picture looks fine at a glance.
 THE REQUEST: ${request}
 Score every criterion 1–10: ${scoresLine("grade")}. Name the worst problems and the exact fix. If ANY score is below ${CODE_PASS}, return the COMPLETE revised program; otherwise code = "".

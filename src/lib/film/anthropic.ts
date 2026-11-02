@@ -2,6 +2,7 @@
 
 import { isAdmin } from "@config/site";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
+import { PLATFORM_BRIEF } from "@config/jawad/brief";
 import { currentMemory, memoryBlock } from "@/lib/memory/context";
 import { fitDocs, fitImages } from "@/lib/claude-images";
 import { DEFAULT_CLAUDE_MODEL, claudeModelOf, servedModel, type ClaudeModel } from "@config/claude-models";
@@ -62,9 +63,9 @@ export const siteSystem = (task: string, cache = true, leader = false) => {
   // the person's memory («ذاكرتي»), inside a robot's turn: after the cached task, so the cache still holds
   const memory = currentMemory();
   return [
-    // its own cache mark: the site's text is ~60k tokens and the same in every call, so a call with a DIFFERENT task still
-    // reads it from the cache (cheap) instead of writing it again with the task
-    { type: "text", text: JAWAD_KNOWLEDGE, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) },
+    // a customer's robot reads the SHORT brief (~1k tokens) and its own training — like a plain Claude conversation; only
+    // the owner's conversations read the whole knowledge (~69k tokens, its own cache mark so any task reads it cheaply)
+    leader ? { type: "text", text: JAWAD_KNOWLEDGE, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) } : { type: "text", text: PLATFORM_BRIEF },
     ...(leader ? [{ type: "text", text: LEADER_BLOCK }] : []),
     { type: "text", text: task, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) },
     ...(memory ? [{ type: "text", text: memoryBlock(memory) }] : []),
@@ -333,6 +334,7 @@ export async function callClaudeJson<T>({
   resume,
   rawText = false,
   onText,
+  turnNote,
 }: {
   system: string;
   turns: ClaudeTurn[];
@@ -352,6 +354,12 @@ export async function callClaudeJson<T>({
   rawText?: boolean;
   /** each piece of the reply as it is written (only watched; a retried attempt starts its pieces again) */
   onText?: OnText;
+  /**
+   * What changes from one message to the next (the nearest examples, the project's record, notes for this turn): put at
+   * the START of the latest user turn instead of in `system`, so the system — and the whole conversation after it —
+   * stays the same and is read from the cache (a system that changed every message re-wrote everything at full price).
+   */
+  turnNote?: string;
 }): Promise<{ data: T; raw: string; usage: ClaudeUsage; partial?: boolean }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -359,11 +367,21 @@ export async function callClaudeJson<T>({
 
   // pictures by link are fetched and made to fit Claude's limits (a large cut-out logo was refused)
   const cleanTurns = cleanClaudeTurns(turns);
+  if (turnNote?.trim()) {
+    const at = cleanTurns.map((t) => t.role).lastIndexOf("user");
+    if (at >= 0) {
+      const t = cleanTurns[at];
+      const note: ClaudePart = { type: "text", text: `<this_turn>\n${turnNote.trim()}\n</this_turn>` };
+      cleanTurns[at] = { ...t, content: [note, ...(typeof t.content === "string" ? [{ type: "text", text: t.content } as ClaudePart] : t.content)] };
+    }
+  }
   if (!cleanTurns.length) throw new Error("Claude request has no non-empty message content");
   const messages = await fitDocs(await fitImages(cleanTurns.map((t, i) => {
     const blocks: Record<string, unknown>[] = t.content.map(toBlock);
-    // Cache breakpoint on the latest turn: the next request reuses everything up to here
-    if (i === cleanTurns.length - 1) blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: "ephemeral" } };
+    // Cache breakpoints: the latest turn (a continued request reuses everything up to here) and the one before it — the
+    // conversation so far, which the NEXT message sends again unchanged (the latest turn often carries one-off facts,
+    // pictures or the timeline, so a mark only there made every message write its whole history again)
+    if (i === cleanTurns.length - 1 || (i === cleanTurns.length - 2 && cleanTurns.length >= 3)) blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: "ephemeral" } };
     return { role: t.role, content: blocks };
   })));
 
@@ -440,7 +458,8 @@ export async function callClaudeSearch({ system, prompt, maxUses = 4, maxTokens 
       body: JSON.stringify({
         model: asked.id,
         max_tokens: maxTokens,
-        system: siteSystem(system, false),
+        // cached: a search runs up to 3 rounds on the same system (it was sent uncached, at the full price every round)
+        system: siteSystem(system),
         messages,
         tools: [{ type: "web_search_20260209", name: "web_search", max_uses: maxUses }],
         ...(asked.effort ? { output_config: { effort: "low" } } : {}),

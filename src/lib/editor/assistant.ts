@@ -164,7 +164,14 @@ ${GRADING_LESSONS}
 
 TRANSITION IDS (by group): ${TR_LIST.map((t) => t.id).join(", ")}.
 
-${KNOW_HOW}
+${KNOW_HOW}`;
+
+/**
+ * The motion skills (~39k tokens: the director, the owner's motion skill and Higgsfield's, the ten styles, the looks,
+ * the moods, Majed's talking reels): read only by a turn about motion — a cut, a caption or a question never needed
+ * them, and every message carried them (the owner, 2 November 2026: every robot like a plain Claude conversation).
+ */
+const MOTION_PACK = `THE MOTION SKILLS (this request is about motion, a hook, a talking reel or a montage):
 
 ${DIRECTOR_SKILL}
 
@@ -178,6 +185,19 @@ ${MOTION_STYLES_SKILL}
 ${MOODS_SKILL}
 
 ${MAJED_SKILL}`;
+/** The two systems a turn can read (each stable, so each is cached on its own). */
+const SYSTEM_MOTION = `${SYSTEM}\n\n${MOTION_PACK}`;
+/** Words that make a turn about motion (in the message, or in the last few turns of the conversation it continues). */
+const MOTION_WORDS = /موشن|motion|انيميشن|أنيميشن|إنفوجرافيك|انفوجرافيك|تايبوغرافي|كلمات طائرة|هوك|hook|مونتاج|منتاج|montage|ستايل|أسلوب|اسلوب|ريل|reel|talk_motion|motion_lab|storyboard|مختبر الموشن/i;
+
+/** The checks of a colour change: the commands, the colourist's know-how and its lessons — nothing of motion. */
+const CHECK_SYSTEM = `You are «حيدرا ماكس», the editor and colourist of «حيدرة كت» (never call yourself Claude), checking a colour change you made.
+
+${COMMANDS_GUIDE}
+
+${GRADING_KNOW_HOW}
+
+${GRADING_LESSONS}`;
 
 /** The pictures of the selected clip the page sends (at most 8 small JPEGs), checked. */
 export function readLook(v: unknown, tl: ReturnType<typeof readTimeline>) {
@@ -295,6 +315,9 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   const frameOrder = Boolean(wantFrame && filmedClip);
   // a motion request: the closest worked pieces of the site's bank (same feeling and skill, then the topic's words) ride with it as examples
   const motionAsk = Boolean((named && !named.talk) || feeling || /موشن|motion|إنفوجرافيك|انفوجرافيك|تايبوغرافي|كلمات طائرة/i.test(message));
+  // the motion skills ride only with a turn about motion (this message, or the conversation it continues)
+  const recent = history.slice(-6).map((t) => (typeof t.content === "string" ? t.content : "")).join("\n");
+  const aboutMotion = motionAsk || Boolean(ten || named || wantFrame || montageAsk) || MOTION_WORDS.test(message) || MOTION_WORDS.test(recent);
   const examples = motionAsk ? motionExamplesBrief(nearestMotionExamples(message, { mood: feeling?.id, style: named && !named.talk ? named.id : undefined }, 2)) : "";
   const turns: ClaudeTurn[] = [
     ...(brief
@@ -369,7 +392,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
 
   let usd = mem.usd;
   const ask = async (msgs: ClaudeTurn[]) => {
-    const r = await callClaudeJson<Answer>({ system: SYSTEM, turns: msgs, schema: SCHEMA, maxTokens: 16000, effort: "medium", fallback: true, leader: isLeader(who.email), timeoutMs: 420_000 });
+    const r = await callClaudeJson<Answer>({ system: aboutMotion ? SYSTEM_MOTION : SYSTEM, turns: msgs, schema: SCHEMA, maxTokens: 16000, effort: "medium", fallback: true, leader: isLeader(who.email), timeoutMs: 420_000 });
     usd += claudeCost(r.usage);
     return r;
   };
@@ -653,7 +676,7 @@ export async function gradeCheck(p: EditorProject, who: Who, b: { clipId?: unkno
   const after = look.frames.find((f) => f.graded && f.scope)?.scope ?? null;
   const cases = await caseParts(nearestCases(after, String(b.request ?? ""), 2), origin);
   const r = await claudeCharged(who, b.model, "حيدرا ماكس يشيك التلوين في حيدرة كت", () =>
-    callClaudeJson<{ ok: boolean; verdict: string; commands: string[] }>({ system: SYSTEM, turns: [{ role: "user", content: [{ type: "text", text }, ...lookParts(look), ...cases] }], schema: CHECK_SCHEMA, maxTokens: 12000, effort: "medium", fallback: true }).catch((e) => {
+    callClaudeJson<{ ok: boolean; verdict: string; commands: string[] }>({ system: CHECK_SYSTEM, turns: [{ role: "user", content: [{ type: "text", text }, ...lookParts(look), ...cases] }], schema: CHECK_SCHEMA, maxTokens: 12000, effort: "medium", fallback: true }).catch((e) => {
       console.error("grade check", e);
       throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يشيك الحين.", who.email), 502);
     }),

@@ -15,6 +15,12 @@ export const CODE_ROUNDS = 2;
  * the page stops asking for more rounds and applies the best it has. Shown with the result.
  */
 export const CODE_BUDGET_HALALAS = 150;
+
+/**
+ * The last review round's instruction: nothing runs after it, so no rewritten program is asked for (it was written in
+ * full, with its thinking, and then thrown away by the page — the most expensive part of the round).
+ */
+export const lastRound = (round: number) => (round >= CODE_ROUNDS ? " THIS IS THE LAST ROUND: score and judge only — return code as an empty string (no rewrite runs after this round)." : "");
 /** Fixes of a program that threw (or broke a rule) before it is looked at. */
 export const CODE_FIXES = 2;
 

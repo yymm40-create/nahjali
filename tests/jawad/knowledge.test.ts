@@ -4,6 +4,8 @@ import { DEFAULT_SECTIONS } from "@config/jawad/sections";
 import { GENERATORS } from "@config/jawad/generators";
 import { OUTPUT_KINDS } from "@config/jawad/student";
 import { siteSystem } from "@/lib/film/anthropic";
+import { PLATFORM_BRIEF } from "@config/jawad/brief";
+import { SECTION_IMPLEMENTATIONS } from "@config/jawad/sections";
 
 // What every Claude request knows about the site has to follow the site: a new section, generator or study output
 // added without a word about it here fails.
@@ -25,14 +27,21 @@ describe("site knowledge for Claude", () => {
 
   it("stays the same on every request, so it is cached", () => {
     expect(JAWAD_KNOWLEDGE).not.toMatch(/\$\{|\d{4}-\d{2}-\d{2}/);
+    expect(siteSystem("a", true, true)[0].text).toBe(siteSystem("b", false, true)[0].text);
     expect(siteSystem("a")[0].text).toBe(siteSystem("b", false)[0].text);
   });
 
-  it("comes first with its own cache mark, and the task after it keeps one too", () => {
-    const s = siteSystem("TASK");
+  it("the owner's conversations read it all, first, with its own cache mark; a customer's robot reads the short brief", () => {
+    const s = siteSystem("TASK", true, true);
     expect(s[0]).toEqual({ type: "text", text: JAWAD_KNOWLEDGE, cache_control: { type: "ephemeral" } });
-    expect(s[1]).toEqual({ type: "text", text: "TASK", cache_control: { type: "ephemeral" } });
-    expect(siteSystem("TASK", false)[0]).toEqual({ type: "text", text: JAWAD_KNOWLEDGE });
+    expect(s.at(-1)).toEqual({ type: "text", text: "TASK", cache_control: { type: "ephemeral" } });
+    // a customer: like a plain Claude conversation with the robot's own training (the owner, 2 November 2026)
+    const c = siteSystem("TASK");
+    expect(c[0]).toEqual({ type: "text", text: PLATFORM_BRIEF });
+    expect(c[1]).toEqual({ type: "text", text: "TASK", cache_control: { type: "ephemeral" } });
+    expect(JSON.stringify(c)).not.toContain(JAWAD_KNOWLEDGE.slice(0, 200));
+    expect(PLATFORM_BRIEF.length).toBeLessThan(6000);
+    for (const s2 of Object.values(SECTION_IMPLEMENTATIONS)) expect(PLATFORM_BRIEF).toContain(s2.label);
     expect(siteSystem("TASK", false)[1]).toEqual({ type: "text", text: "TASK" });
   });
 });
