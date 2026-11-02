@@ -17,7 +17,8 @@ import { stillOpen, type EditorProject } from "@/lib/editor/server";
 import { checkScene, LAB_FONTS, readPlan, readReview, SECONDS, type LabPlan } from "./contract";
 import { EXEMPLARS } from "./exemplars";
 import { MAX_ROUNDS, MOTION_LAB_SKILL, PASS, RUBRIC } from "./skill";
-import { CHAT_SCHEMA, CODE_SCHEMA, PLAN_SCHEMA, REVIEW_SCHEMA } from "./schemas";
+import { CHAT_EDIT_SCHEMA, CHAT_SCHEMA, CODE_SCHEMA, PATCH_SCHEMA, PLAN_SCHEMA, REVIEW_SCHEMA } from "./schemas";
+import { applyEdits, readEdits } from "@/lib/patch";
 import { continueAsk, effortAtMost, stitchCode } from "./resume";
 import { ALWAYS_AT_PLAN, HF_LAB_TEXT, knownRefs, openRefs } from "./higgsfield";
 import { choicesRefs, choicesText, readChoices } from "@config/editor/lab-options";
@@ -191,6 +192,9 @@ export async function labWrite(p: EditorProject, who: Who, b: Record<string, unk
   const f = frameOf(p);
   const previous = typeof b.code === "string" ? b.code.trim() : "";
   const errors = text(b.errors, 4000);
+  // a FIX comes back as a PATCH when the page asks (it does first): exact edits on THE PROGRAM, applied here — a few hundred
+  // tokens instead of the whole program again; after a patch that failed the page asks again without it (the whole program)
+  const patch = Boolean(previous) && b.patch === true;
   // «خلفية شفافة»: the person wants the subject alone, to composite over something else — no fill at all
   const transparent = b.transparent === true;
   // the references go with a first write too: the plan says what was taken, the pictures show how it looks
@@ -209,15 +213,20 @@ ASSETS: ${assets.length ? assets.map((a) => `K.img("${a.id}") = «${a.name}» ${
 ${soundAsk(b).text}${voiceText(b) ? `
 ${voiceText(b)}` : ""}${footagePart(b, true)}
 ${refs.length ? `${refsText(refs)}\n` : ""}${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the scene page — fix exactly this, keep everything else):\n${errors || "(no error text)"}` : `REFERENCE SCENES (the level of craft expected — learn the technique, never copy them):\n${exemplarsText()}`}
-Write the COMPLETE program (it replaces the old one). duration = ${plan.seconds}, bpm = ${plan.bpm}. Use the palette's hex values. Cues on the changes. Make every frame worthy of the bar.
-
-${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text}`,
+${patch ? `Answer with "edits" on THE PROGRAM that fix exactly this and change nothing else (code empty); the complete program in "code" only when the fix rewrites most of it.` : "Write the COMPLETE program (it replaces the old one)."} duration = ${plan.seconds}, bpm = ${plan.bpm}. Use the palette's hex values. Cues on the changes. Make every frame worthy of the bar.
+${
+  // a FIX of an error needs the program and the error, not the taste files again (13–43k tokens on every attempt)
+  previous ? "" : `\n${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text}`
+}`,
     },
     ...refsParts(refs),
   ];
-  const r = await ask<{ code: string; notes: string }>(who, b, previous ? "مختبر الموشن · تصليح" : "مختبر الموشن · كتابة المشهد", parts, CODE_SCHEMA, outputBudget(b.model), previous ? "medium" : "high", onText);
+  const r = await ask<{ code: string; notes: string; edits?: unknown }>(who, b, previous ? "مختبر الموشن · تصليح" : "مختبر الموشن · كتابة المشهد", parts, patch ? PATCH_SCHEMA : CODE_SCHEMA, outputBudget(b.model), previous ? "medium" : "high", onText);
   if (r.partialRaw !== undefined) return r;
-  const chk = checkScene(r.data.code);
+  const out = patch ? patchOf(previous, r.data) : { code: r.data.code };
+  // a patch that cannot be applied: no program, and the page asks for the whole one (once)
+  if ("patchFailed" in out) return { code: "", problems: [], notes: text(r.data.notes, 600), patchFailed: out.patchFailed, coins: r.coins, model: r.model };
+  const chk = checkScene(out.code);
   return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), coins: r.coins, model: r.model };
 }
 
@@ -248,7 +257,10 @@ Check the sound by reading sound() and the cues against what you see at those ti
 THE PROGRAM:
 ${code}
 
-${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text}`,
+${
+  // the review judges against the skills the plan named; the always-on taste files were read at the plan and the write
+  openRefs(knownRefs(plan.skillRefs)).text
+}`,
     },
     ...sheets.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `CONTACT SHEET ${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
     ...stills.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `STILL ${i + 1}${times[i] !== undefined ? ` (t = ${times[i].toFixed(2)} s)` : ""}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
@@ -275,6 +287,10 @@ export async function labChat(p: EditorProject, who: Who, b: Record<string, unkn
   const foot = footageOf(b);
   const plan = hasPlan ? readPlan(b.plan, Number(b.seconds) || 15, assets.map((a) => a.id), foot?.seconds) : null;
   const code = typeof b.code === "string" ? checkScene(b.code).code : "";
+  // a change to the program comes back as a PATCH (exact edits on THE CURRENT PROGRAM, applied here): he still reads the
+  // whole program, only his answer is short. `whole`: the page asks again after a patch that did not apply — the complete program
+  const whole = b.whole === true;
+  const patching = Boolean(code) && !whole;
   // the whole conversation the page sends; a long one is read through his own handoff of what came before
   // (lib/robot-handoff), keyed by the lab's first message so each lab conversation has its own
   const said = (Array.isArray(b.history) ? b.history : []).slice(-400).map((m) => {
@@ -301,7 +317,7 @@ export async function labChat(p: EditorProject, who: Who, b: Record<string, unkn
       type: "text",
       text: `THE LAB IS A CONVERSATION. The person talks to you like to a motion designer sitting next to them. Read the whole conversation and their new message, then decide ONE action:
 - "plan": there is no piece yet (and the message says what they want — go, never interview them; ask only if you truly cannot start), OR they ask for a different idea, structure, length or style → write "brief": the complete creative brief from the WHOLE conversation (everything they asked so far, in their words and yours).
-- "code": there is a piece and they ask for a change that keeps its idea (a colour, a word, a size, a speed, an element added or removed, a logo or picture they attached placed in it, the sound, a moment moved) → return the COMPLETE revised program in "code", changing only what they asked and keeping everything else exactly as it is (timing, params, cues, sound).
+- "code": there is a piece and they ask for a change that keeps its idea (a colour, a word, a size, a speed, an element added or removed, a logo or picture they attached placed in it, the sound, a moment moved) → ${patching ? `return "edits" on THE CURRENT PROGRAM (exact search/replace, see its description), changing only what they asked and keeping everything else exactly as it is (timing, params, cues, sound); the complete program in "code" only when the change rewrites most of it` : "return the COMPLETE revised program in \"code\", changing only what they asked and keeping everything else exactly as it is (timing, params, cues, sound)"}.
 - "cover": there is a piece and they ask for its cover / thumbnail («سو كفر»، «ثمبنيل») → the lab designs it next (any words they want on it go in "brief").
 - "render": there is a piece and they ask to export / render / put it on the timeline («صدّره»، «رندر»، «نزّله») → the lab renders the final film.
 - "none": a question, a thanks, or nothing to change → just "reply".
@@ -312,11 +328,12 @@ ${attached.length ? `THE PERSON LOADED THEIR OWN VIDEO IN THIS CONVERSATION: ${a
 ${refs.length ? `${refsText(refs)} When they say «زي المرجع» / «مثل الفيديو», they mean these.\n` : ""}${research ? `${research}\n` : "You can search the web: put a query in \"search\" (see its description) and the lab searches, then asks you again with the results.\n"}${history.length ? `THE CONVERSATION SO FAR:\n${history.join("\n")}\n` : ""}THEIR NEW MESSAGE: ${message}
 ${plan ? `THE CURRENT PLAN: ${planText(plan)}` : "There is no plan yet."}
 ${Object.keys(params).length ? `THE VALUES THEY EDITED (params → their value; keep them unless they ask otherwise): ${JSON.stringify(params).slice(0, 3000)}` : ""}
-${code ? `THE CURRENT PROGRAM:\n${code}` : ""}${footagePart(b, Boolean(code))}${code ? `\n\n${SCENE_CONTRACT_NOTE}` : ""}`,
+${code ? `THE CURRENT PROGRAM:\n${code}` : ""}${footagePart(b, Boolean(code))}${code ? `\n\n${SCENE_CONTRACT_NOTE}` : ""}${whole && code ? `\nYOUR LAST ANSWER TO THIS MESSAGE WAS A PATCH THAT COULD NOT BE APPLIED (${text(b.patchFailed, 300) || "an old text was not found exactly once"}): this time, if it is a change, return the COMPLETE revised program in "code".` : ""}`,
     },
     ...refsParts(refs),
   ];
-  const r = await ask<{ reply: string; action: string; brief: string; code: string; options?: unknown; search?: unknown }>(who, b, "مختبر الموشن · محادثة", parts, CHAT_SCHEMA, code ? outputBudget(b.model) : 8000, code ? "high" : "medium", onText, mem.usd);
+  // medium thought for a change too (it was high): a note names what to change, and the answer is a patch
+  const r = await ask<{ reply: string; action: string; brief: string; code: string; edits?: unknown; options?: unknown; search?: unknown }>(who, b, "مختبر الموشن · محادثة", parts, patching ? CHAT_EDIT_SCHEMA : CHAT_SCHEMA, code ? outputBudget(b.model) : 8000, "medium", onText, mem.usd);
   if (r.partialRaw !== undefined) return r;
   // a search he asked for (only once per message: with the results in hand he answers)
   const search = research ? "" : text(r.data.search, 300);
@@ -324,8 +341,11 @@ ${code ? `THE CURRENT PROGRAM:\n${code}` : ""}${footagePart(b, Boolean(code))}${
   // a change asked with no piece yet is a plan (and so is a cover or a render of nothing); a program that breaks the
   // machine's rules goes back as an error to fix
   if ((action === "code" || action === "cover" || action === "render") && !code) action = "plan";
-  const revised = action === "code" ? checkScene(r.data.code) : null;
-  if (action === "code" && !revised?.code) action = "none";
+  const out = action === "code" ? (patching ? patchOf(code, r.data) : { code: r.data.code }) : null;
+  const patchFailed = out && "patchFailed" in out ? out.patchFailed : "";
+  const revised = out && "code" in out ? checkScene(out.code) : null;
+  // a patch that did not apply stays a change with no program: the page asks again for the whole one (once)
+  if (action === "code" && !revised?.code && !patchFailed) action = "none";
   return {
     reply: withNote(text(r.data.reply, 1200) || "تمام.", mem.fresh),
     action,
@@ -333,6 +353,7 @@ ${code ? `THE CURRENT PROGRAM:\n${code}` : ""}${footagePart(b, Boolean(code))}${
     options: (Array.isArray(r.data.options) ? r.data.options : []).map((o) => text(o, 40)).filter(Boolean).slice(0, 4),
     code: revised?.code ?? "",
     problems: revised?.problems ?? [],
+    ...(patchFailed ? { patchFailed } : {}),
     search,
     coins: r.coins,
     model: r.model,
@@ -359,6 +380,18 @@ export async function labSearch(p: EditorProject, who: Who, b: Record<string, un
     (x) => x.usd,
   );
   return { text: text(r.text, 6000), sources: r.sources, coins: r.coins, model: r.model };
+}
+
+/**
+ * A patch answer on `program`: its edits applied in order (each old text exactly once), or — only when he wrote the whole
+ * program instead — that program; `patchFailed` (why) when neither can be used, and the page asks for the whole program.
+ */
+function patchOf(program: string, d: { code?: unknown; edits?: unknown }): { code: string } | { patchFailed: string } {
+  const edits = readEdits(d.edits);
+  const all = typeof d.code === "string" ? d.code.trim() : "";
+  if (!edits.length) return all ? { code: all } : { patchFailed: "the patch has no edits" };
+  const done = applyEdits(program, edits);
+  return done.ok ? { code: done.text } : all ? { code: all } : { patchFailed: done.why };
 }
 
 /** What a revised program must keep (said briefly; the full contract is in the system prompt). */

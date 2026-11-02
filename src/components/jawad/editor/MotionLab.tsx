@@ -34,9 +34,12 @@ import type { EditorAsset } from "./types";
 import { checkFootage, footageFrames, footageMatte, footageSeconds, footageSound, FootageSet, footageTotal, prepareFootage, type FootageInfo, type FootageSource } from "./lab-footage";
 import { footageLines, type FootageFrame, type FootageMeta } from "@/lib/editor/scene/footage";
 import { asksToSearch, REFS_MAX, type LabRef } from "@/lib/editor/scene/references";
+import { quickParams } from "@/lib/editor/scene/quick-params";
 import "./motion-lab.css";
 
 type Stage = "brief" | "planning" | "plan" | "building" | "reviewing" | "ready" | "rendering";
+/** How many times a scene that throws is given back to حيدرا ماكس to fix, before the lab stops and asks the person. */
+const LAB_FIXES = 3;
 const REVIEW_MODES = {
   fast: { label: "بدون مراجعة", rounds: 0, description: "فحص التشغيل فقط، بدون مراجعة جودة. الأسرع والأرخص (الافتراضي)." },
   balanced: { label: "متوازن", rounds: 1, description: "مراجعة جودة واحدة وتصحيح عند الحاجة." },
@@ -885,15 +888,30 @@ export default function MotionLab({
    * watches it being written: the program grows in the conversation's work card as حيدرا ماكس writes it. */
   const buildRunning = async (p: LabPlan, previous = "", errors = "", use: Chosen[] = chosen, signal?: AbortSignal) => {
     let program = previous, why = errors;
-    // no count of its own (the owner's rule): حيدرا ماكس fixes until the scene runs, and «إلغاء» is what stops it
+    // a fix comes back as a PATCH on the program first (its few changed lines, applied on the server); after one patch
+    // that failed — it did not apply, or what it made still broke — the whole program, as before
+    let patch = true, patched = false;
+    // a limit now (the owner, 2 November 2026: no hidden spending): it used to fix with no count until «إلغاء» stopped it
     for (let attempt = 0; ; attempt++) {
       if (signal?.aborted) throw new DOMException("cancelled", "AbortError");
+      // three fixes, then stop and say so: every fix is a paid call (it had no limit)
+      if (attempt > LAB_FIXES) throw new Error(`المشهد ما اشتغل بعد ${LAB_FIXES} تصليحات. اكتب لحيدرا ماكس وش تبي يغيّر، أو ابنه من جديد.`);
       if (!program || why) {
         const line = attempt === 0 && !previous ? "✍️ حيدرا ماكس يكتب المشهد بالكود…" : `🛠️ يصلّح خطأ في المشهد (المحاولة ${attempt})…`;
         say1(line);
         workLine(line);
         setLiveCode("");
-        const r = await call<{ code: string; problems: string[]; notes: string }>("lab_write", { plan: p, seconds: p.seconds, assets: listOf(use), transparent, ...soundBody(), ...(program ? { code: program, errors: why } : { refs: refsBody }) }, (raw) => setLiveCode(partialField(raw, "code")), signal);
+        type Wrote = { code: string; problems: string[]; notes: string; patchFailed?: string };
+        const write = (asPatch: boolean) => call<Wrote>("lab_write", { plan: p, seconds: p.seconds, assets: listOf(use), transparent, ...soundBody(), ...(program ? { code: program, errors: why, ...(asPatch ? { patch: true } : {}) } : { refs: refsBody }) }, (raw) => setLiveCode(partialField(raw, "code")), signal);
+        patched = Boolean(program) && patch;
+        let r = await write(patched);
+        if (r.patchFailed) {
+          // the patch did not apply: the same fix asked again as the whole program (once; not counted as another fix)
+          patch = patched = false;
+          workLine("↩️ التصليح الصغير ما انطبق؛ أطلب المشهد كامل…");
+          setLiveCode("");
+          r = await write(false);
+        }
         setLiveCode("");
         if (r.notes) {
           say1(r.notes);
@@ -904,6 +922,8 @@ export default function MotionLab({
         if (r.problems.length) {
           why = `The program breaks the machine's rules: ${r.problems.join("; ")}`;
           workLine(`⚠️ ${r.problems.join("، ")}`);
+          // a patched program that breaks the rules: the next fix is the whole program
+          if (patched) patch = false;
           continue;
         }
       }
@@ -917,6 +937,8 @@ export default function MotionLab({
         // the person's video is gone: no change to the scene can bring it back, so حيدرا ماكس is not asked to fix it
         if (e instanceof LabSetupError) throw e;
         const se = e instanceof SceneError ? e : new SceneError(String(e), "load");
+        // what a fix's patch made still throws: the next fix is the whole program
+        if (patched) patch = false;
         why = `${se.where === "frame" ? `At t = ${se.t?.toFixed(2)} s the frame threw` : "Loading the scene threw"}: ${se.message}\n${se.stack2}`;
         say1(`⚠️ ${se.message}`);
         workLine(`⚠️ خطأ في التشغيل: ${se.message.slice(0, 160)}`);
@@ -1480,6 +1502,15 @@ export default function MotionLab({
     if (/^صدّ?ره|^رندر|^نزّ?له في التايملاين/.test(message) && info && !busy) return exportFilm;
     if (/^صمّ?م الكفر$/.test(message) && info && !busy) return () => makeCover();
     if (/^نزّ?ل الكفر$/.test(message) && coverUrl) return async () => download(await (await fetch(coverUrl)).blob(), `كفر - ${(plan?.title || "موشن").slice(0, 40)}.png`);
+    // «خلّ اللون ذهبي» on a colour (or a text) the scene exposes as a param: set here and drawn again, with NO call to
+    // حيدرا ماكس (it was a whole paid rewrite of the program); anything less sure goes to him
+    const quick = info?.params?.length && code && plan && !busy ? quickParams(message, info.params, params) : null;
+    if (quick)
+      return async () => {
+        setParams(quick.values);
+        await applyParams(quick.values);
+        say2(`${quick.field.type === "color" ? "🎨" : "✏️"} غيّرت «${quick.field.label}» إلى ${quick.field.type === "color" ? quick.value : `«${quick.value}»`} على طول. تقدر تعدّله أكثر من «✏️ النصوص والألوان».`);
+      };
     return null;
   };
   /** «💬»: one message of the conversation — حيدرا ماكس answers and decides: the scenario, a change (a new version), the
@@ -1501,9 +1532,11 @@ export default function MotionLab({
       // «🌐»: asked to search (the button, or «ابحث…» in the message) — the web first, then حيدرا ماكس answers with it
       let found = searchOn || asksToSearch(message) ? await searchWeb(message) : "";
       setSearchOn(false);
-      type ChatReply = { reply: string; action: "none" | "plan" | "code" | "cover" | "render"; brief: string; code: string; problems: string[]; options?: string[]; search?: string };
-      const ask = () =>
+      type ChatReply = { reply: string; action: "none" | "plan" | "code" | "cover" | "render"; brief: string; code: string; problems: string[]; options?: string[]; search?: string; patchFailed?: string };
+      // `whole`: asked again after his patch (exact edits on the program, applied on the server) did not apply
+      const ask = (whole?: { patchFailed: string }) =>
         call<ChatReply>("lab_chat", {
+          ...(whole ? { whole: true, patchFailed: whole.patchFailed } : {}),
           message,
           history,
           plan,
@@ -1523,6 +1556,12 @@ export default function MotionLab({
         found = await searchWeb(r.search);
         // with nothing found he has already said his piece (asking him again would only ask to search again)
         r = found ? await ask() : { ...r, reply: "" };
+      }
+      // a change answered as a patch that did not apply on the program: asked once more, for the whole program
+      if (r.action === "code" && r.patchFailed) {
+        workLine("↩️ التعديل الصغير ما انطبق على المشهد؛ أطلبه كامل…");
+        r = await ask({ patchFailed: r.patchFailed });
+        if (r.action === "code" && !r.code) r = { ...r, action: "none" };
       }
       if (r.reply) say2(r.reply, r.action === "none" ? r.options : undefined);
       if (r.action === "plan") {

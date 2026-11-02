@@ -78,6 +78,38 @@ export const CHAT_SCHEMA = {
   },
 };
 
+/** A change as exact search/replace edits on the program shown (src/lib/patch.ts): the output is the dear part of a call,
+ * and a note («خلّ اللون ذهبي») is a few lines of a 10–40k-token program. */
+const EDITS = {
+  type: "array",
+  description: "exact search/replace edits on THE CURRENT PROGRAM, applied in order (each on the program as the edits before it left it): `old` is copied character for character from it (same spaces and indentation) and occurs in it EXACTLY ONCE — take a line or two around the spot when needed; `new` replaces it",
+  items: { type: "object", additionalProperties: false, required: ["old", "new"], properties: { old: { type: "string" }, new: { type: "string" } } },
+};
+
+/** CHAT_SCHEMA when there is a program: a change comes back as `edits` (the whole program only when most of it changes). */
+export const CHAT_EDIT_SCHEMA = {
+  ...CHAT_SCHEMA,
+  required: [...CHAT_SCHEMA.required, "edits"],
+  properties: {
+    ...CHAT_SCHEMA.properties,
+    action: { ...CHAT_SCHEMA.properties.action, description: "none = only talk; plan = (re)write the scenario from `brief`; code = change the program: `edits` (or, only when the change rewrites most of it, the complete program in `code`); cover = design the piece's cover now; render = make the final film now" },
+    edits: { ...EDITS, description: `action code: ${EDITS.description}; else []` },
+    code: { type: "string", description: "action code, ONLY when the change rewrites most of the program (a new structure): the COMPLETE revised program, with edits []; else empty" },
+  },
+};
+
+/** A fix of a program that threw, as `edits` on it (the whole program only when most of it changes). */
+export const PATCH_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["edits", "code", "notes"],
+  properties: {
+    edits: { ...EDITS, description: EDITS.description.replace("THE CURRENT PROGRAM", "THE PROGRAM") },
+    code: { type: "string", description: "ONLY when the fix rewrites most of the program: the complete program, with edits []; else empty" },
+    notes: CODE_SCHEMA.properties.notes,
+  },
+};
+
 export const COVER_SCHEMA = {
   type: "object",
   additionalProperties: false,

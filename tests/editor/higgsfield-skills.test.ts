@@ -54,7 +54,9 @@ describe("the owner's two Higgsfield skills, installed verbatim", () => {
     expect(director).toContain("${HF_LAB_TEXT}");
     expect(director).toContain("openRefs([...ALWAYS_AT_PLAN, ...choicesRefs(choices)])");
     // writing and review open the plan's files and, like the plan, the owner's taste files
-    expect(director.match(/openRefs\(\[\.\.\.new Set\(\[\.\.\.ALWAYS_AT_PLAN, \.\.\.knownRefs\(plan\.skillRefs\)\]\)\]\)/g)?.length).toBe(2);
+    // the write opens the always-on taste files and the plan's skills; a fix opens none, a review only the plan's skills
+    expect(director.match(/openRefs\(\[\.\.\.new Set\(\[\.\.\.ALWAYS_AT_PLAN, \.\.\.knownRefs\(plan\.skillRefs\)\]\)\]\)/g)?.length).toBe(1);
+    expect(director).toContain("openRefs(knownRefs(plan.skillRefs))");
     // the taste files both skills say to read first are always opened at the plan
     const atPlan = openRefs(ALWAYS_AT_PLAN);
     expect(atPlan.opened).toEqual(ALWAYS_AT_PLAN);

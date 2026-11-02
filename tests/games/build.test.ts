@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
 import { GAMES_MODE_RULES, GAMES_PLATFORM_RULES } from "@config/games";
-import { assemble, codeBrief, continueBrief, joinParts, editBrief, fixBrief, GAME_BUILD, GAME_CODE_RULES, keepErrors, pageProblems, playCsp, playPath, readPage, readPlan } from "@config/games-build";
+import { assemble, codeBrief, continueBrief, joinParts, editBrief, fixBrief, GAME_BUILD, GAME_CODE_RULES, keepErrors, PATCH_ANSWER, pageProblems, playCsp, playPath, readPage, readPlan } from "@config/games-build";
 import { keyBackdrop, spriteFile } from "@/lib/games/art";
-import { checkPage, syntaxProblems } from "@/lib/games/build";
+import { checkPage, patchedPage, syntaxProblems } from "@/lib/games/build";
 import { modeOf } from "@/lib/games/chats";
 import { passing, PARTIAL_MIN, readStream } from "@/lib/games/claude";
 import { systemText } from "@/lib/games/persona";
@@ -151,6 +151,18 @@ describe("the briefs", () => {
     expect(e).toContain("TypeError: x");
     expect(e).toContain("<html>old</html>");
     expect(editBrief(p, "<html>", "", [])).not.toContain("CLIENT ASKS");
+  });
+
+  it("ask an edit and a fix as a patch on the page when told to, and the whole page otherwise", () => {
+    const e = editBrief(p, "<html>old</html>", "خل الجمل أسرع", [], true);
+    expect(e).toContain("<html>old</html>");
+    expect(e).toContain(PATCH_ANSWER);
+    expect(e).not.toContain("WHOLE updated page");
+    expect(editBrief(p, "<html>old</html>", "خل الجمل أسرع", [])).toContain("WHOLE updated page");
+    expect(fixBrief(p, "<html>", ["P1"], true)).toContain(PATCH_ANSWER);
+    expect(fixBrief(p, "<html>", ["P1"])).toContain("WHOLE corrected page");
+    expect(PATCH_ANSWER).toContain("<<<<<<< SEARCH");
+    expect(PATCH_ANSWER).toContain("EXACTLY ONCE");
   });
 
   it("forbid what the sandbox blocks", () => {
@@ -314,5 +326,34 @@ describe("a reply that stopped in the middle", () => {
 
   it("is continued a few times before it counts as broken", () => {
     expect(GAME_BUILD.maxContinues).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("a change answered as a patch", () => {
+  const ids = ["hero", "bg"];
+  const block = (a: string, b: string) => `<<<<<<< SEARCH\n${a}\n=======\n${b}\n>>>>>>> REPLACE`;
+  const ok = (text: string) => ({ text, stop: "end_turn" });
+
+  it("applies exact edits to the page, and the result is checked like any page", () => {
+    const page = patchedPage(GOOD, ok(`Done:\n${block("let best = 0;", "let best = 0; const speed = 3;")}`));
+    expect(page).toContain("const speed = 3;");
+    expect(page!.replace("let best = 0; const speed = 3;", "let best = 0;")).toBe(GOOD);
+    expect(checkPage(page!, ids)).toEqual(checkPage(GOOD, ids));
+    // a patch that breaks the script is applied, and the checks catch it (it then goes to a fix)
+    const broken = patchedPage(GOOD, ok(block("function loop(t) {", "function loop(t) {{")));
+    expect(syntaxProblems(broken!).length).toBeGreaterThan(0);
+  });
+
+  it("cannot be used when an old text is missing or not unique, when it was cut off, or when he asks for the whole page", () => {
+    expect(patchedPage(GOOD, ok(block("let worst = 0;", "x")))).toBeNull();
+    expect(patchedPage(GOOD, ok(block("{{asset:", "x")))).toBeNull();
+    expect(patchedPage(GOOD, { text: block("let best = 0;", "let best = 1;"), stop: "max_tokens" })).toBeNull();
+    expect(patchedPage(GOOD, { text: block("let best = 0;", "let best = 1;"), stop: "cut" })).toBeNull();
+    expect(patchedPage(GOOD, ok("WHOLE"))).toBeNull();
+  });
+
+  it("takes a complete page written instead of a patch, but not a part of one", () => {
+    expect(patchedPage("<html>old</html>", ok("```html\n" + GOOD + "\n```"))).toBe(GOOD.trim());
+    expect(patchedPage("<html>old</html>", ok("```html\n<!doctype html><html><body>"))).toBeNull();
   });
 });

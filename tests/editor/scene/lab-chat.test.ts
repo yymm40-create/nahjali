@@ -6,10 +6,10 @@ import { SCENE_CONTRACT } from "@/lib/editor/scene/skill";
 
 // «💬 مختبر الموشن» as a conversation, and the finished piece kept editable (its texts and colours are params).
 
-const s = vi.hoisted(() => ({ calls: [] as { text: string; maxTokens: number }[], reply: {} as unknown }));
+const s = vi.hoisted(() => ({ calls: [] as { text: string; maxTokens: number; effort?: string; schema: { properties: Record<string, unknown> } }[], reply: {} as unknown }));
 vi.mock("@/lib/film/anthropic", () => ({
-  callClaudeJson: async (a: { turns: { content: { type: string; text?: string }[] }[]; maxTokens: number }) => {
-    s.calls.push({ text: a.turns[0].content.filter((p) => p.type === "text").map((p) => p.text).join("\n"), maxTokens: a.maxTokens });
+  callClaudeJson: async (a: { turns: { content: { type: string; text?: string }[] }[]; maxTokens: number; effort?: string; schema: { properties: Record<string, unknown> } }) => {
+    s.calls.push({ text: a.turns[0].content.filter((p) => p.type === "text").map((p) => p.text).join("\n"), maxTokens: a.maxTokens, effort: a.effort, schema: a.schema });
     return { data: s.reply, raw: "", usage: { input_tokens: 1, output_tokens: 1 } };
   },
   claudeCost: () => 0.01,
@@ -51,6 +51,73 @@ describe("the lab as a conversation", () => {
     expect(s.calls[0].text).toContain('"title":"مرحبا"');
     expect(s.calls[0].maxTokens).toBeGreaterThanOrEqual(32000);
     await expect(labChat(project, who, { message: "" })).rejects.toThrow();
+  });
+});
+
+describe("a change answered as a patch (the output is the dear part: a few edits instead of the whole program)", () => {
+  beforeEach(() => {
+    s.calls = [];
+    process.env.ANTHROPIC_API_KEY = "test";
+  });
+  const piece = { plan: { title: "x", seconds: 4 }, code: program };
+
+  it("a note comes back as exact edits on the current program, applied on the server, at medium thought; he still reads the whole program", async () => {
+    const { labChat } = await import("@/lib/editor/scene/director");
+    s.reply = { reply: "تم", action: "code", brief: "", code: "", edits: [{ old: "value: 'هلا'", new: "value: 'مرحبا'" }], options: [], search: "" };
+    const r = await labChat(project, who, { message: "خل العنوان مرحبا", ...piece });
+    if (!("reply" in r)) throw new Error("cut");
+    expect(r.action).toBe("code");
+    expect(r.code).toBe(program.replace("value: 'هلا'", "value: 'مرحبا'"));
+    expect(r).not.toHaveProperty("patchFailed");
+    expect(s.calls[0].schema.properties).toHaveProperty("edits");
+    expect(s.calls[0].effort).toBe("medium");
+    expect(s.calls[0].text).toContain(`THE CURRENT PROGRAM:\n${program}`);
+    expect(s.calls[0].text).toContain('return "edits" on THE CURRENT PROGRAM');
+  });
+
+  it("a patch that does not apply (not found, or found twice) gives no program and says why; asked again whole, it is the complete program", async () => {
+    const { labChat } = await import("@/lib/editor/scene/director");
+    for (const old of ["'غير موجود'", "'هلا'"]) {
+      s.reply = { reply: "تم", action: "code", brief: "", code: "", edits: [{ old, new: "'x'" }], options: [], search: "" };
+      const r = await labChat(project, who, { message: "خل العنوان x", ...piece });
+      if (!("reply" in r)) throw new Error("cut");
+      expect(r.action).toBe("code");
+      expect(r.code).toBe("");
+      expect(r.patchFailed).toMatch(old === "'هلا'" ? /more than once/ : /not in the text/);
+    }
+    s.calls = [];
+    s.reply = { reply: "تم", action: "code", brief: "", code: program, options: [], search: "" };
+    const r = await labChat(project, who, { message: "خل العنوان x", ...piece, whole: true, patchFailed: "edit 1 of 1: its old text occurs more than once" });
+    if (!("reply" in r)) throw new Error("cut");
+    expect(r.code).toBe(program);
+    expect(s.calls[0].schema.properties).not.toHaveProperty("edits");
+    expect(s.calls[0].text).toContain("return the COMPLETE revised program");
+    expect(s.calls[0].text).toContain("A PATCH THAT COULD NOT BE APPLIED (edit 1 of 1: its old text occurs more than once)");
+  });
+
+  it("a fix after a runtime error is a patch when the page asks, and says so when it does not apply", async () => {
+    const { labWrite } = await import("@/lib/editor/scene/director");
+    s.reply = { edits: [{ old: "K.text(ctx,", new: "K.text(ctx," }, { old: "duration: 4", new: "duration: 4.5" }], code: "", notes: "صلّحته" };
+    const fix = { plan: { title: "x", seconds: 4 }, seconds: 4, code: program, errors: "At t = 1 s the frame threw: x is not defined" };
+    const r = await labWrite(project, who, { ...fix, patch: true });
+    if (!("code" in r)) throw new Error("cut");
+    expect(r.code).toBe(program.replace("duration: 4", "duration: 4.5"));
+    expect(r.problems).toEqual([]);
+    expect(s.calls[0].schema.properties).toHaveProperty("edits");
+    expect(s.calls[0].text).toContain('Answer with "edits" on THE PROGRAM');
+    s.reply = { edits: [{ old: "nope", new: "x" }], code: "", notes: "" };
+    const bad = await labWrite(project, who, { ...fix, patch: true });
+    if (!("code" in bad)) throw new Error("cut");
+    expect(bad.code).toBe("");
+    expect(bad).toHaveProperty("patchFailed");
+    // without `patch` it is the whole program, as before
+    s.calls = [];
+    s.reply = { code: program, notes: "" };
+    const all = await labWrite(project, who, fix);
+    if (!("code" in all)) throw new Error("cut");
+    expect(all.code).toBe(program);
+    expect(s.calls[0].schema.properties).not.toHaveProperty("edits");
+    expect(s.calls[0].text).toContain("Write the COMPLETE program");
   });
 });
 
