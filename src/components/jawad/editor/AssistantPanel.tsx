@@ -119,14 +119,6 @@ export default function AssistantPanel({
   onUndo,
   onClose,
   readOnly,
-  big,
-  onBig,
-  mode = "dock",
-  onMode,
-  docked,
-  onDock,
-  zoom,
-  onZoom,
   diag,
   onLab,
 }: {
@@ -199,7 +191,9 @@ export default function AssistantPanel({
   const fileRef = useRef<HTMLInputElement>(null);
   // who reads حيدرا ماكس's spoken replies (this device): any provider, or one of the person's own voices
   const [voicePick, setVoicePick] = useState("auto");
-  useEffect(() => setVoicePick(replyVoice()), []);
+  useEffect(() => {
+    setVoicePick(replyVoice());
+  }, []);
   // the timeline as it is now (what was made arrives after Claude's own steps were applied)
   const tlRef = useRef(tl);
   useEffect(() => {
@@ -214,7 +208,9 @@ export default function AssistantPanel({
   // «🩺 تشخيص»: the next message asks حيدرا ماكس to find what went wrong (the owner only)
   const [diagOn, setDiagOn] = useState(false);
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [msgs, busy]);
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, [msgs, busy]);
 
   // ---------- the edit's conversation stays with the project (server; before the migration, this device) ----------
   const [chat, setChat] = useState<{ loaded: boolean; stored: boolean; handoff: string | null; chats: number }>({ loaded: false, stored: false, handoff: null, chats: 1 });
@@ -759,356 +755,368 @@ export default function AssistantPanel({
     return () => clearTimeout(t);
   });
 
+  // ───────── the conversation, laid out like Claude's chat (the owner, 2 November 2026: «نفس شات كلاود بالضبط، باسم حيدرا ماكس») ─────────
+  const seen = (() => {
+    const f = selected.length === 1 ? findClip(tl, selected[0]) : null;
+    const as = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
+    return as && as.kind !== "audio" && f!.track.kind !== "audio" ? as : null;
+  })();
+  const attach = (a: EditorAsset) => setPending((x) => (x.some((y) => y.id === a.id) ? x.filter((y) => y.id !== a.id) : [...x, a].slice(-6)));
+  const canSend = (!!text.trim() || pending.length > 0) && !busy && !readOnly;
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2.5 border-b border-jw-line px-3 py-2.5">
-        <span className="jw-orb h-9 w-9 shrink-0" data-busy={!!busy} aria-hidden />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-bold">حيدرا ماكس · مساعدك في المونتاج</span>
-          <span className="flex items-center gap-1 text-[11px] text-jw-muted" aria-live="polite">
-            <span className={`h-1.5 w-1.5 rounded-full ${busy ? "animate-pulse bg-jw-warn" : "bg-jw-ok"}`} />
-            {busy ? "يشتغل…" : "جاهز يخدمك"}
-          </span>
-        </span>
+    <div className="hm flex h-full min-h-0 flex-col bg-jw-surface" dir="rtl">
+      <header className="flex items-center gap-2 px-3 py-2">
+        <span className="jw-orb h-7 w-7 shrink-0" data-busy={!!busy} aria-hidden />
+        <b className="min-w-0 flex-1 truncate text-[15px]">حيدرا ماكس</b>
         {msgs.length > 0 && (
-          <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${long ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} disabled={!!busy || readOnly} onClick={handOff} title="حيدرا ماكس يلخّص المحادثة (هاندوف) ويبدأ محادثة جديدة منها">
-            <Icon name="retry" size={13} /> محادثة جديدة
+          <button type="button" className="hm-icon" disabled={!!busy || readOnly} onClick={handOff} title="محادثة جديدة (حيدرا ماكس يلخّص اللي قبلها ويكمل منها)" aria-label="محادثة جديدة">
+            <Icon name="plus" size={18} />
           </button>
         )}
-        {onZoom && zoom != null && (
-          <span className="flex items-center rounded-full border border-jw-line" role="group" aria-label="حجم الكلام">
-            <button type="button" className="grid h-8 w-8 place-items-center rounded-full text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={zoom <= 0.85} onClick={() => onZoom(Math.round((zoom - 0.15) * 100) / 100)} aria-label="صغّر الكلام" title="صغّر الكلام">
-              <Icon name="zoomOut" size={15} />
-            </button>
-            <button type="button" className="grid h-8 w-8 place-items-center rounded-full text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={zoom >= 1.6} onClick={() => onZoom(Math.round((zoom + 0.15) * 100) / 100)} aria-label="كبّر الكلام" title="كبّر الكلام">
-              <Icon name="zoomIn" size={15} />
-            </button>
-          </span>
-        )}
-        {onMode && !big && (
-          <span className="hidden items-center rounded-full border border-jw-line p-0.5 lg:flex" role="radiogroup" aria-label="مكان حيدرا ماكس">
-            {(
-              [
-                ["dock", "عادي", "جنب المعاينة"],
-                ["tall", "طول كامل", "الجهة كاملة من فوق لتحت"],
-                ["half", "نص الشاشة", "نص الشاشة من فوق لتحت"],
-              ] as const
-            ).map(([m, label, title]) => (
-              <button key={m} type="button" role="radio" aria-checked={mode === m} title={title} onClick={() => onMode(m)} className={`rounded-full px-2 py-1 text-[11px] ${mode === m ? "bg-jw-accent text-jw-on-accent" : "text-jw-muted hover:text-jw-ink"}`}>
-                {label}
-              </button>
-            ))}
-          </span>
-        )}
-        {onDock && (
-          <span className="hidden lg:contents">
-            <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${docked ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} onClick={onDock} aria-pressed={!!docked} title={docked ? "رجّع حيدرا ماكس نافذة عائمة" : "حط حيدرا ماكس فوق التايملاين وعدّل عليه مباشرة"}>
-              <Icon name="frames" size={14} /> {docked ? "نافذة" : "فوق التايملاين"}
-            </button>
-          </span>
-        )}
-        {onBig && (
-          <span className="hidden lg:contents">
-            <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${big ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} onClick={onBig} aria-pressed={!!big} title={big ? "رجّع المحادثة لمكانها (Esc)" : "كبّر المحادثة على الشاشة كلها"}>
-              <Icon name={big ? "shrink" : "expand"} size={14} /> {big ? "تصغير" : "تكبير"}
-            </button>
-          </span>
-        )}
         {onClose && (
-          <>
-            {/* a phone: the conversation fills the screen, and this brings the timeline back */}
-            <span className="contents lg:hidden">
-              <button type="button" className="jw-btn jw-btn-primary !min-h-9 !px-3 text-xs" onClick={onClose} aria-label="صغّر المحادثة وارجع للتايملاين">
-                <Icon name="shrink" size={15} /> تصغير
-              </button>
-            </span>
-            <span className="hidden lg:contents">
-              <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon" onClick={onClose} aria-label="إغلاق">
-                <Icon name="x" />
-              </button>
-            </span>
-          </>
+          <button type="button" className="hm-icon" onClick={onClose} aria-label="إغلاق المحادثة" title="إغلاق">
+            <Icon name="x" size={18} />
+          </button>
         )}
-      </div>
-      <div className="jw-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-3" aria-live="polite">
-        {chat.handoff && (
-          <div className="rounded-xl border border-jw-accent/30 bg-jw-accent/5 p-2.5 text-xs">
-            <button type="button" className="flex w-full items-center gap-1.5 font-semibold text-jw-accent" onClick={() => setShowHandoff((v) => !v)} aria-expanded={showHandoff}>
-              <Icon name="check" size={12} /> المحادثة {chat.chats} · تبدأ من هاندوف اللي قبلها
-              <span className="ms-auto text-jw-muted">{showHandoff ? "إخفاء" : "عرض"}</span>
+      </header>
+
+      <div className="jw-scroll min-h-0 flex-1 overflow-y-auto" aria-live="polite">
+        <div className="mx-auto flex w-full max-w-[46rem] flex-col gap-6 px-4 pb-6 pt-2">
+          {chat.handoff && (
+            <button type="button" className="self-center rounded-full border border-jw-line px-3 py-1 text-[12px] text-jw-muted hover:text-jw-ink" onClick={() => setShowHandoff((v) => !v)} aria-expanded={showHandoff}>
+              المحادثة {chat.chats} · تكمل من ملخص اللي قبلها {showHandoff ? "▴" : "▾"}
             </button>
-            {showHandoff && <p className="mt-2 whitespace-pre-wrap leading-6 text-jw-muted" dir="auto">{chat.handoff}</p>}
-          </div>
-        )}
-        {!msgs.length && chat.loaded && (
-          <div className="space-y-3">
-            <div className="jw-select-text max-w-[92%] rounded-2xl rounded-ss-sm bg-jw-surface-2 px-3 py-2 text-sm leading-6">
-              هلا! أنا حيدرا ماكس، مساعدك في المونتاج 👋
-              <span className="mt-1 block text-xs leading-6 text-jw-muted">قل لي وش تبي بكلامك وأنا أعدّل التايملاين: أقص السكتات، أرتّب، أحط انتقالات ونصوص وكابشن، وأنظّف الصوت. كل اللي أسويه تتراجع عنه بضغطة.</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {QUICK.map((q) => (
-                <button key={q} type="button" disabled={readOnly || !!busy} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => send(q)}>
-                  {q}
-                </button>
-              ))}
-            </div>
-            {/* «أساليب الموشن»: ten styles, each different, in one picker (no rows of chips) */}
-            <button type="button" disabled={readOnly} onClick={() => setGallery(true)} className="flex w-full items-center gap-3 rounded-2xl border border-jw-accent/40 bg-jw-accent/10 p-3 text-start">
-              <span className="text-2xl" aria-hidden>🎬</span>
-              <span className="min-w-0 flex-1">
-                <b className="block text-sm">موشن جرافيكس بأسلوب جاهز</b>
-                <span className="block text-[11px] text-jw-muted">{MOTION_TEN.map((m) => m.icon).join(" ")} — {MOTION_TEN.length} أساليب مختلفة، اختر واحد وقل عن وش</span>
-              </span>
-            </button>
-          </div>
-        )}
-        {msgs.map((m, i) => (
-          <div key={i} className={`jw-select-text max-w-[92%] rounded-2xl px-3 py-2 text-sm leading-6 ${m.role === "user" ? "ms-auto bg-jw-accent/15" : m.error ? "bg-jw-danger/15 text-jw-danger" : "bg-jw-surface-2"}`} dir="auto">
-            <MsgText text={m.text} />
-            {m.done ? (
-              <p className="mt-1.5 flex items-center gap-2 text-[11px] text-jw-ok">
-                <Icon name="check" size={12} /> نفّذت {m.done === 1 ? "خطوة وحدة" : m.done === 2 ? "خطوتين" : `${m.done} خطوات`}
-                {i === msgs.length - 1 && (
-                  <button type="button" className="text-jw-muted underline" onClick={onUndo}>
-                    تراجع
-                  </button>
-                )}
-              </p>
-            ) : null}
-            {m.suggestions?.length ? (
-              <div className="mt-2 space-y-1.5 border-t border-jw-line pt-2">
-                <p className="text-[11px] text-jw-muted">لقطات تكمّل الفيديو:</p>
-                {m.suggestions.map((s) => (
-                  <a key={s.prompt} href={`/jawad-ai?kind=video&idea=${encodeURIComponent(s.prompt.slice(0, 500))}`} target="_blank" rel="noreferrer" className="block rounded-lg border border-jw-line p-2 text-xs hover:border-jw-accent">
-                    🎬 {s.why}
-                    <span className="block text-[10px] text-jw-faint" dir="ltr">{s.prompt}</span>
-                  </a>
-                ))}
-              </div>
-            ) : null}
-            {m.options?.length && i === msgs.length - 1 && !busy ? <OptionGroups groups={m.options} disabled={readOnly} onSend={(words) => void send(words)} /> : null}
-            {m.quick?.length && i === msgs.length - 1 && !busy ? (
-              <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="اختر إجابة">
-                {m.quick.map((q) => (
-                  <button key={q} type="button" disabled={readOnly} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => send(q)}>
+          )}
+          {chat.handoff && showHandoff && <p className="jw-select-text whitespace-pre-wrap rounded-2xl bg-jw-surface-2 p-3 text-[13px] leading-6 text-jw-muted" dir="auto">{chat.handoff}</p>}
+
+          {!msgs.length && chat.loaded && (
+            <div className="flex flex-col items-center gap-5 pt-[12vh] text-center">
+              <span className="jw-orb h-12 w-12" aria-hidden />
+              <h2 className="text-2xl font-bold leading-snug">وش نسوي في المونتاج اليوم؟</h2>
+              <div className="flex max-w-xl flex-wrap justify-center gap-2">
+                {QUICK.slice(0, 6).map((q) => (
+                  <button key={q} type="button" disabled={readOnly || !!busy} className="hm-chip" onClick={() => send(q)}>
                     {q}
                   </button>
                 ))}
-                <button type="button" disabled={readOnly} className="jw-chip !px-2.5 !py-1 !text-xs !border-dashed" onClick={() => textRef.current?.focus()}>
-                  ✍️ اكتب إجابة مختلفة
-                </button>
               </div>
-            ) : null}
-            {m.plans?.map((x, k) => (
-              <div key={k} className="mt-2 rounded-lg border border-jw-line p-2 text-xs">
-                <p className="text-jw-muted" dir="auto">{x.plan.prompt.slice(0, 200)}</p>
-                {x.state === "ask" ? (
-                  <button
-                    type="button"
-                    className="jw-btn jw-btn-primary mt-2 !min-h-8 w-full text-xs"
-                    disabled={readOnly || !!busy}
-                    onClick={async () => {
-                      const mark = (state: "started" | "failed") => setMsgs((all) => all.map((mm, j) => (j === i ? { ...mm, plans: mm.plans?.map((pp, kk) => (kk === k ? { ...pp, state } : pp)) } : mm)));
-                      try {
-                        await startMaking(projectId, x.plan);
-                        mark("started");
-                      } catch (e) {
-                        mark("failed");
-                        setMsgs((all) => [...all, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
-                      }
-                    }}
-                  >
-                    اصنعه (<Riyal halalas={x.plan.coins} size={13} />)
-                  </button>
-                ) : (
-                  <p className="mt-1.5 text-[11px] text-jw-ok">{x.state === "started" ? "بدأ الصنع ✓ ينحط على التايملاين لحاله" : "ما بدأ"}</p>
-                )}
+            </div>
+          )}
+
+          {msgs.map((m, i) =>
+            m.role === "user" ? (
+              <div key={i} className="jw-select-text max-w-[85%] self-start whitespace-pre-wrap rounded-3xl bg-jw-surface-3 px-4 py-2.5 text-[15px] leading-7" dir="auto">
+                {m.text}
               </div>
-            ))}
-          </div>
-        ))}
-        {long && !busy && (
-          <div className="rounded-xl border border-jw-warn/40 bg-jw-warn/10 p-2.5 text-xs">
-            المحادثة طوّلت. خلّ حيدرا ماكس يكتب هاندوف لكل اللي اتفقنا عليه ويبدأ محادثة جديدة منه — يتذكّر ذوقك وقراراتك ويرد أسرع.
-            <button type="button" className="jw-btn jw-btn-primary mt-2 !min-h-8 w-full text-xs" disabled={readOnly} onClick={handOff}>
-              سوّ هاندوف وابدأ محادثة جديدة
-            </button>
-          </div>
-        )}
-        {busy && (
-          <p className="flex items-center gap-2 text-xs text-jw-muted">
-            <span className="jw-spinner" /> {busy}
-          </p>
-        )}
-        <div ref={end} />
-      </div>
-      {(() => {
-        const f = selected.length === 1 ? findClip(tl, selected[0]) : null;
-        const as = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
-        return as && as.kind !== "audio" && f!.track.kind !== "audio" ? (
-          <p className="flex items-center gap-1.5 border-t border-jw-line px-3 pt-1.5 text-[11px] text-jw-muted">
-            <Icon name="eye" size={13} className="text-jw-accent" /> حيدرا ماكس بيشوف المقطع المحدد «{as.name}» مع رسالتك
-          </p>
-        ) : null;
-      })()}
-      {(talk || recording) && (
-        <div className="flex items-center gap-2 border-t border-jw-line bg-jw-accent/10 px-3 py-2 text-xs" role="status" aria-live="polite">
-          <span className="flex h-4 w-10 items-end gap-0.5" aria-hidden>
-            {[0.5, 1, 0.7, 0.9].map((k, i) => (
-              <span key={i} className="w-1.5 rounded-full bg-jw-accent transition-all" style={{ height: `${Math.max(15, Math.min(100, level * 100 * k))}%` }} />
-            ))}
-          </span>
-          <span className="flex-1 font-semibold">
-            {recording
-              ? "أسجّل… اضغط 🎤 مرة ثانية لما تخلص"
-              : talk === "listening"
-                ? "🎧 أسمعك… تكلّم، وأفهم لحالي لما تسكت"
-                : talk === "hearing"
-                  ? "أكتب كلامك…"
-                  : talk === "thinking"
-                    ? "حيدرا ماكس يشتغل…"
-                    : "🔊 حيدرا ماكس يتكلم…"}
-          </span>
-          {talk === "speaking" && (
-            <button type="button" className="jw-btn jw-btn-quiet !min-h-7 !px-2 text-[11px]" onClick={hush}>
-              قاطعه
+            ) : (
+              <div key={i} className={`hm-reply jw-select-text text-[15px] leading-7 ${m.error ? "text-jw-danger" : ""}`} dir="auto">
+                <MsgText text={m.text} />
+                {m.suggestions?.length ? (
+                  <div className="mt-3 space-y-1.5">
+                    {m.suggestions.map((s) => (
+                      <a key={s.prompt} href={`/jawad-ai?kind=video&idea=${encodeURIComponent(s.prompt.slice(0, 500))}`} target="_blank" rel="noreferrer" className="block rounded-2xl border border-jw-line p-3 text-[13px] hover:border-jw-accent">
+                        🎬 {s.why}
+                        <span className="mt-1 block text-[11px] text-jw-faint" dir="ltr">{s.prompt}</span>
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+                {m.options?.length && i === msgs.length - 1 && !busy ? <OptionGroups groups={m.options} disabled={readOnly} onSend={(words) => void send(words)} /> : null}
+                {m.quick?.length && i === msgs.length - 1 && !busy ? (
+                  <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="اختر إجابة">
+                    {m.quick.map((q) => (
+                      <button key={q} type="button" disabled={readOnly} className="hm-chip" onClick={() => send(q)}>
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {m.plans?.map((x, k) => (
+                  <div key={k} className="mt-3 rounded-2xl border border-jw-line p-3 text-[13px]">
+                    <p className="text-jw-muted" dir="auto">{x.plan.prompt.slice(0, 200)}</p>
+                    {x.state === "ask" ? (
+                      <button
+                        type="button"
+                        className="jw-btn jw-btn-primary mt-2 !min-h-9 w-full text-[13px]"
+                        disabled={readOnly || !!busy}
+                        onClick={async () => {
+                          const mark = (state: "started" | "failed") => setMsgs((all) => all.map((mm, j) => (j === i ? { ...mm, plans: mm.plans?.map((pp, kk) => (kk === k ? { ...pp, state } : pp)) } : mm)));
+                          try {
+                            await startMaking(projectId, x.plan);
+                            mark("started");
+                          } catch (e) {
+                            mark("failed");
+                            setMsgs((all) => [...all, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
+                          }
+                        }}
+                      >
+                        اصنعه (<Riyal halalas={x.plan.coins} size={13} />)
+                      </button>
+                    ) : (
+                      <p className="mt-1.5 text-[12px] text-jw-ok">{x.state === "started" ? "بدأ الصنع ✓ ينحط على التايملاين لحاله" : "ما بدأ"}</p>
+                    )}
+                  </div>
+                ))}
+                {!m.error && <ReplyActions text={m.text} done={m.done} onUndo={i === msgs.length - 1 && m.done ? onUndo : undefined} />}
+              </div>
+            ),
+          )}
+
+          {busy && (
+            <div className="flex items-center gap-2.5 text-[14px] text-jw-muted" role="status">
+              <span className="jw-orb h-5 w-5 shrink-0" data-busy aria-hidden />
+              <span className="hm-shimmer">{busy}</span>
+            </div>
+          )}
+          {long && !busy && (
+            <button type="button" className="self-center rounded-full border border-jw-line px-3 py-1.5 text-[12px] text-jw-muted hover:text-jw-ink" disabled={readOnly} onClick={handOff}>
+              المحادثة طوّلت — ابدأ محادثة جديدة من ملخصها (أرخص وأسرع)
             </button>
           )}
-          <select
-            className="jw-select !min-h-7 !py-0 text-[11px]"
-            value={voicePick}
-            aria-label="صوت ردود حيدرا ماكس"
-            title="🔊 مين يقرأ ردود حيدرا ماكس (كلاود يكتب الرد، ومزوّد الصوت يقرأه)"
+          <div ref={end} />
+        </div>
+      </div>
+
+      <div className="mx-auto w-full max-w-[46rem] px-3 pb-2">
+        {(talk || recording) && (
+          <div className="mb-2 flex items-center gap-2 rounded-2xl bg-jw-accent/10 px-3 py-2 text-[13px]" role="status" aria-live="polite">
+            <span className="flex h-4 w-10 items-end gap-0.5" aria-hidden>
+              {[0.5, 1, 0.7, 0.9].map((k, i) => (
+                <span key={i} className="w-1.5 rounded-full bg-jw-accent transition-all" style={{ height: `${Math.max(15, Math.min(100, level * 100 * k))}%` }} />
+              ))}
+            </span>
+            <span className="flex-1 font-semibold">{recording ? "أسجّل… اضغط 🎤 مرة ثانية لما تخلص" : talk === "listening" ? "🎧 أسمعك…" : talk === "hearing" ? "أكتب كلامك…" : talk === "thinking" ? "حيدرا ماكس يشتغل…" : "🔊 حيدرا ماكس يتكلم…"}</span>
+            {talk === "speaking" && (
+              <button type="button" className="hm-chip !py-0.5" onClick={hush}>
+                قاطعه
+              </button>
+            )}
+            <select
+              className="rounded-full border border-jw-line bg-transparent px-2 py-0.5 text-[12px]"
+              value={voicePick}
+              aria-label="صوت ردود حيدرا ماكس"
+              onChange={(e) => {
+                setVoicePick(e.target.value);
+                try {
+                  localStorage.setItem(REPLY_VOICE_KEY, e.target.value);
+                } catch {
+                  /* this time only */
+                }
+              }}
+            >
+              <option value="auto">🔊 تلقائي</option>
+              <option value="device">🖥️ صوت الجهاز</option>
+              <option value="openai">OpenAI</option>
+              <option value="elevenlabs">ElevenLabs</option>
+              <option value="jawad">🧬 صوت الجواد</option>
+              {[...ownVoices, ...(voicePick.startsWith("v:") && !ownVoices.some((v) => v.value === voicePick) ? [{ value: voicePick, name: "صوتي" }] : [])].map((v) => (
+                <option key={v.value} value={v.value}>
+                  🧬 {v.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <form
+          className="hm-composer"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void send();
+          }}
+        >
+          {(pending.length > 0 || refUploads.items.length > 0 || seen) && (
+            <div className="flex flex-wrap items-center gap-1.5 px-3 pt-3">
+              {seen && !pending.some((p) => p.id === seen.id) && (
+                <span className="inline-flex items-center gap-1 rounded-xl border border-dashed border-jw-line px-2 py-1 text-[12px] text-jw-muted" title="حيدرا ماكس يشوف المقطع المحدد مع رسالتك">
+                  <Icon name="eye" size={12} /> {seen.name.slice(0, 22)}
+                </span>
+              )}
+              {pending.map((a) => (
+                <span key={a.id} className="inline-flex items-center gap-1.5 rounded-xl bg-jw-surface-3 py-1 pe-1 ps-1.5 text-[12px]">
+                  <Thumb a={a} size={26} />
+                  <span className="max-w-[9rem] truncate">{a.name}</span>
+                  <button type="button" className="grid h-5 w-5 place-items-center rounded-full text-jw-muted hover:text-jw-ink" aria-label={`شيل ${a.name}`} onClick={() => attach(a)}>
+                    ✕
+                  </button>
+                </span>
+              ))}
+              {refUploads.items.map((u) => (
+                <span key={u.key} className={`inline-flex items-center gap-1 rounded-xl px-2 py-1 text-[12px] ${u.error ? "bg-jw-danger/15 text-jw-danger" : "bg-jw-surface-3"}`}>
+                  {u.error ? `⚠️ ${u.name.slice(0, 18)}: ${u.error}` : `⏫ ${u.name.slice(0, 18)} ${Math.round(u.progress * 100)}٪`}
+                  {u.error && (
+                    <button type="button" aria-label="أخفِ" onClick={() => refUploads.dismiss(u.key)}>
+                      ✕
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+          <textarea
+            ref={textRef}
+            className="hm-input"
+            rows={1}
+            dir="auto"
+            value={text}
+            disabled={readOnly}
+            placeholder={diag && diagOn ? "🩺 وش صار؟ مثلًا: ليش التصدير وقف؟" : "اكتب لحيدرا ماكس…"}
             onChange={(e) => {
-              setVoicePick(e.target.value);
-              try {
-                localStorage.setItem(REPLY_VOICE_KEY, e.target.value);
-              } catch {
-                /* this time only */
+              setText(e.target.value);
+              const el = e.target;
+              el.style.height = "auto";
+              el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                void send();
               }
             }}
-          >
-            <option value="auto">🔊 تلقائي</option>
-            <option value="device">🖥️ صوت الجهاز (مجاني)</option>
-            <option value="openai">OpenAI</option>
-            <option value="elevenlabs">ElevenLabs</option>
-            <option value="jawad">🧬 صوت الجواد (بصمتي)</option>
-            {[...ownVoices, ...(voicePick.startsWith("v:") && !ownVoices.some((v) => v.value === voicePick) ? [{ value: voicePick, name: "صوتي" }] : [])].map((v) => (
-              <option key={v.value} value={v.value}>
-                🧬 {v.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-      {(pending.length > 0 || refUploads.items.length > 0) && (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-jw-line px-2 pt-2 text-[11px]">
-          {pending.map((a) => (
-            <span key={a.id} className="inline-flex items-center gap-1 rounded-full bg-jw-accent/15 px-2 py-1 font-semibold">
-              📎 {a.kind === "image" ? "🖼️" : a.kind === "video" ? "🎬" : "🎵"} {a.name.slice(0, 24)}
-              <button type="button" className="text-jw-muted" aria-label={`شيل ${a.name}`} onClick={() => setPending((x) => x.filter((y) => y.id !== a.id))}>
-                ✕
-              </button>
-            </span>
-          ))}
-          {refUploads.items.map((u) => (
-            <span key={u.key} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 ${u.error ? "bg-jw-danger/15 text-jw-danger" : "bg-jw-line/40"}`}>
-              {u.error ? `⚠️ ${u.name.slice(0, 18)}: ${u.error}` : `⏫ ${u.name.slice(0, 18)} ${Math.round(u.progress * 100)}٪`}
-              {u.error && (
-                <button type="button" aria-label="أخفِ" onClick={() => refUploads.dismiss(u.key)}>
-                  ✕
+          />
+          <input
+            ref={fileRef}
+            type="file"
+            hidden
+            multiple
+            accept="image/*,video/*,audio/*"
+            onChange={(e) => {
+              if (e.target.files?.length) refUploads.add(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          <div className="flex items-center gap-1 px-2 pb-2">
+            <PlusMenu
+              disabled={readOnly}
+              onFile={() => fileRef.current?.click()}
+              onStyles={() => setGallery(true)}
+              diag={diag ? { on: diagOn, toggle: () => setDiagOn((v) => !v) } : undefined}
+            />
+            <ClaudeModelPicker menu disabled={!!busy} />
+            <span className="flex-1" />
+            {talkable && (
+              <>
+                <button type="button" className={`hm-icon ${recording ? "!text-jw-danger" : ""}`} disabled={readOnly || !!talk || (!!busy && !recording)} onClick={() => void voiceMessage()} aria-pressed={recording} aria-label={recording ? "أوقف التسجيل" : "سجّل بصوتك"} title="🎤 سجّل بصوتك ويُكتب كلامك">
+                  <Icon name="mic" size={18} />
                 </button>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="flex items-center gap-1.5 border-t border-jw-line px-2 pt-1.5">
-        <button type="button" className="jw-chip !px-2.5 !py-0.5 !text-[11px] !border-jw-accent/50" disabled={readOnly} onClick={() => setGallery(true)}>
-          🎬 أساليب الموشن ({MOTION_TEN.length})
-        </button>
+                <button type="button" className={`hm-icon ${talk ? "!text-jw-accent" : ""}`} disabled={readOnly || recording || (!!busy && !talk)} onClick={() => void conversation()} aria-pressed={!!talk} aria-label={talk ? "أنهِ المكالمة" : "كلّم حيدرا ماكس بالصوت"} title="🎧 كلّمه بالصوت">
+                  {talk ? <Icon name="stop" size={18} /> : <span aria-hidden>🎧</span>}
+                </button>
+              </>
+            )}
+            {busy && canStop ? (
+              <button type="button" className="hm-send" onClick={stop} aria-label="وقّف الطلب" title="وقّف: ما ينفّذ شي من رده">
+                <Icon name="stop" size={16} />
+              </button>
+            ) : (
+              <button type="submit" className="hm-send" disabled={!canSend} aria-label="أرسل">
+                <Icon name="chevronUp" size={20} />
+              </button>
+            )}
+          </div>
+        </form>
+
+        <MediaStrip assets={assets} picked={pending} onPick={attach} disabled={readOnly} />
       </div>
       <StylePicker open={gallery} disabled={readOnly || !!busy} onClose={() => setGallery(false)} onSend={(words) => void send(words)} />
-      <ClaudeModelPicker className="border-t border-jw-line px-2 pt-1.5" disabled={!!busy} />
-      <form
-        className="flex items-end gap-2 p-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send();
-        }}
+    </div>
+  );
+}
+
+/** Under a reply, like Claude's: copy, and — when it changed the timeline — what it did and its undo. */
+function ReplyActions({ text, done, onUndo }: { text: string; done?: number; onUndo?: () => void }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mt-2 flex items-center gap-1 text-[12px] text-jw-muted">
+      <button
+        type="button"
+        className="hm-icon !h-7 !w-7"
+        aria-label="انسخ الرد"
+        title={copied ? "انتسخ" : "انسخ"}
+        onClick={() =>
+          navigator.clipboard
+            .writeText(text)
+            .then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            })
+            .catch(() => {})
+        }
       >
-        <input
-          ref={fileRef}
-          type="file"
-          hidden
-          multiple
-          accept="image/*,video/*,audio/*"
-          onChange={(e) => {
-            if (e.target.files?.length) refUploads.add(e.target.files);
-            e.target.value = "";
-          }}
-        />
-        <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon shrink-0" disabled={readOnly} onClick={() => fileRef.current?.click()} aria-label="أرفق مراجع" title="📎 أرفق صور أو فيديو أو صوت مع رسالتك: حيدرا ماكس يشوفها ويستخدمها">
-          📎
+        <Icon name={copied ? "check" : "copy"} size={14} />
+      </button>
+      {done ? (
+        <span className="ms-1 inline-flex items-center gap-1 text-jw-ok">
+          <Icon name="check" size={12} /> نفّذت {done === 1 ? "خطوة" : done === 2 ? "خطوتين" : `${done} خطوات`}
+        </span>
+      ) : null}
+      {onUndo && (
+        <button type="button" className="ms-2 rounded-full px-2 py-0.5 hover:bg-jw-surface-2 hover:text-jw-ink" onClick={onUndo}>
+          ↩︎ تراجع
         </button>
-        <textarea
-          ref={textRef}
-          className="jw-textarea max-h-32 min-h-11 min-w-0 flex-1 resize-none text-sm"
-          rows={1}
-          dir="auto"
-          value={text}
-          disabled={readOnly}
-          placeholder={diag && diagOn ? "🩺 وش صار؟ مثلًا: ليش التصدير وقف؟" : "مثلًا: قص السكتات وحط كابشن"}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              void send();
-            }
-          }}
-        />
-        {talkable && (
-          <>
-            <button
-              type="button"
-              className={`jw-btn jw-btn-icon shrink-0 ${recording ? "!border-jw-danger bg-jw-danger/15 text-jw-danger" : "jw-btn-quiet"}`}
-              disabled={readOnly || !!talk || (!!busy && !recording)}
-              onClick={() => void voiceMessage()}
-              aria-pressed={recording}
-              aria-label={recording ? "أوقف التسجيل واكتب كلامي" : "سجّل بصوتك ويُكتب كلامك"}
-              title="🎤 سجّل بصوتك: اضغط وتكلّم، واضغط مرة ثانية — كلامك ينكتب في المربع، تعدّله وترسله"
-            >
-              <Icon name="mic" />
+      )}
+    </div>
+  );
+}
+
+/** «＋» in the composer: attach files, the motion styles, and (the owner) the diagnosis mode. */
+function PlusMenu({ disabled, onFile, onStyles, diag }: { disabled?: boolean; onFile: () => void; onStyles: () => void; diag?: { on: boolean; toggle: () => void } }) {
+  const [open, setOpen] = useState(false);
+  const item = "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-start text-[14px] hover:bg-jw-surface-3";
+  return (
+    <span className="relative">
+      <button type="button" className={`hm-icon ${diag?.on ? "!text-jw-accent" : ""}`} disabled={disabled} onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="إضافة">
+        <Icon name="plus" size={18} />
+      </button>
+      {open && (
+        <>
+          <button type="button" className="fixed inset-0 z-10 cursor-default" aria-label="إغلاق" onClick={() => setOpen(false)} />
+          <span className="hm-pop absolute bottom-full start-0 z-20 mb-2 w-60">
+            <button type="button" className={item} onClick={() => (setOpen(false), onFile())}>
+              📎 <span>أرفق صور أو فيديو أو صوت</span>
             </button>
-            <button
-              type="button"
-              className={`jw-btn jw-btn-icon shrink-0 ${talk ? "!border-jw-accent bg-jw-accent/15 text-jw-accent" : "jw-btn-quiet"}`}
-              disabled={readOnly || recording || (!!busy && !talk)}
-              onClick={() => void conversation()}
-              aria-pressed={!!talk}
-              aria-label={talk ? "أنهِ المكالمة" : "كلّم حيدرا ماكس بالصوت"}
-              title="🎧 كلّم حيدرا ماكس: تتكلم ويرد عليك بصوته وينفذ طلبك، لين توقفه"
-            >
-              {talk ? <Icon name="stop" /> : <span aria-hidden>🎧</span>}
+            <button type="button" className={item} onClick={() => (setOpen(false), onStyles())}>
+              🎬 <span>أساليب الموشن ({MOTION_TEN.length})</span>
             </button>
-          </>
-        )}
-        {diag && (
-          <button type="button" className={`jw-btn jw-btn-icon shrink-0 ${diagOn ? "!border-jw-accent bg-jw-accent/15 text-jw-accent" : "jw-btn-quiet"}`} onClick={() => setDiagOn((v) => !v)} aria-pressed={diagOn} aria-label="تشخيص" title="🩺 تشخيص (لك بس): حيدرا ماكس يفحص السجل والملفات والجهاز ويقول وش المشكلة، ويكتب رسالة للمطوّر">
-            🩺
+            {diag && (
+              <button type="button" className={item} onClick={() => (setOpen(false), diag.toggle())} aria-pressed={diag.on}>
+                🩺 <span>{diag.on ? "أوقف التشخيص" : "تشخيص (لك بس)"}</span>
+              </button>
+            )}
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
+
+/** A file's little picture: its first frame or the image itself (sound: a note). */
+function Thumb({ a, size }: { a: EditorAsset; size: number }) {
+  const box = { width: size, height: size };
+  if (a.kind === "image" && a.url) return <img src={a.url} alt="" style={box} className="shrink-0 rounded-lg object-cover" loading="lazy" />;
+  if (a.kind === "video" && a.url) return <video src={`${a.url}#t=0.5`} muted playsInline preload="metadata" style={box} className="pointer-events-none shrink-0 rounded-lg bg-black object-cover" />;
+  return (
+    <span style={box} className="grid shrink-0 place-items-center rounded-lg bg-jw-surface-3 text-[14px]" aria-hidden>
+      {a.kind === "audio" ? "🎵" : "📄"}
+    </span>
+  );
+}
+
+/** The project's media under the composer: a small strip scrolled sideways; a tap attaches a file to the message. */
+function MediaStrip({ assets, picked, onPick, disabled }: { assets: Map<string, EditorAsset>; picked: EditorAsset[]; onPick: (a: EditorAsset) => void; disabled?: boolean }) {
+  const list = [...assets.values()].filter((a) => a.status === "ready" && a.url).reverse();
+  if (!list.length) return null;
+  return (
+    <div className="hm-strip mt-2" role="group" aria-label="وسائط المشروع: اضغط ملف عشان ترفقه برسالتك">
+      {list.map((a) => {
+        const on = picked.some((p) => p.id === a.id);
+        return (
+          <button key={a.id} type="button" disabled={disabled} onClick={() => onPick(a)} aria-pressed={on} title={a.name} className={`hm-strip-item ${on ? "on" : ""}`}>
+            <Thumb a={a} size={52} />
+            {on && <span className="hm-strip-check" aria-hidden>✓</span>}
           </button>
-        )}
-        {busy && canStop ? (
-          <button type="button" className="jw-btn jw-btn-icon shrink-0 !border-jw-danger bg-jw-danger/15 text-jw-danger" onClick={stop} aria-label="وقّف الطلب" title="⏹️ وقّف الطلب: ما ينفّذ شي من رده">
-            <Icon name="stop" />
-          </button>
-        ) : (
-          <button type="submit" className="jw-btn jw-btn-primary jw-btn-icon shrink-0" disabled={(!text.trim() && !pending.length) || !!busy || readOnly} aria-label="أرسل">
-            <Icon name="chevronLeft" />
-          </button>
-        )}
-      </form>
+        );
+      })}
     </div>
   );
 }

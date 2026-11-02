@@ -8,7 +8,13 @@ import { AUDIO_KIT_API, EDIT_KIT_API, GRADE_KIT_API, GRADE_LUT_SIZE, LAYOUT_KIT_
 
 /** Every round of a program: write → run → (fix) → look → score; it is applied only when every score is ≥ PASS. */
 export const CODE_PASS = 8;
-export const CODE_ROUNDS = 3;
+/** One review and at most one rewrite (the owner, 2 November 2026: a grade must not cost 6 riyals) */
+export const CODE_ROUNDS = 2;
+/**
+ * What one program job (write + its reviews and fixes) may spend, in halalas the person pays: once a job has spent this
+ * the page stops asking for more rounds and applies the best it has. Shown with the result.
+ */
+export const CODE_BUDGET_HALALAS = 150;
 /** Fixes of a program that threw (or broke a rule) before it is looked at. */
 export const CODE_FIXES = 2;
 

@@ -13,7 +13,7 @@ import { useClaudeModel } from "./claude-model";
  * usage is CLAUDE_MARGIN_PCT, said here.
  * Neutral colours (they follow the text colour) so it sits in any robot's page.
  */
-export default function ClaudeModelPicker({ className = "", disabled = false }: { className?: string; disabled?: boolean }) {
+export default function ClaudeModelPicker({ className = "", disabled = false, menu = false }: { className?: string; disabled?: boolean; /** a small name in a composer that opens a menu above it (Claude's way) */ menu?: boolean }) {
   const [picked, choose] = useClaudeModel();
   const [open, setOpen] = useState(false);
   // a code («الأكواد») may cap the model and price everything at cost: the list stops at the ceiling, and a pick above it shows as the ceiling
@@ -21,6 +21,40 @@ export default function ClaudeModelPicker({ className = "", disabled = false }: 
   const model = claudeModelOf(capClaudeModel(picked.id, perks.claudeModel));
   const reply = (m: typeof model) => (perks.atCost ? costHalalas(typicalReplyUsd(m)) : claudeHalalas(typicalReplyUsd(m)));
   const line = "1px solid color-mix(in srgb, currentColor 22%, transparent)";
+  if (menu)
+    return (
+      <span className={className} style={{ position: "relative", fontSize: 13 }} dir="rtl">
+        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} disabled={disabled} style={{ border: 0, borderRadius: 999, padding: "4px 10px", background: "transparent", color: "inherit", opacity: 0.75, cursor: "pointer", fontSize: 13 }}>
+          {model.name} ▾
+        </button>
+        {open && (
+          <>
+            <button type="button" aria-label="إغلاق" onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 10, background: "transparent", border: 0, cursor: "default" }} />
+            <span role="radiogroup" aria-label="اختيار الذكاء" style={{ position: "absolute", bottom: "100%", insetInlineStart: 0, zIndex: 20, marginBottom: 8, width: 290, display: "block", border: line, borderRadius: 16, padding: 6, background: "var(--jw-surface-2, #161a20)", boxShadow: "0 18px 50px -18px rgba(0,0,0,.8)" }}>
+              {modelsUpTo(perks.claudeModel).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={m.id === model.id}
+                  onClick={() => (choose(m.id), setOpen(false))}
+                  style={{ display: "block", width: "100%", textAlign: "start", border: 0, borderRadius: 12, padding: "8px 12px", background: m.id === model.id ? "color-mix(in srgb, currentColor 10%, transparent)" : "transparent", color: "inherit", cursor: "pointer" }}
+                >
+                  <b style={{ display: "block", fontSize: 14 }}>
+                    {m.name}
+                    {m.id === model.id ? " ✓" : ""}
+                  </b>
+                  <span style={{ display: "block", opacity: 0.7, fontSize: 12 }}>
+                    {m.tagline} · <Coined text={`≈ ${coinStr(reply(m))} للرد`} size={12} />
+                  </span>
+                </button>
+              ))}
+              <span style={{ display: "block", padding: "6px 12px 4px", opacity: 0.7, fontSize: 11.5, lineHeight: 1.6 }}>💡 {model.advice}</span>
+            </span>
+          </>
+        )}
+      </span>
+    );
   return (
     <div className={className} style={{ fontSize: 12, lineHeight: 1.7 }} dir="rtl">
       <button

@@ -72,7 +72,8 @@ export function gradeBrief(g: Grade) {
 }
 
 /** Checking rounds after a colour change (the page stops after this many). */
-export const MAX_CHECKS = 4;
+/** the chat's own checks of a colour change it made (each one a full paid turn): two at most */
+export const MAX_CHECKS = 2;
 
 /** The checking round: what the colourist does after seeing the result. */
 export const GRADE_CHECK = `CHECKING YOUR COLOUR WORK. You changed a clip's colour; here is the result: the clip's moments as filmed and AFTER its grading, each with its scope, the clip's grading layers now, and what the person asked. Judge like a demanding colourist:

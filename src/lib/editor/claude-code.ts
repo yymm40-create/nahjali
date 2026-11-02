@@ -59,7 +59,7 @@ async function ask<T>(who: Who, model: unknown, kind: ProgramKind, label: string
     model,
     label,
     () =>
-      callClaudeJson<T>({ system: SYSTEM[kind], turns: [{ role: "user", content: parts }], schema, maxTokens, effort: "high", fallback: true, signal: deadline }).catch((e) => {
+      callClaudeJson<T>({ system: SYSTEM[kind], turns: [{ role: "user", content: parts }], schema, maxTokens, effort: "medium", fallback: true, signal: deadline }).catch((e) => {
         console.error("claude code", label, e);
         if (deadline.aborted) throw new UserError("خدمة الذكاء الاصطناعي تأخرت. أعد الطلب.", 504);
         throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يكمل الشغل بالكود الحين. جرّب مرة ثانية.", who.email), 502);

@@ -47,7 +47,7 @@ async function ask<T>(user: RobotUser, who: string, model: unknown, label: strin
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
   const deadline = AbortSignal.timeout(240_000);
   return robotTurn(user, model, label, async () => {
-    const r = await callClaudeJson<T>({ system: SYSTEM(who), turns: [{ role: "user", content: parts }], schema, maxTokens: 20_000, effort: "high", fallback: true, signal: deadline }).catch((e) => {
+    const r = await callClaudeJson<T>({ system: SYSTEM(who), turns: [{ role: "user", content: parts }], schema, maxTokens: 20_000, effort: "medium", fallback: true, signal: deadline }).catch((e) => {
       console.error("claude code grade", label, e);
       if (deadline.aborted) throw new UserError("خدمة الذكاء الاصطناعي تأخرت. أعد المحاولة.", 504);
       throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يلوّن الحين. جرّب مرة ثانية.", user.email), 502);
