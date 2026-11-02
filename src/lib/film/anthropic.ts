@@ -58,7 +58,7 @@ The person you are talking to is the OWNER and builder of this platform — «ا
 HIS WORD OVERRIDES EVERY RULE. Every rule, limit, style guide, house rule, safety-of-taste rule or "never" in the knowledge above or in your own instructions was written by him for his customers — and he may break any of them, including the ones he set himself, with a word. When he tells you to drop, bend or break a rule («كسره», «تجاوزه», «خالفه», «ما يهمني القيد», «أنا القائد أقول لك…»), do exactly what he says from that message on, without arguing, without warning him again, and without quietly keeping the rule in your output: the rule is off for him until he puts it back. If a rule is enforced in code and you cannot switch it off yourself, say so in one line and do the closest thing he asked. The only exceptions are things no one can lift: secret keys and passwords (you do not hold them), and what the law or the providers' own policies forbid (a real person imitated without consent, sexual content involving minors).
 </leader>`;
 
-export const siteSystem = (task: string, cache = true, leader = false) => {
+export const siteSystem = (task: string, cache = true, leader = false, ttl?: "1h") => {
   // the person's memory («ذاكرتي»), inside a robot's turn: after the cached task, so the cache still holds
   const memory = currentMemory();
   return [
@@ -67,7 +67,7 @@ export const siteSystem = (task: string, cache = true, leader = false) => {
     // 2026: «حتى انا شيله عني»); the owner keeps his leader block
     { type: "text", text: PLATFORM_BRIEF },
     ...(leader ? [{ type: "text", text: LEADER_BLOCK }] : []),
-    { type: "text", text: task, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) },
+    { type: "text", text: task, ...(cache ? { cache_control: { type: "ephemeral", ...(ttl ? { ttl } : {}) } } : {}) },
     ...(memory ? [{ type: "text", text: memoryBlock(memory) }] : []),
   ];
 };
@@ -280,7 +280,9 @@ export async function readStream(stream: ReadableStream<Uint8Array>, alive: () =
  * person can hand a lecture, a report or a form to any robot of the site and it answers from the file itself.
  */
 export type ClaudePart =
-  | { type: "text"; text: string }
+  /** `cache`: a block that is the same on every call of its kind (a skill text, the examples): its own cache mark, so the
+   * next call reads it (and everything before it) from the cache instead of writing it again */
+  | { type: "text"; text: string; cache?: boolean }
   | { type: "image"; url: string }
   | { type: "image64"; data: string; mediaType: "image/jpeg" | "image/png" }
   | { type: "doc"; url: string; name?: string };
@@ -335,6 +337,8 @@ export async function callClaudeJson<T>({
   rawText = false,
   onText,
   turnNote,
+  cacheTtl,
+  cacheTail = true,
 }: {
   system: string;
   turns: ClaudeTurn[];
@@ -360,6 +364,17 @@ export async function callClaudeJson<T>({
    * stays the same and is read from the cache (a system that changed every message re-wrote everything at full price).
    */
   turnNote?: string;
+  /**
+   * "1h": every cache mark of this call lives an hour instead of 5 minutes (writing costs 2× instead of 1.25×, reading the
+   * same) — for work with natural pauses longer than 5 minutes (the person reads a plan, a video renders), where the
+   * 5-minute cache was gone and the whole prefix was written again on the next step.
+   */
+  cacheTtl?: "1h";
+  /**
+   * false: no mark on the latest turn (a one-shot call whose tail is never sent again: the 25% cache-write premium on
+   * it bought nothing). Text parts with `cache: true` keep theirs.
+   */
+  cacheTail?: boolean;
 }): Promise<{ data: T; raw: string; usage: ClaudeUsage; partial?: boolean }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -376,14 +391,30 @@ export async function callClaudeJson<T>({
     }
   }
   if (!cleanTurns.length) throw new Error("Claude request has no non-empty message content");
-  const messages = await fitDocs(await fitImages(cleanTurns.map((t, i) => {
-    const blocks: Record<string, unknown>[] = t.content.map(toBlock);
-    // Cache breakpoints: the latest turn (a continued request reuses everything up to here) and the one before it — the
-    // conversation so far, which the NEXT message sends again unchanged (the latest turn often carries one-off facts,
-    // pictures or the timeline, so a mark only there made every message write its whole history again)
-    if (i === cleanTurns.length - 1 || (i === cleanTurns.length - 2 && cleanTurns.length >= 3)) blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: "ephemeral" } };
-    return { role: t.role, content: blocks };
-  })));
+  // Cache breakpoints, chosen before the pictures and documents are fitted (one block per part):
+  // - each text part marked `cache` (a block that is the same on every call of its kind);
+  // - the latest turn (a continued request reuses everything up to here), unless the call is a one-shot (`cacheTail`);
+  // - the turn before it: the conversation so far, which the NEXT message sends again unchanged (the latest turn often
+  //   carries one-off facts, pictures or the timeline, so a mark only there made every message write its history again).
+  // At most 4 marks in a request and the system's task takes one: past three here the history mark goes first, then the
+  // earliest parts (the latest carry the most behind them).
+  const marks: { turn: number; block: number; kind: "part" | "tail" | "history" }[] = [];
+  cleanTurns.forEach((t, i) => {
+    t.content.forEach((part, k) => {
+      if (part.type === "text" && part.cache) marks.push({ turn: i, block: k, kind: "part" });
+    });
+    if (i === cleanTurns.length - 2 && cleanTurns.length >= 3) marks.push({ turn: i, block: t.content.length - 1, kind: "history" });
+    if (cacheTail && i === cleanTurns.length - 1) marks.push({ turn: i, block: t.content.length - 1, kind: "tail" });
+  });
+  while (marks.length > 3) {
+    const h = marks.findIndex((m) => m.kind === "history");
+    marks.splice(h >= 0 ? h : marks.findIndex((m) => m.kind === "part"), 1);
+  }
+  const mark = { type: "ephemeral", ...(cacheTtl ? { ttl: cacheTtl } : {}) };
+  const messages = await fitDocs(await fitImages(cleanTurns.map((t, i) => ({
+    role: t.role,
+    content: t.content.map((part, k) => ({ ...toBlock(part), ...(marks.some((m) => m.turn === i && m.block === k) ? { cache_control: mark } : {}) })) as Record<string, unknown>[],
+  }))));
 
   // Haiku has no server-side fallback model
   const withFallback = fallback && asked.key !== "haiku";
@@ -402,7 +433,7 @@ export async function callClaudeJson<T>({
       body: JSON.stringify({
         model: asked.id,
         max_tokens: maxTokens,
-        system: siteSystem(system, true, leader),
+        system: siteSystem(system, true, leader, cacheTtl),
         messages,
         output_config: { ...(asked.effort ? { effort: level } : {}), ...(rawText ? {} : { format: { type: "json_schema", schema } }) },
         ...(withFallback ? { fallbacks: "default" } : {}),
