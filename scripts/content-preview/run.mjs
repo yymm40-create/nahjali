@@ -37,7 +37,7 @@ for (const [name, w, h] of [["phone360", 360, 740], ["phone", 390, 844], ["desk"
   await new Promise((r) => setTimeout(r, 900));
   const o = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth, rows: document.querySelectorAll(".ct-ctable tbody tr:not(.niche)").length }));
   if (o.sw > o.iw) { bad++; console.log(`  ✗ ${name}: sideways overflow ${o.sw} > ${o.iw}`); }
-  if (o.rows !== 100) { bad++; console.log(`  ✗ ${name}: ${o.rows} rows`); }
+  if (o.rows !== 103) { bad++; console.log(`  ✗ ${name}: ${o.rows} rows`); }
   await page.screenshot({ path: join(out, `${name}.png`) });
   // a pick sends its line with the mark
   await page.evaluate(() => [...document.querySelectorAll(".ct-ctable .act button")][1].click());

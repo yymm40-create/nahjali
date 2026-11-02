@@ -78,7 +78,7 @@ export interface Chosen {
   mood?: string | null;
   /** one of the 100 four-colour palettes ("none" = he chooses the colours) */
   palette?: string | null;
-  /** a style of the table of 100 ("help" = help me choose, "own" = something not in the table) */
+  /** a style of the table of 103 ("help" = help me choose, "own" = something not in the table) */
   carousel?: string | null;
 }
 export function chosenIds(userTexts: string[]): Required<Chosen> {

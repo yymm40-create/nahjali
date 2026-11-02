@@ -10,15 +10,15 @@ import { attachedPictures, carouselHold, CAROUSEL_LABEL, MAKER_CODE, MAKER_GPT, 
 import { slidePrompt } from "@/lib/content/produce";
 import { catalogBlock, chosenBlock, chosenIds } from "@/lib/content/persona";
 
-// The table of 100 carousel styles, picked from instead of being asked about colours and margins: the owner's order.
-describe("the 100 carousel styles", () => {
-  it("are 100, numbered in order, each with its own id and name, in every niche", () => {
-    expect(CAROUSEL_STYLES).toHaveLength(100);
-    expect(CAROUSEL_STYLES.map((s) => s.n)).toEqual(Array.from({ length: 100 }, (_, i) => i + 1));
-    expect(new Set(CAROUSEL_STYLES.map((s) => s.id)).size).toBe(100);
-    expect(new Set(CAROUSEL_STYLES.map((s) => s.name)).size).toBe(100);
+// The table of 103 carousel styles, picked from instead of being asked about colours and margins: the owner's order.
+describe("the 103 carousel styles", () => {
+  it("are 103, numbered in order, each with its own id and name, in every niche", () => {
+    expect(CAROUSEL_STYLES).toHaveLength(103);
+    expect(CAROUSEL_STYLES.map((s) => s.n)).toEqual(Array.from({ length: 103 }, (_, i) => i + 1));
+    expect(new Set(CAROUSEL_STYLES.map((s) => s.id)).size).toBe(103);
+    expect(new Set(CAROUSEL_STYLES.map((s) => s.name)).size).toBe(103);
     expect(new Set(CAROUSEL_STYLES.map((s) => s.niche))).toEqual(new Set(CAROUSEL_NICHES));
-    expect(CAROUSEL_NICHES).toHaveLength(12);
+    expect(CAROUSEL_NICHES).toHaveLength(13);
     expect(findCarouselStyle("notebook")?.name).toBe("الدفتر");
     expect(findCarouselStyle("nope")).toBeUndefined();
   });
@@ -39,8 +39,9 @@ describe("the 100 carousel styles", () => {
     for (const s of CAROUSEL_STYLES) for (const w of ["cover", "slide"] as const) expect(existsSync(`public${carouselSample(s, w)}`), `${s.id} ${w}`).toBe(true);
   });
 
-  it("each niche has one strongest style", () => {
-    for (const n of CAROUSEL_NICHES) expect(CAROUSEL_STYLES.filter((s) => s.niche === n && s.winner), n).toHaveLength(1);
+  it("each researched niche has one strongest style; the childlike 3D niche was not measured, so it has none", () => {
+    expect(CAROUSEL_STYLES.filter((s) => s.niche === "3D طفولي" && s.winner)).toHaveLength(0);
+    for (const n of CAROUSEL_NICHES.filter((x) => x !== "3D طفولي")) expect(CAROUSEL_STYLES.filter((s) => s.niche === n && s.winner), n).toHaveLength(1);
   });
 
   it("a realistic style says what the person could add", () => {

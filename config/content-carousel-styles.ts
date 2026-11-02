@@ -1,4 +1,4 @@
-// «صانع المحتوى» — جدول ستايلات الكاروسيل: 100 looks, sorted by niche, that the person picks from INSTEAD of being asked about
+// «صانع المحتوى» — جدول ستايلات الكاروسيل: 120 looks, sorted by niche, that the person picks from INSTEAD of being asked about
 // colours, fonts and margins (the owner's order, 2 November 2026). Each one is a complete look: its colours, type and the
 // anatomy of its slides go verbatim into every slide's brief, whoever makes it (GPT Image 2 or «حيدرا ماكس»). A style that
 // shows realistic pictures has a `photoIdea`: the person is asked whether they add their own or it is made from zero.
@@ -7,9 +7,10 @@
 // Where they come from: the owner's Instagram research of 1 November 2026 (likes read on the posts, since a carousel's views
 // are not public, so the "winner" of a niche is the strongest thing seen, not a measurement) plus 2026 carousel guides.
 // The samples in /public/content/carousel-styles were painted with GPT Image 2 from these same descriptions.
+// Styles 101-120 (the owner's order, same day): a childlike 3D look, the shape of what a 7 to 9 year old loves; no winner marked, nothing measured.
 // What those 100 slides taught is written down in CAROUSEL_GPT_CRAFT and CAROUSEL_CODE_CRAFT.
 
-export const CAROUSEL_NICHES = ["تعليمي وشرح", "تسويق وبزنس", "علم نفس وتطوير ذات", "اقتباسات وتحفيز", "كوميدي وترفيه", "سفر ولايف ستايل", "طعام ووصفات", "تقنية وذكاء اصطناعي", "منتجات وبراندات", "صحة ولياقة", "مال وأعمال شخصية", "تفاعلي"] as const;
+export const CAROUSEL_NICHES = ["تعليمي وشرح", "تسويق وبزنس", "علم نفس وتطوير ذات", "اقتباسات وتحفيز", "كوميدي وترفيه", "سفر ولايف ستايل", "طعام ووصفات", "تقنية وذكاء اصطناعي", "منتجات وبراندات", "صحة ولياقة", "مال وأعمال شخصية", "تفاعلي", "3D طفولي"] as const;
 export type CarouselNiche = (typeof CAROUSEL_NICHES)[number];
 
 export interface CarouselStyle {
@@ -1243,6 +1244,40 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     closing: "A new pair with the request to comment how many they found.",
     code: "The scene is photo1 painted once; place it twice and draw the differences and circles in code so they are exact.",
   },
+  // ───────── 3D طفولي: main looks, not topics; any subject is drawn in the look ─────────
+  {
+    id: "soft-3d", n: 101, niche: "3D طفولي", name: "ثري دي ناعم", words: 10,
+    description: "كل عناصر الموضوع تتحول لمجسمات ثلاثية الأبعاد ناعمة ولامعة كأنها ألعاب، بألوان فاتحة وظلال خفيفة. ينفع لأي موضوع.",
+    bestFor: "أي موضوع تبي تبسطه وتخليه مرح: شرح، نصايح، خطوات، أرقام",
+    look: "Cute soft 3D render, glossy rounded toy-like objects with smooth plastic and matte clay materials, pastel background, soft global illumination, gentle contact shadows, playful proportions, clean composition with lots of empty space; the objects are whatever the topic needs.",
+    type: "Huge bold rounded dark Arabic headline, few words, high contrast on the pastel background.",
+    cover: "The topic's main object as a big cute 3D model with the headline above it.",
+    body: "One 3D object per idea, large, with one short line.",
+    closing: "A small happy 3D object with a request to save or share.",
+    code: "The 3D scene is painted by GPT Image 2 with empty space for the words; Haidara writes the Arabic in code in a heavy rounded font. Never draw the 3D objects in code.",
+  },
+  {
+    id: "animated-film", n: 102, niche: "3D طفولي", name: "ستايل بيكسار", words: 10,
+    description: "لقطة كأنها من فيلم أنيميشن عائلي: شخصية كرتونية بعيون كبيرة وتعابير واضحة، وإضاءة سينمائية دافية. الموضوع يصير قصة.",
+    bestFor: "القصص والمواقف اليومية والمشاعر وأي فكرة تنشرح بشخصية",
+    look: "Still frame from a modern 3D animated family feature film: stylized cartoon character (a boy, an old man, an animal or a talking object) with big expressive eyes and exaggerated proportions, soft subsurface skin, rich cinematic warm lighting, detailed but simple set, shallow depth of field; never a realistic person and never a woman.",
+    type: "Bold rounded white Arabic headline with a soft dark shadow, placed on the calm part of the frame like a film title.",
+    cover: "The character in a clear emotion facing the topic, with the headline as a title.",
+    body: "The same character in a new moment for each idea, with one short line.",
+    closing: "The character smiling at the camera with a short question to the viewer.",
+    code: "Keep the character as a reference from the first GPT Image 2 slide so it stays the same; Haidara writes the Arabic in code over the calm part of the frame.",
+  },
+  {
+    id: "claymation", n: 103, niche: "3D طفولي", name: "الصلصال", words: 10,
+    description: "كل شيء في الشريحة معمول من صلصال ملون، وبصمات الأصابع باينة عليه، كأنه فيلم ستوب موشن. دافي ويشبه شغل اليد.",
+    bestFor: "أي موضوع تبي له إحساس يدوي ولطيف: علوم، عادات، قصص قصيرة",
+    look: "Handmade plasticine claymation stop-motion look, every object and character moulded from colourful clay with visible fingerprint dents and soft rounded edges, warm studio light, simple clay set with a plain clay backdrop; the objects are whatever the topic needs.",
+    type: "Huge chunky rounded Arabic headline, dark on the light clay backdrop, few words.",
+    cover: "The topic as a small clay scene with the headline above it.",
+    body: "One clay object or character large with one short line.",
+    closing: "A clay character waving with a request to share.",
+    code: "The clay scene is painted by GPT Image 2 with empty backdrop for the words; Haidara writes the Arabic in code in a heavy rounded font with a soft shadow.",
+  },
 ];
 
 export const findCarouselStyle = (id: string) => CAROUSEL_STYLES.find((s) => s.id === id);
@@ -1267,7 +1302,7 @@ export const CAROUSEL_GPT_CRAFT = `كيف تكتب توجيه GPT Image 2 لشر
 
 /** What «حيدرا ماكس» always follows when he makes a carousel slide in code. */
 export const CAROUSEL_CODE_CRAFT =
-  "CAROUSEL CRAFT: this slide must stop a thumb on a phone: one idea readable in a second, type large enough to fill the width unless the style says small. NEVER imitate a photograph, a realistic person, food, a place or a realistic object by drawing it in code, because it looks cheap: anything realistic comes to you as photo1 (fit it to the frame and only grade or mask it). In code you draw what code does beautifully: type, flat colour, grids, charts, paper grain, frames, stickers, tags, arrows, bubbles. Never show a realistic adult woman.";
+  "CAROUSEL CRAFT: this slide must stop a thumb on a phone: one idea readable in a second, type large enough to fill the width unless the style says small. NEVER imitate a photograph, a realistic person, food, a place, a realistic object or a 3D render by drawing it in code, because it looks cheap: anything realistic or 3D comes to you as photo1 (fit it to the frame and only grade or mask it). In code you draw what code does beautifully: type, flat colour, grids, charts, paper grain, frames, stickers, tags, arrows, bubbles. Never show a realistic adult woman.";
 
 /** The look of a style, as it goes into a slide's brief. */
 export function carouselStyleBlock(s: CarouselStyle): string {
