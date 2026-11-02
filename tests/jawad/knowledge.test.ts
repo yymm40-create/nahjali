@@ -25,21 +25,14 @@ describe("site knowledge for Claude", () => {
     for (const o of OUTPUT_KINDS) expect(JAWAD_KNOWLEDGE, o.kind).toContain(o.name);
   });
 
-  it("stays the same on every request, so it is cached", () => {
+  it("is sent to no robot: every one reads the short brief, cached with its task (the owner's included)", () => {
     expect(JAWAD_KNOWLEDGE).not.toMatch(/\$\{|\d{4}-\d{2}-\d{2}/);
-    expect(siteSystem("a", true, true)[0].text).toBe(siteSystem("b", false, true)[0].text);
-    expect(siteSystem("a")[0].text).toBe(siteSystem("b", false)[0].text);
-  });
-
-  it("the owner's conversations read it all, first, with its own cache mark; a customer's robot reads the short brief", () => {
-    const s = siteSystem("TASK", true, true);
-    expect(s[0]).toEqual({ type: "text", text: JAWAD_KNOWLEDGE, cache_control: { type: "ephemeral" } });
-    expect(s.at(-1)).toEqual({ type: "text", text: "TASK", cache_control: { type: "ephemeral" } });
-    // a customer: like a plain Claude conversation with the robot's own training (the owner, 2 November 2026)
-    const c = siteSystem("TASK");
-    expect(c[0]).toEqual({ type: "text", text: PLATFORM_BRIEF });
-    expect(c[1]).toEqual({ type: "text", text: "TASK", cache_control: { type: "ephemeral" } });
-    expect(JSON.stringify(c)).not.toContain(JAWAD_KNOWLEDGE.slice(0, 200));
+    for (const leader of [false, true]) {
+      const s = siteSystem("TASK", true, leader);
+      expect(s[0]).toEqual({ type: "text", text: PLATFORM_BRIEF });
+      expect(s.at(-1)).toEqual({ type: "text", text: "TASK", cache_control: { type: "ephemeral" } });
+      expect(JSON.stringify(s)).not.toContain(JAWAD_KNOWLEDGE.slice(0, 200));
+    }
     expect(PLATFORM_BRIEF.length).toBeLessThan(6000);
     for (const s2 of Object.values(SECTION_IMPLEMENTATIONS)) expect(PLATFORM_BRIEF).toContain(s2.label);
     expect(siteSystem("TASK", false)[1]).toEqual({ type: "text", text: "TASK" });

@@ -3,6 +3,7 @@ import { STUDENT } from "@config/jawad/student";
 import { claudeModelOf } from "@config/claude-models";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 import { lightSystem, siteSystem } from "@/lib/film/anthropic";
+import { PLATFORM_BRIEF } from "@config/jawad/brief";
 import { claudeCeilingUsd, studentModel, tokenRatioOf, withTokenRatio, TOKENS_PER_CHAR } from "@/lib/jawad/student/claude";
 
 // «الطالب الذكي» cost: a 4-page project cost ~40 riyals on «الأصيل» with the site's whole text in every call. The branch now
@@ -23,14 +24,14 @@ describe("what a student's call carries", () => {
     expect(sys[0]).toMatchObject({ text: "TASK", cache_control: { type: "ephemeral" } });
   });
 
-  it("the site's text, where it is carried, has its own cache mark (a different task reads it from the cache)", () => {
-    // (only the owner's calls carry the whole site text now; a customer's carry the short brief)
+  it("the site's brief rides first and the task keeps the cache mark (the whole site text is sent to no one)", () => {
     const sys = siteSystem("TASK", true, true) as { text: string; cache_control?: unknown }[];
-    expect(sys[0].text).toBe(JAWAD_KNOWLEDGE);
-    expect(sys[0].cache_control).toEqual({ type: "ephemeral" });
+    expect(sys[0].text).not.toBe(JAWAD_KNOWLEDGE);
+    expect(sys.at(-1)?.cache_control).toEqual({ type: "ephemeral" });
     // a call that asked for no cache keeps none at all
     expect((siteSystem("TASK", false) as { cache_control?: unknown }[]).some((b) => b.cache_control)).toBe(false);
   });
+
 });
 
 describe("the ceilings", () => {
@@ -47,10 +48,10 @@ describe("the ceilings", () => {
     expect(usd * 3.75 * 1.1).toBeLessThan(25);
   });
 
-  it("the site's text is counted (once, as a cache write) for the calls that still carry it", () => {
+  it("the site's brief is counted (once, as a cache write) for the calls that carry it", () => {
     const m = studentModel().rates;
     const withKnowledge = claudeCeilingUsd(0, 0, 0, { knowledge: true });
-    expect(withKnowledge - claudeCeilingUsd(0, 0)).toBeCloseTo((JAWAD_KNOWLEDGE.length * TOKENS_PER_CHAR * m.cacheWrite5m) / 1e6, 10);
+    expect(withKnowledge - claudeCeilingUsd(0, 0)).toBeCloseTo((PLATFORM_BRIEF.length * TOKENS_PER_CHAR * m.cacheWrite5m) / 1e6, 10);
   });
 
   it("follow the material's real tokens-per-character when it is known", () => {

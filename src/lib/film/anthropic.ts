@@ -1,7 +1,6 @@
 // Claude Opus 5.5 for the film branch's three assistants. Server only: the key never reaches the browser.
 
 import { isAdmin } from "@config/site";
-import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 import { PLATFORM_BRIEF } from "@config/jawad/brief";
 import { currentMemory, memoryBlock } from "@/lib/memory/context";
 import { fitDocs, fitImages } from "@/lib/claude-images";
@@ -63,9 +62,10 @@ export const siteSystem = (task: string, cache = true, leader = false) => {
   // the person's memory («ذاكرتي»), inside a robot's turn: after the cached task, so the cache still holds
   const memory = currentMemory();
   return [
-    // a customer's robot reads the SHORT brief (~1k tokens) and its own training — like a plain Claude conversation; only
-    // the owner's conversations read the whole knowledge (~69k tokens, its own cache mark so any task reads it cheaply)
-    leader ? { type: "text", text: JAWAD_KNOWLEDGE, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) } : { type: "text", text: PLATFORM_BRIEF },
+    // every robot reads the SHORT brief (~1k tokens) and its own training — like a plain Claude conversation. The whole
+    // knowledge (config/jawad/knowledge.ts, ~69k tokens) is sent to no one, the owner included (the owner, 2 November
+    // 2026: «حتى انا شيله عني»); the owner keeps his leader block
+    { type: "text", text: PLATFORM_BRIEF },
     ...(leader ? [{ type: "text", text: LEADER_BLOCK }] : []),
     { type: "text", text: task, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) },
     ...(memory ? [{ type: "text", text: memoryBlock(memory) }] : []),

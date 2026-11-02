@@ -4,7 +4,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { claudeCost, lightSystem, siteSystem, withModel, type ClaudeUsage } from "@/lib/film/anthropic";
 import { STUDENT } from "@config/jawad/student";
-import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
+import { PLATFORM_BRIEF } from "@config/jawad/brief";
 import { claudeModelOf, type ClaudeModel } from "@config/claude-models";
 import { fitImages } from "@/lib/claude-images";
 
@@ -231,11 +231,11 @@ export async function tokenRatioOf(text: string): Promise<number> {
 /**
  * USD ceiling of one call: input tokens (the text at the measured tokens-per-character, else 1 per 2 characters; plus
  * images/pages and the step's own instructions) and output tokens, at the rates of the branch's model. Calls that carry
- * the site's knowledge (`knowledge: true`, the owner's chat or «الذكاء الإسلامي») add it, written to the cache once.
+ * the site's brief (`knowledge: true`, the owner's chat or «الذكاء الإسلامي») add it, written to the cache once.
  */
 export function claudeCeilingUsd(inputChars: number, maxOut: number, extraInputTokens = 0, o: { knowledge?: boolean; model?: ClaudeModel } = {}) {
   const m = o.model ?? studentModel();
   const perChar = ratios.getStore() ?? TOKENS_PER_CHAR;
-  const knowledge = o.knowledge ? JAWAD_KNOWLEDGE.length * TOKENS_PER_CHAR * m.rates.cacheWrite5m : 0;
+  const knowledge = o.knowledge ? PLATFORM_BRIEF.length * TOKENS_PER_CHAR * m.rates.cacheWrite5m : 0;
   return (knowledge + (inputChars * perChar + extraInputTokens + 3000) * m.rates.input + maxOut * m.rates.output) / 1e6;
 }
