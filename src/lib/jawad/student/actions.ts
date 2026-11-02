@@ -856,6 +856,15 @@ export async function outputAction(user: User, id: string, b: Body) {
       const chars = ((data ?? []) as { text: string }[]).reduce((s, r) => s + r.text.length, 0);
       return run("final", (chars / 1000) * 0.08 * 1.02, { run: c.run, retry: true }, "إعادة المقاطع المتعثرة", "running");
     }
+    // «اضبط عدد الصفحات»: a written output that came out a page or two off is kept; this rewrites it to the count, once
+    case "refit_pages": {
+      if (!isDoc(o.kind) || o.kind === "sermon" || isMax(o) || !["review", "done"].includes(o.status)) throw new UserError(NOT_NOW);
+      if (o.kind === "book" && o.settings.writing === "verbatim") throw new UserError(NOT_NOW);
+      const want = Number(o.settings.pages) || 0;
+      const got = Number((o.content as { pages?: number } | null)?.pages) || 0;
+      if (!want || !got || got === want) throw new UserError("الملف بعدد الصفحات اللي طلبته.");
+      return run("revise", await estimateParts(user.id, o, "revise"), { refit: true }, "ضبط عدد الصفحات", "running", { approved: false });
+    }
     case "request": {
       // «عدّل» or «أمر آخر» on a finished output
       const note = text(b.note, 4000);
