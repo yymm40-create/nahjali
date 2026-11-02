@@ -19,7 +19,7 @@ import { answerLine, DELEGATE_LINE } from "@/lib/content/marks";
 import { DESIGN_KINDS, DESIGN_SOURCES } from "@config/designer";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { loadFont, renderDesign, type DesignView, type FontDef } from "./LayerEditor";
-import { drawWithCode, smallJpeg } from "@/components/claude-code/draw";
+import { drawWithCode, smallJpeg, type DrawEdit } from "@/components/claude-code/draw";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface Question { label: string; kind: "choice" | "source" | "directions" | "fonts"; options: string[]; multi: boolean }
@@ -206,14 +206,15 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
     setCodePreview(null);
     step("أجهّز التصميم (وإذا يحتاج صورة مرسومة، جواد يرسمها بـ GPT Image 2 بدون كتابة)…");
     try {
-      const r = await postJson<{ design?: DesignView; code?: { prompt: string; aspect: string; refs: string[]; photos?: string[]; picture?: boolean } }>("/api/designer/produce", { chatId: id, ...(retry ? { retry: true } : {}) });
+      const r = await postJson<{ design?: DesignView; code?: { prompt: string; aspect: string; refs: string[]; photos?: string[]; picture?: boolean; edit?: DrawEdit } }>("/api/designer/produce", { chatId: id, ...(retry ? { retry: true } : {}) });
       if (r.code) {
         if (r.code.picture) step("🖼️ صورة التصميم جاهزة من GPT Image 2 (بدون كتابة) — حيدرا ماكس يحطها ويكتب الكلام فوقها.");
-        // «حيدرا ماكس»: the design is drawn here in code, looked at and rewritten, then kept as the design's artwork
+        // «حيدرا ماكس»: the design is drawn here in code, looked at and rewritten, then kept as the design's artwork with
+        // its program — a change to a design drawn before is a patch on that program (`edit`), not a new one
         const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
-        const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "designer", onStep: (s) => (step(s.text), s.preview && setCodePreview(s.preview)) });
+        const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "designer", edit: r.code.edit ?? null, onStep: (s) => (step(s.text), s.preview && setCodePreview(s.preview)) });
         step("أحفظ التصميم…");
-        const saved = await postJson<{ design: DesignView }>("/api/designer/produce", { chatId: id, png: drawn.png, rounds: drawn.rounds, scores: drawn.scores });
+        const saved = await postJson<{ design: DesignView }>("/api/designer/produce", { chatId: id, png: drawn.png, rounds: drawn.rounds, scores: drawn.scores, ...(drawn.program ? { program: drawn.program } : {}), ...(drawn.edited ? { edited: true } : {}) });
         putDesign(() => saved.design);
       } else if (r.design) putDesign(() => r.design!);
     } catch (e) {

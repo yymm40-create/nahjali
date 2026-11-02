@@ -59,6 +59,11 @@ export interface PendingDesign {
   art?: string;
   /** of `refs`, the photos to PUT IN the design as they are (a speaker, a baby, a logo): Claude Code draws them in unchanged */
   place?: string[];
+  /**
+   * a CHANGE to a design drawn before: that design's artwork (a designer_files row, whose record keeps the program it
+   * was drawn from) — the program is patched instead of written from zero
+   */
+  base?: string;
 }
 
 export interface Chat {
@@ -143,6 +148,7 @@ export function readPending(v: unknown): PendingDesign | null {
     ...(Array.isArray(p.place) && p.place.length ? { place: p.place.filter((r): r is string => typeof r === "string").slice(0, 20) } : {}),
     ...(typeof p.picture === "string" && p.picture.trim() ? { picture: p.picture.trim().slice(0, 4000) } : {}),
     ...(typeof p.art === "string" && p.art ? { art: p.art } : {}),
+    ...(typeof p.base === "string" && p.base ? { base: p.base.slice(0, 60) } : {}),
   };
 }
 

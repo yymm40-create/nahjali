@@ -39,7 +39,7 @@ describe("«كاظم»", () => {
     expect(ANSWER_SCHEMA.properties.questions.items.properties.kind.enum).toEqual(["choice", "source", "directions", "fonts"]);
     expect(ANSWER_SCHEMA.properties.produce.properties.kind.enum).toEqual(DESIGN_KINDS.map((k) => k.id));
     expect(ANSWER_SCHEMA.properties.produce.properties.aspect.enum).toEqual(Object.keys(DESIGN_ASPECTS));
-    expect(ANSWER_SCHEMA.properties.produce.required).toEqual(["on", "kind", "aspect", "picture", "picture_keep", "artwork", "refs", "place", "layers"]);
+    expect(ANSWER_SCHEMA.properties.produce.required).toEqual(["on", "kind", "aspect", "picture", "picture_keep", "change", "artwork", "refs", "place", "layers"]);
     expect(Object.keys(ANSWER_SCHEMA.properties.produce.properties)).not.toContain("maker");
     for (const field of ["\"reply\"", "\"questions\"", "\"record\"", "\"produce\"", "\"split\"", "kind=\"source\"", "kind=\"fonts\"", "kind=\"directions\"", "\"layers\"", "#RRGGBB"]) expect(DESIGNER_TOOLS).toContain(field);
   });
