@@ -10,7 +10,7 @@ export const MAKER_MIX = "GPT Image 2 للصور + حيدرا ماكس للكت�
 
 export const MAKER_QUESTION = { label: MAKER_LABEL, kind: "choice" as const, options: [MAKER_CODE, MAKER_GPT, MAKER_MIX], multi: false };
 
-/** The first step of a carousel: the table of 120 styles, in place of questions about colours and margins. */
+/** The first step of a carousel: the table of 103 styles, in place of questions about colours and margins. */
 export const CAROUSEL_LABEL = "اختر ستايل الكاروسيل";
 export const CAROUSEL_QUESTION: Question = { label: CAROUSEL_LABEL, kind: "carousels", options: [], multi: false };
 
