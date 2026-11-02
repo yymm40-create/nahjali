@@ -13,6 +13,7 @@ import { applyOp, applyOps, docChanges, readDoc, readOps, type Op, type PhotoDoc
 import { postJson } from "@/lib/fetch";
 import { loadFont, type FontDef } from "@/components/jawad/designer/LayerEditor";
 import { ProgramError, runGrade, runLayout, toBase64 } from "@/components/claude-code/compute-host";
+import { scopeOf } from "@/lib/editor/scopes";
 import { GRADE_LUT_SIZE } from "@/lib/claude-code/compute";
 import { CODE_FIXES, CODE_ROUNDS, GRADE_RUBRIC, LAYOUT_RUBRIC } from "@/lib/claude-code/skill";
 import { applyLut } from "@/lib/photo/pixels";
@@ -476,7 +477,9 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
       renderPhoto(c0, { ...d0, lut: null }, { scale: Math.min(1, PHOTO.previewSide / Math.max(d0.width, d0.height)), images, fonts, baseOnly: true });
       const before = c0.toDataURL("image/jpeg", 0.82).split(",")[1];
       const px = c0.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, c0.width, c0.height);
-      let w = await api<{ code: string; problems: string[] }>({ action: "write", before });
+      // the colourist measures first: the picture's scope and its Oklab line go with it (and after, the same numbers)
+      const scope = scopeOf(px.data, px.width, px.height);
+      let w = await api<{ code: string; problems: string[] }>({ action: "write", before, scope });
       let code = w.code;
       let problems = w.problems;
       let last: { lut: Uint8Array; verdict: string; scores: Record<string, number>; pass: boolean } | null = null;
@@ -491,7 +494,7 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
           } catch (e) {
             if (!(e instanceof ProgramError) || fix >= CODE_FIXES) throw e instanceof ProgramError ? new Error(`برنامج التلوين ما اشتغل: ${e.message}`) : e;
             setBusy("البرنامج طلع فيه خطأ — زهراء تصلّحه…");
-            w = await api<{ code: string; problems: string[] }>({ action: "write", before, code, errors: `${e.message}\n${e.stack2}` });
+            w = await api<{ code: string; problems: string[] }>({ action: "write", before, scope, code, errors: `${e.message}\n${e.stack2}` });
             code = w.code;
             problems = w.problems;
           }
@@ -504,7 +507,7 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
         c1.getContext("2d")!.putImageData(graded, 0, 0);
         const after = c1.toDataURL("image/jpeg", 0.82).split(",")[1];
         setBusy(`زهراء تشوف النتيجة وتقيّمها (جولة ${round} من ${CODE_ROUNDS})…`);
-        const r = await api<{ review: { scores: Record<string, number>; pass: boolean; verdict: string }; code: string; problems: string[] }>({ action: "review", before, after, code, round });
+        const r = await api<{ review: { scores: Record<string, number>; pass: boolean; verdict: string }; code: string; problems: string[] }>({ action: "review", before, after, code, round, scope, scopeAfter: scopeOf(graded.data, graded.width, graded.height) });
         last = { lut, verdict: r.review.verdict, scores: r.review.scores, pass: r.review.pass };
         if (r.review.pass || !r.code) break;
         code = r.code;

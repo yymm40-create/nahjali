@@ -4,16 +4,18 @@
 //         he reads the timeline AFTER and scores it → below the bar he rewrites it → at the bar it is applied (one undo).
 //   GRADE (colour): he writes grade(c, K) → it is sampled here into a 3D LUT → the clips' moments are graded with it →
 //         he LOOKS at them against the same moments before, scores and rewrites → at the bar the LUT goes on the clips
-//         as their own grading layer «Claude Code» (one undo).
+//         as their own grading layer «Claude Code» (one undo). The colourist's way (skill.ts): measure → scene light →
+//         a tone scale on luminance → Oklab colour → in gamut; what a LUT cannot hold (vignette, halation, grain,
+//         sharpen) comes from the program's finish(K) and goes on the same layer.
 
 import { asksAboutBackdrop, checkCommands, withoutBackdropEdits } from "@/lib/editor/assistant-core";
 import { applyAll, type Command } from "@/lib/editor/commands";
 import { MAX_LAYERS, NEUTRAL_GRADE, type Grade } from "@/lib/editor/grade";
 import { duration, findClip, type AssetInfo, type Timeline } from "@/lib/editor/model";
 import { CODE_FIXES, CODE_ROUNDS, EDIT_RUBRIC, GRADE_RUBRIC } from "@/lib/claude-code/skill";
-import { GRADE_LUT_SIZE } from "@/lib/claude-code/compute";
+import { GRADE_LUT_SIZE, readFinish, type GradeFinish } from "@/lib/claude-code/compute";
 import { postJson } from "@/lib/fetch";
-import { ProgramError, runEdit, runGrade, toBase64 } from "@/components/claude-code/compute-host";
+import { ProgramError, runEdit, runGradeWith, toBase64 } from "@/components/claude-code/compute-host";
 import type { Run } from "./Inspector";
 
 export const CODE_LAYER_NAME = "حيدرا ماكس";
@@ -148,15 +150,18 @@ export async function codeGrade(d: CodeDeps, request: string, clipIds: string[])
   let w = await api<Wrote>(d, "code_grade_write", { request, timeline: start, looks: before });
   let code = w.code;
   let problems = w.problems;
-  let last: { lut: Uint8Array; review: Review } | null = null;
+  let last: { lut: Uint8Array; finish: GradeFinish; review: Review } | null = null;
   for (let round = 1; round <= CODE_ROUNDS; round++) {
     let lut: Uint8Array | null = null;
+    let finish: GradeFinish = {};
     for (let fix = 0; ; fix++) {
       stopped(d);
       try {
         if (problems.length) throw new ProgramError(problems.join("; "));
         d.busy(`أشغّل برنامج التلوين وأبني الـLUT${round > 1 ? ` (جولة ${round})` : ""}…`);
-        lut = await runGrade(code, GRADE_LUT_SIZE);
+        const ran = await runGradeWith(code, GRADE_LUT_SIZE);
+        lut = ran.lut;
+        finish = readFinish(ran.finish);
         break;
       } catch (e) {
         if (!(e instanceof ProgramError) || fix >= CODE_FIXES) throw e instanceof ProgramError ? new Error(`برنامج التلوين ما اشتغل بعد ${fix + 1} محاولات: ${e.message}`) : e;
@@ -166,14 +171,14 @@ export async function codeGrade(d: CodeDeps, request: string, clipIds: string[])
         problems = w.problems;
       }
     }
-    const layer: Grade = { ...NEUTRAL_GRADE, name: CODE_LAYER_NAME, lut: { name: CODE_LAYER_NAME, size: GRADE_LUT_SIZE, data: toBase64(lut) }, lutAmount: 1 };
+    const layer: Grade = { ...NEUTRAL_GRADE, ...finish, name: CODE_LAYER_NAME, lut: { name: CODE_LAYER_NAME, size: GRADE_LUT_SIZE, data: toBase64(lut!) }, lutAmount: 1 };
     // the same moments through the LUT (the "before" already carries the clip's own grading)
     const looks: Look[] = [];
     for (const b of before) looks.push({ clipId: b.clipId, frames: [...b.frames, ...(await d.graded(b.frames, [layer], () => 0))] });
     stopped(d);
     d.busy(`حيدرا ماكس يشوف النتيجة ويقيّمها (جولة ${round} من ${CODE_ROUNDS})…`);
     const r = await api<{ review: Review; code: string; problems: string[] }>(d, "code_grade_review", { request, timeline: start, looks, code, round });
-    last = { lut, review: r.review };
+    last = { lut: lut!, finish, review: r.review };
     if (r.review.pass || !r.code) break;
     code = r.code;
     problems = r.problems;
@@ -181,7 +186,10 @@ export async function codeGrade(d: CodeDeps, request: string, clipIds: string[])
   stopped(d);
   if (!last) throw new Error("ما طلع من البرنامج شي.");
   const data = toBase64(last.lut);
-  const cmds: Command[] = clips.map((c) => ({ type: "update_clip", clipId: c.id, patch: { grade: { layer: codeLayer(findClip(d.timeline(), c.id)?.clip.grades ?? c.grades), on: true, name: CODE_LAYER_NAME, lut: { name: CODE_LAYER_NAME, size: GRADE_LUT_SIZE, data }, lutAmount: 1 } } }));
+  // the finish replaces the layer's own (a rewrite of the program never stacks a second vignette on the first)
+  const finish = { vignette: NEUTRAL_GRADE.vignette, halation: NEUTRAL_GRADE.halation, grain: NEUTRAL_GRADE.grain, sharpen: 0, ...last.finish };
+  const cmds: Command[] = clips.map((c) => ({ type: "update_clip", clipId: c.id, patch: { grade: { layer: codeLayer(findClip(d.timeline(), c.id)?.clip.grades ?? c.grades), on: true, name: CODE_LAYER_NAME, lut: { name: CODE_LAYER_NAME, size: GRADE_LUT_SIZE, data }, lutAmount: 1, ...finish } } }));
   if (!d.run(cmds, { label: `حيدرا ماكس يلوّن: ${request.slice(0, 40)}` })) throw new Error("ما قدرت أحط التلوين على المقاطع.");
-  return { text: `${last.review.pass ? "✅" : "⚠️"} ${last.review.verdict}\n🧑‍💻 حيدرا ماكس · LUT ${GRADE_LUT_SIZE}³ على ${clips.length} مقطع (طبقة «${CODE_LAYER_NAME}»)\n${scoreLine(GRADE_RUBRIC, last.review.scores)}`, done: cmds.length };
+  const extras = [last.finish.vignette?.amount ? "فينيت" : "", last.finish.halation?.amount ? "هالة" : "", last.finish.grain?.amount ? "حبيبات" : "", last.finish.sharpen ? "حدّة" : ""].filter(Boolean);
+  return { text: `${last.review.pass ? "✅" : "⚠️"} ${last.review.verdict}\n🧑‍💻 حيدرا ماكس · LUT ${GRADE_LUT_SIZE}³${extras.length ? ` + ${extras.join("، ")}` : ""} على ${clips.length} مقطع (طبقة «${CODE_LAYER_NAME}»)\n${scoreLine(GRADE_RUBRIC, last.review.scores)}`, done: cmds.length };
 }
