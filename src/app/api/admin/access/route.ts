@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handle, requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { forgetAccess } from "@/lib/access";
+import { setAtCostEmail } from "@/lib/at-cost";
 import { isPerm, newCodeText, normalizePerms } from "@config/access";
 import { isClaudeModelKey } from "@config/claude-models";
 import { ABOVE_YOU, isAdmin, mayActOn } from "@config/site";
@@ -14,11 +15,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  *   { action: "remove", email }       takes it off the list (everything closes for it)
  *   { action: "code", code, enabled } «الكود السري»: a new code (closes it for all who came in by the old one), or on/off
  *   { action: "uncode", email }       closes it for one person who came in by the code
+ *   { action: "red", email, on }      «🔴 النقود الحمراء»: puts the email on (or takes it off) the platform's-own-price list — 0٪ profit,
+ *                                     no rounding to half a riyal (only to the halala), a red coin
  */
 export const POST = handle(async (req: Request) => {
   const user = await requireApiUser();
   if (!isAdmin(user.email)) throw new UserError("غير مسموح.", 404);
-  const body = (await req.json().catch(() => ({}))) as { action?: string; email?: string; perms?: unknown; code?: unknown; enabled?: unknown; unlimited?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; email?: string; perms?: unknown; code?: unknown; enabled?: unknown; unlimited?: unknown; on?: unknown };
   if (body.action === "code") return NextResponse.json(await setCode(body.code, body.enabled));
   if (typeof body.action === "string" && body.action.startsWith("codes_")) return NextResponse.json(await codes(body.action, body as Record<string, unknown>));
   const email = String(body.email ?? "").trim().toLowerCase();
@@ -35,6 +38,10 @@ export const POST = handle(async (req: Request) => {
     const { error } = await db.from("site_access").upsert(row);
     if (error?.message?.includes("unlimited")) throw new UserError("خانة «بلا حدود» ما انضافت للحين: شغّل ملف SQL رقم 0045 في Supabase.", 500);
     if (error) throw new UserError("جدول السماح ما انضاف للحين: شغّل ملف SQL رقم 0035 في Supabase.", 500);
+  } else if (body.action === "red") {
+    await setAtCostEmail(email, body.on !== false, user.email ?? user.id).catch(() => {
+      throw new UserError("تعذّر حفظ قائمة النقود الحمراء.", 500);
+    });
   } else if (body.action === "uncode") {
     await db.from("site_code_grants").delete().eq("email", email);
   } else if (body.action === "remove") {

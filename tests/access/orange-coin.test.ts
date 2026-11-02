@@ -35,10 +35,10 @@ describe("the coin", () => {
     const hook = read("src/components/usePerks.ts");
     expect(hook).toContain('fetch("/api/access/perks"');
     expect(hook).toContain("sessionStorage");
-    expect(read("src/components/SmartCoin.tsx")).toContain("useAtCost()");
+    expect(read("src/components/SmartCoin.tsx")).toContain("useCoinTone()");
     expect(read("src/components/SecretGate.tsx")).toContain("forgetPerks()");
     const api = read("src/app/api/access/perks/route.ts");
-    expect(api).toContain("perksOf(user.email)");
+    expect(api).toContain("fullAccessOf(user.email)");
     // anyone not signed in, or without such a code, gets the plain defaults
     expect(api).toContain("p?.atCost === true");
   });
