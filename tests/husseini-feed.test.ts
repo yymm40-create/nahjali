@@ -35,7 +35,7 @@ describe("محمد باقر: Claude Code يرسم الكاروسيل", () => {
     expect(CONTENT_TOOLS).toContain('"picture"');
     expect(CONTENT_TOOLS).toContain('"maker"');
     expect(CONTENT_PLATFORM_RULES).toContain("من يصنع الكاروسيل — العميل هو من يختار");
-    expect(CONTENT_PLATFORM_RULES).toContain("آخر خطوة قبل تصنيع أي كاروسيل جديد");
+    expect(CONTENT_PLATFORM_RULES).toContain("اختيار الصانع مرة واحدة في المحادثة");
   });
   it("the page draws a slide in code and sends it back to the produce step", async () => {
     const { readFileSync } = await import("node:fs");

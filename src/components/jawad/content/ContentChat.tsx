@@ -16,6 +16,8 @@ import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
 import { isAttachOption } from "@/lib/chat-options";
 import { answerLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, DELEGATE_LINE, moodLine, motionLine, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
 import CarouselTable, { type CarouselItem } from "./CarouselTable";
+import StartForm from "./StartForm";
+import type { BriefKind } from "@/lib/content/brief";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { drawWithCode, smallJpeg } from "@/components/claude-code/draw";
 
@@ -55,12 +57,14 @@ const GALLERY: Record<GalleryKind, { open: string; none: string; line: (p: { id:
   palettes: { open: "🎨 افتح معرض الألوان (١٠٠ لوحة)", none: "🎲 اختر لي الألوان الأنسب", line: paletteLine },
 };
 
-const STARTS = [
-  { ic: "🖼️", t: "كاروسيل", d: "من فكرة أو نص إلى شرائح جاهزة بالصور", m: "أبي كاروسيل. اسألني عن اللي تحتاجه عشان نبدأ.", c: "#f6b73c" },
-  { ic: "🎬", t: "سكربت ريل", d: "هوك قوي ونص منطوق وتوجيهات تصوير", m: "أبي سكربت ريل. اسألني عن اللي تحتاجه.", c: "#ff7a59" },
-  { ic: "✂️", t: "ريل منتج", d: "من مقاطعي إلى ريل جاهز مع حيدرا ماكس", m: "أبي ريل منتج من مقاطعي. اسألني عن اللي تحتاجه، وبرفع لك الملفات هنا.", c: "#35c4b5" },
-  { ic: "✨", t: "موشن جرافيكس", d: "مشاهد وحركة وصوت، ينفّذها حيدرا ماكس", m: "أبي موشن جرافيكس. اسألني عن اللي تحتاجه.", c: "#a78bfa" },
-  { ic: "🔁", t: "أعد توظيف محتوى", d: "محتوى واحد إلى عدة مخرجات مترابطة", m: "عندي محتوى وأبي أعيد توظيفه في أكثر من مخرج. اسألني عن اللي تحتاجه.", c: "#fbbf24" },
+/** The cards to start from: each opens the start form of its kind (ready choices + boxes, sent as one message). */
+const STARTS: { ic: string; t: string; d: string; kind: BriefKind; c: string }[] = [
+  { ic: "🖼️", t: "كاروسيل", d: "من فكرة أو نص إلى شرائح جاهزة بالصور", kind: "carousel", c: "#f6b73c" },
+  { ic: "🎬", t: "سكربت ريل", d: "هوك قوي ونص منطوق وتوجيهات تصوير", kind: "reel_script", c: "#ff7a59" },
+  { ic: "✂️", t: "ريل منتج", d: "من مقاطعي إلى ريل جاهز مع حيدرا ماكس", kind: "reel_produced", c: "#35c4b5" },
+  { ic: "✨", t: "موشن جرافيكس", d: "مشاهد وحركة وصوت، ينفّذها حيدرا ماكس", kind: "motion", c: "#a78bfa" },
+  { ic: "🏷️", t: "عناوين وكابشن", d: "عناوين غلاف وكابشن ودعوة للتفاعل", kind: "titles", c: "#60a5fa" },
+  { ic: "🔁", t: "أعد توظيف محتوى", d: "محتوى واحد إلى عدة مخرجات مترابطة", kind: "repurpose", c: "#fbbf24" },
 ];
 
 const KIND_IC = { image: "🖼️", video: "🎞️", audio: "🎧", doc: "📄" } as const;
@@ -228,7 +232,8 @@ export function Questions({ questions, gal, disabled, onSend, onWrite, onAttach 
 
   // one plain question: a press sends it
   if (questions.length === 1 && questions[0].kind === "choice" && !questions[0].multi) {
-    return <QuickReplies cls="ct" options={questions[0].options} disabled={disabled} onPick={(o) => onSend(o)} onWrite={onWrite} onAttach={onAttach} />;
+    // sent as «• label: answer», so the answer is remembered as decided (the server never asks it again)
+    return <QuickReplies cls="ct" options={questions[0].options} disabled={disabled} onPick={(o) => onSend(answerLine(questions[0].label, [o]))} onWrite={onWrite} onAttach={onAttach} />;
   }
 
   const toggle = (qi: number, o: string, multi: boolean) =>
@@ -489,6 +494,10 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const [pending, setPending] = useState<FileView[]>([]);
   const [uploading, setUploading] = useState(false);
   const [gal, setGal] = useState<Galleries | null>(null);
+  /** the start form open on a new conversation (null: the cards) */
+  const [form, setForm] = useState<BriefKind | null>(null);
+  /** the start form asked for the table of styles */
+  const [galAsked, setGalAsked] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -506,7 +515,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs, busy]);
 
   // the galleries load once, when a message first asks for one
-  const wantsGallery = msgs.some((m) => m.questions?.some((x) => x.kind !== "choice"));
+  const wantsGallery = galAsked || msgs.some((m) => m.questions?.some((x) => x.kind !== "choice"));
   useEffect(() => {
     if (!wantsGallery || gal || loginHref) return;
     api<Galleries>("/api/content/templates").then(setGal).catch(() => null);
@@ -608,7 +617,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       setMsgs([{ role: "assistant", text: e instanceof Error ? e.message : "تعذّر فتح المحادثة.", error: true }]);
     }
   }
-  const fresh = () => { setChatId(null); setMsgs([]); setQ(store.get(draftKey(null)) ?? ""); setPending([]); setSide(false); setSpent(0); };
+  const fresh = () => { setForm(null); setChatId(null); setMsgs([]); setQ(store.get(draftKey(null)) ?? ""); setPending([]); setSide(false); setSpent(0); };
 
   // back on the page: the conversation of the address (?chat=) or of the last visit opens again
   useEffect(() => {
@@ -781,17 +790,32 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
               <>
                 <div className="ct-msg bot">
                   <h3>أهلًا، أنا {persona} ✍️</h3>
-                  <p>أرافقك من الفكرة أو النص إلى محتوى جاهز: كاروسيل بالصور، سكربت ريل، ريل منتج أو موشن جرافيكس مع حيدرا ماكس، وعناوين وكابشن. اختر نقطة بداية أو اكتب لي مباشرة، وارفق ملفاتك بزر 📎.</p>
+                  <p>أرافقك من الفكرة أو النص إلى محتوى جاهز: كاروسيل بالصور، سكربت ريل، ريل منتج أو موشن جرافيكس مع حيدرا ماكس، وعناوين وكابشن. اختر نوع الشغل: تطلع لك خيارات جاهزة ومربعات لنصك، وكلها تروح لي برسالة وحدة. وأسألك مرة وحدة بس عن اللي ناقص وأبدأ. أو اكتب لي تحت مباشرة.</p>
                 </div>
-                <div className="ct-start">
-                  {STARTS.map((s, i) => (
-                    <button key={s.t} className="ct-card" style={{ ["--c" as string]: s.c, animationDelay: `${i * 90}ms` }} onClick={() => send(s.m)}>
-                      <span className="ic">{s.ic}</span>
-                      <b>{s.t}</b>
-                      <small>{s.d}</small>
-                    </button>
-                  ))}
-                </div>
+                {form ? (
+                  <StartForm
+                    key={form}
+                    kind={form}
+                    persona={persona}
+                    disabled={!!busy || uploading}
+                    files={pending.length}
+                    table={gal?.carousels ? { items: gal.carousels, niches: gal.niches ?? [] } : null}
+                    onNeedTable={() => setGalAsked(true)}
+                    onAttach={() => picker.current?.click()}
+                    onBack={() => setForm(null)}
+                    onSend={(m) => void send(m)}
+                  />
+                ) : (
+                  <div className="ct-start">
+                    {STARTS.map((s, i) => (
+                      <button key={s.t} className="ct-card" style={{ ["--c" as string]: s.c, animationDelay: `${i * 90}ms` }} onClick={() => setForm(s.kind)}>
+                        <span className="ic">{s.ic}</span>
+                        <b>{s.t}</b>
+                        <small>{s.d}</small>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </>
             ) : (
               msgs.map((m, i) => (

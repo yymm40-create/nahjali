@@ -4,7 +4,7 @@ import { CAROUSEL_CODE_CRAFT, CAROUSEL_GPT_CRAFT, CAROUSEL_NICHES, CAROUSEL_STYL
 import { CONTENT_PLATFORM_RULES, CONTENT_TOOLS } from "@config/content";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 import { readQuestions, type Turn } from "@/lib/content/chats";
-import { CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, stripMarks } from "@/lib/content/marks";
+import { CAROUSEL_AUTO_LINE, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, stripMarks } from "@/lib/content/marks";
 import { answerLine } from "@/lib/content/marks";
 import { attachedPictures, carouselHold, CAROUSEL_LABEL, MAKER_CODE, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE, pickedCarousel, pickedMaker, pickedPhotos } from "@/lib/content/maker";
 import { slidePrompt } from "@/lib/content/produce";
@@ -161,11 +161,21 @@ describe("what stops a new carousel", () => {
     expect(pickedPhotos([user("بضيف صوري")])).toBeNull();
   });
 
-  it("starts again after a carousel", () => {
+  it("keeps the picks for the next carousel (the owner's order: it forgot and asked again)", () => {
     const done: Turn = { role: "assistant", text: "تم", slides: { aspect: "1:1", items: [], todo: [], failed: [], running: false, total: 1, styleId: "", templateId: "" } };
-    expect(pickedCarousel([user(FLAT), user(MAKER_GPT), done])).toBeNull();
-    expect(pickedMaker([user(FLAT), user(MAKER_GPT), done])).toBeNull();
-    expect(carouselHold([user(FLAT), user(MAKER_GPT), done, user("كاروسيل ثاني")])?.question.label).toBe(CAROUSEL_LABEL);
+    expect(pickedCarousel([user(FLAT), user(MAKER_GPT), done])?.id).toBe(pickedCarousel([user(FLAT)])?.id);
+    expect(pickedMaker([user(FLAT), user(MAKER_GPT), done])).toBe("gpt");
+    expect(carouselHold([user(FLAT), user(MAKER_GPT), done, user("كاروسيل ثاني")])).toBeNull();
+    // a new press still wins
+    expect(pickedMaker([user(FLAT), user(MAKER_GPT), done, user(MAKER_CODE)])).toBe("code");
+  });
+
+  it("«اختر لي الأنسب» is a pick: nothing waits for the table, and the style he chose decides the pictures question", () => {
+    expect(pickedCarousel([user(CAROUSEL_AUTO_LINE)])).toEqual({ id: "auto", style: null });
+    expect(carouselHold([user(CAROUSEL_AUTO_LINE), user(MAKER_CODE)])).toBeNull();
+    const real = CAROUSEL_STYLES.find((x) => x.photoIdea)!;
+    expect(carouselHold([user(CAROUSEL_AUTO_LINE), user(MAKER_CODE)], real.id)?.question.label).toBe(PHOTOS_LABEL);
+    expect(carouselHold([user(`${CAROUSEL_AUTO_LINE}\n${answerLine(PHOTOS_LABEL, [PHOTOS_MAKE])}`), user(MAKER_CODE)], real.id)).toBeNull();
   });
 
   it("does not stop a conversation that began with the older template gallery", () => {

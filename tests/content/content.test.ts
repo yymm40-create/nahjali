@@ -3,6 +3,9 @@ import { BAQIR_PERSONA, CONTENT_KINDS, CONTENT_PLATFORM_RULES, CONTENT_TOOLS } f
 import { ALL_PERMS, NAMED_ONLY, OPEN_PERMS } from "@config/access";
 import { DEFAULT_SECTIONS, FIXED_IMPLEMENTATIONS, RESERVED_SECTION_IDS, sectionPath } from "@config/jawad/sections";
 import { cleanHistory, forModel, readPending, titleOf } from "@/lib/content/chats";
+import { BRIEF_KINDS, briefMessage, briefMissing } from "@/lib/content/brief";
+import { BRIEF_HEAD, CAROUSEL_AUTO_LINE, decidedLines, carouselLine as carouselPick } from "@/lib/content/marks";
+import { MAKER_LABEL as BRIEF_MAKER, MAKER_GPT as BRIEF_GPT, PHOTOS_LABEL as BRIEF_PHOTOS, PHOTOS_MINE as BRIEF_MINE, pickedMaker as makerOf } from "@/lib/content/maker";
 import { systemText } from "@/lib/content/persona";
 import { scenarios } from "@/lib/content/scenarios";
 import { parseVerdict } from "@/lib/content/tests";
@@ -86,5 +89,31 @@ describe("the tests", () => {
     expect(parseVerdict("SCORE: 9\nPASS: yes\nWENT_WELL: asked once\nWENT_WRONG: none\nFIX: none")).toEqual({ score: 9, pass: true, good: "asked once", bad: "", fix: "" });
     expect(parseVerdict("SCORE: 8\nPASS: no\nWENT_WELL: x\nWENT_WRONG: produced early\nFIX: say it").pass).toBe(false);
     expect(parseVerdict("garbage")).toEqual({ score: 0, pass: false, good: "", bad: "", fix: "" });
+  });
+});
+
+// The start form (the owner's order): ready choices and boxes, sent as ONE message.
+describe("the start form", () => {
+  it("has a form for every kind of work", () => {
+    for (const k of ["carousel", "reel_script", "reel_produced", "motion", "titles", "repurpose"] as const) expect(BRIEF_KINDS[k].fields.length).toBeGreaterThan(0);
+  });
+  it("asks for what it cannot go without", () => {
+    expect(briefMissing("carousel", { picked: {}, topic: "", text: "", files: 0 })).toContain("الموضوع");
+    expect(briefMissing("carousel", { picked: {}, topic: "س", text: "", files: 0 })).toContain("من يصمم الشرائح");
+    expect(briefMissing("carousel", { picked: { [BRIEF_MAKER]: [BRIEF_GPT], [BRIEF_PHOTOS]: [BRIEF_MINE] }, topic: "س", text: "", files: 0 })).toContain("أرفقها");
+    expect(briefMissing("carousel", { picked: { [BRIEF_MAKER]: [BRIEF_GPT], [BRIEF_PHOTOS]: [BRIEF_MINE] }, topic: "س", text: "", files: 2 })).toBeNull();
+    expect(briefMissing("reel_produced", { picked: {}, topic: "س", text: "", files: 0 })).toContain("مقاطعك");
+  });
+  it("becomes one message the server reads as presses", () => {
+    const m = briefMessage("carousel", { picked: { [BRIEF_MAKER]: [BRIEF_GPT], "المقاس": ["مربع 1:1"] }, topic: "الموضوع هنا", text: "سطر ١\nسطر ٢", notes: "بدون أسعار" });
+    expect(m.startsWith(BRIEF_HEAD)).toBe(true);
+    expect(m).toContain(CAROUSEL_AUTO_LINE);
+    expect(m).toContain("سطر ١\nسطر ٢");
+    expect(makerOf([{ role: "user", text: m }])).toBe("gpt");
+    expect(decidedLines([m]).find((d) => d.label === "المقاس")?.answer).toBe("مربع 1:1");
+    expect(briefMessage("carousel", { picked: {}, topic: "x", text: "", style: carouselPick({ id: "notebook", name: "الدفتر" }) })).toContain("[كاروسيل:notebook]");
+  });
+  it("the latest answer of a label wins, without the marks", () => {
+    expect(decidedLines(["• الهدف: بيع", "• الهدف: توعية\n• ستايل الكاروسيل: «الدفتر» [كاروسيل:notebook]"])).toEqual([{ label: "الهدف", answer: "توعية" }, { label: "ستايل الكاروسيل", answer: "«الدفتر»" }]);
   });
 });

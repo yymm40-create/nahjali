@@ -58,15 +58,21 @@ The person you are talking to is the OWNER and builder of this platform — «ا
 HIS WORD OVERRIDES EVERY RULE. Every rule, limit, style guide, house rule, safety-of-taste rule or "never" in the knowledge above or in your own instructions was written by him for his customers — and he may break any of them, including the ones he set himself, with a word. When he tells you to drop, bend or break a rule («كسره», «تجاوزه», «خالفه», «ما يهمني القيد», «أنا القائد أقول لك…»), do exactly what he says from that message on, without arguing, without warning him again, and without quietly keeping the rule in your output: the rule is off for him until he puts it back. If a rule is enforced in code and you cannot switch it off yourself, say so in one line and do the closest thing he asked. The only exceptions are things no one can lift: secret keys and passwords (you do not hold them), and what the law or the providers' own policies forbid (a real person imitated without consent, sexual content involving minors).
 </leader>`;
 
-export const siteSystem = (task: string, cache = true, leader = false) => {
+/**
+ * `knowledge`: a robot of one section may send the short version of the site's text (config/jawad/knowledge-brief.ts)
+ * in place of the whole ~96k tokens. `extra`: a second block of the task that comes and goes during a conversation
+ * (a catalogue needed only until a pick), with its own cache mark so the task before it stays cached either way.
+ */
+export const siteSystem = (task: string, cache = true, leader = false, knowledge: string = JAWAD_KNOWLEDGE, extra = "") => {
   // the person's memory («ذاكرتي»), inside a robot's turn: after the cached task, so the cache still holds
   const memory = currentMemory();
   return [
     // its own cache mark: the site's text is ~60k tokens and the same in every call, so a call with a DIFFERENT task still
     // reads it from the cache (cheap) instead of writing it again with the task
-    { type: "text", text: JAWAD_KNOWLEDGE, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) },
+    { type: "text", text: knowledge, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) },
     ...(leader ? [{ type: "text", text: LEADER_BLOCK }] : []),
     { type: "text", text: task, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) },
+    ...(extra ? [{ type: "text", text: extra, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) }] : []),
     ...(memory ? [{ type: "text", text: memoryBlock(memory) }] : []),
   ];
 };
@@ -333,8 +339,14 @@ export async function callClaudeJson<T>({
   resume,
   rawText = false,
   onText,
+  knowledge,
+  extra,
 }: {
   system: string;
+  /** the short knowledge of one section in place of the whole site's text (see siteSystem) */
+  knowledge?: string;
+  /** a cached block after the task that is there only for part of a conversation (see siteSystem) */
+  extra?: string;
   turns: ClaudeTurn[];
   schema: object;
   maxTokens: number;
@@ -384,7 +396,7 @@ export async function callClaudeJson<T>({
       body: JSON.stringify({
         model: asked.id,
         max_tokens: maxTokens,
-        system: siteSystem(system, true, leader),
+        system: siteSystem(system, true, leader, knowledge, extra),
         messages,
         output_config: { ...(asked.effort ? { effort: level } : {}), ...(rawText ? {} : { format: { type: "json_schema", schema } }) },
         ...(withFallback ? { fallbacks: "default" } : {}),

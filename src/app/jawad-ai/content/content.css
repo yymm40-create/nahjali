@@ -607,3 +607,8 @@
   .ct-ctable tr.win td { background: none; }
   .ct-ctable tr.win { background: color-mix(in srgb, var(--ct-amber) 7%, transparent); }
 }
+
+/* the start form: ready choices and boxes, sent as one message */
+.ct-brief { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
+.ct-brief .ct-q b { display: block; }
+.ct-brief-box { display: block; width: 100%; margin-top: 8px; resize: vertical; font: inherit; line-height: 1.6; }

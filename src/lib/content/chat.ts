@@ -21,7 +21,10 @@ import { findCarouselStyle } from "@config/content-carousel-styles";
 import { findStyle } from "@config/film-styles";
 import { cleanHistory, getChat, readMedia, readQuestions, saveChat, type Attachment, type MediaItem, type PendingProduce, type Turn } from "./chats";
 import { attachmentsOf, uploadLinks } from "./files";
-import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, systemText } from "./persona";
+import { carouselCatalogBlock, chosenBlock, chosenIds, galleryCatalogBlock, getPersona, motionCatalogBlock, systemText } from "./persona";
+import { sectionKnowledge } from "@config/jawad/knowledge-brief";
+import { CAROUSEL_GPT_CRAFT } from "@config/content-carousel-styles";
+import { decidedLines } from "./marks";
 import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
@@ -204,26 +207,59 @@ export async function say(userId: string, chatId: string | null, message: string
   // pictures of this conversation, by short-lived link, so he can look at them
   const links = await uploadLinks(userId, turns.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image" || f.kind === "doc").map((f) => f.id)));
   const persona = await getPersona();
+  const userTexts = history.filter((t) => t.role === "user").map((t) => t.text);
   // what the person picked in the galleries (all their messages), and the closest worked examples
-  const ids = chosenIds(history.filter((t) => t.role === "user").map((t) => t.text));
+  const ids = chosenIds(userTexts);
   const ask = stripMarks(said || turns.find((t) => t.role === "user")?.text || "");
-  const parts = [
-    catalogBlock(),
-    // the motion skills, feelings and drawing tools: when the work is motion graphics
-    ...(ids.motion || ids.mood || /موشن|motion|انترو|إنترو|تايبوغرافي|إنفوجرافيك|انفوجرافيك/i.test(`${ask} ${before?.record ?? ""}`) ? [motionCatalogBlock()] : []),
+  const talk = `${userTexts.slice(-6).join(" ")} ${before?.record ?? ""}`;
+  const carousel = /كاروسيل|كاروسل|شرائح|carousel/i.test(talk) || !!ids.carousel;
+  const pick = pickedCarousel(history);
+  const maker = pickedMaker(history);
+  // THE COST (the owner's order): the system is the same text every turn (the persona, the rules, the tools — cached),
+  // the site's knowledge is the short one of this section, and a catalogue goes only while it is needed: the table of
+  // 100 styles until a style is picked (or while he picks one himself), the older galleries when they are asked for
+  const extra = [
+    ...(carousel && (!pick || pick.id === "help" || pick.id === "auto") ? [carouselCatalogBlock()] : []),
+    ...(/قالب|قوالب|كرتون|معرض الستايلات/.test(talk) || ids.template || ids.style ? [galleryCatalogBlock()] : []),
+    ...(ids.motion || ids.mood || /موشن|motion|انترو|إنترو|تايبوغرافي|إنفوجرافيك|انفوجرافيك/i.test(talk) ? [motionCatalogBlock()] : []),
+  ].join("\n\n");
+  // what changes every turn rides on the LATEST message (so everything before it stays cached): the picks' details,
+  // what is already decided, the closest examples, the record
+  const decided = decidedLines(userTexts);
+  const context = [
     chosenBlock(ids),
+    ...(carousel && maker !== "code" ? [CAROUSEL_GPT_CRAFT] : []),
+    decided.length
+      ? `قرارات العميل المحسومة في هذه المحادثة (من نموذج البداية ومن أزراره؛ الأحدث يعلو). لا تسأل عن أي منها مرة ثانية، ولا تعرض سؤالها كزر مرة ثانية، إلا إذا طلب العميل تغييرها بنفسه:\n${decided.map((d) => `- ${d.label}: ${d.answer}`).join("\n")}`
+      : "",
     contentExamplesBrief(nearestContentExamples(ask, 3)),
     // selling: the method (the four steps) and the closest worked sales examples, when that is what the person wants
     ...(isSalesAsk(`${ask} ${before?.record ?? ""}`) ? [SALES_METHOD, salesExamplesBrief(nearestSalesExamples(ask, 3))] : []),
     // the app «لأجل المهدي» (every feature, its audiences, its content rules and ready ideas), when the conversation is about it
-    ...(isMahdiAsk(`${history.filter((t) => t.role === "user").map((t) => t.text).join(" ")} ${before?.record ?? ""}`) ? [MAHDI_BRIEF] : []),
+    ...(isMahdiAsk(`${userTexts.join(" ")} ${before?.record ?? ""}`) ? [MAHDI_BRIEF] : []),
     !findCarouselStyle(ids.carousel ?? "") && (ids.template || /كاروسيل|شرائح|carousel/i.test(ask + (before?.record ?? ""))) ? templateExamplesBrief(nearestTemplateExamples(ask, ids.template && ids.template !== "none" ? ids.template : null, 2)) : "",
-  ].filter(Boolean);
-  const system = systemText(persona.text, parts, before?.record ?? "");
-  const r = await callClaudeJson<Answer>({ system, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email) });
+    before?.record ? `سجل المشروع الحالي (كما حفظته آخر مرة؛ حدّثه في "record" عند أي تغيير):\n${before.record}` : "",
+  ].filter(Boolean).join("\n\n");
+  const system = systemText(persona.text);
+  const sent = [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))];
+  const last = sent[sent.length - 1];
+  if (context && last?.role === "user") {
+    const note = { type: "text" as const, text: `<turn_context>\n(من الموقع لهذه الرسالة فقط، لا من العميل)\n${context}\n</turn_context>` };
+    sent[sent.length - 1] = { role: "user", content: typeof last.content === "string" ? [note, { type: "text", text: last.content }] : [note, ...last.content] };
+  }
+  const r = await callClaudeJson<Answer>({ system, extra, knowledge: sectionKnowledge("صانع المحتوى"), turns: sent, schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email) });
   const a = r.data;
   let usd = claudeCost(r.usage) + mem.usd;
-  const questions = readQuestions(a.questions);
+  // a question already answered is not shown again (he forgets; the person was asked the same thing twice) unless the
+  // person asked to change it in this message
+  const change = /غيّر|بدّل|أبدل|ابدل|غير رأيي|غيرت رأيي|(?:ستايل|ألوان|الوان|مقاس) (?:ثاني|آخر|اخر|غير)|غير (?:الستايل|الألوان|الالوان|المقاس|الصانع)/.test(said);
+  const done = new Set(decided.map((d) => d.label));
+  const questions = (() => {
+    const all = readQuestions(a.questions);
+    if (!all || change) return all;
+    const kept = all.filter((q) => !done.has(q.label.trim()) && !(q.kind === "carousels" && pick && pick.id !== "help"));
+    return kept.length ? kept : undefined;
+  })();
   const reply: Turn = { role: "assistant", text: withNote(a.reply.trim() || "…", mem.fresh), ...(questions ? { questions } : {}) };
   const messages = [...history, reply];
   const at = messages.length - 1;
@@ -245,7 +281,7 @@ export async function say(userId: string, chatId: string | null, message: string
     const fixed = fixAt >= 0 ? history[fixAt].slides : null;
     const picked = fixed ? (fixed.maker === "code" ? (fixed.mix ? "mix" : "code") : "gpt") : pickedMaker(history);
     const code = picked === "code" ? { maker: "code" as const } : picked === "mix" ? { maker: "code" as const, mix: true } : {};
-    const hold = fixed ? null : carouselHold(history);
+    const hold = fixed ? null : carouselHold(history, a.produce.carousel_id ?? "");
     if (slides.length && fixAt >= 0) {
       // draw these slides again in the carousel that exists
       const block = history[fixAt].slides!;
@@ -258,8 +294,8 @@ export async function say(userId: string, chatId: string | null, message: string
       reply.questions = own ? questions : [...(questions ?? []).filter((q) => q.label !== hold.question.label), hold.question].slice(-6);
       reply.text += `\n\n${hold.note}`;
     } else if (slides.length) {
-      const pick = pickedCarousel(history);
-      const carouselId = pick?.style?.id ?? "";
+      // «اختر لي الأنسب»: the style he chose himself
+      const carouselId = pick?.style?.id ?? (pick?.id === "auto" && findCarouselStyle(a.produce.carousel_id ?? "") ? a.produce.carousel_id! : "");
       const mine = new Set(history.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
       const named = (Array.isArray(a.produce.refs) ? a.produce.refs : []).filter((r) => mine.has(r));
       // they chose to add their own pictures: those go with the slides even if the answer forgot to name them

@@ -5,13 +5,17 @@ import { CAROUSEL_LABEL, MAKER_CODE, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_L
 // One message to «محمد باقر» end to end, with Claude, the database and the editor replaced by stand-ins: what he is
 // given (the catalogues, what the person picked, the state of an earlier carousel) and what the site does with his
 // answer (the buttons, the carousel to draw, drawing slides again, the hand-over to حيدرا ماكس).
-const claude = vi.hoisted(() => ({ answer: null as unknown, calls: [] as { system: string; turns: { role: string; content: unknown }[] }[] }));
+const claude = vi.hoisted(() => ({ answer: null as unknown, calls: [] as { system: string; turns: { role: string; content: unknown }[]; base: string; extra: string; knowledge?: string }[] }));
 const db = vi.hoisted(() => ({ chat: null as unknown, editorProjects: [] as unknown[], editorChats: [] as unknown[], assets: [] as unknown[] }));
 
 vi.mock("@/lib/film/anthropic", async (orig) => ({
   ...(await orig<typeof import("@/lib/film/anthropic")>()),
-  callClaudeJson: vi.fn(async (o: { system: string; turns: { role: string; content: unknown }[] }) => {
-    claude.calls.push({ system: o.system, turns: o.turns });
+  // `system`: everything he is given beside the conversation — the cached system, the catalogue block that comes and
+  // goes, and the context the site puts on the latest message (the picks, the decisions, the examples, the record)
+  callClaudeJson: vi.fn(async (o: { system: string; extra?: string; knowledge?: string; turns: { role: string; content: unknown }[] }) => {
+    const last = o.turns[o.turns.length - 1]?.content;
+    const context = Array.isArray(last) ? (last as { type: string; text?: string }[]).filter((p) => p.type === "text" && p.text?.startsWith("<turn_context>")).map((p) => p.text).join("\n") : "";
+    claude.calls.push({ system: [o.system, o.extra ?? "", context].join("\n\n"), turns: o.turns, base: o.system, extra: o.extra ?? "", knowledge: o.knowledge });
     return { data: claude.answer, raw: "", usage: { input_tokens: 1000, output_tokens: 500 } };
   }),
 }));
@@ -142,7 +146,7 @@ describe("his answer", () => {
   it("the person picks who designs the slides as the last step: nothing is made until a button is pressed, and the pick is the one pressed", async () => {
     answer({});
     await say("u", null, "أبي كاروسيل", []);
-    expect(claude.calls[0].system).toContain("آخر خطوة قبل تصنيع أي كاروسيل جديد");
+    expect(claude.calls[0].system).toContain("اختيار الصانع مرة واحدة في المحادثة");
     expect(claude.calls[0].system).toContain("GPT Image 2 (رسم كامل بالذكاء الاصطناعي)");
     // the model sends the slides without a pick (or claims one): nothing is made, the question goes out
     for (const maker of [undefined, "code", "gpt", "mix"]) {
@@ -314,5 +318,65 @@ describe("his answer", () => {
     answer({ handoff: { on: true, title: "تهنئة", shape: "9:16", package: "حزمة الموشن", storyboard: "{not json" } });
     await say("u", null, "ابدأ الإنتاج", []);
     expect(String((db.editorChats[0] as { handoff: string }).handoff)).not.toContain("لوحة القصة");
+  });
+});
+
+// The owner's order: «كل رسالة ١٢٥ ألف توكن» — and «يكرر الأسئلة وينسى».
+describe("what a message costs, and what he does not ask twice", () => {
+  it("gets the short knowledge of his own section, never the whole site's text", async () => {
+    const { JAWAD_KNOWLEDGE } = await import("@config/jawad/knowledge");
+    answer({});
+    await say("u", null, "أبي كاروسيل", []);
+    const k = claude.calls[0].knowledge!;
+    expect(k).toBeTruthy();
+    expect(k).not.toBe(JAWAD_KNOWLEDGE);
+    expect(k.length).toBeLessThan(JAWAD_KNOWLEDGE.length / 4);
+    expect(k).toContain("«صانع المحتوى» (/jawad-ai/content)");
+  });
+
+  it("the system is the same text every turn (it caches); what changes rides on the latest message", async () => {
+    answer({});
+    await say("u", null, "أبي كاروسيل عن الصلاة", []);
+    answer({});
+    await say("u", "chat-1", `${FLAT}\n${answerLine("الهدف", ["توعية"])}`, []);
+    expect(claude.calls[1].base).toBe(claude.calls[0].base);
+    const last = claude.calls[1].turns.at(-1)!.content as { type: string; text: string }[];
+    expect(last[0].text).toContain("<turn_context>");
+    expect(last[0].text).toContain("الهدف: توعية");
+    expect(claude.calls[1].base).not.toContain("الهدف: توعية");
+  });
+
+  it("the table of 100 styles goes only until a style is picked", async () => {
+    answer({});
+    await say("u", null, "أبي كاروسيل", []);
+    expect(claude.calls[0].extra).toContain("- notebook — 1) الدفتر");
+    answer({});
+    await say("u", "chat-1", FLAT, []);
+    expect(claude.calls[1].extra).not.toContain("- notebook — 1) الدفتر");
+    expect(claude.calls[1].system).toContain("ستايل الكاروسيل الذي اختاره العميل");
+    // the older galleries are not sent unless asked for
+    expect(claude.calls[0].extra).not.toContain("- scrapbook — دفتر قصاصات");
+  });
+
+  it("a question already answered is not shown again", async () => {
+    answer({});
+    await say("u", null, `${FLAT}\n${answerLine("المنصة", ["انستغرام"])}`, []);
+    answer({ questions: [{ label: "المنصة", kind: "choice", options: ["انستغرام", "لينكدإن"], multi: false }, { label: "عدد الشرائح؟", kind: "choice", options: ["٥", "٧"], multi: false }, { label: CAROUSEL_LABEL, kind: "carousels", options: [], multi: false }] });
+    const r = await say("u", "chat-1", "كمل", []);
+    expect(r.questions).toEqual([{ label: "عدد الشرائح؟", kind: "choice", options: ["٥", "٧"], multi: false }]);
+    // unless the person asks to change it
+    answer({ questions: [{ label: "المنصة", kind: "choice", options: ["انستغرام", "لينكدإن"], multi: false }] });
+    expect((await say("u", "chat-1", "غيّر المنصة", [])).questions).toHaveLength(1);
+  });
+
+  it("the start form is one message: with «اختر لي الأنسب» and the maker in it, the carousel is made at once", async () => {
+    const { briefMessage } = await import("@/lib/content/brief");
+    const msg = briefMessage("carousel", { picked: { [MAKER_LABEL]: [MAKER_CODE], [PHOTOS_LABEL]: [PHOTOS_MAKE], "بعد الأسئلة": ["اصنع مباشرة"] }, topic: "أخطاء الإعلانات", text: "" });
+    answer({ produce: { on: true, mode: "all", aspect: "2:3", carousel_id: "white-text", template_id: "", style_id: "", slides: slides() } });
+    const r = await say("u", null, msg, []);
+    expect(claude.calls[0].system).toContain("العميل ترك لك اختيار الستايل");
+    expect(claude.calls[0].extra).toContain("- notebook — 1) الدفتر");
+    expect(r.pending).toEqual({ total: 2, mode: "all", todo: [1, 2] });
+    expect(chat().pending).toMatchObject({ carouselId: "white-text", maker: "code" });
   });
 });

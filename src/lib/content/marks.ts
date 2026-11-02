@@ -40,3 +40,28 @@ export const answerLine = (label: string, answers: string[]) => `• ${label}: $
 
 /** What is sent when the person lets him decide what they left unanswered. */
 export const DELEGATE_LINE = "• ما لم أحدده أعلاه: اختر أنت الأنسب لهدفي وجمهوري (تلقائي)، واذكر اختياراتك.";
+
+/** The person leaves the look to him: he picks the best style of the table himself (a pick: nothing waits for it). */
+export const CAROUSEL_AUTO_LINE = "• ستايل الكاروسيل: اختر لي الأنسب من الجدول [كاروسيل:auto]";
+
+/** The first line of a message sent from the start form: everything in it is decided. */
+export const BRIEF_HEAD = "📋 طلب جاهز من نموذج البداية";
+
+/**
+ * What the person decided so far: the latest answer of each «• label: answer» line in their messages (the start form,
+ * the batches of buttons), without the marks. A label decided twice keeps its latest answer.
+ */
+export function decidedLines(userTexts: string[]): { label: string; answer: string }[] {
+  const out = new Map<string, string>();
+  for (const t of userTexts) {
+    for (const raw of t.split("\n")) {
+      const m = /^\s*•\s*([^:\n]{2,120}):\s*(.+)$/.exec(raw);
+      if (!m) continue;
+      const answer = stripMarks(m[2]).trim();
+      if (!answer) continue;
+      out.delete(m[1].trim());
+      out.set(m[1].trim(), answer.slice(0, 1500));
+    }
+  }
+  return [...out].map(([label, answer]) => ({ label, answer }));
+}

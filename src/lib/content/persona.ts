@@ -44,12 +44,25 @@ export function systemText(persona: string, parts: string[] = [], record = "") {
   return [persona, CONTENT_PLATFORM_RULES, CONTENT_TOOLS, HUSSEINI_MOURNING_FEED, ...parts, record ? `سجل المشروع الحالي (كما حفظته آخر مرة؛ حدّثه في "record" عند أي تغيير):\n${record}` : ""].filter(Boolean).join("\n\n");
 }
 
-/** The two galleries the person can pick from, one line each (always the same text, so it caches). */
-export function catalogBlock(): string {
+/**
+ * The table of carousel styles, one line each (always the same text, so it caches). Sent only while a carousel has no
+ * style yet, or he is to pick one himself («اختر لي الأنسب» / «ساعدني»): after the pick, the pick's own details go instead.
+ */
+export function carouselCatalogBlock(): string {
+  const car = CAROUSEL_STYLES.map((s) => `- ${s.id} — ${s.n}) ${s.name} (${s.niche})${s.winner ? " ★الأقوى في نيشه" : ""}${s.photoIdea ? " [صور واقعية]" : ""} — ${s.description} يناسب: ${s.bestFor}.`).join("\n");
+  return `جدول ستايلات الكاروسيل (${CAROUSEL_STYLES.length} ستايلًا مصنفة بالنيش، بصورتين لكل واحد: غلاف وشريحة؛ جدول kind="carousels"؛ هو طريقة اختيار شكل الكاروسيل):\n${car}`;
+}
+
+/** The older galleries (templates, cartoon styles): sent only when the person asks for one of them. */
+export function galleryCatalogBlock(): string {
   const tpl = CAROUSEL_TEMPLATES.map((t) => `- ${t.id} — ${t.name} (${t.group}) — ${t.description} يناسب: ${t.bestFor}. بنيات: ${t.structures.map(structureName).join("، ")}. حتى ${t.words} كلمة في الشريحة.`).join("\n");
   const sty = FILM_STYLES.map((x) => `- ${x.id} — ${x.name} (${x.group} · ${x.school}) — ${x.feel}`).join("\n");
-  const car = CAROUSEL_STYLES.map((s) => `- ${s.id} — ${s.n}) ${s.name} (${s.niche})${s.winner ? " ★الأقوى في نيشه" : ""}${s.photoIdea ? " [صور واقعية]" : ""} — ${s.description} يناسب: ${s.bestFor}.`).join("\n");
-  return `جدول ستايلات الكاروسيل (${CAROUSEL_STYLES.length} ستايلًا مصنفة بالنيش، بصورتين لكل واحد: غلاف وشريحة؛ جدول kind="carousels"؛ هو طريقة اختيار شكل الكاروسيل):\n${car}\n\n${CAROUSEL_GPT_CRAFT}\n\nقوالب الكاروسيل التي يعرضها الموقع للعميل (معرض kind="templates"؛ يختار واحدًا أو لا يختار):\n${tpl}\n\nخريطة الستايلات (${FILM_STYLES.length} ستايلًا في ١٤ عائلة، كل واحد تحت شركته أو مدرسته) لرسوم الصور (معرض kind="styles"؛ يطبّق الموقع نص الستايل حرفيًا على الرسوم والشخصيات والمشاهد المرسومة فقط، لا على تخطيط الكتابة):\n${sty}`;
+  return `قوالب الكاروسيل التي يعرضها الموقع للعميل (معرض kind="templates"؛ يختار واحدًا أو لا يختار):\n${tpl}\n\nخريطة الستايلات (${FILM_STYLES.length} ستايلًا في ١٤ عائلة، كل واحد تحت شركته أو مدرسته) لرسوم الصور (معرض kind="styles"؛ يطبّق الموقع نص الستايل حرفيًا على الرسوم والشخصيات والمشاهد المرسومة فقط، لا على تخطيط الكتابة):\n${sty}`;
+}
+
+/** Everything at once (the admin's tests of the persona). */
+export function catalogBlock(): string {
+  return `${carouselCatalogBlock()}\n\n${CAROUSEL_GPT_CRAFT}\n\n${galleryCatalogBlock()}`;
 }
 
 /**
@@ -113,6 +126,8 @@ export function chosenBlock(ids: Chosen): string {
     );
   } else if (ids.carousel === "help") {
     out.push('العميل لا يعرف أي ستايل يختار، فساعده: اسأله عمّا لم تعرفه بعد فقط (الهدف، والجمهور، وهل عنده صور)، ثم رشّح له ٣ ستايلات من الجدول تناسبه مع سبب من سطر واحد لكل ستايل، واعرضها بسؤال kind="carousels" و"options" فيها معرّفات الثلاثة، فتظهر له أولًا ويقدر يفتح الجدول كله.');
+  } else if (ids.carousel === "auto") {
+    out.push('العميل ترك لك اختيار الستايل: اختر أنت من الجدول الستايل الأنسب لموضوعه وهدفه وجمهوره، وقل له اسمه وسببه في سطر، وضع معرّفه في "carousel_id". لا تعرض عليه الجدول ولا تسأله عنه.');
   } else if (ids.carousel === "own") {
     out.push('العميل يريد شكلًا غير الموجود في الجدول، بكلامه هو: نفّذ وصفه كما هو، واترك "carousel_id" فارغًا. اكتب في "prompt" كل شريحة نظامًا واحدًا كاملًا (الألوان برموزها، والخط، والتخطيط)، ولا تسأله عن الهوامش. وإذا كان وصفه فيه صور واقعية فاسأله: يضيف صوره أو تصنعها له.');
   }
