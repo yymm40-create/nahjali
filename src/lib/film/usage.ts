@@ -8,6 +8,7 @@ const COIN_LABELS: Record<string, string> = {
   screenwriter: "رد السيناريست",
   sheets: "رد صانع الشيت",
   sheet_image: "صورة شيت",
+  sheet_likeness: "وصف ملامح صورة واقعية",
   director: "رد المخرج",
   director_video: "فيديو",
   voice_line: "صوت جملة (ElevenLabs)",

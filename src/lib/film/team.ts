@@ -17,6 +17,7 @@ export const OPERATION_STAGE: Record<string, TeamStage> = {
   screenwriter: "screenwriter",
   sheets: "sheets",
   sheet_image: "sheets",
+  sheet_likeness: "sheets",
   director: "director",
   director_video: "director",
   lipsync: "director",

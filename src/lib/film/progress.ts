@@ -18,6 +18,7 @@ const OPERATION_LABEL: Record<string, { kind: WorkKind; label: string }> = {
   sajjad: { kind: "reply", label: "سجاد يفكّر" },
   impact: { kind: "impact", label: "سجاد يقارن النسختين" },
   sheet_image: { kind: "image", label: "صورة" },
+  sheet_likeness: { kind: "reply", label: "صانع الشيت يوصف الملامح" },
   director_video: { kind: "video", label: "فيديو" },
   voice: { kind: "voice", label: "صوت" },
   voice_line: { kind: "voice", label: "صوت" },

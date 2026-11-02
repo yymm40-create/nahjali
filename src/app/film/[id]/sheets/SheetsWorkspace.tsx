@@ -13,6 +13,7 @@ import ActionBar, { EditsLeftContext, type SendMode } from "../../ActionBar";
 import StepCard from "../../StepCard";
 import type { MapChoice, MapItem, SheetVersion } from "@/lib/film/sheets";
 import SheetCards from "./SheetCards";
+import ConvertCards from "./ConvertCards";
 import StyleBrowser, { StyleThumb, type StyleCardView } from "@/components/style-map/StyleBrowser";
 
 const MAX_REFERENCE_UPLOADS = 4; // same as lib/film/sheets.ts (that file is server-only)
@@ -146,7 +147,9 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
   // «كل الشيتات مع بعض»: prompts waiting, new pictures waiting, and sheets still without a prompt
   const waitingPrompts = orderedSheets.filter((sid) => sid !== MASTER && latestOf("sheet_prompt", sid)?.status === "awaiting_approval");
   const readyImages = map.filter((m) => m.id !== MASTER && !approvedIds.has(m.id) && assets.some((a) => a.kind === "image" && a.ref_key === m.id && a.status === "generated"));
-  const noPrompt = mapVersion?.status === "approved" ? map.filter((m) => m.id !== MASTER && choices[m.id] !== "as_is" && !promptIds.includes(m.id)) : [];
+  // a real person to convert gets his sheet from his chosen single images («🔄» cards), not from the batch
+  const noPrompt = mapVersion?.status === "approved" ? map.filter((m) => m.id !== MASTER && choices[m.id] !== "as_is" && choices[m.id] !== "convert" && !promptIds.includes(m.id)) : [];
+  const toConvert = mapVersion?.status === "approved" ? map.filter((m) => choices[m.id] === "convert") : [];
   const allApproved = stage === "sheets" && map.length > 0 && mapVersion?.status === "approved" && map.every((m) => approvedIds.has(m.id));
 
   // «الصور مباشرة»: a sheet's description that arrives is drawn straight away, five pictures at a time (and always
@@ -276,6 +279,9 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           }
         />
       )}
+
+      {/* 3b. A real person: each real photo → its own single image in the style → the sheet from the chosen ones */}
+      <ConvertCards items={toConvert} assets={assets} styleChosen={style?.status === "approved"} busy={busy} send={send} />
 
       {/* 4. Master and every sheet — with one-click buttons for all of them together */}
       {(waitingPrompts.length > 1 || readyImages.length > 1 || (masterApproved && noPrompt.length > 0 && !writing)) && (
@@ -469,10 +475,10 @@ function MapChoices({
                 <button className={`chip ${c === "make" ? "bg-gold text-on-gold" : ""}`} onClick={() => setChoices({ ...choices, [m.id]: "make" })}>🎨 اصنع ماستر جديد</button>
               </div>
             ) : locked ? (
-              <span className="chip">{c === "make" ? "🎨 نصنعه" : c === "as_is" ? "📤 صورتك كما هي" : c === "reference" ? "🖼️ شيت من صورتك" : "🔄 نحوّل الشخصية الواقعية إلى كرتون"}</span>
+              <span className="chip">{c === "make" ? "🎨 نصنعه" : c === "as_is" ? "📤 صورتك كما هي" : c === "reference" ? "🖼️ شيت من صورتك" : "🔄 نحوّل الشخصية الواقعية إلى ستايل الفيلم"}</span>
             ) : (
               <div className="flex flex-wrap gap-2 text-sm font-bold">
-                {([["make", "🎨 اصنعه لي"], ["as_is", "📤 عندي جاهز (كما هو)"], ["reference", "🖼️ عندي صورة، اصنع منها شيت"], ["convert", "🔄 حوّل شخصية واقعية إلى كرتون (حتى ٤ صور)"]] as const).map(([k, label]) => (
+                {([["make", "🎨 اصنعه لي"], ["as_is", "📤 عندي جاهز (كما هو)"], ["reference", "🖼️ عندي صورة، اصنع منها شيت"], ["convert", "🔄 حوّل شخصية واقعية إلى ستايل الفيلم (حتى ٤ صور، كل صورة تتحول لحالها)"]] as const).map(([k, label]) => (
                   <button key={k} className={`chip ${c === k ? "bg-gold text-on-gold" : ""}`} onClick={() => setChoices({ ...choices, [m.id]: k })}>{label}</button>
                 ))}
                 {castFor(m, seriesCast) && (

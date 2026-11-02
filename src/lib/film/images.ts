@@ -10,10 +10,12 @@ const PRICE = { textIn: 5, imageIn: 8, imageOut: 30 };
 export const IMAGE_SIZES = {
   test: "1536x1024",
   sheet: "2048x1152",
+  /** «حوّل شخصية واقعية»: the single image of a real photo, 3:4 */
+  portrait: "1152x1536",
 } as const;
 
 /** Reserved before a generation; the real cost from the response usage replaces it. */
-export const IMAGE_ESTIMATE_USD = { test: 0.07, sheet: 0.4 } as const;
+export const IMAGE_ESTIMATE_USD = { test: 0.07, sheet: 0.4, portrait: 0.08 } as const;
 
 let client: OpenAI | null = null;
 const openai = () => (client ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
