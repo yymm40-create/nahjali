@@ -25,6 +25,7 @@ import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
 import Riyal from "@/components/Riyal";
 import Coined from "@/components/Coined";
+import { useClaudeModel } from "@/components/robots/claude-model";
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const POLL_MS = 10_000;
@@ -90,6 +91,8 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
   const pieces = useMemo(() => red?.clips ?? [], [red]);
   const [open, setOpen] = useState(false);
   const [approving, setApproving] = useState<string | null>(null);
+  // the person's Claude model: جواد writes each fix's prompt with it (the server never goes dearer than the price)
+  const [claude] = useClaudeModel();
   // prices that moved since the quote: each waits for «أكّد» (nothing is charged before)
   const [asks, setAsks] = useState<Ask[]>([]);
 
@@ -173,7 +176,7 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
         const c = fixOf(id);
         if (!c) continue;
         try {
-          const made = await sendPiece(c, note, { projectId, asset: c.assetId ? assetsRef.current.get(c.assetId) : undefined, onAssets, key: `fix-${id}-${uid()}`, yellow: yellowOf(tlRef.current), opts: opts ?? fixOpts(c.fix) });
+          const made = await sendPiece(c, note, { projectId, asset: c.assetId ? assetsRef.current.get(c.assetId) : undefined, onAssets, key: `fix-${id}-${uid()}`, yellow: yellowOf(tlRef.current), opts: opts ?? fixOpts(c.fix), model: claude.id });
           run({ type: "update_clip", clipId: id, patch: { fix: { job: made.job, from: made.from, state: "making", error: null } } }, { label: "أرسلت جزءًا للتعديل" });
         } catch (e) {
           if (e instanceof PriceAsk) {
@@ -190,7 +193,7 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
       if (asked) flash(asked === 1 ? "تغيّر سعر جزء؛ اضغط «أكّد» في الشريط الأصفر لو توافق." : `تغيّر سعر ${asked} أجزاء؛ أكّدها من الشريط الأصفر.`, true);
       if (failed) flash(failed === 1 ? "جزء ما انرسل؛ السبب مكتوب عليه." : `${failed} أجزاء ما انرسلت؛ السبب مكتوب عليها.`, true);
     },
-    [projectId, run, onAssets, flash],
+    [projectId, run, onAssets, flash, claude.id],
   );
   // a send cut short (the page was closed while sending): back to «أعد المحاولة»
   const staleKey = pieces.filter((c) => c.fix?.state === "sending").map((c) => c.id).join(",");
@@ -452,7 +455,7 @@ const askPrice = async (p: Extract<Plan, { ok: true }>, opts: EditOpts = NO_OPTS
  * Sends one piece to be made again. Everything it needs is fetched right now (the film video's job, the original,
  * the price), so nothing waits on a window being open. Returns the job, or throws with the reason in plain Arabic.
  */
-async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset: EditorAsset | undefined; onAssets: (l: EditorAsset[]) => void; key: string; yellow: Clip[]; opts?: EditOpts }) {
+async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset: EditorAsset | undefined; onAssets: (l: EditorAsset[]) => void; key: string; yellow: Clip[]; opts?: EditOpts; model?: string }) {
   let a = ctx.asset;
   if (a && !a.jobId && a.origin === "film") {
     a = (await postJson<{ asset: EditorAsset }>(`/api/jawad/editor/projects/${ctx.projectId}`, { action: "fix_link", assetId: a.id })).asset;
@@ -466,7 +469,7 @@ async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset:
   if (!("coins" in q)) throw new Error(q.error);
   const ranges = p.ranges.map((r) => ({ ...r, note: note.slice(0, EDIT_LIMITS.noteMax) }));
   const partCut = p.mode === "parts" ? p.cut : null;
-  const send: Record<string, unknown> = { jobId: p.job.id, outputId: p.out.id, mode: p.mode, notes: note, ranges, idempotencyKey: ctx.key, expectedCoins: q.coins, ...(p.continuity ? { continuity: p.continuity } : {}), ...optsBody(opts) };
+  const send: Record<string, unknown> = { jobId: p.job.id, outputId: p.out.id, mode: p.mode, notes: note, ranges, idempotencyKey: ctx.key, expectedCoins: q.coins, ...(ctx.model ? { model: ctx.model } : {}), ...(p.continuity ? { continuity: p.continuity } : {}), ...optsBody(opts) };
   try {
     const times = frameTimes(p.videoSec, ranges, partCut);
     const small = await grabFrames(p.sourceUrl, times, EDIT_LIMITS.frameWidth, 0.72);
@@ -514,6 +517,7 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
   const [busy, setBusy] = useState<string | null>(null);
   const [understanding, setUnderstanding] = useState<{ understanding: string; error: string; correction: string; willDo: string[] } | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [claude] = useClaudeModel();
   const assetOf = (c: Clip) => (c.assetId ? assets.get(c.assetId) : undefined);
 
   // film videos get their JAWAD AI job first (once), then every original is read
@@ -601,6 +605,7 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
         error: written.map((clip, index) => `${index + 1}. ${problems[clip.id]}`).join("\n"),
         correction: written.map((clip, index) => `${index + 1}. ${notes[clip.id]}`).join("\n"),
         settings: written.map((clip) => ({ range: `${formatTime(clip.start)}–${formatTime(clip.start + clipLength(clip))}`, ...optsBody(fixOpts(clip.fix)) })),
+        model: claude.id,
       }),
     }).catch(() => null);
     const result = response ? await response.json().catch(() => ({})) : {};

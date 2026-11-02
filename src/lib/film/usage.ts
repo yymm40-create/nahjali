@@ -11,6 +11,7 @@ const COIN_LABELS: Record<string, string> = {
   director: "رد المخرج",
   director_video: "فيديو",
   voice_line: "صوت جملة (ElevenLabs)",
+  voice_diction: "النطق الدقيق لجمل الفيلم",
   sajjad: "سؤال لسجاد",
 };
 import type { FilmJob, FilmService } from "./types";

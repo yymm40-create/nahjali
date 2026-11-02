@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { postJson } from "@/lib/fetch";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import { useFilmBase } from "../FilmBase";
 import ResearchChoice from "../ResearchChoice";
 import StepWhy from "../StepWhy";
@@ -14,6 +15,8 @@ export default function NewSeries() {
   const router = useRouter();
   const base = useFilmBase();
   const [open, setOpen] = useState(false);
+  // the person's Claude model: «سجاد» prepares the journey with it, not always the default
+  const [claude] = useClaudeModel();
   const [title, setTitle] = useState("");
   const [about, setAbout] = useState("");
   const [mode, setMode] = useState<"solo" | "team">("solo");
@@ -27,7 +30,7 @@ export default function NewSeries() {
     setBusy(true);
     setError("");
     try {
-      const result = await postJson<{ intake: JourneyIntake }>("/api/film/intake", { draftId: draftId.current, kind: "series", title, story: about, answers, previous: intake });
+      const result = await postJson<{ intake: JourneyIntake }>("/api/film/intake", { draftId: draftId.current, kind: "series", title, story: about, answers, previous: intake, model: claude.id });
       setIntake(result.intake);
     } catch (e) {
       setError((e as Error).message);

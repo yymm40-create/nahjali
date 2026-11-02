@@ -42,6 +42,8 @@ import { prepareEdit, type EditInputs } from "./smart-edit";
 import { elevenMusic, elevenMusicWithReference, elevenSoundEffect, elevenSpeech } from "./providers/elevenlabs";
 import { resolveVoice } from "./voices";
 import { prepareSpeech } from "./diction";
+import { withFixedPriceClaude } from "@/lib/film/claude-model";
+import { findClaudeModel } from "@config/claude-models";
 import { makeSmartSplit, removeFrames, storeFrames, videoHasSound, type VideoInputs } from "./smart-split";
 import { keepMadeItem } from "./library";
 import { libraryAccess, libraryNames } from "./library-access";
@@ -70,7 +72,7 @@ export interface JobRow {
    * modelPrompt: the prompt as the model receives it (each «@name» written the model's way, or Arabic words written
    * phonetically by «النطق الدقيق»), when it differs. diction: the words whose pronunciation was set.
    */
-  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; signupFreeImage?: boolean; /** fal: the endpoint a video was sent to (text- or image-to-video) */ falModel?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; film?: { projectId: string; assetId?: string; genId?: string; title?: string } };
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; signupFreeImage?: boolean; /** fal: the endpoint a video was sent to (text- or image-to-video) */ falModel?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; /** the Claude model the person chose (config/claude-models.ts): «النطق الدقيق» runs on it, never dearer than its fixed price */ claude?: string; film?: { projectId: string; assetId?: string; genId?: string; title?: string } };
   refs: { uploadId: string; kind: string; role: RefRole; name?: string }[];
   price_coins: number;
   price_breakdown: { label: string; centi: number }[];
@@ -199,6 +201,8 @@ export interface GenerateBody {
   signupFreeImage?: unknown;
   /** «الفصل الذكي»: small JPEG frames of the video, `{ t, data: "data:image/jpeg;base64,…" }`. */
   frames?: unknown;
+  /** the Claude model the person chose (config/claude-models.ts): kept on the job for the Claude work it does later («النطق الدقيق») */
+  model?: unknown;
 }
 
 export type CreateResult =
@@ -331,7 +335,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
       mode: e.mode.id,
       output_kind: def.output,
       prompt,
-      inputs: { settings: e.settings, instructions, refStyle, origin, ...(server.cartoon ? { cartoon: server.cartoon } : {}), ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}), ...(signupFreeImage ? { signupFreeImage: true } : {}) },
+      inputs: { settings: e.settings, instructions, refStyle, origin, ...(server.cartoon ? { cartoon: server.cartoon } : {}), ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}), ...(signupFreeImage ? { signupFreeImage: true } : {}), ...(def.output === "audio" && findClaudeModel(b.model) ? { claude: String(b.model) } : {}) },
       refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
       price_coins: chargeCoins,
       price_breakdown: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : freeFirst ? [{ label: "أول تجربة مجانية", centi: 0 }] : payLines,
@@ -549,7 +553,8 @@ async function runEleven(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
     // «النطق الدقيق»: the Arabic words whose sound depends on their vowels, written so the voice says them right
     const diction = dictionOf({ settings: s, prompt: job.prompt });
     if (diction !== "off") await db().from("jawad_jobs").update({ provider_status: "diction" }).eq("id", job.id);
-    const spoken = await prepareSpeech(job.prompt, diction).catch((e) => {
+    // on the requester's model, kept on the job when it was made (a fixed price: never a dearer one than the default)
+    const spoken = await withFixedPriceClaude(job.inputs.claude, () => prepareSpeech(job.prompt, diction)).catch((e) => {
       throw new ProviderError("rejected", "تعذّر تدقيق النطق الآن. لم يُخصم منك شيء؛ جرّب مرة ثانية أو اختر «كما كتبت».", `diction: ${String(e instanceof Error ? e.message : e).slice(0, 300)}`);
     });
     if (spoken.fixes.length) job.inputs = { ...job.inputs, modelPrompt: spoken.text, diction: { mode: diction, words: spoken.fixes.map((f) => ({ word: f.word, vocalized: f.vocalized })) } };
