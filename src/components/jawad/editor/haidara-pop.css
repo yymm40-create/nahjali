@@ -14,8 +14,9 @@
   z-index: 75;
   inset-inline-start: 12px;
   bottom: calc(12px + env(safe-area-inset-bottom));
-  width: min(420px, calc(100vw - 24px));
-  height: min(640px, calc(100dvh - 90px));
+  /* a computer: a real conversation window (the owner, 3 November 2026: it was squeezed in the left column) */
+  width: min(600px, calc(100vw - 24px));
+  height: min(860px, calc(100dvh - 90px));
   display: flex;
   flex-direction: column;
   border-radius: 1.2rem;
