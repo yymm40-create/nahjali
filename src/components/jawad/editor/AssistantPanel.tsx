@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import MotionLab, { type FilmPlacer, type LabSource, type LabView } from "./MotionLab";
+import type { FootageSource } from "./lab-footage";
+import { NEW_TITLE, readTabs, storeOf, tabsKey, type Tab } from "./lab-tabs";
+import { chatParam, conversationList, MAIN, MAIN_TITLE, mainRow, mergeStream, routeOf, saysEnough, timeOf, type ChatRow } from "./haidara-chats";
 import { clipEnd, duration, findClip, mainTrack, type Timeline } from "@/lib/editor/model";
 import { framesOf } from "./media";
 import { watchClip, watchFilm } from "./watch";
@@ -55,7 +60,16 @@ interface Msg {
   /** «اصنع لي…» that cost coins: shown with their price, started by a tap */
   plans?: { plan: MakePlan; state: "ask" | "started" | "failed" }[];
   error?: boolean;
+  /** when it was said (ms): the motion piece's turns are shown among these by it */
+  at?: number;
 }
+/** New messages get their time (kept ones keep theirs). */
+const stamp = (m: Msg[]) => m.map((x) => (typeof x.at === "number" ? x : { ...x, at: Date.now() }));
+/** Kept messages, read back (the server keeps the time as text; an unknown one sorts first). */
+const readKept = (v: unknown): Msg[] =>
+  (Array.isArray(v) ? v : [])
+    .filter((m): m is Record<string, unknown> => !!m && typeof m === "object" && (m.role === "user" || m.role === "assistant") && typeof m.text === "string")
+    .map((m) => ({ role: m.role as Msg["role"], text: String(m.text), ...(typeof m.done === "number" ? { done: m.done } : {}), at: timeOf(m.at) ?? 0 }));
 
 /** From here a handoff is suggested (same as the server's CHAT_LONG). */
 const LONG = { messages: 40, chars: 24_000 };
@@ -103,8 +117,37 @@ async function quietParts(tl: Timeline, assets: Map<string, EditorAsset>) {
   return out;
 }
 
-/** «✨ Claude»: say what you want; Claude edits the timeline (one change, undoable). */
-export default function AssistantPanel({
+/** What the motion lab inside حيدرا ماكس's conversation needs from the editor (none: a project only read). */
+export interface LabDeps {
+  width: number;
+  height: number;
+  assets: EditorAsset[];
+  footageClips: FootageSource[];
+  onUpload?: (file: File, onProgress?: (p: number) => void) => Promise<EditorAsset>;
+  onFilm: FilmPlacer;
+  onUnplace?: (assetId: string, replaced: string | null) => boolean;
+}
+/** A conversation open on this device, and what it was opened on (a film of the timeline to work on again). */
+interface OpenTab extends Tab {
+  open?: { source: { assetId: string; source: LabSource; params?: Record<string, string>; auto?: boolean } };
+}
+interface ConvStatus {
+  busy: boolean;
+  label: string;
+  work: boolean;
+  title: string;
+}
+
+/** «✨ Claude»: say what you want; Claude edits the timeline (one change, undoable) — ONE conversation of حيدرا ماكس,
+ * with the motion lab running inside it (its steps are cards here; a finished piece goes on the timeline by itself). */
+function Conversation({
+  tab,
+  shown,
+  bar,
+  askSent,
+  onStatus,
+  onChatId,
+  lab: labDeps,
   ask,
   onAssets,
   onSeparate,
@@ -120,10 +163,17 @@ export default function AssistantPanel({
   onClose,
   readOnly,
   diag,
-  onLab,
 }: {
-  /** «🎬 مختبر الموشن»: opens the lab with a brief حيدرا ماكس wrote */
-  onLab?: (brief: string, seconds: number, clipId?: string | null) => void;
+  tab: OpenTab;
+  /** the conversation on show (the others keep working, hidden) */
+  shown: boolean;
+  /** the conversations' controls in the header («＋ محادثة جديدة», «🗂️ المحادثات») */
+  bar: ReactNode;
+  /** the last button request sent (shared by the conversations: one is sent once, by the one on show) */
+  askSent: { current: number };
+  onStatus: (s: ConvStatus) => void;
+  onChatId: (id: string) => void;
+  lab: LabDeps | null;
   /** a request sent from a button (sent once per `n`) */
   ask?: { text: string; n: number } | null;
   /** new library files (made for the edit) */
@@ -158,7 +208,18 @@ export default function AssistantPanel({
   /** the site's owner: «🩺 تشخيص» (the editor's state, read when asked) */
   diag?: () => Record<string, unknown>;
 }) {
-  const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [msgs, setMsgsRaw] = useState<Msg[]>([]);
+  const setMsgs = (f: Msg[] | ((m: Msg[]) => Msg[])) => setMsgsRaw((prev) => stamp(typeof f === "function" ? f(prev) : f));
+  const isMain = tab.id === MAIN;
+  // which conversation the server is told this is (nothing for the main one)
+  const chatOf = () => {
+    const c = chatParam(tab);
+    return c ? { chat: c } : {};
+  };
+  // the motion piece of this conversation: its view (for code between renders), whether messages go to it, its state
+  const labRef = useRef<LabView | null>(null);
+  const [focus, setFocus] = useState(Boolean(tab.open?.source));
+  const [labState, setLabState] = useState<ConvStatus>({ busy: false, label: "", work: false, title: "" });
   const [text, setText] = useState("");
   const [claude] = useClaudeModel();
   // «🎬 اختر بالصورة»: the gallery of every motion kind, talking-reel look and feeling, as pictures
@@ -207,10 +268,6 @@ export default function AssistantPanel({
   };
   // «🩺 تشخيص»: the next message asks حيدرا ماكس to find what went wrong (the owner only)
   const [diagOn, setDiagOn] = useState(false);
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    end.current?.scrollIntoView({ block: "end" });
-  }, [msgs, busy]);
 
   // ---------- the edit's conversation stays with the project (server; before the migration, this device) ----------
   const [chat, setChat] = useState<{ loaded: boolean; stored: boolean; handoff: string | null; chats: number; spent: number }>({ loaded: false, stored: false, handoff: null, chats: 1, spent: 0 });
@@ -221,7 +278,9 @@ export default function AssistantPanel({
       .catch(() => ({ messages: [], handoff: null, chats: 1, stored: false, spentHalalas: 0 }) as Chat)
       .then((c) => {
         if (!live) return;
-        let saved: { msgs: Msg[]; handoff: string | null; chats: number } = { msgs: c.messages, handoff: c.handoff, chats: c.chats };
+        // another conversation: its messages are kept with it (read back by the lab's restore); the spend is the project's
+        if (!isMain) return setChat((x) => ({ ...x, loaded: true, spent: Math.max(0, Number(c.spentHalalas) || 0) }));
+        let saved: { msgs: Msg[]; handoff: string | null; chats: number } = { msgs: readKept(c.messages), handoff: c.handoff, chats: c.chats };
         if (!c.stored) {
           try {
             const raw = JSON.parse(localStorage.getItem(localKey(projectId)) ?? "null");
@@ -237,9 +296,10 @@ export default function AssistantPanel({
     return () => {
       live = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
   useEffect(() => {
-    if (!chat.loaded || chat.stored) return;
+    if (!isMain || !chat.loaded || chat.stored) return;
     try {
       localStorage.setItem(localKey(projectId), JSON.stringify({ msgs: msgs.filter((m) => !m.error).slice(-200).map((m) => ({ role: m.role, text: m.text, done: m.done })), handoff: chat.handoff, chats: chat.chats }));
     } catch {
@@ -251,7 +311,7 @@ export default function AssistantPanel({
     if (busy || !msgs.length) return;
     setBusy("حيدرا ماكس يكتب الهاندوف ويبدأ محادثة جديدة…");
     try {
-      const c = await postJson<Chat>(`/api/jawad/editor/projects/${projectId}`, { action: "handoff", messages: msgs.filter((m) => !m.error), handoff: chat.handoff, model: claude.id });
+      const c = await postJson<Chat>(`/api/jawad/editor/projects/${projectId}`, { action: "handoff", ...chatOf(), messages: msgs.filter((m) => !m.error), handoff: chat.handoff, model: claude.id });
       setMsgs([]);
       setChat((x) => ({ ...x, handoff: c.handoff, chats: c.chats, spent: Math.max(0, Number(c.spentHalalas) || 0) }));
       setShowHandoff(true);
@@ -262,7 +322,6 @@ export default function AssistantPanel({
     }
   };
 
-  const sent = useRef(0);
   // pictures of clips already looked at (kept while the clip's part stays the same)
   const seenFrames = useRef(new Map<string, { t: number; data: string; scope: Scope | null }[]>());
   /** A clip seen: a few moments as filmed and, when graded, the same after its grading (in `at`, the timeline now), each with its scope. */
@@ -316,7 +375,7 @@ export default function AssistantPanel({
       setBusy(round === 1 ? "حيدرا ماكس يشيك نتيجة التلوين (الصورة والسكوبات)…" : `حيدرا ماكس يعيد يشيك بعد التعديل (جولة ${round})…`);
       const look = await lookAtClip(at, clipId);
       if (!look) return;
-      const c = await postJson<{ ok: boolean; verdict: string; commands: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "grade_check", clipId, round, request, timeline: at, look, model: claude.id });
+      const c = await postJson<{ ok: boolean; verdict: string; commands: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "grade_check", ...chatOf(), clipId, round, request, timeline: at, look, model: claude.id });
       if (c.ok || !c.commands.length) {
         setMsgs((m) => [...m, { role: "assistant", text: `✅ ${c.verdict}`, done: steps || undefined }]);
         return;
@@ -452,6 +511,15 @@ export default function AssistantPanel({
   const send = async (words = text, spoken = false): Promise<string | null> => {
     const message = words.trim() || (pending.length ? "شوف المراجع اللي أرفقتها" : "");
     if (!message || readOnly) return null;
+    // the motion piece has the conversation: the message is its (a note, «اعتمد وابنِ», a question about it)
+    const lab = labRef.current;
+    if (lab && routeOf(message, { focus, lab: lab.hasPiece || lab.search, pending: pending.length, search: lab.search }) === "lab") {
+      if (lab.busy) return null;
+      setText("");
+      setFocus(true);
+      await lab.send(message);
+      return null;
+    }
     if (busyRef.current || sendingRef.current) {
       diagNote(`حيدرا ماكس: طلب ما انرسل لأن طلب ثاني شغّال («${message.slice(0, 40)}»)`, "note");
       return null;
@@ -479,7 +547,7 @@ export default function AssistantPanel({
       try {
         setBusy("حيدرا ماكس يفحص المحرر والملفات والسجل…");
         const report = await diagReport(diag());
-        const r = await postJson<{ reply: string; commands?: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "diagnose", message, report, timeline: tl, selected, playhead: player?.ms ?? 0, shot: previewShot() }, signal);
+        const r = await postJson<{ reply: string; commands?: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "diagnose", ...chatOf(), message, report, timeline: tl, selected, playhead: player?.ms ?? 0, shot: previewShot() }, signal);
         // what he diagnosed in the timeline, he fixes now
         if (r.commands?.length) run(r.commands, { label: "حيدرا ماكس يعالج" });
         setMsgs((m) => [...m, { role: "assistant", text: r.reply }]);
@@ -514,6 +582,7 @@ export default function AssistantPanel({
       setBusy("حيدرا ماكس يشتغل على التايملاين…");
       const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; quick?: string[]; options?: { label: string; choices: string[]; multi: boolean }[]; requests?: MakeRequest[]; checkClipId?: string | null; assets?: EditorAsset[]; spent?: number }>(`/api/jawad/editor/projects/${projectId}`, {
         action: "assistant",
+        ...chatOf(),
         model: claude.id,
         message,
         history,
@@ -605,9 +674,15 @@ export default function AssistantPanel({
             const out = q.kind === "code_edit" ? await codeEdit(codeDeps(signal), q.prompt) : await codeGrade(codeDeps(signal), q.prompt, q.clipId.split(",").map((x) => x.trim()).filter(Boolean));
             setMsgs((m) => [...m, { role: "assistant", text: out.text, done: out.done }]);
           } else if (q.kind === "motion_lab") {
-            // «🎬 مختبر الموشن»: the lab opens on its conversation with حيدرا ماكس's brief and writes the scenario by itself, on their filmed clip when he named one
-            const onClip = q.clipId && findClip(tlRef.current, q.clipId) ? q.clipId : null;
-            onLab?.(q.prompt, Number(q.seconds) || 15, onClip);
+            // «🎬 مختبر الموشن» runs HERE, in this conversation: the piece starts on حيدرا ماكس's brief (on their filmed
+            // clip when he named one, or the one selected), its scenario comes as a card — approved by itself when the
+            // person's message already said enough — and the finished piece goes on the timeline by itself
+            const piece = labRef.current;
+            if (!piece) throw new Error("مختبر الموشن مو متاح في هذا المشروع (للقراءة فقط).");
+            const usable = (id: string | null | undefined) => (id && labDeps?.footageClips.some((c) => c.clipId === id) ? id : null);
+            const onClip = (q.clipId && findClip(tlRef.current, q.clipId) ? usable(q.clipId) : null) ?? (selected.length === 1 ? usable(selected[0]) : null);
+            setFocus(true);
+            piece.start({ brief: q.prompt, seconds: Number(q.seconds) || 15, clipId: onClip, auto: saysEnough(message) });
           } else if (q.kind === "watch") {
             // «👁️»: he needs to see the clip whole — it is watched, and he is asked again with it, by itself
             watchNext.current = q.clipId === FILM || findClip(tlRef.current, q.clipId) ? q.clipId : null;
@@ -749,10 +824,10 @@ export default function AssistantPanel({
   };
 
   useEffect(() => {
-    if (!ask || ask.n === sent.current || busy) return;
+    if (!shown || !ask || ask.n === askSent.current || busy) return;
     const t = setTimeout(() => {
       // marked as sent only when it really goes (a render in between cancels the wait, not the request)
-      sent.current = ask.n;
+      askSent.current = ask.n;
       void send(ask.text);
     }, 0);
     return () => clearTimeout(t);
@@ -766,47 +841,41 @@ export default function AssistantPanel({
   })();
   const attach = (a: EditorAsset) => setPending((x) => (x.some((y) => y.id === a.id) ? x.filter((y) => y.id !== a.id) : [...x, a].slice(-6)));
   const canSend = (!!text.trim() || pending.length > 0) && !busy && !readOnly;
-  return (
-    <div className="hm flex h-full min-h-0 flex-col bg-jw-surface" dir="rtl">
-      <header className="flex items-center gap-2 px-3 py-2">
-        <span className="jw-orb h-7 w-7 shrink-0" data-busy={!!busy} aria-hidden />
-        <b className="min-w-0 flex-1 truncate text-[15px]">حيدرا ماكس</b>
-        {msgs.length > 0 && (
-          <button type="button" className="hm-icon" disabled={!!busy || readOnly} onClick={handOff} title="محادثة جديدة (حيدرا ماكس يلخّص اللي قبلها ويكمل منها)" aria-label="محادثة جديدة">
-            <Icon name="plus" size={18} />
-          </button>
-        )}
-        {onClose && (
-          <button type="button" className="hm-icon" onClick={onClose} aria-label="إغلاق المحادثة" title="إغلاق">
-            <Icon name="x" size={18} />
-          </button>
-        )}
-      </header>
 
-      <div className="jw-scroll min-h-0 flex-1 overflow-y-auto" aria-live="polite">
-        <div className="mx-auto flex w-full max-w-[46rem] flex-col gap-6 px-4 pb-6 pt-2">
-          {chat.handoff && (
-            <button type="button" className="self-center rounded-full border border-jw-line px-3 py-1 text-[12px] text-jw-muted hover:text-jw-ink" onClick={() => setShowHandoff((v) => !v)} aria-expanded={showHandoff}>
-              المحادثة {chat.chats} · تكمل من ملخص اللي قبلها {showHandoff ? "▴" : "▾"}
-            </button>
-          )}
-          {chat.handoff && showHandoff && <p className="jw-select-text whitespace-pre-wrap rounded-2xl bg-jw-surface-2 p-3 text-[13px] leading-6 text-jw-muted" dir="auto">{chat.handoff}</p>}
+  // what this conversation is called, and what it is doing (for the list of conversations and the pill)
+  const firstSaid = msgs.find((m) => m.role === "user")?.text.replace(/\s+/g, " ").trim().slice(0, 60) ?? "";
+  const title = tab.named || (isMain ? MAIN_TITLE : firstSaid || labState.title || NEW_TITLE);
+  const labLabel = labState.busy ? `🎬 ${labState.title || "الموشن"}: ${labState.label}` : "";
+  useEffect(() => {
+    onStatus({ busy: !!busy || labState.busy, label: busy ? busy.slice(0, 40) : labLabel, work: msgs.length > 0 || labState.work, title });
+  }, [onStatus, busy, labState.busy, labLabel, labState.work, msgs.length, title]);
+  // kept with the conversation besides the lab's work: the main one is marked (its messages are the project's own),
+  // every other one keeps its messages there
+  const extraState = useMemo<Record<string, unknown>>(
+    () => (isMain ? { main: true } : { editor: { msgs: msgs.filter((m) => !m.error).slice(-200).map((m) => ({ role: m.role, text: m.text, ...(m.done ? { done: m.done } : {}), at: m.at })), handoff: chat.handoff, chats: chat.chats } }),
+    [isMain, msgs, chat.handoff, chat.chats],
+  );
+  const restored = (st: Record<string, unknown>) => {
+    const ed = st.editor as { msgs?: unknown; handoff?: unknown; chats?: unknown } | undefined;
+    const mine = !isMain && ed ? readKept(ed.msgs) : [];
+    if (!isMain && ed) {
+      setMsgsRaw(mine);
+      setChat((x) => ({ ...x, handoff: typeof ed.handoff === "string" ? ed.handoff : null, chats: Number(ed.chats) || 1 }));
+    }
+    // the piece spoke last: the conversation stays on it
+    const said = Array.isArray(st.chat) ? (st.chat as { at?: number }[]) : [];
+    if (said.length && (!mine.length || (said[said.length - 1].at ?? 0) >= (mine[mine.length - 1].at ?? 0))) setFocus(true);
+  };
+  const statusOfLab = useMemo(() => (s: Omit<ConvStatus, "title"> & { title: string }) => setLabState((x) => (x.busy === s.busy && x.label === s.label && x.work === s.work && x.title === s.title ? x : s)), []);
 
-          {!msgs.length && chat.loaded && (
-            <div className="flex flex-col items-center gap-5 pt-[12vh] text-center">
-              <span className="jw-orb h-12 w-12" aria-hidden />
-              <h2 className="text-2xl font-bold leading-snug">وش نسوي في المونتاج اليوم؟</h2>
-              <div className="flex max-w-xl flex-wrap justify-center gap-2">
-                {QUICK.slice(0, 6).map((q) => (
-                  <button key={q} type="button" disabled={readOnly || !!busy} className="hm-chip" onClick={() => send(q)}>
-                    {q}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {msgs.map((m, i) =>
+  const layout = (lab: LabView | null) => {
+    const toLab = Boolean(lab && routeOf(text || " ", { focus, lab: lab.hasPiece || lab.search, pending: pending.length, search: lab.search }) === "lab");
+    const order = mergeStream(
+      msgs.map((m) => m.at),
+      (lab?.chat ?? []).map((m) => m.at),
+    );
+    const lastIsLab = order.length > 0 && order[order.length - 1].k === "l";
+    const editorNode = (m: Msg, i: number) =>
             m.role === "user" ? (
               <div key={i} className="jw-select-text max-w-[85%] self-start whitespace-pre-wrap rounded-3xl bg-jw-surface-3 px-4 py-2.5 text-[15px] leading-7" dir="auto">
                 {m.text}
@@ -862,25 +931,118 @@ export default function AssistantPanel({
                 ))}
                 {!m.error && <ReplyActions text={m.text} done={m.done} onUndo={i === msgs.length - 1 && m.done ? onUndo : undefined} />}
               </div>
-            ),
-          )}
-
-          {busy && (
-            <div className="flex items-center gap-2.5 text-[14px] text-jw-muted" role="status">
-              <span className="jw-orb h-5 w-5 shrink-0" data-busy aria-hidden />
-              <span className="hm-shimmer">{busy}</span>
-            </div>
-          )}
-          {long && !busy && (
-            <button type="button" className="self-center rounded-full border border-jw-line px-3 py-1.5 text-[12px] text-jw-muted hover:text-jw-ink" disabled={readOnly} onClick={handOff}>
-              المحادثة طوّلت — ابدأ محادثة جديدة من ملخصها (أرخص وأسرع)
+            );
+    const labNode = (v: LabView, i: number) => {
+      const m = v.chat[i];
+      return (
+        <div key={`l${i}`} className="flex flex-col gap-2">
+          {m.text &&
+            (m.role === "user" ? (
+              m.auto ? (
+                <p className="m-0 text-[12px] text-jw-muted" dir="auto">🎬 طلبت من مختبر الموشن: «{m.text.slice(0, 280)}{m.text.length > 280 ? "…" : ""}»</p>
+              ) : (
+                <div className="jw-select-text max-w-[85%] self-start whitespace-pre-wrap rounded-3xl bg-jw-surface-3 px-4 py-2.5 text-[15px] leading-7" dir="auto">
+                  {m.text}
+                </div>
+              )
+            ) : (
+              <div className="hm-reply jw-select-text text-[15px] leading-7" dir="auto">
+                <MsgText text={m.text} />
+              </div>
+            ))}
+          {v.card(i)}
+        </div>
+      );
+    };
+    return (
+      <div className="hm flex h-full min-h-0 flex-col bg-jw-surface" dir="rtl" style={shown ? undefined : { display: "none" }}>
+        <header className="relative flex items-center gap-2 px-3 py-2">
+          <span className="jw-orb h-7 w-7 shrink-0" data-busy={!!busy || !!lab?.busy} aria-hidden />
+          <b className="min-w-0 flex-1 truncate text-[15px]" title={title}>
+            حيدرا ماكس <span className="font-normal text-jw-muted">· {title}</span>
+          </b>
+          {bar}
+          {onClose && (
+            <button type="button" className="hm-icon" onClick={onClose} aria-label="إغلاق المحادثة" title={lab?.busy ? "إغلاق (الموشن يكمل شغله، وترجع له من الزر تحت)" : "إغلاق"}>
+              <Icon name="x" size={18} />
             </button>
           )}
-          <div ref={end} />
-        </div>
-      </div>
+        </header>
 
-      <div className="mx-auto w-full max-w-[46rem] px-3 pb-2">
+        <div className="jw-scroll min-h-0 flex-1 overflow-y-auto" aria-live="polite">
+          <div className="mx-auto flex w-full max-w-[46rem] flex-col gap-6 px-4 pb-6 pt-2">
+            {chat.handoff && (
+              <button type="button" className="self-center rounded-full border border-jw-line px-3 py-1 text-[12px] text-jw-muted hover:text-jw-ink" onClick={() => setShowHandoff((v) => !v)} aria-expanded={showHandoff}>
+                المحادثة {chat.chats} · تكمل من ملخص اللي قبلها {showHandoff ? "▴" : "▾"}
+              </button>
+            )}
+            {chat.handoff && showHandoff && <p className="jw-select-text whitespace-pre-wrap rounded-2xl bg-jw-surface-2 p-3 text-[13px] leading-6 text-jw-muted" dir="auto">{chat.handoff}</p>}
+            {lab?.serverMissing && <p className="m-0 self-center text-[12px] text-jw-muted">ℹ️ المحادثات تنحفظ على هالجهاز بس لين يتحدّث الموقع (ملف 0087).</p>}
+
+            {!msgs.length && !lab?.chat.length && chat.loaded && (
+              <div className="flex flex-col items-center gap-5 pt-[12vh] text-center">
+                <span className="jw-orb h-12 w-12" aria-hidden />
+                <h2 className="text-2xl font-bold leading-snug">وش نسوي في المونتاج اليوم؟</h2>
+                <div className="flex max-w-xl flex-wrap justify-center gap-2">
+                  {QUICK.slice(0, 6).map((q) => (
+                    <button key={q} type="button" disabled={readOnly || !!busy} className="hm-chip" onClick={() => send(q)}>
+                      {q}
+                    </button>
+                  ))}
+                  {lab && (
+                    <button type="button" disabled={readOnly || !!busy} className="hm-chip" onClick={() => send("سوّ لي موشن")}>
+                      🎬 سوّ لي موشن
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {order.map(({ k, i }) => (k === "e" ? <div key={`e${i}`} className="contents">{editorNode(msgs[i], i)}</div> : lab ? labNode(lab, i) : null))}
+            {lab?.panels}
+            {lab && lastIsLab && !lab.busy && lab.options.length > 0 && (
+              <div className="flex flex-wrap gap-2" role="group" aria-label="اختر">
+                {lab.options.map((o) => (
+                  <button key={o} type="button" disabled={readOnly} className="hm-chip" onClick={() => (setFocus(true), void lab.send(o))}>
+                    {o}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {busy && (
+              <div className="flex items-center gap-2.5 text-[14px] text-jw-muted" role="status">
+                <span className="jw-orb h-5 w-5 shrink-0" data-busy aria-hidden />
+                <span className="hm-shimmer">{busy}</span>
+              </div>
+            )}
+            {long && !busy && (
+              <button type="button" className="self-center rounded-full border border-jw-line px-3 py-1.5 text-[12px] text-jw-muted hover:text-jw-ink" disabled={readOnly} onClick={handOff}>
+                المحادثة طوّلت — ابدأ محادثة جديدة من ملخصها (أرخص وأسرع)
+              </button>
+            )}
+            <ScrollEnd dep={`${msgs.length}:${lab?.chat.length ?? 0}:${busy ?? ""}:${lab?.busy ? 1 : 0}`} />
+          </div>
+        </div>
+
+        <div className="mx-auto w-full max-w-[46rem] px-3 pb-2">
+          {lab?.hasPiece && (
+            <div className="mb-2 flex items-center gap-2 text-[12px]">
+              {focus ? (
+                <span className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-jw-accent/50 bg-jw-accent/10 px-3 py-1">
+                  {lab.busy ? <span className="jw-spinner !h-3 !w-3" aria-hidden /> : <span aria-hidden>🎬</span>}
+                  <span className="truncate">رسائلك تروح لقطعة الموشن «{lab.title || "الموشن"}»{lab.busy ? ` · ${lab.status}` : ""}</span>
+                  <button type="button" className="ms-1 rounded-full px-1.5 text-jw-muted hover:text-jw-ink" onClick={() => setFocus(false)} aria-label="رجّع رسائلي للمونتاج" title="رجّع رسائلك لتعديل المونتاج">
+                    ✕
+                  </button>
+                </span>
+              ) : (
+                <button type="button" className="hm-chip !py-1 !text-[12px]" onClick={() => setFocus(true)}>
+                  🎬 كمّل على «{lab.title || "الموشن"}»{lab.busy ? ` · ${lab.status}` : ""}
+                </button>
+              )}
+            </div>
+          )}
         {(talk || recording) && (
           <div className="mb-2 flex items-center gap-2 rounded-2xl bg-jw-accent/10 px-3 py-2 text-[13px]" role="status" aria-live="polite">
             <span className="flex h-4 w-10 items-end gap-0.5" aria-hidden>
@@ -963,7 +1125,7 @@ export default function AssistantPanel({
             dir="auto"
             value={text}
             disabled={readOnly}
-            placeholder={diag && diagOn ? "🩺 وش صار؟ مثلًا: ليش التصدير وقف؟" : "اكتب لحيدرا ماكس…"}
+            placeholder={toLab && lab ? lab.placeholder : diag && diagOn ? "🩺 وش صار؟ مثلًا: ليش التصدير وقف؟" : "اكتب لحيدرا ماكس…"}
             onChange={(e) => {
               setText(e.target.value);
               const el = e.target;
@@ -994,8 +1156,9 @@ export default function AssistantPanel({
               onFile={() => fileRef.current?.click()}
               onStyles={() => setGallery(true)}
               diag={diag ? { on: diagOn, toggle: () => setDiagOn((v) => !v) } : undefined}
+              lab={lab ? { drawer: () => (setFocus(true), lab.toggleDrawer()), attach: () => (setFocus(true), lab.toggleAttach()), search: () => (setFocus(true), lab.toggleSearch()), searchOn: lab.search } : undefined}
             />
-            <ClaudeModelPicker menu disabled={!!busy} spent={chat.spent} />
+            <ClaudeModelPicker menu disabled={!!busy} spent={chat.spent + (lab?.spent ?? 0)} />
             <span className="flex-1" />
             {talkable && (
               <>
@@ -1007,7 +1170,11 @@ export default function AssistantPanel({
                 </button>
               </>
             )}
-            {busy && canStop ? (
+            {toLab && lab?.busy ? (
+              <button type="button" className="hm-send" onClick={lab.cancel} aria-label="وقّف شغل الموشن" title="وقّف: اللي انسوّى قبل يبقى">
+                <Icon name="stop" size={16} />
+              </button>
+            ) : busy && canStop ? (
               <button type="button" className="hm-send" onClick={stop} aria-label="وقّف الطلب" title="وقّف: ما ينفّذ شي من رده">
                 <Icon name="stop" size={16} />
               </button>
@@ -1019,11 +1186,269 @@ export default function AssistantPanel({
           </div>
         </form>
 
-        <MediaStrip assets={assets} picked={pending} onPick={attach} disabled={readOnly} />
+          <MediaStrip assets={assets} picked={pending} onPick={attach} disabled={readOnly} />
+        </div>
+        <StylePicker open={gallery} disabled={readOnly || !!busy} onClose={() => setGallery(false)} onSend={(words) => void send(words)} />
       </div>
-      <StylePicker open={gallery} disabled={readOnly || !!busy} onClose={() => setGallery(false)} onSend={(words) => void send(words)} />
-    </div>
+    );
+  };
+  if (!labDeps || readOnly) return layout(null);
+  return (
+    <MotionLab
+      projectId={projectId}
+      width={labDeps.width}
+      height={labDeps.height}
+      assets={labDeps.assets}
+      footageClips={labDeps.footageClips}
+      onUpload={labDeps.onUpload}
+      onFilm={labDeps.onFilm}
+      onUnplace={labDeps.onUnplace}
+      tabId={tab.id}
+      chatId={tab.chatId ?? null}
+      onChatId={onChatId}
+      initialSource={tab.open?.source ?? null}
+      onStatus={statusOfLab}
+      render={layout}
+      handle={labRef}
+      extraState={extraState}
+      keep={!isMain && msgs.length > 0}
+      onRestored={restored}
+      named={tab.named ?? null}
+      titleHint={isMain ? MAIN_TITLE : firstSaid}
+      onWrite={(w) => (setFocus(true), writeInBox(w))}
+    />
   );
+}
+
+type ConversationProps = Omit<Parameters<typeof Conversation>[0], "tab" | "shown" | "bar" | "askSent" | "onStatus" | "onChatId" | "lab">;
+const newId = () => Math.random().toString(36).slice(2, 8);
+/** The conversations open on this device, the main one always first. */
+const withMain = (v: { tabs: OpenTab[]; active: string } | null): { tabs: OpenTab[]; active: string } => {
+  const tabs = v?.tabs ?? [];
+  const all = tabs.some((t) => t.id === MAIN) ? [tabs.find((t) => t.id === MAIN)!, ...tabs.filter((t) => t.id !== MAIN)] : [{ id: MAIN, title: MAIN_TITLE }, ...tabs];
+  return { tabs: all, active: v && all.some((t) => t.id === v.active) ? v.active : MAIN };
+};
+
+/**
+ * «حيدرا ماكس» — ONE window (the owner, 3 November 2026: «حيدرا ماكس هو مختبر الموشن مب شيين مختلفين. نبي النتايج عالتايملاين
+ * على طول مع ميزة فتح اكثر من محادثة»): his conversations like Claude's («＋ محادثة جديدة», «🗂️ المحادثات» to switch,
+ * rename and delete, each kept on the server), each one editing the timeline AND making motion in it. A conversation
+ * at work keeps working while another is on show, and while the window is closed (a pill brings it back).
+ */
+export default function AssistantPanel({
+  lab,
+  open,
+  hidden = false,
+  onShow,
+  ...rest
+}: ConversationProps & {
+  /** the motion lab inside his conversations (none: a project only read) */
+  lab?: LabDeps | null;
+  /** the editor asks to open a conversation (sent once per `n`): a kept one (`?lab=`), or a film of the timeline to work on again */
+  open?: { n: number; chatId?: string | null; source?: NonNullable<OpenTab["open"]>["source"] } | null;
+  /** the window is closed: the conversations stay (their work goes on), unseen */
+  hidden?: boolean;
+  /** brings the window back (the pill of a conversation at work) */
+  onShow?: () => void;
+}) {
+  const { projectId, readOnly } = rest;
+  const [state, setState] = useState<{ tabs: OpenTab[]; active: string }>(() => withMain(null));
+  const [ready, setReady] = useState(false);
+  const { tabs, active } = state;
+  const [status, setStatus] = useState<Record<string, ConvStatus>>({});
+  const [rows, setRows] = useState<ChatRow[] | null>(null);
+  const [listOpen, setListOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const askSent = useRef(0);
+  const call = <T,>(body: Record<string, unknown>) => postJson<T>(`/api/jawad/editor/projects/${projectId}`, body);
+
+  /** The project's kept conversations; the main one's motion row is tied to the main conversation on this device. */
+  const loadRows = async () => {
+    try {
+      const r = await call<{ chats: ChatRow[]; missing: boolean }>({ action: "lab_chats" });
+      setRows(r.chats);
+      setNote(r.missing ? "المحادثات تنحفظ على هالجهاز بس لين يتحدّث الموقع (ملف 0087)." : "");
+      const main = mainRow(r.chats);
+      if (main) setState((st) => (st.tabs[0].chatId ? st : { ...st, tabs: st.tabs.map((t) => (t.id === MAIN ? { ...t, chatId: main } : t)) }));
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : String(e));
+    }
+  };
+  // the conversations this device had open (the lab's old tabs are conversations now), then the kept ones
+  useEffect(() => {
+    const tm = setTimeout(() => {
+      setState(withMain(readTabs(projectId)));
+      setReady(true);
+      void loadRows();
+    }, 0);
+    return () => clearTimeout(tm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+  useEffect(() => {
+    if (!ready) return;
+    try {
+      localStorage.setItem(tabsKey(projectId), JSON.stringify({ tabs: tabs.map(({ id, title, chatId, named }) => ({ id, title, chatId: chatId ?? null, named: named ?? null })), active }));
+    } catch {
+      /* not kept */
+    }
+  }, [ready, projectId, tabs, active]);
+
+  /** Shows a conversation (a kept one not open here gets a place of its own). */
+  const show = (chatId: string | null, tab: string | null, title = NEW_TITLE) => {
+    setListOpen(false);
+    if (tab) return setState((st) => ({ ...st, active: tab }));
+    if (!chatId) return;
+    setState((st) => {
+      const there = st.tabs.find((t) => t.chatId === chatId);
+      if (there) return { ...st, active: there.id };
+      const t: OpenTab = { id: newId(), title, chatId };
+      return { tabs: [...st.tabs, t], active: t.id };
+    });
+  };
+  // the editor's requests: a kept conversation (`?lab=`, محمد باقر's motion piece), or a film to work on again
+  const seenOpen = useRef(0);
+  useEffect(() => {
+    if (!ready || !open || open.n === seenOpen.current) return;
+    seenOpen.current = open.n;
+    const tm = setTimeout(() => {
+      if (open.source) {
+        const t: OpenTab = { id: newId(), title: `✏️ ${open.source.source.plan.title || "موشن"}`.slice(0, 40), open: { source: open.source } };
+        setState((st) => ({ tabs: [...st.tabs, t], active: t.id }));
+      } else if (open.chatId) show(open.chatId, open.chatId === mainRow(rows ?? []) ? MAIN : null);
+    }, 0);
+    return () => clearTimeout(tm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, open]);
+
+  // one stable callback pair per conversation
+  const ids = tabs.map((t) => t.id).join(",");
+  const hooks = useMemo(
+    () =>
+      Object.fromEntries(
+        ids.split(",").map((id) => [
+          id,
+          {
+            status: (s: ConvStatus) => setStatus((all) => (all[id] && all[id].busy === s.busy && all[id].label === s.label && all[id].work === s.work && all[id].title === s.title ? all : { ...all, [id]: s })),
+            chat: (chatId: string) => setState((st) => (st.tabs.some((x) => x.id === id && x.chatId !== chatId) ? { ...st, tabs: st.tabs.map((x) => (x.id === id ? { ...x, chatId } : x)) } : st)),
+          },
+        ]),
+      ),
+    [ids],
+  );
+  const titleOf = (t: OpenTab) => status[t.id]?.title || t.named || t.title || NEW_TITLE;
+
+  const add = () => {
+    setListOpen(false);
+    // an empty new conversation on show is the new one already
+    const cur = tabs.find((t) => t.id === active);
+    if (cur && cur.id !== MAIN && !cur.chatId && !status[cur.id]?.work && !cur.open) return;
+    const t: OpenTab = { id: newId(), title: NEW_TITLE };
+    setState((st) => ({ tabs: [...st.tabs, t], active: t.id }));
+  };
+  const rename = async (o: { chatId: string | null; tab: string | null; title: string }) => {
+    const title = window.prompt("اسم المحادثة", o.title)?.trim();
+    if (!title) return;
+    if (o.tab) setState((st) => ({ ...st, tabs: st.tabs.map((t) => (t.id === o.tab ? { ...t, named: title, title: title.slice(0, 40) } : t)) }));
+    if (o.chatId) await call({ action: "lab_chat_rename", id: o.chatId, title }).catch((e: unknown) => setNote(e instanceof Error ? e.message : String(e)));
+    void loadRows();
+  };
+  const remove = async (o: { chatId: string | null; tab: string | null; title: string }) => {
+    if (o.tab === MAIN) return;
+    if (o.tab && status[o.tab]?.busy && !window.confirm("هذي المحادثة تشتغل الحين. توقف شغلها وتحذفها؟")) return;
+    if (!window.confirm(`تحذف «${o.title}» نهائيًا؟`)) return;
+    if (o.chatId) await call({ action: "lab_chat_del", id: o.chatId }).catch((e: unknown) => setNote(e instanceof Error ? e.message : String(e)));
+    if (o.tab) {
+      try {
+        localStorage.removeItem(`jw-lab-${storeOf(projectId, o.tab)}`);
+        localStorage.removeItem(`jw-lab-part-${storeOf(projectId, o.tab)}`);
+      } catch {
+        /* not kept */
+      }
+      setStatus((all) => Object.fromEntries(Object.entries(all).filter(([k]) => k !== o.tab)));
+      setState((st) => ({ tabs: st.tabs.filter((t) => t.id !== o.tab), active: st.active === o.tab ? MAIN : st.active }));
+    }
+    void loadRows();
+  };
+
+  const list = conversationList(rows, tabs).map((o) => {
+    const t = o.tab ? tabs.find((x) => x.id === o.tab) : undefined;
+    return { ...o, title: t ? titleOf(t) : o.title };
+  });
+  const bar = (
+    <>
+      {!readOnly && (
+        <button type="button" className="hm-icon" onClick={add} title="محادثة جديدة" aria-label="محادثة جديدة">
+          <Icon name="plus" size={18} />
+        </button>
+      )}
+      <button type="button" className="hm-icon" aria-expanded={listOpen} onClick={() => (setListOpen((v) => !v), void loadRows())} title="المحادثات" aria-label="المحادثات">
+        <span aria-hidden>🗂️</span>
+      </button>
+      {listOpen && (
+        <>
+          <button type="button" className="fixed inset-0 z-20 cursor-default" aria-label="إغلاق" onClick={() => setListOpen(false)} />
+          <div className="hm-pop absolute end-2 top-full z-30 mt-1 flex max-h-[60vh] w-[min(380px,calc(100vw-24px))] flex-col gap-1 overflow-y-auto" role="dialog" aria-label="محادثات حيدرا ماكس">
+            <b className="px-2 py-1 text-[13px]">🗂️ محادثات هالمشروع</b>
+            {note && <p className="m-0 px-2 text-[12px] text-jw-muted">{note}</p>}
+            {list.map((o) => {
+              const st = o.tab ? status[o.tab] : undefined;
+              const on = o.tab === active;
+              return (
+                <div key={o.key} className={`flex items-center gap-1 rounded-xl px-1 ${on ? "bg-jw-surface-3" : ""}`}>
+                  <button type="button" className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-2 text-start text-[13px] hover:bg-jw-surface-3" onClick={() => show(o.chatId, o.tab, o.title)} aria-current={on} title={o.title}>
+                    {st?.busy ? <span className="jw-spinner !h-3 !w-3 shrink-0" aria-hidden /> : <span aria-hidden>{o.main ? "⭐" : "💬"}</span>}
+                    <span className="min-w-0 flex-1 truncate">{o.title}</span>
+                    {st?.busy ? <span className="shrink-0 text-[11px] text-jw-muted">{st.label.slice(0, 24)}</span> : o.at ? <span className="shrink-0 text-[11px] text-jw-muted">{new Date(o.at).toLocaleDateString("ar")}</span> : null}
+                  </button>
+                  {!readOnly && (o.chatId || o.tab) && (
+                    <button type="button" className="hm-icon !h-8 !w-8" onClick={() => void rename(o)} aria-label="غيّر الاسم" title="غيّر الاسم">
+                      ✏️
+                    </button>
+                  )}
+                  {!readOnly && !o.main && (
+                    <button type="button" className="hm-icon !h-8 !w-8" onClick={() => void remove(o)} aria-label="احذف" title="احذف نهائيًا">
+                      🗑️
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </>
+  );
+
+  // the one on show, and the ones at work (they go on, unseen)
+  const mounted = tabs.filter((t) => t.id === active || status[t.id]?.busy);
+  const busyOnes = tabs.filter((t) => status[t.id]?.busy);
+  const pill = hidden && busyOnes.length > 0 && typeof document !== "undefined";
+  return (
+    <>
+      {mounted.map((t) => (
+        <Conversation key={t.id} {...rest} tab={t} shown={!hidden && t.id === active} bar={bar} askSent={askSent} onStatus={hooks[t.id]?.status ?? noop} onChatId={hooks[t.id]?.chat ?? noop} lab={readOnly ? null : (lab ?? null)} />
+      ))}
+      {pill &&
+        createPortal(
+          <button type="button" className="jw-btn jw-btn-primary jw-3d mlab-fill !min-h-12 gap-2 !rounded-full !px-4 shadow-2xl" onClick={() => (setState((st) => ({ ...st, active: busyOnes[0].id })), onShow?.())} aria-label="رجّع حيدرا ماكس">
+            <span className="jw-spinner" />
+            {titleOf(busyOnes[0])}: {status[busyOnes[0].id]?.label ?? ""}
+            {busyOnes.length > 1 ? ` (+${busyOnes.length - 1})` : ""}
+          </button>,
+          document.body,
+        )}
+    </>
+  );
+}
+const noop = () => {};
+
+/** The bottom of the conversation: scrolled into view when something new is said or done. */
+function ScrollEnd({ dep }: { dep: string }) {
+  const end = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, [dep]);
+  return <div ref={end} />;
 }
 
 /** Under a reply, like Claude's: copy, and — when it changed the timeline — what it did and its undo. */
@@ -1063,7 +1488,7 @@ function ReplyActions({ text, done, onUndo }: { text: string; done?: number; onU
 }
 
 /** «＋» in the composer: attach files, the motion styles, and (the owner) the diagnosis mode. */
-function PlusMenu({ disabled, onFile, onStyles, diag }: { disabled?: boolean; onFile: () => void; onStyles: () => void; diag?: { on: boolean; toggle: () => void } }) {
+function PlusMenu({ disabled, onFile, onStyles, diag, lab }: { disabled?: boolean; onFile: () => void; onStyles: () => void; diag?: { on: boolean; toggle: () => void }; lab?: { drawer: () => void; attach: () => void; search: () => void; searchOn: boolean } }) {
   const [open, setOpen] = useState(false);
   const item = "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-start text-[14px] hover:bg-jw-surface-3";
   return (
@@ -1081,6 +1506,19 @@ function PlusMenu({ disabled, onFile, onStyles, diag }: { disabled?: boolean; on
             <button type="button" className={item} onClick={() => (setOpen(false), onStyles())}>
               🎬 <span>أساليب الموشن ({MOTION_TEN.length})</span>
             </button>
+            {lab && (
+              <>
+                <button type="button" className={item} onClick={() => (setOpen(false), lab.attach())}>
+                  🎥 <span>فيديو أو صور للموشن</span>
+                </button>
+                <button type="button" className={item} onClick={() => (setOpen(false), lab.drawer())}>
+                  ⚙️ <span>تجهيزات الموشن (المدة، الصوت، الأسلوب…)</span>
+                </button>
+                <button type="button" className={item} onClick={() => (setOpen(false), lab.search())} aria-pressed={lab.searchOn}>
+                  🌐 <span>{lab.searchOn ? "بدون بحث" : "ابحث في الإنترنت قبل الموشن"}</span>
+                </button>
+              </>
+            )}
             {diag && (
               <button type="button" className={item} onClick={() => (setOpen(false), diag.toggle())} aria-pressed={diag.on}>
                 🩺 <span>{diag.on ? "أوقف التشخيص" : "تشخيص (لك بس)"}</span>

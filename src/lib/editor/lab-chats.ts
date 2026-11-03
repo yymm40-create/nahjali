@@ -1,6 +1,9 @@
-// «🎬 مختبر الموشن»: its conversations, kept on the server (migration 0087). A project has as many as the person opens;
-// each one is the lab's whole work in it (the cards, the scenario, the versions, the plan, the program and the choices),
-// so it opens again on any device. Before the table exists the lab keeps working on the device and says so once.
+// حيدرا ماكس's conversations of an edit, kept on the server (migration 0087's motion_lab_chats). The motion lab is not a
+// window of its own any more: it runs INSIDE حيدرا ماكس's conversation, so a row is one whole conversation — the lab's
+// work in it (the cards, the scenario, the versions, the plan, the program and the choices) and, for every conversation
+// but the project's main one (editor_chats, chat.ts), its editing messages too (`state.editor`). The row of the main
+// conversation's motion work is marked `state.main`. A project has as many as the person opens, and each opens again on
+// any device. Before the table exists the conversation is kept on the device and the page says so once.
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -19,14 +22,20 @@ export interface LabChatRow {
   id: string;
   title: string;
   updated_at: string;
+  /** the motion work of the project's main conversation (its messages are editor_chats') */
+  main?: boolean;
 }
 
 /** The project's conversations, newest first (`missing` when the table is not there yet). */
 export async function listLabChats(p: EditorProject, userId: string) {
-  const { data, error } = await db().from("motion_lab_chats").select("id,title,updated_at").eq("user_id", userId).eq("project_id", p.id).order("updated_at", { ascending: false }).limit(LAB_CHATS_LIST);
+  const list = (cols: string) => db().from("motion_lab_chats").select(cols).eq("user_id", userId).eq("project_id", p.id).order("updated_at", { ascending: false }).limit(LAB_CHATS_LIST);
+  let { data, error } = await list("id,title,updated_at,main:state->main");
+  // (the main flag read out of the state; should that ever be refused, the list still comes, unmarked)
+  if (error && !missing(error)) ({ data, error } = await list("id,title,updated_at"));
   if (missing(error)) return { chats: [] as LabChatRow[], missing: true };
-  if (error) throw new UserError("ما قدرت أجيب محادثات المختبر.", 500);
-  return { chats: (data ?? []) as LabChatRow[], missing: false };
+  if (error) throw new UserError("ما قدرت أجيب محادثات حيدرا ماكس.", 500);
+  const rows = (data ?? []) as unknown as (LabChatRow & { main?: unknown })[];
+  return { chats: rows.map((r) => ({ id: r.id, title: r.title, updated_at: r.updated_at, ...(r.main === true ? { main: true } : {}) })), missing: false };
 }
 
 /** One conversation with its whole state. */
@@ -58,11 +67,15 @@ export async function saveLabChat(p: EditorProject, userId: string, b: { id?: un
   return { id: (data as { id: string }).id, missing: false };
 }
 
-/** Renames a conversation. */
+/** Renames a conversation (the name is kept in its state too, so the page's next save keeps it on any device). */
 export async function renameLabChat(p: EditorProject, userId: string, b: { id?: unknown; title?: unknown }) {
   const title = titleOf(b.title);
   if (!title) throw new UserError("اكتب اسم المحادثة.", 400);
-  const { error } = await db().from("motion_lab_chats").update({ title }).eq("id", uuid(b.id)).eq("user_id", userId).eq("project_id", p.id);
+  const id = uuid(b.id);
+  const { data, error: readError } = await db().from("motion_lab_chats").select("state").eq("id", id).eq("user_id", userId).eq("project_id", p.id).maybeSingle();
+  if (missing(readError)) return { ok: true };
+  const state = data?.state && typeof data.state === "object" && !Array.isArray(data.state) ? (data.state as Record<string, unknown>) : {};
+  const { error } = await db().from("motion_lab_chats").update({ title, state: { ...state, named: title } }).eq("id", id).eq("user_id", userId).eq("project_id", p.id);
   if (error && !missing(error)) throw new UserError("ما قدرت أغيّر الاسم.", 500);
   return { ok: true };
 }

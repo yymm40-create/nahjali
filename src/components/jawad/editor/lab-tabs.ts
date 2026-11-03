@@ -1,14 +1,17 @@
-// «مختبر الموشن» in tabs: what is kept on the device about them (the tabs themselves and the server conversation each
-// one shows; each tab keeps its own work).
+// حيدرا ماكس's conversations open on this device (they were «مختبر الموشن»'s tabs, and keep their place: the lab's old
+// tabs open as conversations): what is kept about them (which ones, the server conversation each one is, and the one
+// on show; each keeps its own work under `storeOf`). The first one, "main", is the project's main conversation.
 
 export interface Tab {
   id: string;
   title: string;
   /** the conversation kept on the server this tab shows (null until it is first kept) */
   chatId?: string | null;
+  /** a name the person gave it («✏️»): kept over the one it takes from its work */
+  named?: string | null;
 }
 
-export const NEW_TITLE = "موشن جديد";
+export const NEW_TITLE = "محادثة جديدة";
 export const tabsKey = (projectId: string) => `jw-lab-tabs-${projectId}`;
 
 /** What a tab keeps its work under (the first tab keeps the project's own key, as before there were tabs). */
@@ -24,7 +27,8 @@ export function readTabs(projectId: string): { tabs: Tab[]; active: string } | n
       if (!id || seen.has(id)) return [];
       seen.add(id);
       const chatId = typeof t.chatId === "string" && /^[0-9a-f-]{36}$/i.test(t.chatId) ? t.chatId : null;
-      return [{ id, title: typeof t.title === "string" && t.title.trim() ? t.title.slice(0, 40) : NEW_TITLE, ...(chatId ? { chatId } : {}) }];
+      const named = typeof (t as { named?: unknown }).named === "string" ? String((t as { named: string }).named).trim().slice(0, 120) : "";
+      return [{ id, title: typeof t.title === "string" && t.title.trim() ? t.title.slice(0, 40) : NEW_TITLE, ...(chatId ? { chatId } : {}), ...(named ? { named } : {}) }];
     });
     if (!tabs.length) return null;
     return { tabs, active: tabs.some((t) => t.id === v?.active) ? String(v?.active) : tabs[0].id };
