@@ -15,6 +15,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const here = join(root, "scripts/mahdi-preview");
 const out = resolve(process.argv[2] ?? join(tmpdir(), "mahdi-preview"));
 const only = process.argv[3] ? new Set(process.argv[3].split(",")) : null;
+// THEME=zakhrafa node scripts/mahdi-preview/run.mjs … → the shots in that look; ALL_FULL=1 → a tall *_full.png for every page
+const theme = process.env.THEME ?? "";
+const allFull = process.env.ALL_FULL === "1";
 const work = join(tmpdir(), "mahdi-preview-build"); // the bundle, css and fonts (fonts are downloaded once)
 mkdirSync(work, { recursive: true });
 
@@ -107,19 +110,25 @@ for (const [name, key, path, full, act] of SHOTS) {
   const problems = [];
   page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
   page.on("console", (m) => { const t = m.text(); if (t.startsWith("[mock]") || m.type() === "error") problems.push(t); });
-  await page.goto(`${base}${path}?page=${key}`, { waitUntil: "networkidle" });
+  await page.goto(`${base}${path}?page=${key}${theme ? `&theme=${theme}` : ""}`, { waitUntil: "networkidle" });
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(1500);
   if (act) { await act(page); await page.waitForTimeout(1200); }
   const o = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
   if (o.sw > o.iw) problems.push(`sideways overflow ${o.sw} > ${o.iw}`);
   await page.screenshot({ path: join(out, `${name}.png`) });
-  if (full) {
+  if (full || (allFull && !act)) {
     // a phone as tall as the page, so the floating bar and buttons sit at its bottom instead of over the middle
     const h = await page.evaluate(() => document.documentElement.scrollHeight);
     await page.setViewportSize({ width: 390, height: h });
     await page.waitForTimeout(800);
     await page.screenshot({ path: join(out, `${name}_full.png`) });
+    // where each heading and card sits on the tall shot (CSS px; ×3 for the PNG), for zooming on details in a video
+    const boxes = await page.evaluate(() => [...document.querySelectorAll("h1,h2,h3,section,.m-card")].map((e) => {
+      const r = e.getBoundingClientRect();
+      return { tag: e.tagName.toLowerCase(), text: (e.getAttribute("aria-label") || e.innerText || "").trim().split("\n")[0].slice(0, 60), x: Math.round(r.x), y: Math.round(r.y + scrollY), w: Math.round(r.width), h: Math.round(r.height) };
+    }).filter((b) => b.w > 40 && b.h > 20));
+    writeFileSync(join(out, `${name}_boxes.json`), JSON.stringify(boxes, null, 1));
   }
   console.log(`${problems.length ? "✗" : "✓"} ${name}${problems.length ? `\n    ${problems.join("\n    ")}` : ""}`);
   bad += problems.filter((p) => !p.startsWith("Failed to load resource")).length;
