@@ -64,4 +64,30 @@ describe("the cache marks of a request", () => {
     expect(low.messages.at(-1)).toEqual({ role: "system", content: [], output_config: { effort: "low" } });
     expect(JSON.stringify(high.system)).toBe(JSON.stringify(low.system));
   });
+
+  it("if the API refuses the per-message effort or the shared format, the request is asked once more the plain way", async () => {
+    process.env.ANTHROPIC_API_KEY = "test";
+    const bodies: { messages: { role: string }[]; output_config: { effort?: string; format?: { schema: unknown } } }[] = [];
+    let refuse = "Claude 400: output_config.effort requires a model that supports per-turn effort";
+    vi.stubGlobal("fetch", vi.fn(async (_u: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      if (refuse) {
+        const r = new Response(JSON.stringify({ error: { message: refuse.replace(/^Claude 400: /, "") } }), { status: 400 });
+        refuse = "";
+        return r;
+      }
+      return sse('{"ok":true}');
+    }));
+    await callClaudeJson({ system: "TASK", schema: { type: "object" }, maxTokens: 100, turns: [{ role: "user", content: "x" }], effort: "medium", turnEffort: "high" });
+    expect(bodies.length).toBe(2);
+    expect(bodies[1].messages.some((m) => m.role === "system")).toBe(false);
+    expect(bodies[1].output_config.effort).toBe("high");
+
+    bodies.length = 0;
+    refuse = "Claude 400: output_config.format.schema: anyOf is too complex";
+    const narrow = { type: "object", properties: { narrow: { type: "boolean" } } };
+    await callClaudeJson({ system: "TASK", schema: { type: "object" }, schemaFallback: narrow, maxTokens: 100, turns: [{ role: "user", content: "x" }] });
+    expect(bodies.length).toBe(2);
+    expect(bodies[1].output_config.format?.schema).toEqual(narrow);
+  });
 });

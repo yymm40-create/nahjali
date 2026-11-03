@@ -3,18 +3,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SCENE_KIT_JS } from "@/lib/editor/scene/kit";
 import { SCENE_RUNTIME_JS } from "@/lib/editor/scene/runtime";
 import { SCENE_CONTRACT } from "@/lib/editor/scene/skill";
+import { LAB_SCHEMA } from "@/lib/editor/scene/schemas";
 
 // «💬 مختبر الموشن» as a conversation, and the finished piece kept editable (its texts and colours are params).
 
 type Turn = { role: string; content: string | { type: string; text?: string }[] };
-const s = vi.hoisted(() => ({ calls: [] as { text: string; turns: Turn[]; cacheTtl?: string; cacheTail?: boolean; maxTokens: number; effort?: string; schema: { properties: Record<string, unknown> } }[], reply: {} as unknown }));
+const s = vi.hoisted(() => ({ calls: [] as { text: string; turns: Turn[]; cacheTtl?: string; cacheTail?: boolean; maxTokens: number; effort?: string; turnEffort?: string; schema: { properties: Record<string, unknown> } }[], reply: {} as unknown }));
 vi.mock("@/lib/film/anthropic", () => ({
-  callClaudeJson: async (a: { turns: Turn[]; turnNote?: string; cacheTtl?: string; cacheTail?: boolean; maxTokens: number; effort?: string; schema: { properties: Record<string, unknown> } }) => {
+  callClaudeJson: async (a: { turns: Turn[]; turnNote?: string; cacheTtl?: string; cacheTail?: boolean; maxTokens: number; effort?: string; turnEffort?: string; schema: { properties: Record<string, unknown> } }) => {
     // the latest turn as Claude gets it: this message's facts (turnNote) first, then its own text
     const last = a.turns[a.turns.length - 1].content;
     const said = typeof last === "string" ? last : last.filter((p) => p.type === "text").map((p) => p.text).join("\n");
-    s.calls.push({ text: [a.turnNote ?? "", said].join("\n"), turns: a.turns, cacheTtl: a.cacheTtl, cacheTail: a.cacheTail, maxTokens: a.maxTokens, effort: a.effort, schema: a.schema });
-    return { data: s.reply, raw: "", usage: { input_tokens: 1, output_tokens: 1 } };
+    s.calls.push({ text: [a.turnNote ?? "", said].join("\n"), turns: a.turns, cacheTtl: a.cacheTtl, cacheTail: a.cacheTail, maxTokens: a.maxTokens, effort: a.effort, turnEffort: a.turnEffort, schema: a.schema });
+    // every lab call answers {result} in the branch its request names (LAB_SCHEMA)
+    const kind = /result\.kind = \\"(\w+)/.exec(JSON.stringify(a.turns))?.[1];
+    return { data: { result: { kind, ...(s.reply as object) } }, raw: "", usage: { input_tokens: 1, output_tokens: 1 } };
   },
   claudeCost: () => 0.01,
   claudeWhy: (_e: unknown, say: string) => say,
@@ -80,8 +83,11 @@ describe("a change answered as a patch (the output is the dear part: a few edits
     expect(r.action).toBe("code");
     expect(r.code).toBe(program.replace("value: 'هلا'", "value: 'مرحبا'"));
     expect(r).not.toHaveProperty("patchFailed");
-    expect(s.calls[0].schema.properties).toHaveProperty("edits");
+    // the lab's one format, its chat_edit branch (with edits); the request's effort fixed, the reply's level medium
+    expect(s.calls[0].schema).toBe(LAB_SCHEMA);
+    expect(s.calls[0].text).toContain('result.kind = "chat_edit"');
     expect(s.calls[0].effort).toBe("medium");
+    expect(s.calls[0].turnEffort).toBe("medium");
     expect(s.calls[0].text).toContain(`THE CURRENT PROGRAM:\n${program}`);
     expect(s.calls[0].text).toContain('return "edits" on THE CURRENT PROGRAM');
   });
@@ -101,7 +107,7 @@ describe("a change answered as a patch (the output is the dear part: a few edits
     const r = await labChat(project, who, { message: "خل العنوان x", ...piece, whole: true, patchFailed: "edit 1 of 1: its old text occurs more than once" });
     if (!("reply" in r)) throw new Error("cut");
     expect(r.code).toBe(program);
-    expect(s.calls[0].schema.properties).not.toHaveProperty("edits");
+    expect(s.calls[0].text).toContain('result.kind = "chat"');
     expect(s.calls[0].text).toContain("return the COMPLETE revised program");
     expect(s.calls[0].text).toContain("A PATCH THAT COULD NOT BE APPLIED (edit 1 of 1: its old text occurs more than once)");
   });
@@ -114,7 +120,8 @@ describe("a change answered as a patch (the output is the dear part: a few edits
     if (!("code" in r)) throw new Error("cut");
     expect(r.code).toBe(program.replace("duration: 4", "duration: 4.5"));
     expect(r.problems).toEqual([]);
-    expect(s.calls[0].schema.properties).toHaveProperty("edits");
+    expect(s.calls[0].text).toContain('result.kind = "patch"');
+    expect(s.calls[0].turnEffort).toBe("medium");
     expect(s.calls[0].text).toContain('Answer with "edits" on THE PROGRAM');
     s.reply = { edits: [{ old: "nope", new: "x" }], code: "", notes: "" };
     const bad = await labWrite(project, who, { ...fix, patch: true });
@@ -127,7 +134,7 @@ describe("a change answered as a patch (the output is the dear part: a few edits
     const all = await labWrite(project, who, fix);
     if (!("code" in all)) throw new Error("cut");
     expect(all.code).toBe(program);
-    expect(s.calls[0].schema.properties).not.toHaveProperty("edits");
+    expect(s.calls[0].text).toContain('result.kind = "write"');
     expect(s.calls[0].text).toContain("Write the COMPLETE program");
   });
 });

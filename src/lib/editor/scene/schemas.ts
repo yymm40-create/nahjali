@@ -1,5 +1,5 @@
-// «مختبر الموشن» — the JSON shapes حيدرا ماكس answers in (plan, program, review, chat): the server asks Claude for them and the agent's
-// definition (config/editor/agent) is generated from them. Pure.
+// «مختبر الموشن» — the JSON shapes حيدرا ماكس answers in (plan, program, review, chat): the server asks Claude for them, as branches of ONE
+// format (LAB_SCHEMA, below), and the agent's definition (config/editor/agent) is generated from them. Pure.
 
 import { COVER_PASS, COVER_RUBRIC } from "./cover-rubric";
 import { PASS, RUBRIC } from "./skill";
@@ -132,3 +132,62 @@ export const COVER_REVIEW_SCHEMA = {
     code: { type: "string", description: `the COMPLETE revised cover program when any score is below ${COVER_PASS}; empty otherwise` },
   },
 };
+
+/**
+ * ONE reply format for every call on the lab's system (the owner: «وحد الصيغة لكل الخطوات، نفس كلود»): a different
+ * output format between calls is a different prompt cache, so the plan, the write, the review and the chat each wrote the
+ * 37.8k-token system (and their fixed files) to the cache on their own and never read each other's. Now every step answers
+ * `{ "result": … }` where `result` is one of the shapes above, told apart by its `kind` (written first) — the request names
+ * the kind it wants. The shapes themselves are unchanged (the agent's definition is generated from them).
+ */
+type Shape = { type: string; additionalProperties: boolean; required: string[]; properties: Record<string, unknown> };
+const branch = (kind: string, s: Shape) => ({
+  ...s,
+  required: ["kind", ...s.required],
+  properties: { kind: { type: "string", enum: [kind] }, ...s.properties },
+});
+const oneOf = (kinds: Record<string, Shape>) => ({
+  type: "object",
+  additionalProperties: false,
+  required: ["result"],
+  properties: { result: { description: "your answer: the shape whose kind this request names", anyOf: Object.entries(kinds).map(([k, s]) => branch(k, s)) } },
+});
+
+/** The lab's steps by the kind of their answer: plan · write (the whole program) · patch (a fix as edits) · review · chat · chat_edit (a chat with a program: changes as edits). */
+export const LAB_KINDS = { plan: PLAN_SCHEMA, write: CODE_SCHEMA, patch: PATCH_SCHEMA, review: REVIEW_SCHEMA, chat: CHAT_SCHEMA, chat_edit: CHAT_EDIT_SCHEMA };
+export type LabKind = keyof typeof LAB_KINDS;
+export const LAB_SCHEMA = oneOf(LAB_KINDS);
+
+/** The cover's calls (their own system): the design (or its fix) and the review, one format the same way. */
+export const COVER_KINDS = { cover: COVER_SCHEMA, cover_review: COVER_REVIEW_SCHEMA };
+export type CoverKind = keyof typeof COVER_KINDS;
+export const COVER_LAB_SCHEMA = oneOf(COVER_KINDS);
+
+/**
+ * The same `{ result }` reply with only the one branch asked: the safety net if the API ever refuses the shared format
+ * (callClaudeJson's `schemaFallback`) — the step still works, only without sharing the cache with the others.
+ */
+export const soloSchema = (kind: LabKind | CoverKind) => oneOf({ [kind]: ({ ...LAB_KINDS, ...COVER_KINDS } as Record<string, Shape>)[kind] });
+
+/** The line each request ends with: which shape to answer in. */
+export const kindAsk = (kind: LabKind | CoverKind) => `ANSWER IN THE SHAPE result.kind = "${kind}" (your whole reply is {"result": {"kind": "${kind}", …}}).`;
+
+/** The step's answer out of a `{ result }` reply, or null when it is missing or another kind than the one asked. */
+export function resultOf<T>(data: unknown, kind: LabKind | CoverKind): T | null {
+  const r = (data as { result?: unknown } | null | undefined)?.result;
+  return r && typeof r === "object" && (r as { kind?: unknown }).kind === kind ? (r as T) : null;
+}
+
+/**
+ * One call whose answer must be of `kind`: a reply of another kind is treated like a reply that is not the JSON asked
+ * for — asked once more, then given up with the same error (claudeWhy says it to the person). `wasted`: the replies
+ * thrown away (they were paid for). A cut reply (`partial`) and a continued one (`raw`, no format) are checked by the caller.
+ */
+export async function askKind<R extends { data: unknown; partial?: boolean }>(kind: LabKind | CoverKind, ask: () => Promise<R>, raw = false): Promise<R & { wasted: R[] }> {
+  const first = await ask();
+  if (raw || first.partial || resultOf(first.data, kind)) return { ...first, wasted: [] };
+  const again = await ask();
+  if (again.partial || resultOf(again.data, kind)) return { ...again, wasted: [first] };
+  const got = (again.data as { result?: { kind?: unknown } } | null)?.result?.kind;
+  throw new Error(`Claude reply was not the JSON asked for (kind ${String(got)} instead of ${kind})`);
+}

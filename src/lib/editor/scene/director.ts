@@ -17,7 +17,7 @@ import { stillOpen, type EditorProject } from "@/lib/editor/server";
 import { checkScene, LAB_FONTS, readPlan, readReview, SECONDS, type LabPlan } from "./contract";
 import { EXEMPLARS } from "./exemplars";
 import { MAX_ROUNDS, MOTION_LAB_SKILL, PASS, RUBRIC } from "./skill";
-import { CHAT_EDIT_SCHEMA, CHAT_SCHEMA, CODE_SCHEMA, PATCH_SCHEMA, PLAN_SCHEMA, REVIEW_SCHEMA } from "./schemas";
+import { askKind, kindAsk, LAB_SCHEMA, resultOf, soloSchema, type LabKind } from "./schemas";
 import { applyEdits, readEdits } from "@/lib/patch";
 import { continueAsk, effortAtMost, stitchCode } from "./resume";
 import { ALWAYS_AT_PLAN, HF_LAB_TEXT, knownRefs, openRefs } from "./higgsfield";
@@ -88,19 +88,25 @@ Time the picture to the words: the line's key idea appears as it is said (a key 
 const fontMenu = () => LAB_FONTS.map((id) => `${id} (${FONT_BY_ID.get(id)?.kind})`).join(", ");
 const exemplarsText = () => EXEMPLARS.map((e) => `<example name="${e.name}" shows="${e.shows}">\n${e.code}\n</example>`).join("\n\n");
 
-// The texts that are the same on every call of their step, each its own leading part with a cache mark, so the next call
-// of that step reads them (with the system before them) instead of writing them again: they sat inside the step's request
-// and were written to the cache on every call and never read. Each step's reply format is part of what is cached (a
-// different schema is a different cache), so a mark is read by the same step again — a re-plan, a continued or second
-// write, the next review round — never across steps; that is why a review does not carry the write's taste files.
-/** The client-taste files both skills say to read before designing (always opened at the plan and the write). */
+// The texts that are the same on every call, each its own leading part with a cache mark, ALWAYS IN ONE ORDER — the taste
+// files, then the plan's skill files, then the reference scenes — before the step's own text, so a step reads what the step
+// before it wrote: every lab call has the same system, the same reply format (LAB_SCHEMA), the same top-level effort and
+// the same hour's cache, like one Claude conversation (the owner: «وحد الصيغة لكل الخطوات، نفس كلود»). The plan writes
+// [system · taste]; the write reads it and writes [· skills · examples]; every review round reads [system · taste ·
+// skills]. A fix and the chat carry none of them (they read the system).
+/** The client-taste files both skills say to read before designing (always opened at the plan, the write and every review). */
 const tastePart = (): ClaudePart => ({ type: "text", text: openRefs(ALWAYS_AT_PLAN, Infinity).text, cache: true });
-/** The reference scenes (the level of craft expected), for a first write. */
+/** The reference scenes (the level of craft expected), for a first write (after the taste and skill files). */
 const exemplarsPart = (): ClaudePart => ({ type: "text", text: `REFERENCE SCENES (the level of craft expected — learn the technique, never copy them):\n${exemplarsText()}`, cache: true });
-/** The skill files the plan named (the taste files are given on their own): ONE block, the same bytes at the write and at every review round. */
+/** The skill files the plan named (the taste files are given on their own): ONE block, the same bytes at the write and at every review round (right after the taste files). */
 function skillRefsPart(plan: LabPlan): ClaudePart[] {
   const t = openRefs(knownRefs(plan.skillRefs).filter((id) => !ALWAYS_AT_PLAN.includes(id))).text;
   return t ? [{ type: "text", text: t, cache: true }] : [];
+}
+/** The fixed parts in their one order (identical bytes in every step that sends them): the taste files, then the plan's
+ * skill files (once there is a plan), then the reference scenes (the first write only). */
+function fixedParts(plan: LabPlan | null, examples = false): ClaudePart[] {
+  return [tastePart(), ...(plan ? skillRefsPart(plan) : []), ...(examples ? [exemplarsPart()] : [])];
 }
 const planText = (p: LabPlan) => JSON.stringify(p, null, 1);
 const outputBudget = (model: unknown) => claudeModelOf(model).key === "haiku" ? 64_000 : 128_000;
@@ -114,25 +120,30 @@ const stepSignal = (b: Record<string, unknown>) => (b.__signal instanceof AbortS
  */
 const WINDOW_MS = 660_000;
 type Asked<T> = { data: T; coins: number; model: string; partialRaw?: undefined } | { data?: undefined; coins: number; model: string; partialRaw: string; noProgress: boolean; effortUsed: string };
+type Level = "low" | "medium" | "high" | "xhigh";
+/** The request's own effort, the SAME on every lab call (a different top-level effort restarts the cache); each reply's
+ * level rides as `turnEffort` — high for a plan, a write and a review, medium for a fix, a patch and the chat. */
+const LAB_EFFORT = "medium";
 
 /**
  * One Claude step of the lab. A reply the request's time cannot hold comes back as `partialRaw` (the JSON written so far),
  * and the page sends the same request again with it: this one continues from its last character, so nothing is written
  * twice and no step ever starts again from nothing. `effortCap` (from the page, after a request went by in thought alone)
- * makes the model think less.
+ * makes the model think less. Every step answers in LAB_SCHEMA; `kind` is the branch this one wants, and `data` is that
+ * branch (`result`) — a reply of another kind is asked once more like an unreadable one, then given up.
  */
 async function ask<T>(
   who: Who,
   b: Record<string, unknown>,
   label: string,
   parts: ClaudePart[],
-  schema: object,
+  kind: LabKind,
   maxTokens: number,
-  effort: "low" | "medium" | "high" | "xhigh" = "high",
+  effort: Level = "high",
   onText?: OnText,
   extraUsd = 0,
-  /** `history`: earlier turns (the chat), cached by their own mark; `turnNote`: this message's facts; `ttl`: see labChat */
-  o: { history?: ClaudeTurn[]; turnNote?: string; ttl?: "1h" } = {},
+  /** `history`: earlier turns (the chat), cached by their own mark; `turnNote`: this message's facts */
+  o: { history?: ClaudeTurn[]; turnNote?: string } = {},
 ): Promise<Asked<T>> {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
   const written = typeof b.partialRaw === "string" ? b.partialRaw : "";
@@ -147,14 +158,20 @@ async function ask<T>(
     () =>
       // `cacheTail: false`: a step's last turn is never sent again (a continuation sends the step's parts again with a NEW
       // «what you wrote» text after them, so it reads the parts' own marks and the system, never a tail): the cache write
-      // premium on it bought nothing
-      callClaudeJson<T>({ system: SYSTEM, turns: [...(o.history ?? []), { role: "user", content: turn }], turnNote: o.turnNote, cacheTtl: o.ttl, cacheTail: false, schema, maxTokens, effort: level, fallback: true, resume: { stopAt }, rawText: Boolean(written), onText, signal: stepSignal(b) }).catch((e) => {
+      // premium on it bought nothing. An hour's cache on every call: the steps share one prefix now, and the person reads
+      // the plan, watches the build and decides a change — pauses longer than 5 minutes. (A per-message effort has no
+      // server-side fallback model: callClaudeJson drops it.)
+      askKind(
+        kind,
+        () => callClaudeJson<unknown>({ system: SYSTEM, turns: [...(o.history ?? []), { role: "user", content: turn }], turnNote: o.turnNote, cacheTtl: "1h", cacheTail: false, schema: LAB_SCHEMA, schemaFallback: soloSchema(kind), maxTokens, effort: LAB_EFFORT, turnEffort: level, resume: { stopAt }, rawText: Boolean(written), onText, signal: stepSignal(b) }),
+        Boolean(written),
+      ).catch((e) => {
         if (stepSignal(b)?.aborted) throw new UserError("⏹️ وقّفت الطلب.", 499);
         console.error("motion lab", label, e);
         throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يكمل الموشن الحين. جرّب مرة ثانية.", who.email), 502);
       }),
     // `extraUsd`: the conversation's handoff written for this call (lib/robot-handoff), charged with it
-    (x) => claudeCost(x.usage) + extraUsd,
+    (x) => claudeCost(x.usage) + x.wasted.reduce((s, w) => s + claudeCost(w.usage), 0) + extraUsd,
     undefined,
     "max",
   );
@@ -162,14 +179,20 @@ async function ask<T>(
     const now = stitchCode(written, r.raw);
     return { partialRaw: now, noProgress: now.length <= written.length, effortUsed: level, coins: r.coins, model: r.model };
   }
-  if (!written) return { data: r.data, coins: r.coins, model: r.model };
+  if (!written) return { data: resultOf<T>(r.data, kind)!, coins: r.coins, model: r.model };
+  // a continued reply is raw text (no format): the written part and the rest together are the same `{ "result": … }`
   const whole = stitchCode(written, r.raw);
+  let data: T | null = null;
   try {
-    return { data: JSON.parse(whole) as T, coins: r.coins, model: r.model };
+    data = resultOf<T>(JSON.parse(whole), kind);
   } catch {
-    console.error("motion lab", label, "continued reply is not JSON", whole.slice(-200));
+    data = null;
+  }
+  if (!data) {
+    console.error("motion lab", label, "continued reply is not the JSON asked for", whole.slice(-200));
     throw new UserError("ما قدرت أجمع رد حيدرا ماكس بعد ما انقطع. جرّب مرة ثانية.", 502);
   }
+  return { data, coins: r.coins, model: r.model };
 }
 
 /** 1 · PLAN: the idea, the look and the shot list (the person approves it before any code). */
@@ -191,7 +214,8 @@ export async function labPlan(p: EditorProject, who: Who, b: Record<string, unkn
   // the files of the picks (the taste files lead, on their own)
   const picked = openRefs(choicesRefs(choices).filter((id) => !ALWAYS_AT_PLAN.includes(id))).text;
   const parts: ClaudePart[] = [
-    tastePart(),
+    // the taste files (its skill files are not chosen yet): the write and every review read them from here
+    ...fixedParts(null),
     {
       type: "text",
       text: `PLAN a motion-graphics piece for this project. Do NOT write code yet.
@@ -204,13 +228,14 @@ ${refs.length ? refsText(refs) : "No references: avoid the safe default look; pi
 ${foot ? `"narration" is [] (their voice is the video's own sound). Every shot names its "frame". ` : soundAsk(b).voice ? `THE PERSON WILL RECORD THEIR OWN VOICE reading a narration YOU write: fill "narration" with the lines in order (${text(b.language, 40) || "Gulf Arabic"}, spoken words, short lines of one idea each, about 2 words a second so it is never rushed, from/to on the shots); the visuals are built to follow those words. ` : `"narration" is [] (no voice). `}${soundAsk(b).text}
 Make it a studio piece: a hook on frame 1, one hero per shot, the beat grid, one object carrying across shots, the "wow" moment, a held ending or a loop. Times in seconds; shots cover the whole length without gaps. Every on-screen word written exactly (Arabic as it will appear).
 Follow the owner's Higgsfield skills' workflow for a film (brief → passport → scenario with the shot table on the beat grid and the trigger map), and pick in "skillRefs" the files of theirs you will need open.${footagePart(b, false)}${footFrames.length ? `\nFRAMES OF THEIR VIDEO: ${footFrames.length} below (spread over it) — see the person, the room, the light and the colours; design the stage and the palette to sit with them.` : ""}
-The owner's client-taste files are above (read them before designing).${picked ? `\n\n${picked}` : ""}`,
+The owner's client-taste files are above (read them before designing).${picked ? `\n\n${picked}` : ""}
+${kindAsk("plan")}`,
     },
     ...footFrames.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `THEIR VIDEO, FRAME ${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
     ...refsParts(refs),
   ];
   // 32k (it was 12k): a plan that ran out of room was asked again whole at low thought — paid twice, and thought less
-  const r = await ask<Record<string, unknown>>(who, b, "مختبر الموشن · الخطة", parts, PLAN_SCHEMA, 32_000, "high", onText);
+  const r = await ask<Record<string, unknown>>(who, b, "مختبر الموشن · الخطة", parts, "plan", 32_000, "high", onText);
   if (r.partialRaw !== undefined) return r;
   // the picks ride with the plan, so writing and review see them too
   const plan = { ...readPlan(r.data, seconds, assets.map((a) => a.id), foot?.seconds), choices, ...(foot ? { narration: [] } : {}) };
@@ -237,8 +262,8 @@ export async function labWrite(p: EditorProject, who: Who, b: Record<string, unk
     ? "\nTRANSPARENT BACKGROUND (the person will composite this over something else): never call scene({ background: … }) with a colour, never fillRect / draw a shape, gradient or vignette across the whole K.W×K.H frame. Draw ONLY the subject itself (and its own shadow/glow if any) — everywhere else stays empty (alpha 0). A light contact shadow under a floating subject is fine; a filled backdrop is not."
     : "";
   const parts: ClaudePart[] = [
-    // a FIX of an error needs the program and the error, not the taste files, the examples and the skill files again
-    ...(previous ? [] : [tastePart(), exemplarsPart(), ...skillRefsPart(plan)]),
+    // a FIX of an error needs the program and the error, not the taste files, the skill files and the examples again
+    ...(previous ? [] : fixedParts(plan, true)),
     {
       type: "text",
       text: `${previous ? "FIX the scene program below." : "WRITE the scene program for this approved plan."}
@@ -248,12 +273,13 @@ FRAME: ${f.w}×${f.h} (${f.shape}) · FONTS loaded for you: K.fonts.head = ${pla
 ASSETS: ${assets.length ? assets.map((a) => `K.img("${a.id}") = «${a.name}» ${a.w}×${a.h}`).join("; ") : "none"}${bg}
 ${soundAsk(b).text}${voiceText(b) ? `
 ${voiceText(b)}` : ""}${footagePart(b, true)}
-${refs.length ? `${refsText(refs)}\n` : ""}${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the scene page — fix exactly this, keep everything else):\n${errors || "(no error text)"}` : "The reference scenes, the owner's client-taste files and the skill files you opened are above."}
-${patch ? `Answer with "edits" on THE PROGRAM that fix exactly this and change nothing else (code empty); the complete program in "code" only when the fix rewrites most of it.` : "Write the COMPLETE program (it replaces the old one)."} duration = ${plan.seconds}, bpm = ${plan.bpm}. Use the palette's hex values. Cues on the changes. Make every frame worthy of the bar.`,
+${refs.length ? `${refsText(refs)}\n` : ""}${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the scene page — fix exactly this, keep everything else):\n${errors || "(no error text)"}` : "The owner's client-taste files, the skill files you opened and the reference scenes are above."}
+${patch ? `Answer with "edits" on THE PROGRAM that fix exactly this and change nothing else (code empty); the complete program in "code" only when the fix rewrites most of it.` : "Write the COMPLETE program (it replaces the old one)."} duration = ${plan.seconds}, bpm = ${plan.bpm}. Use the palette's hex values. Cues on the changes. Make every frame worthy of the bar.
+${kindAsk(patch ? "patch" : "write")}`,
     },
     ...refsParts(refs),
   ];
-  const r = await ask<{ code: string; notes: string; edits?: unknown }>(who, b, previous ? "مختبر الموشن · تصليح" : "مختبر الموشن · كتابة المشهد", parts, patch ? PATCH_SCHEMA : CODE_SCHEMA, outputBudget(b.model), previous ? "medium" : "high", onText);
+  const r = await ask<{ code: string; notes: string; edits?: unknown }>(who, b, previous ? "مختبر الموشن · تصليح" : "مختبر الموشن · كتابة المشهد", parts, patch ? "patch" : "write", outputBudget(b.model), previous ? "medium" : "high", onText);
   if (r.partialRaw !== undefined) return r;
   const out = patch ? patchOf(previous, r.data) : { code: r.data.code };
   // a patch that cannot be applied: no program, and the page asks for the whole one (once)
@@ -278,8 +304,8 @@ export async function labReview(p: EditorProject, who: Who, b: Record<string, un
   // what the page measured on the frames and the program (lab-gate.ts): facts the stills cannot show (motion, sound)
   const gate = (Array.isArray(b.gate) ? b.gate : []).map((x) => text(x, 300)).filter(Boolean).slice(0, 8);
   const parts: ClaudePart[] = [
-    // the skill files the plan named, first and the same bytes every round: round 2 and 3 read them from the cache
-    ...skillRefsPart(plan),
+    // the taste files and the skill files the plan named, the same bytes as the write's (and every round's): read from the cache
+    ...fixedParts(plan),
     {
       type: "text",
       text: `REVIEW ROUND ${round} of ${maxRounds}${round === maxRounds ? " (the last: identify the most important remaining corrections precisely)" : ""}. Be a HARSH motion director, not a proud author.
@@ -292,14 +318,15 @@ ${voiceText(b)}` : ""}${footageOf(b) ? `\nTHE PERSON'S VIDEO is in these frames:
 Check the sound by reading sound() and the cues against what you see at those times (you cannot hear it): every big change has its sound on its frame, and the program has a sound() at all.${gate.length ? `
 MEASURED BY THE PAGE on every frame and on the program (exact facts the stills cannot show — weigh them with what you see; a real problem here lowers its criterion):
 ${gate.map((g) => `- ${g}`).join("\n")}` : ""}
-Judge against the skill files the plan named (above, when it named any).
+Judge against the owner's client-taste files and the skill files the plan named (above).
+${kindAsk("review")}
 THE PROGRAM:
 ${code}`,
     },
     ...sheets.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `CONTACT SHEET ${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
     ...stills.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `STILL ${i + 1}${times[i] !== undefined ? ` (t = ${times[i].toFixed(2)} s)` : ""}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
   ];
-  const r = await ask<Record<string, unknown>>(who, b, `مختبر الموشن · مراجعة ${round}`, parts, REVIEW_SCHEMA, reviewOnly ? 32_000 : outputBudget(b.model), "high");
+  const r = await ask<Record<string, unknown>>(who, b, `مختبر الموشن · مراجعة ${round}`, parts, "review", reviewOnly ? 32_000 : outputBudget(b.model), "high");
   if (r.partialRaw !== undefined) return r;
   const review = readReview(r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkScene(r.data.code) : null;
@@ -364,15 +391,13 @@ ${code ? `THE CURRENT PROGRAM:\n${code}` : ""}${footagePart(b, Boolean(code))}${
 THE WAY OF WORKING (the owner's skills): the scenario comes first and is approved before any code; after it every note changes ONLY what the person named and keeps everything else as it is; a version the person has seen is never overwritten (the lab keeps each one).
 "reply" is always filled, in Gulf Arabic, short and warm, never technical (no code words).
 This message's facts (the frame, the pictures, the plan, the program) are at the top of this turn.${whole && code ? `\nYOUR LAST ANSWER TO THIS MESSAGE WAS A PATCH THAT COULD NOT BE APPLIED (${text(b.patchFailed, 300) || "an old text was not found exactly once"}): this time, if it is a change, return the COMPLETE revised program in "code".` : ""}
+${kindAsk(patching ? "chat_edit" : "chat")}
 THEIR NEW MESSAGE: ${message}`,
     },
     ...refsParts(refs),
   ];
   // medium thought for a change too (it was high): a note names what to change, and the answer is a patch
-  // an hour's cache (writing it costs 2× instead of 1.25×): the next note comes after a build the person watched, mostly
-  // more than 5 minutes later, when the 5-minute cache of the system and the conversation was already gone. Only the
-  // chat: the other steps' next call of the same step (the only one that can read their cache) comes within minutes or not at all
-  const r = await ask<{ reply: string; action: string; brief: string; code: string; edits?: unknown; options?: unknown; search?: unknown }>(who, b, "مختبر الموشن · محادثة", parts, patching ? CHAT_EDIT_SCHEMA : CHAT_SCHEMA, code ? outputBudget(b.model) : 8000, "medium", onText, mem.usd, { history, turnNote: facts, ttl: "1h" });
+  const r = await ask<{ reply: string; action: string; brief: string; code: string; edits?: unknown; options?: unknown; search?: unknown }>(who, b, "مختبر الموشن · محادثة", parts, patching ? "chat_edit" : "chat", code ? outputBudget(b.model) : 8000, "medium", onText, mem.usd, { history, turnNote: facts });
   if (r.partialRaw !== undefined) return r;
   // a search he asked for (only once per message: with the results in hand he answers)
   const search = research ? "" : text(r.data.search, 300);

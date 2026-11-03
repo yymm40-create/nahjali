@@ -340,6 +340,7 @@ export async function callClaudeJson<T>({
   cacheTtl,
   cacheTail = true,
   turnEffort,
+  schemaFallback,
 }: {
   system: string;
   turns: ClaudeTurn[];
@@ -384,6 +385,11 @@ export async function callClaudeJson<T>({
    * the site offers (Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 5.5).
    */
   turnEffort?: "low" | "medium" | "high" | "xhigh";
+  /**
+   * A safety net for a shared reply format (one schema with a branch per step): if the API refuses the request as
+   * malformed (400) over its format, it is asked once more with this narrower schema — same reply shape, no shared cache.
+   */
+  schemaFallback?: object;
 }): Promise<{ data: T; raw: string; usage: ClaudeUsage; partial?: boolean }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -428,7 +434,8 @@ export async function callClaudeJson<T>({
   // Haiku has no server-side fallback model
   // Haiku has no server-side fallback model; a per-message effort is not understood by the fallback models either
   const withFallback = fallback && asked.key !== "haiku" && !turnEffort;
-  const perTurn = Boolean(turnEffort && asked.effort);
+  let perTurn = Boolean(turnEffort && asked.effort);
+  let useSchema = schema;
   const call = async (level: typeof effort) => {
     // ANTHROPIC_BASE_URL only for a local test server; production talks to the API directly
     // streamed: a long reply is never cut by a clock on the whole answer (only a line gone quiet is dropped)
@@ -448,14 +455,35 @@ export async function callClaudeJson<T>({
         // the reply's own level rides as an effort-only system message after the latest turn (the top level stays fixed);
         // a retry that has to think less («low» after max_tokens) lowers it the same way
         messages: perTurn ? [...messages, { role: "system", content: [], output_config: { effort: level === effort ? turnEffort : level } }] : messages,
-        output_config: { ...(asked.effort ? { effort: perTurn ? effort : level } : {}), ...(rawText ? {} : { format: { type: "json_schema", schema } }) },
+        output_config: { ...(asked.effort ? { effort: perTurn ? effort : turnEffort && level === effort ? turnEffort : level } : {}), ...(rawText ? {} : { format: { type: "json_schema", schema: useSchema } }) },
         ...(withFallback ? { fallbacks: "default" } : {}),
       }),
     }, CLAUDE_TRIES, Math.max(CLAUDE_IDLE_MS, timeoutMs ?? 0), resume, onText);
     return b;
   };
 
-  let body = await call(effort);
+  // the safety nets of a newer request shape: a 400 over the per-message effort or the shared format is asked once more
+  // the plain way (the level on the request, the step's own branch) and said in the log — the work never stops on it
+  const first = async () => {
+    try {
+      return await call(effort);
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      if (!/^Claude 400/.test(why)) throw e;
+      if (perTurn && /effort|output_config|role|system message|beta/i.test(why)) {
+        console.warn("claude: per-message effort refused, the level goes on the request", why.slice(0, 300));
+        perTurn = false;
+        return call(effort);
+      }
+      if (schemaFallback && useSchema !== schemaFallback && /schema|format|anyOf|grammar|json/i.test(why)) {
+        console.warn("claude: the shared reply format refused, the step's own branch is used", why.slice(0, 300));
+        useSchema = schemaFallback;
+        return call(effort);
+      }
+      throw e;
+    }
+  };
+  let body = await first();
   if (body.stop_reason === "deadline" || body.stop_reason === "interrupted") {
     // cut before it ended: what was written so far goes back (its output counted at least by its length)
     const written = (body.content ?? []).filter((x: { type: string }) => x.type === "text").map((x: { text?: string }) => x.text ?? "").join("");
