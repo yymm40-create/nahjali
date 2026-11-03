@@ -172,6 +172,7 @@ ${KNOW_HOW}`;
  * them, and every message carried them (the owner, 2 November 2026: every robot like a plain Claude conversation).
  */
 const MOTION_PACK = `THE MOTION SKILLS (this request is about motion, a hook, a talking reel or a montage):
+YOU DECIDE: the skills below are a LIBRARY and a quality bar (craft, timing, legibility, sound), never a template. The person's request and your own understanding of its subject (what it is, who it is for, the one feeling, what would surprise) decide the idea, the structure, the motion, the palette and the type; follow a style's direction only when the person names or picks it; never reuse a worked example's or a recipe's layout, words or idea, and never repeat what you made for them before unless they ask for the same.
 
 ${DIRECTOR_SKILL}
 

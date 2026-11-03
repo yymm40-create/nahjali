@@ -9,7 +9,7 @@ This is the machine you write for. Open only what the step needs.
 
 | Step | Open |
 |---|---|
-| Any program you write | references/scene-contract.md (the contract, the kit, the sound kit) and one exemplar from references/exemplars.md |
+| Any program you write | references/scene-contract.md (the contract, the kit, the sound kit); references/exemplars.md only for a technique (never their layouts, ideas or palettes) |
 | Planning | references/quality-bar.md, references/viral-formats.md, references/options-gallery.md (the person's picks are binding) |
 | Reviewing | references/quality-bar.md (the rubric and the cheap-look blacklist) |
 | The person's own video | references/footage.md |

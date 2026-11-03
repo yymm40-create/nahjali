@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EXEMPLARS } from "@/lib/editor/scene/exemplars";
+import { EXEMPLARS, EXEMPLARS_TEXT, KIT_SNIPPET } from "@/lib/editor/scene/exemplars";
 import { CUE_SFX } from "@/lib/editor/scene/skill";
 import { runScene } from "./harness";
 
@@ -34,4 +34,29 @@ describe("the reference scenes", () => {
       expect(ex.code).toContain("scene({");
     });
   }
+});
+
+// What the lab's write reads instead of the programs (they were copied as layouts): their techniques in words and one
+// compact kit snippet with placeholder content — itself a working, deterministic program.
+describe("the reference techniques the write reads", () => {
+  it("name every exemplar's craft, say not to reuse them, and carry no whole program", () => {
+    for (const e of EXEMPLARS) {
+      expect(EXEMPLARS_TEXT).toContain(e.shows);
+      expect(EXEMPLARS_TEXT).not.toContain(e.code);
+    }
+    expect(EXEMPLARS_TEXT).toContain("Do NOT reuse their layouts, ideas, palettes, words or structures");
+    expect(EXEMPLARS_TEXT.length).toBeLessThan(EXEMPLARS.reduce((n, e) => n + e.code.length, 0) / 3);
+  });
+  it("the kit snippet runs, is deterministic, cues real sounds and holds no design to copy", () => {
+    for (const [w, h] of [[1080, 1920], [1920, 1080]]) {
+      const run = runScene(KIT_SNIPPET, w, h);
+      for (let t = 0; t <= run.duration; t += run.duration / 24) expect(() => run.frame(t)).not.toThrow();
+    }
+    const run = runScene(KIT_SNIPPET);
+    run.frame(0.5);
+    expect(run.frame(2).join("\n")).toBe(run.frame(2).join("\n"));
+    for (const c of run.cues) expect(CUE_SFX).toContain(c.sfx);
+    expect(KIT_SNIPPET).toContain("placeholders only");
+    expect(KIT_SNIPPET).not.toMatch(/#0b0b10|#d78d45|#f2f0eb/);
+  });
 });
