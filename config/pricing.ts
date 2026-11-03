@@ -17,8 +17,10 @@ export const DEFAULT_QUALITY: QualityKey = "medium";
 /**
  * Free trial mode: no payment step, orders are free and the UI says "جرّب مجانًا".
  * Each account can make at most FREE_TRIAL_MAX_ORDERS free orders in total; those «السماح» lets into the booklet have no limit.
+ * OFF (the owner, 3 November 2026): no free booklet per account — the booklet lives in «كتيب الجداول الذكي» and is paid
+ * from the balance there; the old order route (/api/orders) now makes an unpaid order that only a real payment opens.
  */
-export const FREE_TRIAL = true;
+export const FREE_TRIAL = false;
 export const FREE_TRIAL_MAX_ORDERS = 1;
 
 /** How many times a customer may generate their base character. */
