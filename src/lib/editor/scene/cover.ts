@@ -100,7 +100,7 @@ ${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (fix exactly this, ke
   ];
   const r = await ask<{ headline: string; code: string; notes: string }>(who, b.model, previous ? "مختبر الموشن · تصليح الكفر" : "مختبر الموشن · الكفر", parts, COVER_SCHEMA, 48_000, onText);
   const chk = checkScene(r.data.code);
-  return { code: chk.code, problems: chk.problems, headline: text(r.data.headline, 80), notes: text(r.data.notes, 600), coins: r.coins, model: r.model };
+  return { code: chk.code, problems: chk.problems, headline: text(r.data.headline, 80), notes: text(r.data.notes, 600), coins: r.coins, worth: r.worth, model: r.model };
 }
 
 export interface CoverReview {
@@ -148,5 +148,5 @@ ${code}`,
   const r = await ask<Record<string, unknown>>(who, b.model, `مختبر الموشن · مراجعة الكفر ${round}`, parts, COVER_REVIEW_SCHEMA, 48_000);
   const review = readCoverReview(r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkScene(r.data.code) : null;
-  return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };
+  return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, worth: r.worth, model: r.model };
 }

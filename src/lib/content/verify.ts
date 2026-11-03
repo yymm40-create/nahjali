@@ -23,13 +23,14 @@ interface Verdict {
   direction_ok: boolean;
   cropped: boolean;
   extra_text: boolean;
+  realistic_adult_woman?: boolean;
   problems: string[];
 }
 
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["read_text", "text_matches", "letters_joined", "direction_ok", "cropped", "extra_text", "problems"],
+  required: ["read_text", "text_matches", "letters_joined", "direction_ok", "cropped", "extra_text", "realistic_adult_woman", "problems"],
   properties: {
     read_text: { type: "string", description: "All the text you can read on the picture, line by line." },
     text_matches: { type: "boolean", description: "Every expected word is on the picture, spelled exactly as expected (ignore diacritics)." },
@@ -37,6 +38,7 @@ const SCHEMA = {
     direction_ok: { type: "boolean", description: "The Arabic reads right-to-left in the correct word order." },
     cropped: { type: "boolean", description: "Some text is cut off by the edge or hidden." },
     extra_text: { type: "boolean", description: "There are words or letters that are not in the expected text (fake text, gibberish, a watermark)." },
+    realistic_adult_woman: { type: "boolean", description: "A realistic (photo-like or lifelike painted) adult woman appears anywhere, even small or in the background. A clearly non-realistic cartoon does not count, nor do hands alone." },
     problems: { type: "array", items: { type: "string" }, description: "Each real problem in one short Arabic sentence (which word or where). Empty when there is none." },
   },
 } as const;
@@ -47,7 +49,11 @@ const SYSTEM = `You inspect ONE generated slide of an Arabic carousel and report
 - letters_joined is false when letters inside a word are separated, reversed, mirrored, doubled or turned into nonsense shapes.
 - direction_ok is false when the words run left-to-right or their order is reversed.
 - cropped is true when any text touches or crosses the edge or is covered. extra_text is true for any word or letter not in EXPECTED (purely decorative shapes are fine).
+- realistic_adult_woman is true when a lifelike adult woman is on the picture; the platform forbids this in carousels.
 - problems: list only what is really wrong, in short Arabic. Do not praise. Do not invent problems.`;
+
+/** What a slide is told when a realistic adult woman appears on it (forbidden in carousels). */
+export const WOMAN_PROBLEM = "ظهرت في الصورة امرأة بالغة واقعية، وهذا ممنوع في الكاروسيل";
 
 const withTimeout = <T>(p: Promise<T>, ms: number) => Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error("check timed out")), ms))]);
 
@@ -67,7 +73,8 @@ export async function checkSlide(png: Buffer, expected: string): Promise<SlideCh
     );
     const v = r.data;
     const problems = (Array.isArray(v.problems) ? v.problems : []).map((x) => String(x).slice(0, 200)).filter(Boolean).slice(0, 5);
-    const ok = v.text_matches && v.letters_joined && v.direction_ok && !v.cropped && !v.extra_text;
+    const woman = v.realistic_adult_woman === true;
+    const ok = v.text_matches && v.letters_joined && v.direction_ok && !v.cropped && !v.extra_text && !woman;
     if (!ok && !problems.length) {
       if (!v.text_matches) problems.push("النص على الشريحة لا يطابق النص المعتمد");
       if (!v.letters_joined) problems.push("حروف عربية غير متصلة أو مشوّهة");
@@ -75,10 +82,26 @@ export async function checkSlide(png: Buffer, expected: string): Promise<SlideCh
       if (v.cropped) problems.push("نص مقطوع عند الحافة");
       if (v.extra_text) problems.push("كلمات أو حروف زائدة على الشريحة");
     }
+    if (woman && !problems.includes(WOMAN_PROBLEM)) problems.push(WOMAN_PROBLEM);
     return { ok, checked: true, problems, read: String(v.read_text ?? "").slice(0, 600), usd: claudeCost(r.usage) };
   } catch (e) {
     console.error("slide check", e instanceof Error ? e.message : e);
     return { ok: true, checked: false, problems: [], read: "", usd: 0 };
+  }
+}
+
+const WOMAN_SYSTEM = "You look at ONE picture and report one fact: does a realistic (photo-like or lifelike painted) adult woman appear anywhere in it, even small or in the background? A clearly non-realistic cartoon does not count, nor do hands alone.";
+const WOMAN_SCHEMA = { type: "object", additionalProperties: false, required: ["realistic_adult_woman"], properties: { realistic_adult_woman: { type: "boolean" } } } as const;
+
+/** Whether a painted picture or a slide made in code shows a realistic adult woman. Never throws: a failed look says no. */
+export async function showsRealWoman(png: Buffer): Promise<{ woman: boolean; usd: number }> {
+  try {
+    const jpeg = await sharp(png).resize({ width: 768, height: 768, fit: "inside", withoutEnlargement: true }).flatten({ background: "#ffffff" }).jpeg({ quality: 78 }).toBuffer();
+    const r = await withTimeout(callClaudeJson<{ realistic_adult_woman: boolean }>({ system: WOMAN_SYSTEM, turns: [{ role: "user", content: [{ type: "image64", data: jpeg.toString("base64"), mediaType: "image/jpeg" }] }], schema: WOMAN_SCHEMA, maxTokens: 200, effort: "low" }), 25_000);
+    return { woman: r.data.realistic_adult_woman === true, usd: claudeCost(r.usage) };
+  } catch (e) {
+    console.error("woman check", e instanceof Error ? e.message : e);
+    return { woman: false, usd: 0 };
   }
 }
 

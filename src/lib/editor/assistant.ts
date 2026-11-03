@@ -591,6 +591,8 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     assets: newAssets,
     // what the whole answer cost in dollars (the route takes it + 40%)
     usd,
+    // what this edit's conversation had taken from the wallet BEFORE this turn (halalas); the route adds this turn's charge
+    spentHalalas: chat.spentHalalas,
   };
 }
 

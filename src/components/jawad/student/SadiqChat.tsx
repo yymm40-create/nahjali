@@ -32,11 +32,15 @@ const messagesOf = (o: OutputView): Msg[] => {
   const m = (o.content as { messages?: Msg[] } | null)?.messages;
   return Array.isArray(m) ? m : [];
 };
+/** Exactly what was taken from the wallet across this conversation so far (halalas, not an estimate). */
+const spentOf = (o: OutputView): number => Math.max(0, Number((o.content as { spentHalalas?: unknown } | null)?.spentHalalas) || 0);
 
 export default function SadiqChat({ p, o, onMake }: { p: ProjectHook; o: OutputView; onMake?: () => void }) {
   const { assistant: A, face } = useBranch();
   const [model] = useClaudeModel();
   const [list, setList] = useState<Msg[]>(() => messagesOf(o));
+  // exactly what was taken from the wallet in THIS conversation so far (halalas, not an estimate); 0 for a new one
+  const [spent, setSpent] = useState(() => spentOf(o));
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [making, setMaking] = useState<number | null>(null);
@@ -52,8 +56,9 @@ export default function SadiqChat({ p, o, onMake }: { p: ProjectHook; o: OutputV
     setList((l) => [...l, { role: "user", text: said }]);
     setBusy(true);
     try {
-      const r = (await p.actOutput(o.id, { action: "chat", message: said, model: model.id })) as { messages?: Msg[] } | undefined;
+      const r = (await p.actOutput(o.id, { action: "chat", message: said, model: model.id })) as { messages?: Msg[]; spent?: number } | undefined;
       if (r?.messages) setList(r.messages);
+      setSpent(Math.max(0, Number(r?.spent) || 0));
     } catch (e) {
       setList((l) => [...l, { role: "assistant", text: e instanceof Error ? e.message : `${A} ما قدر يرد الحين؛ جرّب بعد شوي.`, error: true }]);
     } finally {
@@ -86,7 +91,7 @@ export default function SadiqChat({ p, o, onMake }: { p: ProjectHook; o: OutputV
     <section className="jw-panel min-w-0 space-y-3 p-4" aria-labelledby={`o-${o.id}`}>
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h2 id={`o-${o.id}`} className="text-lg font-bold">💬 {o.title}</h2>
-        <ClaudeModelPicker disabled={busy} />
+        <ClaudeModelPicker disabled={busy} spent={spent} />
       </header>
       <p className="text-xs text-jw-muted">ناقش {A} في مادتك: يشرح، يلخّص، يسألك، يجهّزك للدرس أو للمناظرة، ويبحث لك في الويب لو طلبت. وهو نفسه {A} اللي مشى معك من البداية: قله «سوّ لي ملخص» أو «سوّ اختبار» أو «ادمج كل شي في PDF» وهو يقترح ويصنع بعد ما تضغط «نفّذ». المحادثة محفوظة هنا مع مادتك.</p>
 

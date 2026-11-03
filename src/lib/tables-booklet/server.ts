@@ -56,6 +56,8 @@ export interface BookletChat {
   messages: Turn[];
   spec: BookletSpec | null;
   orderId: string | null;
+  /** exactly what was taken from the wallet across this whole conversation (halalas, not an estimate) */
+  spentHalalas: number;
   updatedAt: string;
 }
 
@@ -66,6 +68,7 @@ const view = (r: Record<string, unknown>): BookletChat => ({
   messages: (Array.isArray(r.messages) ? r.messages : []).filter((m): m is Turn => !!m && typeof m === "object" && (m.role === "user" || m.role === "assistant") && typeof m.text === "string"),
   spec: r.spec ? cleanSpec(r.spec) : null,
   orderId: (r.order_id as string | null) ?? null,
+  spentHalalas: Math.max(0, Number(r.spent_halalas ?? 0)),
   updatedAt: String(r.updated_at ?? ""),
 });
 

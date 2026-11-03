@@ -19,7 +19,6 @@ export interface PopupPack {
   price: number;
   credit: number;
   tag: string;
-  bonus: number;
 }
 
 export default function SubscribePopup({ packs }: { packs: PopupPack[] }) {

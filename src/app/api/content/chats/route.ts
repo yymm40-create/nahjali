@@ -30,7 +30,7 @@ export const GET = handle(async (req: Request) => {
       : undefined,
     media: m.media ? { items: m.media.items.map((x) => ({ ...x, url: x.fileId ? links.get(x.fileId) ?? null : null, download: x.fileId ? downloads.get(x.fileId) ?? null : null, ...(isAdmin(user.email) ? {} : { detail: undefined }) })) } : undefined,
   }));
-  return NextResponse.json({ chat: { id: chat.id, title: chat.title, messages, pending: chat.pending ? { total: chat.pending.slides.length, mode: chat.pending.mode, todo: chat.pending.slides.map((x) => x.n) } : null, record: chat.record } });
+  return NextResponse.json({ chat: { id: chat.id, title: chat.title, messages, pending: chat.pending ? { total: chat.pending.slides.length, mode: chat.pending.mode, todo: chat.pending.slides.map((x) => x.n) } : null, record: chat.record, spent: chat.spentHalalas } });
 });
 
 export const DELETE = handle(async (req: Request) => {

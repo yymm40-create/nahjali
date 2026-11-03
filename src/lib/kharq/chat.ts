@@ -169,6 +169,8 @@ export interface Reply {
   turn: Turn;
   stage: KharqStage;
   usd: number;
+  /** what this conversation had taken from the wallet BEFORE this turn (halalas); the route adds this turn's charge */
+  spentHalalas: number;
 }
 
 /** A line added to his system text this turn: the person's own switch, and where his team stands. */
@@ -227,7 +229,7 @@ async function answer(o: { userId: string; email: string | null; origin: string;
   const brief = typeof data.brief === "string" && data.brief.trim() ? data.brief.trim() : (o.before?.brief ?? "");
 
   const chatId = await saveChat(o.userId, o.chatId, [...o.history, turn], usd, { brief, stage });
-  return { chatId, turn, stage, usd };
+  return { chatId, turn, stage, usd, spentHalalas: o.before?.spentHalalas ?? 0 };
 }
 
 /**
@@ -251,11 +253,11 @@ export async function say(o: { userId: string; chatId: string | null; message: s
  * His team, in the background: the last answer's consultations are run (each agent with its whole knowledge) and kept
  * with the conversation. The page then asks him to go on (`goOn`). Two steps, so neither waits on the other's clock.
  */
-export async function consultTeam(o: { userId: string; chatId: string; email: string | null }): Promise<{ consult: Consult[]; usd: number }> {
+export async function consultTeam(o: { userId: string; chatId: string; email: string | null }): Promise<{ consult: Consult[]; usd: number; spentHalalas: number }> {
   const chat = await getChat(o.userId, o.chatId);
   if (!chat) throw new UserError("ما لقينا هذي المحادثة.", 404);
   const waiting = pendingConsult(chat);
-  if (!waiting) return { consult: chat.messages[chat.messages.length - 1]?.consult ?? [], usd: 0 };
+  if (!waiting) return { consult: chat.messages[chat.messages.length - 1]?.consult ?? [], usd: 0, spentHalalas: chat.spentHalalas };
   const recent = chat.messages
     .slice(-8, -1)
     .map((t) => `${t.role === "user" ? "العميل" : "محمد"}: ${t.text.replace(/\s+/g, " ").slice(0, 900)}`)
@@ -263,7 +265,7 @@ export async function consultTeam(o: { userId: string; chatId: string; email: st
   const { list, usd } = await runConsults(waiting.consult, { userId: o.userId, email: o.email, brief: chat.brief, recent, leader: isLeader(o.email) });
   const messages = chat.messages.map((t, i) => (i === waiting.turn ? { ...t, consult: list } : t));
   await saveChat(o.userId, o.chatId, messages, usd);
-  return { consult: list, usd };
+  return { consult: list, usd, spentHalalas: chat.spentHalalas };
 }
 
 /** After his team answered: he goes on, as himself, in a new answer. */

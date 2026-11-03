@@ -22,7 +22,7 @@ import { docDocx } from "./render/docx";
 import { brochureHtml, docHtml, quizHtml, transcriptHtml } from "./render/html";
 import { colorsOf } from "./render/css";
 import { designFonts, fitPdf, fontFacesData, framePdf, htmlToPdf, slidesPdf, slidesPptx } from "./render/server";
-import { countWords, frontPages, MAX_REFITS, maxChapters, refitRatio, wordBudget, type PageSize } from "./pages";
+import { countWords, frontPages, maxChapters, refitRatio, wordBudget, type PageSize } from "./pages";
 import { drawSlide, picturesPdf, picturesPptx, slideImageUsd, slideSig, type SlideQuality } from "./slide-images";
 import { capSlides } from "./draw";
 import { asDesigned, deckContent, deckFiles, deckSlideUsd, deckStep, deckTodo, deckUsd, redesignSlide } from "./deck-make";
@@ -177,9 +177,8 @@ async function estimateBase(c: Ctx, o: Output, action: string, chapter = -1): Pr
     return parts(chapter >= 0 && chapter < p.chapters.length ? chapterUsd(chapter) : p.chapters.reduce((s, _, i) => s + chapterUsd(i), 0));
   }
   const done = (o.content as Doc | null)?.chapters?.length ?? 0;
-  // a page count may need the chapters written once more to land on it: held, and given back when not needed
-  const refit = pagesOf(o.settings) && !verbatim ? p.chapters.reduce((s, _, i) => s + chapterUsd(i), 0) : 0;
-  return parts(p.chapters.reduce((s, _, i) => s + (i < done ? 0 : chapterUsd(i)), 0) + refit, imgs(p.chapters));
+  // no rewrite is held for the page count: a file a page or two off is kept, and the student asks for «اضبط عدد الصفحات» if they want
+  return parts(p.chapters.reduce((s, _, i) => s + (i < done ? 0 : chapterUsd(i)), 0), imgs(p.chapters));
 }
 
 const segChars = (c: Ctx, ids: string[]) => ids.reduce((s, id) => s + (c.seg.get(id)?.text.length ?? 0), 0);
@@ -878,9 +877,19 @@ async function finalStep(job: Job): Promise<StepResult> {
   const plan = o.plan as DocPlan;
   const doc = (o.content as Doc | null) ?? { title: plan.title, subtitle: plan.subtitle, chapters: [] };
   const revise = job.kind === "revise" ? { note: String(job.input.note ?? ""), chapter: Number(job.input.chapter ?? -1), kind: String(job.input.requestKind ?? "edit") } : null;
+  // «اضبط عدد الصفحات»: only when the STUDENT asks for it (job.input.refit) — a file that came out a page or two off is
+  // never rewritten on its own. Once per press: the word scale is moved by how far the file was, then every chapter is
+  // rewritten to its new length (progress.refit) and the file made again, whatever count it lands on.
+  if (job.input.refit && !job.progress.refit) {
+    const want = pagesOf(o.settings);
+    const got = Number((o.content as { pages?: number } | null)?.pages) || 0;
+    if (!want || !got || got === want) throw new UserError("الملف بعدد الصفحات اللي طلبته.");
+    const k = (Number(o.settings._wordScale) || 1) * refitRatio(want, got, frontPages(want, plan.chapters.length).count);
+    await saveOutput(o.id, { settings: { ...o.settings, _wordScale: Math.round(k * 1000) / 1000 } });
+    return { done: false, stage: `الملف ${got} صفحة بدل ${want}: يعيد ضبط الطول`, progress: { ...job.progress, refit: { done: [] } } };
+  }
   const words = chapterWords(c, o, plan);
-  // a page count missed by the type alone: every chapter is rewritten to its new length (progress.refit)
-  const refit = job.progress.refit as { n: number; done: number[] } | undefined;
+  const refit = job.progress.refit as { done: number[] } | undefined;
   const todo = refit
     ? plan.chapters.map((_, i) => i).filter((i) => !refit.done.includes(i))
     : revise
@@ -912,23 +921,15 @@ async function finalStep(job: Job): Promise<StepResult> {
   // «حيدرا ماكس»: the written chapters are laid out as designed pages instead of the template
   if (isMax(o)) return maxFinal(job, await getOutput(job.user_id, o.id));
   const want = pagesOf(o.settings);
+  // the type is scaled to land on the count; a file still off is kept as it is (the student decides whether to adjust it)
   const pdf = await renderDoc(o, c, doc, plan, false);
-  if (want && pdf.pages !== want && words && !revise) {
-    // the type at its limit still misses the count: the chapters are written again, shorter or longer (twice at most)
-    const n = ((job.progress.refit as { n: number } | undefined)?.n ?? 0) + 1;
-    if (n <= MAX_REFITS) {
-      const k = (Number(o.settings._wordScale) || 1) * refitRatio(want, pdf.pages, frontPages(want, plan.chapters.length).count);
-      await saveOutput(o.id, { settings: { ...o.settings, _wordScale: Math.round(k * 1000) / 1000 } });
-      return { done: false, stage: `الملف طلع ${pdf.pages} صفحة بدل ${want}: يعيد ضبط الطول`, progress: { ...job.progress, refit: { n, done: [] } } };
-    }
-  }
   const files: Record<string, string> = { ...o.files, pdf: pdf.path };
   if (wantsDocx(o.settings)) files.docx = await renderDocx(o, c, doc, plan);
   else delete files.docx;
   const { draft: _draft, ...whole } = doc as Doc & { draft?: boolean };
   void _draft;
   await saveOutput(o.id, { status: "review", files, content: { ...whole, pages: pdf.pages || undefined } }, { kind: revise ? "revision" : "final", snapshot: doc, userId: o.user_id });
-  return { done: true, stage: want && pdf.pages !== want ? `${outputName(o.kind)} جاهز (${pdf.pages} صفحة؛ أقرب ما وصل له من ${want})` : `${outputName(o.kind)} جاهز` };
+  return { done: true, stage: want && pdf.pages !== want ? `${outputName(o.kind)} جاهز (${pdf.pages} صفحة بدل ${want})` : `${outputName(o.kind)} جاهز` };
 }
 
 async function transcriptStep(o: Output): Promise<StepResult> {

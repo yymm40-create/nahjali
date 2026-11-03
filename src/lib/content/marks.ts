@@ -1,12 +1,12 @@
 // «صانع المحتوى» — what a press in the questions becomes as a message: the answers as bullets, a pick in a gallery
-// carrying a mark ([قالب:id] / [ستايل:id] / [موشن:id] / [مزاج:id] / [ألوان:id]) that the server reads and the page hides. Pure (server and browser).
+// carrying a mark ([قالب:id] / [ستايل:id] / [موشن:id] / [مزاج:id] / [ألوان:id] / [كاروسيل:id] / [خط:id]) that the server reads and the page hides. Pure (server and browser).
 
 export interface Pick {
   id: string;
   name: string;
 }
 
-const MARK = /\s*\[(?:قالب|ستايل|موشن|مزاج|ألوان):[a-z0-9-]+\]/g;
+const MARK = /\s*\[(?:قالب|ستايل|موشن|مزاج|ألوان|كاروسيل|خط):[a-z0-9-]+\]/g;
 
 /** The text as the person reads it (the marks are for the server). */
 export const stripMarks = (text: string) => text.replace(MARK, "");
@@ -25,6 +25,24 @@ export const moodLine = (p: Pick) => (p.id === "none" ? "• المزاج: اخ�
 
 /** A colour pick (one of the 100 four-colour palettes) as a line of a message (id "none" = he chooses the colours). */
 export const paletteLine = (p: Pick) => (p.id === "none" ? "• الألوان: اختر لي الأنسب للموضوع [ألوان:none]" : `• الألوان: «${p.name}» [ألوان:${p.id}]`);
+
+/** A pick in the table of carousel styles as a line of a message. */
+export const carouselLine = (p: Pick) => `• ستايل الكاروسيل: «${p.name}» [كاروسيل:${p.id}]`;
+
+/** The person does not know which to pick: «محمد باقر» helps them choose. */
+export const CAROUSEL_HELP_LINE = "• ستايل الكاروسيل: ما أعرف أختار، ساعدني [كاروسيل:help]";
+
+/** The person wants something that is not in the table, in their own words. */
+export const carouselOwnLine = (what: string) => `• ستايل الكاروسيل: أبي شيئًا غير الموجود: ${what.trim()} [كاروسيل:own]`;
+
+/** A pick in the list of fonts as a line of a message. */
+export const fontLine = (p: Pick) => `• الخط: «${p.name}» [خط:${p.id}]`;
+
+/** The person keeps the font that comes with the chosen style. */
+export const fontStyleLine = (name: string) => `• الخط: خط الستايل الجاهز «${name}» [خط:style]`;
+
+/** The person lets «محمد باقر» pick the font. */
+export const FONT_AUTO_LINE = "• الخط: اختر لي الأنسب للستايل والموضوع [خط:auto]";
 
 /** An answer of the buttons: a line per question. */
 export const answerLine = (label: string, answers: string[]) => `• ${label}: ${answers.join("، ")}`;

@@ -8,6 +8,7 @@ import { isAdmin } from "@config/site";
 import { ALL_PERMS, isPerm, NO_PERKS, OPEN_PERMS, PUBLIC_PERMS, perksByCodes, permsByCodes, unlimitedByCodes, type Access, type CodeRow, type CodeUse, type Perm } from "@config/access";
 import { isClaudeModelKey } from "@config/claude-models";
 import { isPublicOpen } from "@/lib/launch";
+import { isAtCostEmail } from "@/lib/at-cost";
 
 export type { Perm };
 
@@ -55,12 +56,14 @@ async function load(email: string): Promise<Access> {
   const hit = memo.get(email);
   if (hit && Date.now() - hit.at < TTL) return hit.access;
   const db = createAdminClient();
-  const [{ data }, grant, live, uses, open] = await Promise.all([
+  const [{ data }, grant, live, uses, open, red] = await Promise.all([
     db.from("site_access").select("*").eq("email", email).maybeSingle(),
     db.from("site_code_grants").select("code_id").eq("email", email).maybeSingle(),
     liveCodeId(),
     db.from("site_code_uses").select("code_id,email,at").eq("email", email),
     isPublicOpen().catch(() => false),
+    // «🔴 النقود الحمراء»: the owner's list of e-mails that pay the platform's own price
+    isAtCostEmail(email).catch(() => false),
   ]);
   // came in by «الكود السري», and that very code is still on: everything (but what only opens by name)
   const byCode = Boolean(live && grant.data?.code_id === live);
@@ -71,7 +74,9 @@ async function load(email: string): Promise<Access> {
   const perms = new Set<Perm>([...(open ? PUBLIC_PERMS : []), ...(byCode ? OPEN_PERMS : []), ...((data?.perms as string[] | undefined) ?? []).filter(isPerm), ...permsByCodes(codes, mine)]);
   // free («بلا حدود»): the all-opening code, the e-mail marked so, or an unlimited code that still opens
   const unlimited = byCode || Boolean(data?.unlimited) || unlimitedByCodes(codes, mine);
-  const access = { perms, unlimited, perks: perksByCodes(codes, mine) };
+  const byCodes = perksByCodes(codes, mine);
+  // on the red list: everything at the platform's own price (no profit, no rounding to half a riyal), whatever the codes say
+  const access: Access = { perms, unlimited, perks: red ? { ...byCodes, atCost: true } : byCodes, redCoin: red };
   memo.set(email, { at: Date.now(), access });
   return access;
 }
@@ -79,9 +84,9 @@ async function load(email: string): Promise<Access> {
 /** The whole access of this person: the sections, and whether they make for free. */
 export const fullAccessOf = cache(async (email: string | null | undefined): Promise<Access> => {
   const mail = email?.toLowerCase();
-  if (!mail) return { perms: new Set(), unlimited: false, perks: NO_PERKS };
-  if (isAdmin(mail)) return { perms: new Set(ALL_PERMS), unlimited: true, perks: NO_PERKS };
-  return load(mail).catch(() => ({ perms: new Set<Perm>(), unlimited: false, perks: NO_PERKS }));
+  if (!mail) return { perms: new Set(), unlimited: false, perks: NO_PERKS, redCoin: false };
+  if (isAdmin(mail)) return { perms: new Set(ALL_PERMS), unlimited: true, perks: NO_PERKS, redCoin: false };
+  return load(mail).catch(() => ({ perms: new Set<Perm>(), unlimited: false, perks: NO_PERKS, redCoin: false }));
 });
 
 /** What this person may use (everything for the owner and co-owner; nothing signed out). */
@@ -116,6 +121,9 @@ export function permForGenerator(def: { id: string; output: string }): Perm {
   if (def.output === "video") return "video";
   return /sfx|music/.test(def.id) ? "music" : "voice";
 }
+
+/** Whether this person's coin is red: their e-mail is on the owner's platform's-own-price list. */
+export const redCoinOf = async (email: string | null | undefined) => (await fullAccessOf(email)).redCoin;
 
 /** What this person's codes give besides sections: pricing at cost, a Claude ceiling, Seedance 2.0 generations. */
 export const perksOf = async (email: string | null | undefined) => (await fullAccessOf(email)).perks;

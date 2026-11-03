@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
-import { bonusPct, type CreditSettings, type Pack } from "@config/credits";
+import { type CreditSettings, type Pack } from "@config/credits";
 import { waLink } from "@config/course";
 
 interface Order {
@@ -120,18 +120,16 @@ export default function CreditsAdmin() {
 
       <section className="card space-y-3 p-4">
         <h2 className="text-xl font-extrabold">📦 الباقات</h2>
-        <p className="text-sm font-bold text-muted">«تحوّل» = اللي يدفعه، «رصيد» = اللي ينضاف له. كل ريال رصيد فيه ربحك أصلًا، فلا تخلي الزيادة فوق ٢٠٪ تقريبًا عشان ما تبيع بخسارة. بيانات التحويل نفسها اللي في «دورة الجواد».</p>
+        <p className="text-sm font-bold text-muted">«تحوّل» = اللي يدفعه، وينضاف له رصيد بنفس المبلغ بالضبط (ما فيه زيادة على أي باقة). بيانات التحويل نفسها اللي في «دورة الجواد».</p>
         <div className="space-y-2">
           {packs.map((p, i) => (
-            <div key={p.id} className="grid grid-cols-2 gap-2 rounded-xl border border-line p-3 sm:grid-cols-6">
+            <div key={p.id} className="grid grid-cols-2 gap-2 rounded-xl border border-line p-3 sm:grid-cols-5">
               <label className="grid gap-1 text-xs font-bold">الاسم<input className="field" value={p.name} onChange={(e) => setPack(i, { name: e.target.value })} /></label>
-              <label className="grid gap-1 text-xs font-bold">تحوّل<input className="field" dir="ltr" inputMode="numeric" value={p.price} onChange={(e) => setPack(i, { price: Number(e.target.value.replace(/\D/g, "")) || 0 })} /></label>
-              <label className="grid gap-1 text-xs font-bold">رصيد<input className="field" dir="ltr" inputMode="numeric" value={p.credit} onChange={(e) => setPack(i, { credit: Number(e.target.value.replace(/\D/g, "")) || 0 })} /></label>
+              <label className="grid gap-1 text-xs font-bold">تحوّل<input className="field" dir="ltr" inputMode="numeric" value={p.price} onChange={(e) => { const price = Number(e.target.value.replace(/\D/g, "")) || 0; setPack(i, { price, credit: price }); }} /></label>
               <label className="grid gap-1 text-xs font-bold">شارة<input className="field" value={p.tag} placeholder="الأكثر طلبًا" onChange={(e) => setPack(i, { tag: e.target.value })} /></label>
               <label className="grid gap-1 text-xs font-bold">سطر قصير<input className="field" value={p.note} onChange={(e) => setPack(i, { note: e.target.value })} /></label>
               <div className="flex items-end gap-2 text-xs font-bold">
                 <label className="flex items-center gap-1"><input type="radio" name="featured" checked={featured === p.id} onChange={() => setFeatured(p.id)} /> المميزة</label>
-                <span className="text-emerald-600">+{bonusPct(p)}٪</span>
               </div>
             </div>
           ))}
