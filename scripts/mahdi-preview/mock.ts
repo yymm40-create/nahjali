@@ -40,7 +40,8 @@ for (const h of habits) {
     const r = rnd();
     // the last weeks a little better than the first: a nice, honest climb
     const p = odds[h.id] + (i < 21 ? 0.06 : i > 60 ? -0.08 : 0);
-    if (r < p) row[d(i)] = target;
+    // the last ten days all complete: a streak to show
+    if (r < p || i <= 10) row[d(i)] = target;
     else if (measure !== "check" && r < p + 0.12) row[d(i)] = Math.max(1, Math.round(target * (0.4 + rnd() * 0.4)));
   }
   if (todayValue[h.id]) row[TODAY] = todayValue[h.id];

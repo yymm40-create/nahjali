@@ -15,7 +15,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const here = join(root, "scripts/mahdi-preview");
 const out = resolve(process.argv[2] ?? join(tmpdir(), "mahdi-preview"));
 const only = process.argv[3] ? new Set(process.argv[3].split(",")) : null;
-const work = join(out, ".build");
+const work = join(tmpdir(), "mahdi-preview-build"); // the bundle, css and fonts (fonts are downloaded once)
 mkdirSync(work, { recursive: true });
 
 // 1. the app's code, with Next's link / router / image replaced
@@ -68,6 +68,7 @@ const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, de
 // this phone already gets notifications (so «اجعله تنبيهًا» shows its normal sheet, not a setup note)
 await ctx.grantPermissions(["notifications"]);
 await ctx.addInitScript(() => {
+  if (window.Notification) Object.defineProperty(Notification, "permission", { get: () => "granted" });
   if (navigator.serviceWorker) navigator.serviceWorker.getRegistration = async () => ({ pushManager: { getSubscription: async () => ({ endpoint: "preview" }) } });
 });
 
@@ -84,7 +85,7 @@ const SHOTS = [
   ["progress", "progress", "/mahdi/progress", true],
   ["week", "week", "/mahdi/progress/week"],
   ["menu", "home", "/mahdi", false, async (page) => { 
-    // the inbox count inside the drawer is position:absolute in mahdi.css (its Tailwind \`static\` loses to it), so it
+    // the inbox count inside the drawer is position:absolute in mahdi.css (its Tailwind «static» loses to it), so it
     // floats to the drawer's corner; drawn in its row here, as intended
     await page.addStyleTag({ content: ".m-drawer .m-badge.static{position:static}" });
     await page.click("button.m-menu-btn[aria-haspopup=dialog]");
@@ -113,7 +114,13 @@ for (const [name, key, path, full, act] of SHOTS) {
   const o = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
   if (o.sw > o.iw) problems.push(`sideways overflow ${o.sw} > ${o.iw}`);
   await page.screenshot({ path: join(out, `${name}.png`) });
-  if (full) await page.screenshot({ path: join(out, `${name}_full.png`), fullPage: true });
+  if (full) {
+    // a phone as tall as the page, so the floating bar and buttons sit at its bottom instead of over the middle
+    const h = await page.evaluate(() => document.documentElement.scrollHeight);
+    await page.setViewportSize({ width: 390, height: h });
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: join(out, `${name}_full.png`) });
+  }
   console.log(`${problems.length ? "✗" : "✓"} ${name}${problems.length ? `\n    ${problems.join("\n    ")}` : ""}`);
   bad += problems.filter((p) => !p.startsWith("Failed to load resource")).length;
   await page.close();
