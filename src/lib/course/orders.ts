@@ -5,7 +5,7 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { grantCoins } from "@/lib/coins";
-import { COURSE, cleanPhone, isLadder, isProduct, offerFor, offersAt, type Bank, type Product, type CourseSettings } from "@config/course";
+import { COURSE, cleanPhone, codedOffer, isLadder, isProduct, offerFor, offersAt, type Bank, type Product, type CourseSettings } from "@config/course";
 import { loadSettings } from "./settings";
 import { notifyTransfer } from "./telegram";
 
@@ -98,14 +98,13 @@ export async function startOrder(user: { id: string; email?: string | null }, b:
   const hasCode = typeof b.code === "string" && b.code.trim() !== "";
   const coded = hasCode && course?.published && price > 0 ? await codePrice(courseId, b.code) : null;
   if (hasCode && course?.published && price > 0 && !coded) throw new UserError("كود الخصم غير صحيح لهذه الدورة.", 400);
-  // the clock course sells the product the person chose at today's price (a code still gives its own price); the others their recorded course
+  // the clock course sells the product the person chose at today's price (a code buys the whole course at its own price); the others their recorded course
   const ladder = isLadder(s, courseId);
-  const product: Product = ladder ? (isProduct(b.product) ? b.product : "combo") : "recorded";
+  const product: Product = ladder ? (coded ? "combo" : isProduct(b.product) ? b.product : "combo") : "recorded";
   if (coded && !ladder) price = coded.price;
   // a course is on sale while it is shown to students and has a price
-  const found = course?.published && price > 0 ? offerFor(s, product, now, price, was, courseId) : null;
-  if (!found) throw new UserError(ladder && offersAt(s, now, price, was, courseId).offers.length ? "هذا الخيار ما عاد معروض بهذا السعر؛ حدّث الصفحة وشوف أسعار اليوم." : "هذه الدورة غير معروضة للبيع الحين.", 409);
-  const offer = coded && ladder ? { ...found, price: coded.price, was: Math.max(found.was, found.price) } : found;
+  const offer = course?.published && price > 0 ? (coded && ladder ? codedOffer(s, now, coded.price, price, was, courseId) : offerFor(s, product, now, price, was, courseId)) : null;
+  if (!offer) throw new UserError(ladder && offersAt(s, now, price, was, courseId).offers.length ? "هذا الخيار ما عاد معروض بهذا السعر؛ حدّث الصفحة وشوف أسعار اليوم." : "هذه الدورة غير معروضة للبيع الحين.", 409);
   const name = typeof b.name === "string" ? b.name.trim().replace(/\s+/g, " ") : "";
   if (name.length < 2 || name.length > 80) throw new UserError("اكتب اسمك الثلاثي (يساعدنا نطابق التحويل).", 400);
   const phone = cleanPhone(b.phone);

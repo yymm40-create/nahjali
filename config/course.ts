@@ -279,6 +279,13 @@ export function offersAt(s: Clock, now: number, price: number = COURSE.price, wa
 /** The offer for a product right now, or null when it is not on sale in this phase. */
 export const offerFor = (s: Clock, product: Product, now: number, price?: number, was?: number, courseId?: string | null): Offer | null => offersAt(s, now, price, was, courseId).offers.find((o) => o.product === product) ?? null;
 
+/** A discount code on the clock course buys the WHOLE course (live + recorded) at the code's price, in any phase once the clock started. */
+export function codedOffer(s: Clock, now: number, codePrice: number, price?: number, was?: number, courseId?: string | null): Offer | null {
+  if (offersAt(s, now, price, was, courseId).phase === "soon") return null;
+  const whole = Math.round((s.was.live + s.was.recorded) * 100) / 100;
+  return { product: "combo", label: PRODUCT_LABEL.combo, price: codePrice, was: Math.max(whole, codePrice), bonus: 0 };
+}
+
 /** The saving in percent when `was` is higher than `price`. */
 export const savingPct = (o: Pick<Offer, "price" | "was">) => (o.was > o.price ? Math.round((1 - o.price / o.was) * 100) : 0);
 

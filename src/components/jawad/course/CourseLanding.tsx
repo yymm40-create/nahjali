@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import AgreeTerms from "@/components/jawad/AgreeTerms";
 import Coined from "@/components/Coined";
 import Riyal from "@/components/Riyal";
-import { COURSE, countdown, embedOf, hasLifetimeAccess, isLadder, offersAt, PRODUCT_ACCESS, PRODUCT_LABEL, type Bank, type Offer, type Product } from "@config/course";
+import { COURSE, codedOffer, countdown, embedOf, hasLifetimeAccess, isLadder, offersAt, PRODUCT_ACCESS, PRODUCT_LABEL, type Bank, type Offer, type Product } from "@config/course";
 import { LEARN } from "@config/learn";
 import type { PublicCourse } from "@/lib/course/settings";
 
@@ -146,7 +146,7 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
     setBusy(true);
     setError("");
     try {
-      const r = await post<{ order: OrderView; bank: Bank }>("/api/course/order", { courseId, name, phone, code: coded?.code, product: sheet.product });
+      const r = await post<{ order: OrderView; bank: Bank }>("/api/course/order", { courseId, name, phone, code: coded?.code, product: coded && ladder ? "combo" : sheet.product });
       setOrder(r.order);
       setBank(r.bank);
       setSheet({ ...sheet, step: "bank" });
@@ -176,8 +176,10 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
   const statusOf = (p: Product) => orders.find((o) => o.product === p || (o.product === "combo" && o.status === "confirmed"));
   const left = cur.endsAt ? cur.endsAt - now : null;
   const lock = order ? Math.max(0, new Date(order.lockedUntil).getTime() - now) : 0;
+  // on the clock course a code buys the whole course (live + recorded) at its price, whatever was picked
+  const sheetProduct: Product | null = sheet ? (coded && ladder ? "combo" : sheet.product) : null;
   const offerBase = sheet ? cur.offers.find((o) => o.product === sheet.product) : null;
-  const offer = offerBase && coded ? { ...offerBase, price: coded.price, was: Math.max(offerBase.was, offerBase.price) } : offerBase;
+  const offer = coded && ladder ? codedOffer(s, now, coded.price, price, was, courseId) : offerBase && coded ? { ...offerBase, price: coded.price, was: Math.max(offerBase.was, offerBase.price) } : offerBase;
 
   // the offer being bought: the one chosen, else the one with a gift, else the first
   const [picked, setPicked] = useState<Product | null>(null);
@@ -414,7 +416,7 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
             </ol>
             {sheet.step === "form" && (
               <>
-                <h3>{PRODUCT_LABEL[sheet.product]}</h3>
+                <h3>{PRODUCT_LABEL[sheetProduct ?? sheet.product]}</h3>
                 {offer && (
                   <div className="cr-sheet-price">
                     <Price o={offer} size={30} />
@@ -425,7 +427,7 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
                   <input dir="ltr" value={codeText} onChange={(e) => { setCodeText(e.target.value); setCoded(null); }} placeholder="كود الخصم (إن وجد)" maxLength={40} />
                   <button type="button" className="cr-btn" disabled={!codeText.trim()} onClick={() => void applyCode()}>طبّق</button>
                 </div>
-                {coded && <p className="cr-gift">✅ انطبق الكود، سعرك <Coined text={`¤${coded.price}`} size={14} /></p>}
+                {coded && <p className="cr-gift">✅ انطبق الكود{ladder ? " على الدورة كاملة (مباشرة + مسجلة)" : ""}، سعرك <Coined text={`¤${coded.price}`} size={14} /></p>}
                 <label>الاسم الثلاثي<input value={name} onChange={(e) => setName(e.target.value)} placeholder="كما في حسابك البنكي" autoComplete="name" maxLength={80} /></label>
                 <label>رقم الجوال (واتساب)<input dir="ltr" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="05xxxxxxxx" autoComplete="tel" /></label>
                 <label>الإيميل<input dir="ltr" value={user?.email ?? ""} readOnly /></label>
@@ -455,7 +457,7 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
             {sheet.step === "done" && (
               <>
                 <h3>وصلنا طلبك ✅</h3>
-                <p>راح نتأكد من التحويل، وبعدها {hasLifetimeAccess(sheet.product) ? "تظهر لك الدورة مباشرة في «دوراتي»" : "يوصلك رابط البث المباشر في المجموعة"}{phone ? <> (وقد نتواصل معك على <b dir="ltr">{phone}</b>)</> : null}.</p>
+                <p>راح نتأكد من التحويل، وبعدها {hasLifetimeAccess(sheetProduct ?? sheet.product) ? "تظهر لك الدورة مباشرة في «دوراتي»" : "يوصلك رابط البث المباشر في المجموعة"}{phone ? <> (وقد نتواصل معك على <b dir="ltr">{phone}</b>)</> : null}.</p>
                 {group && <a className="cr-cta" href={group} target="_blank" rel="noreferrer"><span className="cr-cta-main">اطلب الانضمام لمجموعة الواتساب</span></a>}
                 <button type="button" className="cr-btn" onClick={() => setSheet(null)}>تمام</button>
               </>
