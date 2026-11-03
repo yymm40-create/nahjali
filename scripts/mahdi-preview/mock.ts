@@ -5,6 +5,7 @@ import { DEFAULT_PROFILE, makePlan } from "@/lib/mahdi/health/plan";
 import type { DayLog } from "@/lib/mahdi/health/tracker";
 import type { PostView, SocialUser, StoryGroup } from "@/lib/mahdi/social";
 import type { Habit, Snapshot } from "@/lib/mahdi/types";
+import type { MahdiTheme } from "@config/mahdi";
 
 export const TODAY: ISODate = "2026-11-03";
 const FROM: ISODate = "2026-08-01";
@@ -79,7 +80,7 @@ export const snapshot: Snapshot = {
     avatarUrl: null,
     shrineId: "imam-ali",
     // ?theme=<key> picks another look (config/mahdi.ts MAHDI_THEMES); «الحرم» by default
-    theme: (typeof location !== "undefined" && new URLSearchParams(location.search).get("theme")) || "cinematic",
+    theme: ((typeof location !== "undefined" && new URLSearchParams(location.search).get("theme")) || "cinematic") as MahdiTheme,
     themeVariant: "",
     timeZone: "Asia/Riyadh",
     weekStart: 6,
