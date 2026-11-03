@@ -30,6 +30,6 @@ export const notFound = () => { throw new Error("notFound"); };
 /** next/image: a plain <img>; `fill` stretches it over its positioned parent. */
 export function Image({ src, alt, fill, width, height, style, className, sizes: _s, priority: _p, loading, fetchPriority: _f, unoptimized: _u, placeholder: _ph, quality: _q, ...rest }: Record<string, unknown>) {
   const s = typeof src === "string" ? src : (src as { src: string })?.src;
-  const fillStyle = fill ? { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" } : {};
+  const fillStyle: React.CSSProperties = fill ? { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" } : {};
   return <img src={s} alt={alt as string} width={fill ? undefined : (width as number)} height={fill ? undefined : (height as number)} className={className as string} loading={loading as "eager" | "lazy"} style={{ ...fillStyle, ...(style as object) }} {...rest} />;
 }
