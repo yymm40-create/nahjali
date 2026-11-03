@@ -339,6 +339,7 @@ export async function callClaudeJson<T>({
   turnNote,
   cacheTtl,
   cacheTail = true,
+  turnEffort,
 }: {
   system: string;
   turns: ClaudeTurn[];
@@ -375,6 +376,14 @@ export async function callClaudeJson<T>({
    * it bought nothing). Text parts with `cache: true` keep theirs.
    */
   cacheTail?: boolean;
+  /**
+   * The thinking level for THIS reply, set by a per-message effort system message (beta
+   * mid-conversation-output-config-2026-07-01) while the request's own `effort` stays the same for every call of a kind
+   * of work: a different top-level effort (or output format) between calls restarts the cache, so steps that think at
+   * different levels (a plan high, a fix medium) could never read each other's cached prefix. Supported on every mind
+   * the site offers (Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 5.5).
+   */
+  turnEffort?: "low" | "medium" | "high" | "xhigh";
 }): Promise<{ data: T; raw: string; usage: ClaudeUsage; partial?: boolean }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -417,7 +426,9 @@ export async function callClaudeJson<T>({
   }))));
 
   // Haiku has no server-side fallback model
-  const withFallback = fallback && asked.key !== "haiku";
+  // Haiku has no server-side fallback model; a per-message effort is not understood by the fallback models either
+  const withFallback = fallback && asked.key !== "haiku" && !turnEffort;
+  const perTurn = Boolean(turnEffort && asked.effort);
   const call = async (level: typeof effort) => {
     // ANTHROPIC_BASE_URL only for a local test server; production talks to the API directly
     // streamed: a long reply is never cut by a clock on the whole answer (only a line gone quiet is dropped)
@@ -428,14 +439,16 @@ export async function callClaudeJson<T>({
         "x-api-key": key,
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
-        ...(withFallback ? { "anthropic-beta": "server-side-fallback-2026-07-01" } : {}),
+        ...(withFallback ? { "anthropic-beta": "server-side-fallback-2026-07-01" } : perTurn ? { "anthropic-beta": "mid-conversation-output-config-2026-07-01" } : {}),
       },
       body: JSON.stringify({
         model: asked.id,
         max_tokens: maxTokens,
         system: siteSystem(system, true, leader, cacheTtl),
-        messages,
-        output_config: { ...(asked.effort ? { effort: level } : {}), ...(rawText ? {} : { format: { type: "json_schema", schema } }) },
+        // the reply's own level rides as an effort-only system message after the latest turn (the top level stays fixed);
+        // a retry that has to think less («low» after max_tokens) lowers it the same way
+        messages: perTurn ? [...messages, { role: "system", content: [], output_config: { effort: level === effort ? turnEffort : level } }] : messages,
+        output_config: { ...(asked.effort ? { effort: perTurn ? effort : level } : {}), ...(rawText ? {} : { format: { type: "json_schema", schema } }) },
         ...(withFallback ? { fallbacks: "default" } : {}),
       }),
     }, CLAUDE_TRIES, Math.max(CLAUDE_IDLE_MS, timeoutMs ?? 0), resume, onText);

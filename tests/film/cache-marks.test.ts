@@ -15,8 +15,8 @@ const sse = (text: string) => {
 };
 type Block = { type: string; text?: string; cache_control?: { type: string; ttl?: string } };
 async function sent(o: Partial<Parameters<typeof callClaudeJson>[0]> & { turns: ClaudeTurn[] }) {
-  let body: { system: Block[]; messages: { role: string; content: Block[] }[] } | null = null;
-  vi.stubGlobal("fetch", vi.fn(async (_u: string, init: RequestInit) => ((body = JSON.parse(String(init.body))), sse('{"ok":true}'))));
+  let body: { system: Block[]; messages: { role: string; content: Block[]; output_config?: { effort: string } }[]; output_config: { effort?: string }; headers: Record<string, string> } | null = null;
+  vi.stubGlobal("fetch", vi.fn(async (_u: string, init: RequestInit) => ((body = { ...JSON.parse(String(init.body)), headers: init.headers as Record<string, string> }), sse('{"ok":true}'))));
   process.env.ANTHROPIC_API_KEY = "test";
   await callClaudeJson({ system: "TASK", schema: { type: "object" }, maxTokens: 100, ...o });
   return body!;
@@ -51,5 +51,17 @@ describe("the cache marks of a request", () => {
     const b = await sent({ turns: [{ role: "user", content: "a" }, { role: "assistant", content: "b" }, { role: "user", content: [...parts, { type: "text", text: "tail" }] }] });
     expect(marked(b).length).toBe(3);
     expect(marked(b)).toContain("2:4");
+  });
+
+  it("a reply's own thinking level rides as a per-message effort; the request's level stays fixed (one cache for every step)", async () => {
+    const high = await sent({ turns: [{ role: "user", content: "plan it" }], effort: "medium", turnEffort: "high" });
+    const low = await sent({ turns: [{ role: "user", content: "fix it" }], effort: "medium", turnEffort: "low" });
+    for (const b of [high, low]) {
+      expect(b.output_config.effort).toBe("medium");
+      expect(b.headers["anthropic-beta"]).toBe("mid-conversation-output-config-2026-07-01");
+    }
+    expect(high.messages.at(-1)).toEqual({ role: "system", content: [], output_config: { effort: "high" } });
+    expect(low.messages.at(-1)).toEqual({ role: "system", content: [], output_config: { effort: "low" } });
+    expect(JSON.stringify(high.system)).toBe(JSON.stringify(low.system));
   });
 });
