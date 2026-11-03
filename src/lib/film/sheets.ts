@@ -1,11 +1,11 @@
 import { after } from "next/server";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
+import { callClaudeJson, claudeCost, totalTokens, type ClaudeTurn } from "./anthropic";
 import { currentClaude, withClaude } from "./claude-model";
-import { addMessage, buildTurns } from "./conversation";
+import { addMessage, stageTurns } from "./conversation";
 import { generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
-import { failJob, JOB_STALE_MS, startJob, succeedJob } from "./usage";
+import { failJob, JOB_STALE_MS, logReplyTokens, replyTokens, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
 import { GENERATOR_FACTS, MASTER_STYLE_ONLY, SHEET_APP_INTEGRATION, SHEET_MAKER_PROMPT, SHEET_MAKER_SCHEMA, STYLE_PLACEHOLDER } from "@config/film-prompts/sheet-maker";
 import { findStyle } from "@config/film-styles";
@@ -761,11 +761,19 @@ const KIND_BY_STAGE: Record<number, SheetKind> = { 2: "sheet_understanding", 3: 
 
 export async function runSheetReply(projectId: string, jobId: string) {
   try {
-    const turns = await buildTurns(projectId, STAGE);
+    // capped and trimmed (lib/film/conversation): a picture is sent again only while it is still needed — the master's,
+    // and a person's photos whose sheet is not drawn yet — and earlier versions of a sheet's prompt read as a stub
+    const assets = await sheetAssets(projectId);
+    const drawn = approvedImages(assets);
+    const needed = new Set([drawn[MASTER_ID]?.id, ...assets.filter((a) => a.kind === "upload" && a.status !== "rejected" && !drawn[a.ref_key]).map((a) => a.id)].filter(Boolean) as string[]);
+    const { turns, usd: handoffUsd } = await stageTurns(projectId, STAGE, { robot: "صانع الشيت الذكي", keepImage: (id) => needed.has(id) });
     if (turns.at(-1)?.role !== "user") throw new Error("nothing to answer");
     const { data: lastAsk } = await db().from("film_messages").select("content").eq("project_id", projectId).eq("stage", STAGE).eq("role", "user").order("created_at", { ascending: false }).limit(1).maybeSingle();
-    if (String(lastAsk?.content ?? "").startsWith(BATCH_REQUEST)) return await runSheetBatch(projectId, jobId, turns);
-    const result = await callClaudeJson<Reply>({ system: SYSTEM, turns, schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS });
+    if (String(lastAsk?.content ?? "").startsWith(BATCH_REQUEST)) return await runSheetBatch(projectId, jobId, turns, handoffUsd);
+    // an hour's cache: between replies the sheet pictures are drawn and the person looks at them (often more than 5
+    // minutes), so on the 5-minute cache most replies wrote the whole conversation (with its pictures) again
+    const result = await callClaudeJson<Reply>({ system: SYSTEM, turns, schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS, cacheTtl: "1h" });
+    logReplyTokens("sheets", projectId, result.usage);
     const r = result.data;
     const { data: asked } = await db()
       .from("film_messages")
@@ -803,8 +811,9 @@ export async function runSheetReply(projectId: string, jobId: string) {
         sheet_map: kind === "sheet_understanding" ? r.sheet_map : undefined,
         prompt: r.prompt || undefined,
         references: r.references?.length ? r.references : undefined,
-        // what this reply cost (shown on its card, in coins)
+        // what this reply cost (shown on its card, in coins), and its tokens by kind (a cache hit or miss)
         cost_usd: claudeCost(result.usage),
+        usage: replyTokens(result.usage),
       },
       // The handoff is passed on in the background and never shown as a step
       status: isHandoff || kind === "style_test" ? "approved" : "awaiting_approval",
@@ -823,11 +832,36 @@ export async function runSheetReply(projectId: string, jobId: string) {
       const images = approvedImages(await sheetAssets(projectId));
       if (map.length && map.every((m) => images[m.id])) await client.from("film_projects").update({ stage: "director" }).eq("id", projectId);
     }
-    await succeedJob(jobId, { costUsd: claudeCost(result.usage), units: totalTokens(result.usage) });
+    await succeedJob(jobId, { costUsd: claudeCost(result.usage) + handoffUsd, units: totalTokens(result.usage) });
   } catch (err) {
     console.error("sheet maker reply failed", err);
     await failJob(jobId, err);
   }
+}
+
+/** Closes the latest turn's shared part in every request of a batch (the cache mark sits on it). */
+export const BATCH_SHARED_END = "(هذا الطلب نفسه يصل لكل شيتات الدفعة؛ المطلوب منك في هذا الطلب بالذات تحته)";
+
+/**
+ * One batch request's turns: the conversation as it is, its latest turn (the batch message, often with the master's
+ * picture) closed by BATCH_SHARED_END — the same text in every request, carrying the cache mark — and then this sheet's own
+ * line, sent with `cacheTail: false` so nothing is marked after it. Before, the line was added to the latest turn and the
+ * mark sat on it: each of the N−1 parallel requests wrote the latest turn (pictures and all) to the cache again with a
+ * line no other request reads; now the first request writes the shared prefix once and every other one reads it.
+ */
+export function batchAsk(turns: ClaudeTurn[], item: { id: string; name: string }): ClaudeTurn[] {
+  return turns.map((t, i) =>
+    i === turns.length - 1
+      ? {
+          ...t,
+          content: [
+            ...(typeof t.content === "string" ? [{ type: "text" as const, text: t.content }] : t.content),
+            { type: "text" as const, text: BATCH_SHARED_END, cache: true },
+            { type: "text" as const, text: `في هذا الطلب بالذات: سلّم برومبت ${item.id} (${item.name}) فقط، كاملًا بصيغة المرحلة 6 (stage 6, sheet_id "${item.id}"). الموقع يطلب باقي الشيتات بالتوازي في طلبات مستقلة، فلا تكتبها هنا ولا تنتظر اعتماد غيره.` },
+          ],
+        }
+      : t,
+  );
 }
 
 /**
@@ -835,30 +869,22 @@ export async function runSheetReply(projectId: string, jobId: string) {
  * conversation, each delivered as that sheet's Stage 6 prompt (awaiting approval). The replies join the conversation
  * as one message, so later edits and the handoff see them all.
  */
-async function runSheetBatch(projectId: string, jobId: string, turns: Awaited<ReturnType<typeof buildTurns>>) {
+async function runSheetBatch(projectId: string, jobId: string, turns: ClaudeTurn[], handoffUsd = 0) {
   const client = db();
   const versions = await sheetVersions(projectId);
   const pending = pendingSheets(versions);
   if (!pending.length) throw new Error("no sheets left to write");
-  const results = await Promise.allSettled(
-    pending.map(async (item) => {
-      const ask = turns.map((t, i) =>
-        i === turns.length - 1
-          ? {
-              ...t,
-              content: [
-                ...(typeof t.content === "string" ? [{ type: "text" as const, text: t.content }] : t.content),
-                { type: "text" as const, text: `\n\nفي هذا الطلب بالذات: سلّم برومبت ${item.id} (${item.name}) فقط، كاملًا بصيغة المرحلة 6 (stage 6, sheet_id "${item.id}"). الموقع يطلب باقي الشيتات بالتوازي في طلبات مستقلة، فلا تكتبها هنا ولا تنتظر اعتماد غيره.` },
-              ],
-            }
-          : t,
-      );
-      const result = await callClaudeJson<Reply>({ system: SYSTEM, turns: ask, schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS });
+  const one = async (item: (typeof pending)[number]) => {
+      // the shared prefix is marked, the sheet's own line is not (`cacheTail: false`): see batchAsk
+      const result = await callClaudeJson<Reply>({ system: SYSTEM, turns: batchAsk(turns, item), schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS, cacheTtl: "1h", cacheTail: false });
+      logReplyTokens(`sheets-batch ${item.id}`, projectId, result.usage);
       return { item, result };
-    }),
-  );
+  };
+  // the first sheet alone, then the rest together: requests sent all at once over the same long conversation each
+  // wrote it to the cache at full price; after the first one, the others read it from the cache (a tenth of the price)
+  const results = [...(await Promise.allSettled(pending.slice(0, 1).map(one))), ...(await Promise.allSettled(pending.slice(1).map(one)))];
   const done = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
-  const cost = done.reduce((n, d) => n + claudeCost(d.result.usage), 0);
+  const cost = done.reduce((n, d) => n + claudeCost(d.result.usage), handoffUsd);
   const tokens = done.reduce((n, d) => n + totalTokens(d.result.usage), 0);
   if (!done.length) {
     const why = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
@@ -871,7 +897,7 @@ async function runSheetBatch(projectId: string, jobId: string, turns: Awaited<Re
     if (old.length) await client.from("film_versions").update({ status: "superseded" }).in("id", old);
     const { error } = await client.from("film_versions").insert({
       project_id: projectId, stage: STAGE, kind: "sheet_prompt", ref_key: item.id, version: (same.at(-1)?.version ?? 0) + 1, body: r.content,
-      data: { notes: r.notes, suggestion: r.suggestion?.trim() || undefined, prompt: r.prompt || undefined, references: r.references?.length ? r.references : undefined, cost_usd: claudeCost(result.usage) },
+      data: { notes: r.notes, suggestion: r.suggestion?.trim() || undefined, prompt: r.prompt || undefined, references: r.references?.length ? r.references : undefined, cost_usd: claudeCost(result.usage), usage: replyTokens(result.usage) },
       status: "awaiting_approval", created_by: "assistant",
     });
     if (error) throw error;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { contextOf, readMedia } from "@/lib/director/chats";
+import { needsContract } from "@/lib/director/chat";
 
 describe("Jawad Director conversations", () => {
   it("keeps every simultaneous generation's settings independent", () => {
@@ -20,5 +21,18 @@ describe("Jawad Director conversations", () => {
     const context = contextOf(messages);
     expect(context.shouldHandoff).toBe(true);
     expect(["warning", "critical"]).toContain(context.level);
+  });
+
+  it("sends the reply contract once per session, not with every message", () => {
+    const turns = (n: number) => Array.from({ length: n * 2 }, (_, i) => ({ role: i % 2 ? "assistant" as const : "user" as const, text: "x" }));
+    // the conversation's first message: no session yet
+    expect(needsContract(null, null)).toBe(true);
+    expect(needsContract(null, { parentChatId: null, messages: turns(1) })).toBe(true);
+    // a session that already holds it
+    expect(needsContract("sesn_a", { parentChatId: null, messages: turns(1) })).toBe(false);
+    expect(needsContract("sesn_a", { parentChatId: null, messages: turns(5) })).toBe(false);
+    // after a handoff: the new session began with the handoff alone, so the person's first message carries it
+    expect(needsContract("sesn_b", { parentChatId: "parent", messages: turns(1) })).toBe(true);
+    expect(needsContract("sesn_b", { parentChatId: "parent", messages: turns(2) })).toBe(false);
   });
 });

@@ -24,6 +24,7 @@ import { backgroundFile, coverFile, spriteFile } from "./art";
 import { talk, type Said } from "./claude";
 import { cleanHistory, getChat } from "./chats";
 import { leadTurns, remember } from "@/lib/robot-handoff";
+import { applyEdits, readSearchReplace } from "@/lib/patch";
 
 const db = () => createAdminClient();
 const T = "games_builds";
@@ -51,6 +52,8 @@ interface CodeNote {
   parts?: number;
   /** edit: the client's words */
   change?: string;
+  /** edit / fix: ask for the WHOLE page — a patch of this job was tried and did not apply (asked whole once, see stepCode) */
+  whole?: boolean;
 }
 
 interface Row {
@@ -186,7 +189,7 @@ export interface BuildQuote {
   free: boolean;
   /** the plan and the code written by the model: the usual cost and the ceiling (a continuation and a fix on top) */
   writing: { typical: number; max: number } | null;
-  /** a change to a finished game («✏️ عدّل»): one rewrite of its code, and the most (a fix more) */
+  /** a change to a finished game («✏️ عدّل»): usually a patch on its code, and the most (the patch, the whole page, a fix) */
   edit: { typical: number; max: number } | null;
   /** pictures besides the cover, at most */
   maxPictures: number;
@@ -196,13 +199,15 @@ export interface BuildQuote {
   atCost: boolean;
 }
 
-/** The writing of a game by the model that writes it, in USD: the usual way, and the most (one continuation and one fix more). */
+/** The writing of a game by the model that writes it, in USD: the usual way, and the most (one continuation and one fix more).
+ * An edit is usually a PATCH (a few hundred to a few thousand tokens of edits, see stepCode); at most the patch that did
+ * not apply, the whole page and a fix. */
 export function writingUsd(model: Parameters<typeof claudeCost>[1]): { typical: number; max: number; edit: { typical: number; max: number } } {
   const tokens = (input: number, write: number, read: number, output: number): ClaudeUsage => ({ input_tokens: input, cache_creation_input_tokens: write, cache_read_input_tokens: read, output_tokens: output });
   // a plan opens the site's long knowledge text cold (it is written to the cache), the code steps then read it from there
   const plan = (out: number) => claudeCost(tokens(6000, 60000, 0, out), model);
   const code = (out: number) => claudeCost(tokens(8000, 0, 60000, out), model);
-  return { typical: plan(3000) + code(14000), max: plan(GAME_BUILD.planTokens) + code(GAME_BUILD.codeTokens) * 3, edit: { typical: code(14000), max: code(GAME_BUILD.codeTokens) * 2 } };
+  return { typical: plan(3000) + code(14000), max: plan(GAME_BUILD.planTokens) + code(GAME_BUILD.codeTokens) * 3, edit: { typical: code(3000), max: code(4000) + code(GAME_BUILD.codeTokens) * 2 } };
 }
 
 export async function picturesQuote(user: { id: string; email?: string | null }, origin: string): Promise<BuildQuote> {
@@ -323,7 +328,13 @@ export async function stepCode(user: { id: string; email?: string | null }, id: 
   const job = note.job === "continue" ? (note.of ?? "write") : note.job;
   const base: "write" | "edit" = note.job === "continue" ? (note.base ?? (job === "edit" ? "edit" : "write")) : note.job === "fix" ? (note.of === "edit" ? "edit" : "write") : note.job === "edit" ? "edit" : "write";
   const going = note.job === "continue" && !!r.draft;
-  const brief = going ? continueBrief(plan, r.draft!) : note.job === "fix" && r.draft ? fixBrief(plan, r.draft, note.problems ?? []) : base === "edit" && r.html ? editBrief(plan, r.html, note.change ?? "", errors) : codeBrief(plan);
+  // an edit of a finished game and a fix of a page that failed the checks are asked as a PATCH on that page first (exact
+  // search/replace edits: a colour or a speed was 10–20k tokens of a whole page, now a few hundred); a patch that does not
+  // apply asks the same job again WHOLE, once (`whole`)
+  const fixing = !going && note.job === "fix" && !!r.draft;
+  const editing = !going && !fixing && base === "edit" && !!r.html;
+  const target = !note.whole ? (fixing ? r.draft : editing ? r.html : null) : null;
+  const brief = going ? continueBrief(plan, r.draft!) : fixing ? fixBrief(plan, r.draft!, note.problems ?? [], !!target) : editing ? editBrief(plan, r.html!, note.change ?? "", errors, !!target) : codeBrief(plan);
   const tries = r.code_tries + 1;
   const again: CodeState = (note.job === "fix" || going) && r.draft ? "broken" : "pending";
 
@@ -344,8 +355,19 @@ export async function stepCode(user: { id: string; email?: string | null }, id: 
     return viewOf((await rowOf(user.id, id)) ?? r);
   }
 
-  const text = going ? joinParts(r.draft!, said.text) : said.text;
   const spent = Number(r.usd ?? 0) + said.usd;
+  if (target) {
+    const patched = patchedPage(target, said);
+    if (patched === null) {
+      // it did not apply (or he asked for the whole page, or it was cut off): the same job again, whole — not a failed try
+      await update(id, { code_state: again, code_note: JSON.stringify({ ...note, whole: true } satisfies CodeNote), usd: spent, last_error: "" });
+      return viewOf((await rowOf(user.id, id)) ?? r);
+    }
+    // applied: checked like any page below (one that fails the checks goes to a fix, itself a patch first)
+    return settle(r, patched, ids, base, note, tries, again, spent, user.id);
+  }
+
+  const text = going ? joinParts(r.draft!, said.text) : said.text;
   const parts = going ? (note.parts ?? 1) + 1 : 1;
   // it stopped in the middle (out of length, or cut off): the next step goes on from there — it is not a failed try
   if ((said.stop === "max_tokens" || said.stop === "cut") && parts <= GAME_BUILD.maxContinues && !/<\/html\s*>/i.test(said.text) && text.length < GAME_BUILD.maxHtml) {
@@ -353,7 +375,28 @@ export async function stepCode(user: { id: string; email?: string | null }, id: 
     return viewOf((await rowOf(user.id, id)) ?? r);
   }
 
-  const page = readPage(text);
+  return settle(r, readPage(text), ids, base, note, tries, again, spent, user.id);
+}
+
+/**
+ * The page a patch answer makes of `target` (the page it was asked on), or null when it cannot be used: no SEARCH/REPLACE
+ * blocks (he answered «WHOLE»), a block broken or cut off, or an edit whose old text is not there exactly once. Pure.
+ */
+export function patchedPage(target: string, said: Pick<Said, "text" | "stop">): string | null {
+  if (said.stop === "max_tokens" || said.stop === "cut") return null;
+  const edits = readSearchReplace(said.text);
+  if (!edits) {
+    // he wrote the whole page after all: a complete one is used as it is (not paid for twice)
+    const page = readPage(said.text);
+    return page && /<\/html\s*>\s*$/i.test(page) ? page : null;
+  }
+  const done = applyEdits(target, edits);
+  return done.ok ? done.text : null;
+}
+
+/** A written (or patched) page settled: served when it passes the checks, else sent for a fix (or the try counted). */
+async function settle(r: Row, page: string | null, ids: string[], base: "write" | "edit", note: CodeNote, tries: number, again: CodeState, spent: number, userId: string): Promise<BuildView> {
+  const id = r.id;
   const problems = page ? checkPage(page, ids) : [];
   if (page && !problems.length) {
     // a good page: served from now on (a fix or an edit also clears what players ran into)
@@ -364,7 +407,7 @@ export async function stepCode(user: { id: string; email?: string | null }, id: 
   } else {
     await giveUpOr(r, tries, { code_state: "broken", draft: page, code_note: JSON.stringify({ job: "fix", of: base, problems, change: note.change } satisfies CodeNote), usd: spent }, "");
   }
-  return viewOf((await rowOf(user.id, id)) ?? r);
+  return viewOf((await rowOf(userId, id)) ?? r);
 }
 
 /** Another try when there are tries left; else the build stops (a new game) or stays as it was (an edit). */

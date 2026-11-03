@@ -7,9 +7,15 @@ import { UserError } from "@/lib/api";
 import { robotTurn, type RobotUser } from "@/lib/claude-run";
 import { callClaudeJson, claudeCost, claudeWhy, type ClaudePart } from "@/lib/film/anthropic";
 import { checkProgram } from "./compute";
-import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, GRADE_CONTRACT, GRADE_RUBRIC } from "./skill";
+import { readScope, scopeLine } from "@/lib/editor/scopes";
+import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, lastRound, GRADE_CONTRACT, GRADE_RUBRIC } from "./skill";
 
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
+/** A scope the page measured, as one line (or nothing when it sent none). */
+const measured = (v: unknown, label: string) => {
+  const s = readScope(v);
+  return s ? `\n${label} — scope: ${scopeLine(s)}` : "";
+};
 const jpeg = (v: unknown) => (typeof v === "string" && /^[A-Za-z0-9+/=]+$/.test(v) && v.length < 1_200_000 ? v : null);
 
 const SYSTEM = (who: string) => `You are «${who}», working in your «حيدرا ماكس» mode as the colourist (never call yourself Claude).
@@ -41,7 +47,7 @@ async function ask<T>(user: RobotUser, who: string, model: unknown, label: strin
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
   const deadline = AbortSignal.timeout(240_000);
   return robotTurn(user, model, label, async () => {
-    const r = await callClaudeJson<T>({ system: SYSTEM(who), turns: [{ role: "user", content: parts }], schema, maxTokens: 20_000, effort: "high", fallback: true, signal: deadline }).catch((e) => {
+    const r = await callClaudeJson<T>({ system: SYSTEM(who), turns: [{ role: "user", content: parts }], schema, maxTokens: 20_000, effort: "medium", fallback: true, signal: deadline }).catch((e) => {
       console.error("claude code grade", label, e);
       if (deadline.aborted) throw new UserError("خدمة الذكاء الاصطناعي تأخرت. أعد المحاولة.", 504);
       throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يلوّن الحين. جرّب مرة ثانية.", user.email), 502);
@@ -57,7 +63,7 @@ export async function gradeWrite(user: RobotUser, who: string, b: Record<string,
   if (request.length < 2 || !before) throw new UserError("ما وصلني اللوك أو الصورة.", 400);
   const previous = text(b.code, 60_000);
   const parts: ClaudePart[] = [
-    { type: "text", text: `${previous ? "FIX the grade program below." : "WRITE the grade program."}\nTHE LOOK ASKED FOR: ${request}\n${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the sandbox):\n${text(b.errors, 4000) || "(no error text)"}` : ""}\nThe picture as it is now:` },
+    { type: "text", text: `${previous ? "FIX the grade program below." : "WRITE the grade program."}\nTHE LOOK ASKED FOR: ${request}\nFollow THE COLOURIST'S METHOD: measure first (write what you read in the numbers at the top of the program), then light, then colour. A still photograph is a display picture (log "none") unless the numbers say it is undecoded log.\n${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the sandbox):\n${text(b.errors, 4000) || "(no error text)"}` : ""}${measured(b.scope, "THE PICTURE")}\nThe picture as it is now:` },
     { type: "image64", data: before, mediaType: "image/jpeg" },
   ];
   const r = await ask<{ code: string; notes: string }>(user, who, b.model, previous ? "حيدرا ماكس · تصليح التلوين" : "حيدرا ماكس · برنامج التلوين", parts, WRITE_SCHEMA);
@@ -73,10 +79,10 @@ export async function gradeReview(user: RobotUser, who: string, b: Record<string
   if (!code || !before || !after) throw new UserError("ما وصلتني الصور أو البرنامج.", 400);
   const round = Math.max(1, Math.min(CODE_ROUNDS, Math.round(Number(b.round) || 1)));
   const parts: ClaudePart[] = [
-    { type: "text", text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}. Be a HARSH colourist. Judge what you SEE after the grade against before.\nTHE LOOK ASKED FOR: ${request}\nScore every criterion 1–10: ${GRADE_RUBRIC.map((r) => `${r.id}: ${r.en}`).join(" | ")} (a single picture: "match" is how evenly the look holds across the picture). If ANY score is below ${CODE_PASS}, return the COMPLETE revised program; otherwise code = "".\nTHE PROGRAM:\n${code}` },
-    { type: "text", text: "BEFORE:" },
+    { type: "text", text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}.${lastRound(round)} Be a HARSH colourist. Judge what you SEE after the grade against before.\nTHE LOOK ASKED FOR: ${request}\nScore every criterion 1–10: ${GRADE_RUBRIC.map((r) => `${r.id}: ${r.en}`).join(" | ")} (a single picture: "match" is how evenly the look holds across the picture). If ANY score is below ${CODE_PASS}, return the COMPLETE revised program; otherwise code = "".\nTHE PROGRAM:\n${code}` },
+    { type: "text", text: `BEFORE:${measured(b.scope, "BEFORE")}` },
     { type: "image64", data: before, mediaType: "image/jpeg" },
-    { type: "text", text: "AFTER:" },
+    { type: "text", text: `AFTER:${measured(b.scopeAfter, "AFTER")}\nStep 6 of the method: compare the AFTER numbers with BEFORE and with the targets, then your eyes.` },
     { type: "image64", data: after, mediaType: "image/jpeg" },
   ];
   const r = await ask<Record<string, unknown>>(user, who, b.model, `حيدرا ماكس · مراجعة التلوين ${round}`, parts, REVIEW_SCHEMA);

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { postJson } from "@/lib/fetch";
+import { useClaudeModel } from "@/components/robots/claude-model";
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 type Draft = { id: string; previews: { index: number; url: string | null }[] };
@@ -12,6 +13,8 @@ type Draft = { id: string; previews: { index: number; url: string | null }[] };
  */
 export default function VoiceDesigner({ projectId, speaker, onCast, disabled = false }: { projectId: string; speaker: string; onCast: (value: string) => Promise<void> | void; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
+  // the person's Claude model: the voice's description is written with it
+  const [claude] = useClaudeModel();
   // ElevenLabs voice design only (the film maker's voices are ElevenLabs only)
   const [desc, setDesc] = useState("");
   const [sample, setSample] = useState("");
@@ -33,7 +36,7 @@ export default function VoiceDesigner({ projectId, speaker, onCast, disabled = f
   }
   const write = () =>
     run("يكتب الوصف…", async () => {
-      const r = await postJson<{ description: string; sample: string }>(`/api/film/projects/${projectId}/voices`, { action: "describe", speaker, hint: desc });
+      const r = await postJson<{ description: string; sample: string }>(`/api/film/projects/${projectId}/voices`, { action: "describe", speaker, hint: desc, model: claude.id });
       setDesc(r.description);
       setSample(r.sample);
     });

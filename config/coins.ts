@@ -114,7 +114,7 @@ export const coinsFor = (usd: number, kind: PriceKind = "other") => (isClaudeKin
 
 /**
  * What a robot's conversation costs the person: Claude's real usage of the chosen model plus the platform's profit
- * (40٪; «حيدرا ماكس»'s programs 70٪) and nothing else — no rounding up to the step (that would be a bigger profit on a
+ * (`CLAUDE_MARGIN_PCT`, «حيدرا ماكس»'s programs `HAIDARA_MAX_MARGIN_PCT` — both 60٪ since 26 October 2026) and nothing else — no rounding up to the step (that would be a bigger profit on a
  * small reply), only to the halala.
  */
 export function claudeHalalas(usd: number, p = current, kind: "claude" | "max" = "claude"): number {

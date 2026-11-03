@@ -28,6 +28,7 @@ import AssistantChat from "./AssistantChat";
 import DirectorChat from "@/components/jawad/director/DirectorChat";
 import ThumbnailComposer from "./ThumbnailComposer";
 import PromptBox from "./PromptBox";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import RefsStrip from "./RefsStrip";
 import type { WorkSource } from "./RefAdder";
 import { probeFile, putWithProgress } from "./upload";
@@ -154,6 +155,8 @@ export default function Studio({ section, studioSections, generators, directorGe
   const [draft, setDraft] = useState<Draft>({ generatorId: first, prompt: "", instructions: "", settings: {}, refStyle: {}, refs: [] });
   const [hydrated, setHydrated] = useState(false);
   const [prices, setPrices] = useState(initialPrices);
+  // the person's Claude model: «المخرج الخارق» and «النطق الدقيق» run on it (never dearer than their fixed price)
+  const [claude] = useClaudeModel();
   const [balance, setBalance] = useState(initialBalance);
   const [picker, setPicker] = useState(false);
   const [tab, setTab] = useState<"settings" | "works">("settings");
@@ -587,6 +590,7 @@ export default function Studio({ section, studioSections, generators, directorGe
         prompt: original,
         refs: draft.refs.filter((r) => r.uploadId && r.status === "ready").map((r) => ({ uploadId: r.uploadId, role: r.role, name: r.name })),
         expectedCoins,
+        model: claude.id,
       });
       if (r.status === 409 && r.body.code === "price_changed" && typeof r.body.coins === "number") {
         const coins = r.body.coins;
@@ -693,6 +697,7 @@ export default function Studio({ section, studioSections, generators, directorGe
       instructions,
       refs: R.map((r) => ({ uploadId: r.uploadId, role: r.role, name: r.name })),
       expectedCoins,
+      model: claude.id,
       ...(def.output !== "audio" && draft.styleId ? { styleId: draft.styleId } : {}),
       ...(freeImage ? { signupFreeImage: true } : {}),
       ...(frames ? { frames } : {}),
@@ -812,6 +817,7 @@ export default function Studio({ section, studioSections, generators, directorGe
       instructions: j.instructions,
       refs: j.refs.map((x) => ({ uploadId: x.uploadId, role: x.role, name: x.name ?? "" })),
       expectedCoins: j.priceCoins,
+      model: claude.id,
     }).catch(() => null);
     setItems((cur) => cur.filter((c) => c.id !== tempId));
     if (!r) return setNotice("انقطع الاتصال، جرّب مرة ثانية.");

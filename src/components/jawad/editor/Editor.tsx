@@ -2076,7 +2076,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
         {/* «كاب كت»: the left column — the menus as tabs at its top, what each opens under them (حيدرا ماكس too); on a phone
             its parts stay the bottom sheets they were (display: contents) */}
-        <div className={`cut-left ${colorRoom || big ? "contents" : "contents lg:relative lg:my-2 lg:flex lg:min-h-0 lg:shrink-0 lg:flex-col lg:overflow-hidden lg:rounded-2xl jw-glass-lg"}`} style={wide && !colorRoom && !big ? { order: 3, width: layout.panelW } : undefined}>
+        <div className={`cut-left ${colorRoom || big ? "contents" : "contents lg:relative lg:my-2 lg:flex lg:min-h-0 lg:shrink-0 lg:flex-col lg:overflow-hidden lg:rounded-2xl jw-glass-lg"}`} style={wide && !colorRoom && !big ? { order: 3, width: assisting && rail === "haidara" ? Math.max(layout.panelW, 500) : layout.panelW } : undefined}>
           {wide && !big && !colorRoom && railNav("tabs")}
           {wide && assisting && !big && !colorRoom && (
             <div className={`hd-left min-h-0 flex-1 flex-col ${rail === "haidara" ? "flex" : "hidden"}`} aria-label="حيدرا ماكس" dir="rtl">

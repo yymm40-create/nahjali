@@ -5,7 +5,7 @@
 // runs on while the person talks in the next. Every conversation is kept on the server: «🗂️ المحادثات» lists the
 // project's conversations to open again (in a tab of its own), rename or delete; closing a tab never loses one.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { postJson } from "@/lib/fetch";
 import { createPortal } from "react-dom";
 import type { Cue } from "@/lib/editor/scene/contract";
@@ -77,6 +77,11 @@ export default function MotionLabTabs({
   });
   const [status, setStatus] = useState<Record<string, Status>>({});
   const { tabs, active } = state;
+  // the tabs as they are NOW: a film finishes minutes after its export was started, when the strip may have changed
+  const latest = useRef({ state, status });
+  useEffect(() => {
+    latest.current = { state, status };
+  }, [state, status]);
 
   // the editor opened the lab again on something while it was already open: a tab of its own for it
   const [seen, setSeen] = useState(lab);
@@ -163,7 +168,8 @@ export default function MotionLabTabs({
 
   /** A tab is closed (its conversation stays on the server, in «🗂️ المحادثات»; one never kept there is lost — asked first). */
   const drop = (id: string, ask = true) => {
-    const st = status[id];
+    const { tabs } = latest.current.state;
+    const st = latest.current.status[id];
     const kept = Boolean(tabs.find((t) => t.id === id)?.chatId);
     if (ask && st && (st.busy || (st.work && !kept)) && !window.confirm(st.busy ? "هذا التبويب يشتغل الحين. تسكّره وتوقف شغله؟" : "هذا التبويب فيه شغل ما انحفظ على الخادم. تسكّره وتحذفه؟")) return;
     try {
@@ -183,13 +189,17 @@ export default function MotionLabTabs({
       onClose();
       return;
     }
-    setState({ tabs: rest, active: active === id ? rest[Math.max(0, tabs.findIndex((t) => t.id === id) - 1)].id : active });
+    setState((now) => {
+      const left = now.tabs.filter((t) => t.id !== id);
+      if (!left.length) return now;
+      return { tabs: left, active: now.active === id ? left[Math.max(0, now.tabs.findIndex((t) => t.id === id) - 1)].id : now.active };
+    });
   };
 
   // a finished film of a tab goes to the timeline and the tab is done; the lab folds when other tabs still have work
   const filmOf = (id: string) => (...args: Parameters<typeof onFilm>) => {
     onFilm(...args);
-    if (tabs.length > 1) {
+    if (latest.current.state.tabs.length > 1) {
       drop(id, false);
       onMinimize(true);
     } else onClose();

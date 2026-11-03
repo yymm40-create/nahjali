@@ -6,6 +6,7 @@
 import sharp from "sharp";
 import { UserError } from "@/lib/api";
 import { callClaudeJson } from "@/lib/film/anthropic";
+import { withClaude } from "@/lib/film/claude-model";
 import { falReady, falRun } from "@/lib/jawad/server/providers/fal";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { charged, type Who } from "./pricing";
@@ -21,14 +22,15 @@ const CONCEPT_SCHEMA = { type: "object", additionalProperties: false, required: 
 /** The words as SAM understands them: a short English noun phrase («الشخص اللي يمين» → "person on the right"). */
 async function concept(words: string) {
   if (/^[\x20-\x7e]+$/.test(words)) return words.slice(0, 80);
-  const r = await callClaudeJson<{ concept: string }>({
+  // a word looked up (Arabic → a short English noun for SAM 3): the lightest mind (it ran on Opus, outside any choice)
+  const r = await withClaude("claude-haiku-5-5", () => callClaudeJson<{ concept: string }>({
     system: "Turn the user's description of what to select in a video frame into a short English noun phrase for an open-vocabulary segmentation model (SAM 3), e.g. «الوجه» → \"face\", «السماء» → \"sky\", «الشخص اللي يمين» → \"person on the right\", «الثوب الأبيض» → \"white robe\". Only the phrase.",
     turns: [{ role: "user", content: words }],
     schema: CONCEPT_SCHEMA,
     maxTokens: 400,
     effort: "low",
     fallback: true,
-  });
+  }));
   return r.data.concept.trim().slice(0, 80) || words;
 }
 

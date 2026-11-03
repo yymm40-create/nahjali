@@ -5,11 +5,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { filmPathsInUse } from "@/lib/editor/server";
 import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
 import { currentClaude, withClaude } from "./claude-model";
-import { addMessage, buildTurns } from "./conversation";
+import { addMessage, stageTurns } from "./conversation";
 import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { approvedImages, latestJob, sheetAssets } from "./sheets";
-import { failJob, startJob, succeedJob } from "./usage";
+import { failJob, logReplyTokens, replyTokens, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
 import { filmVideoToStudio, studioVideoToFilm } from "./studio-link";
 import { checkLipsyncs } from "./lipsync";
@@ -566,6 +566,9 @@ async function insertSetup(projectId: string, versions: DirectorVersion[], super
   if (prev) await db().from("film_versions").update({ status: "superseded" }).eq("id", prev.id);
 }
 
+/** A line of the Super Director's skill: a message that holds it holds the skill. */
+const SUPER_DIRECTOR_MARK = "# Seedance 2.0 — Universal Director";
+
 async function superAlreadySent(projectId: string) {
   const { count } = await db()
     .from("film_messages")
@@ -573,7 +576,7 @@ async function superAlreadySent(projectId: string) {
     .eq("project_id", projectId)
     .eq("stage", STAGE)
     .eq("role", "user")
-    .like("content", "%# Seedance 2.0 — Universal Director%");
+    .like("content", `%${SUPER_DIRECTOR_MARK}%`);
   return Boolean(count);
 }
 
@@ -790,10 +793,16 @@ const KIND_FOR = (r: Reply): DirectorKind => {
 export async function runDirectorReply(projectId: string, jobId: string) {
   try {
     const versions = await directorVersions(projectId);
-    const turns = await buildTurns(projectId, STAGE);
+    // capped and trimmed (lib/film/conversation): the first message with its references is always read in full, the
+    // Super Director's skill too (only its latest copy), earlier versions of a generation read as a stub
+    const { turns, usd: handoffUsd } = await stageTurns(projectId, STAGE, { robot: "المخرج الذكي", pin: (c) => c.includes(SUPER_DIRECTOR_MARK), once: [SUPER_DIRECTOR, "(مهارة «المخرج الخارق»: نصها الكامل في رسالة لاحقة)"] });
     if (turns.at(-1)?.role !== "user") throw new Error("nothing to answer");
     const system = `${DIRECTOR_PROMPT}\n\n${DIRECTOR_APP_INTEGRATION(superDirectorOn(versions))}`;
-    const result = await callClaudeJson<Reply>({ system, turns, schema: DIRECTOR_SCHEMA, maxTokens: MAX_TOKENS });
+    // an hour's cache: the director's replies are spaced by Seedance renders and the person watching them (often more than
+    // 5 minutes), so on the 5-minute cache most replies wrote the whole conversation again (measured: 6 replies ≈ $2.10
+    // cold vs ≈ $1.02 kept for an hour — the 2× write is paid once, every later reply reads)
+    const result = await callClaudeJson<Reply>({ system, turns, schema: DIRECTOR_SCHEMA, maxTokens: MAX_TOKENS, cacheTtl: "1h" });
+    logReplyTokens("director", projectId, result.usage);
     const r = result.data;
     const kind = KIND_FOR(r);
     // Questions about one generation (after video notes) belong to it, like the generation itself
@@ -825,6 +834,8 @@ export async function runDirectorReply(projectId: string, jobId: string) {
         generate_audio: isGen ? r.generate_audio : undefined,
         // what this reply cost (shown on its card, in coins)
         cost_usd: claudeCost(result.usage),
+        // its tokens by kind, so a cache hit or miss can be checked against the cost
+        usage: replyTokens(result.usage),
       },
       // A note (e.g. "the generation set is complete") needs no approval
       status: kind === "dir_note" ? "approved" : "awaiting_approval",
@@ -834,7 +845,7 @@ export async function runDirectorReply(projectId: string, jobId: string) {
     if (error) throw error;
     // The reply joins the conversation only once its deliverable is stored, so a failure stays retryable
     await client.from("film_messages").insert({ project_id: projectId, stage: STAGE, role: "assistant", content: result.raw });
-    await succeedJob(jobId, { costUsd: claudeCost(result.usage), units: totalTokens(result.usage) });
+    await succeedJob(jobId, { costUsd: claudeCost(result.usage) + handoffUsd, units: totalTokens(result.usage) });
   } catch (err) {
     console.error("director reply failed", err);
     await failJob(jobId, err);

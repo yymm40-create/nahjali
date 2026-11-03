@@ -16,6 +16,8 @@ import { shortBalance, UserError } from "@/lib/api";
 import { coinBalance } from "@/lib/coins";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ClaudePart } from "@/lib/film/anthropic";
+import { withFixedPriceClaude } from "@/lib/film/claude-model";
+import { findClaudeModel } from "@config/claude-models";
 import { coinsOf, EDIT_CLAUDE_KEY, EDIT_CLAUDE_USD, EDIT_FEE_KEY, generatorById } from "@config/jawad/generators";
 import { MAX_ACTIVE_JOBS } from "@config/jawad/brand";
 import type { GeneratorDef, RefMeta, RefRole, RefStyle, Settings } from "@config/jawad/types";
@@ -56,6 +58,8 @@ export interface EditInputs {
   /** What جواد said about it (one short line). */
   jawadSaid?: string;
   claudeUsd?: number;
+  /** the Claude model the person chose: جواد writes the prompt with it (never a dearer one than the price was set for) */
+  claude?: string;
 }
 
 export interface EditBody {
@@ -74,6 +78,8 @@ export interface EditBody {
   /** …and their uploads (cut in the browser), in the same order, when the edit is made. */
   continuityUploads?: unknown;
   expectedCoins?: unknown;
+  /** the Claude model the person chose (config/claude-models.ts) */
+  model?: unknown;
   /** The generator to make the edit with (another one of the same kind may be picked; default: the original's). */
   generatorId?: unknown;
   /** The generation options chosen again for this edit (resolution, sound, seconds of a whole clip…): checked by readEditSettings. */
@@ -346,7 +352,7 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   // (the same inputs priced the same way: this only differs if the price table changed during the request)
   if (!priceAgreed(owner, first.coins, final.coins!)) return { kind: "price_changed", coins: final.coins!, lines: final.lines! };
 
-  const edit: EditInputs = { sourceJobId: source.id, outputId: String(out.id), mode, notes, ranges, cut, frames, ...(cont.length ? { continuity: cont } : {}) };
+  const edit: EditInputs = { sourceJobId: source.id, outputId: String(out.id), mode, notes, ranges, cut, frames, ...(cont.length ? { continuity: cont } : {}), ...(findClaudeModel(b.model) ? { claude: String(b.model) } : {}) };
   const charge = !owner && final.coins! > 0;
   const { data, error } = await db().rpc("jawad_create_job", {
     p_job: {
@@ -513,7 +519,7 @@ CONTINUITY (the most important thing): ${continuityText(edit)}${names.some((n) =
       });
       parts.push({ type: "text", text: words });
       // جواد writes it: his own declared locks and the continuity checker read the prompt before it goes (what is missing is sent back to him)
-      const r = await jawadWritesEdit({ def, parts, names, rules: "", draft, previous, extra: (p, kept) => [...lockCheck(p, kept), ...(model ? checkEditPrompt(p, model).map((x) => x.text) : [])] });
+      const r = await withFixedPriceClaude(edit.claude, () => jawadWritesEdit({ def, parts, names, rules: "", draft, previous, extra: (p, kept) => [...lockCheck(p, kept), ...(model ? checkEditPrompt(p, model).map((x) => x.text) : [])] }));
       prompt = r.prompt;
       usd = r.usd;
       locks = r.kept;
@@ -538,7 +544,7 @@ CONTINUITY (the most important thing): ${continuityText(edit)}${names.some((n) =
       }
       parts.push({ type: "text", text: words });
       // «SAME» edits the picture itself, so nothing else can move there anyway: no locks to declare
-      const r = await jawadWritesEdit({ def, parts, names, rules: IMAGE_EDIT_RULES, draft, previous, noLocks: edit.mode === "same", problems: (p) => imagePromptProblems(p, names, edit.mode), extra: (p, kept) => lockCheck(p, kept) });
+      const r = await withFixedPriceClaude(edit.claude, () => jawadWritesEdit({ def, parts, names, rules: IMAGE_EDIT_RULES, draft, previous, noLocks: edit.mode === "same", problems: (p) => imagePromptProblems(p, names, edit.mode), extra: (p, kept) => lockCheck(p, kept) }));
       prompt = r.prompt;
       usd = r.usd;
       locks = r.kept;

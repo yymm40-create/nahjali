@@ -41,3 +41,16 @@ it("cleans up keepalives on disconnect without discarding ongoing work", async (
   await vi.advanceTimersByTimeAsync(20_000);
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it("stops the step's work when the page cancels the request («إلغاء»)", async () => {
+  let seen: AbortSignal | undefined;
+  const response = labResponse((_, signal) => {
+    seen = signal;
+    return new Promise(() => undefined);
+  });
+  const reader = response.body!.getReader();
+  await reader.read();
+  expect(seen?.aborted).toBe(false);
+  await reader.cancel();
+  expect(seen?.aborted).toBe(true);
+});

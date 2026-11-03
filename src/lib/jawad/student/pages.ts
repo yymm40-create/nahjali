@@ -42,3 +42,28 @@ export const refitRatio = (want: number, got: number, front: number) => Math.max
 
 /** Words of a text (Arabic or not). */
 export const countWords = (s: string) => s.split(/\s+/).filter(Boolean).length;
+
+/** How much one chapter may grow or shrink to absorb a missed page count before more chapters are touched. */
+export const RESIZE_MOST = 0.5;
+
+/**
+ * Which chapters to make longer or shorter when the type at its limit still misses the count, and to how many words:
+ * the chapters with the most material first (they have the most to give or to say), as FEW as can absorb the difference
+ * within RESIZE_MOST each — usually one or two — instead of every chapter written again. A miss too big for that is
+ * shared by all the chapters in proportion (as before). `words`: each chapter's words now; `weights`: its material.
+ */
+export function resizeTargets(words: number[], weights: number[], ratio: number): { i: number; words: number }[] {
+  const total = words.reduce((a, b) => a + b, 0);
+  const delta = Math.round(total * (ratio - 1));
+  if (!words.length || Math.abs(delta) < 20) return [];
+  const order = words.map((_, i) => i).sort((a, b) => (weights[b] ?? 0) - (weights[a] ?? 0) || words[b] - words[a]);
+  const picked: number[] = [];
+  let room = 0;
+  for (const i of order) {
+    picked.push(i);
+    room += words[i] * RESIZE_MOST;
+    if (room >= Math.abs(delta)) break;
+  }
+  const base = picked.reduce((s, i) => s + words[i], 0) || 1;
+  return picked.map((i) => ({ i, words: Math.max(40, Math.round(words[i] + (delta * words[i]) / base)) })).filter((t) => t.words !== words[t.i]);
+}

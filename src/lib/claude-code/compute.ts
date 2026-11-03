@@ -8,6 +8,8 @@
 //   layout(D, K) → [op, …]        «زهراء فوتو ماستر»'s design: layers placed, photos arranged, words written and changed
 // Pure strings and checks (no DOM here); the host is src/components/claude-code/compute-host.ts.
 
+import { gamutToRec709, LOGS, NEUTRAL_GRADE, readGrade, type Grade } from "@/lib/editor/grade";
+
 export const PROGRAM_MAX = 60_000;
 /** The LUT edge a grade program is sampled at (25³: smooth enough for any grade, small enough to keep in the timeline). */
 export const GRADE_LUT_SIZE = 25;
@@ -40,6 +42,22 @@ export function checkProgram(kind: ProgramKind, code: unknown): { ok: boolean; p
   return { ok: !problems.length, problems, code: s };
 }
 
+/** What a grade program's finish(K) may set on its layer (the rest of a layer is the LUT's job), checked like any grade. */
+export type GradeFinish = Partial<Pick<Grade, "vignette" | "halation" | "grain" | "sharpen">>;
+export function readFinish(raw: unknown): GradeFinish {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const o = raw as Record<string, unknown>;
+  const part = (k: "vignette" | "halation" | "grain") => (o[k] && typeof o[k] === "object" && !Array.isArray(o[k]) ? { ...NEUTRAL_GRADE[k], ...(o[k] as object) } : undefined);
+  const g = readGrade({ ...NEUTRAL_GRADE, vignette: part("vignette") ?? NEUTRAL_GRADE.vignette, halation: part("halation") ?? NEUTRAL_GRADE.halation, grain: part("grain") ?? NEUTRAL_GRADE.grain, sharpen: o.sharpen ?? 0 });
+  if (!g) return {};
+  const out: GradeFinish = {};
+  if (part("vignette")) out.vignette = g.vignette;
+  if (part("halation")) out.halation = g.halation;
+  if (part("grain")) out.grain = g.grain;
+  if (o.sharpen !== undefined) out.sharpen = g.sharpen;
+  return out;
+}
+
 /** What the page may load: its own inline scripts. Nothing else, ever. */
 export const COMPUTE_CSP = ["default-src 'none'", "script-src 'unsafe-inline' 'unsafe-eval'", "style-src 'unsafe-inline'", "img-src 'none'", "connect-src 'none'", "frame-src 'none'", "worker-src 'none'", "form-action 'none'", "base-uri 'none'"].join("; ");
 
@@ -58,7 +76,21 @@ K.splitTone(c, { shadow: hue°, shadowAmt, high: hue°, highAmt, balance: −1�
 K.hueWeight(c, centre°, width°) → 0…1 how much c sits in that hue band (soft edges; for one-colour changes)
 K.skin(c) → 0…1 how much c looks like skin (protect it: mix the graded colour back toward the original by it)
 K.shadowsMask(c) / K.midsMask(c) / K.highsMask(c) → 0…1 soft tonal ranges by luma
-K.rng(seed) → a seeded random() (rarely needed in a grade)`;
+K.rng(seed) → a seeded random() (rarely needed in a grade)
+
+THE COLOURIST'S KIT (K) — scene light, a tone scale on luminance, and Oklab. Light is an ARRAY [r, g, b] here (linear, Rec.709 primaries); only grade()'s input c is { r, g, b } and its return is display values:
+K.logs → the camera logs it knows: ${LOGS.map((l) => l.id).join(", ")}
+K.logDecode(log, v, range = "video") → one channel of a log file's pixel as scene light (the editor's own published formulas: 18% grey → 0.18)
+K.scene(c, { log = "none", gamut = "camera" | "rec709" | "rec2020", range = "video", exposure = 0 (stops), printer = [r, g, b] (gains, 1 = none) }) → [r, g, b] scene light, in Rec.709 primaries. log "none" = c is a display picture (phone, Rec.709, or a clip whose layers already undo its log): it returns that picture's linear light
+K.decode(c) → [r, g, b] linear light of display values · K.encode([r, g, b]) → [r, g, b] display values (sRGB, clamped) — what grade() returns
+K.lum([r, g, b]) → luminance of linear light
+K.tonescale(Y, { grey = 0.11, contrast = 1.5, peak = 1.02, toe = 0.004, black = 0 }) → display luminance of scene luminance Y (Michaelis–Menten with a power, as OpenDRT / ACES 2: 0.18 → grey; contrast 1.3 soft … 1.7 punchy; toe > 0.01 = a matte/faded black, black > 0 = the flare taken out for clean blacks)
+K.display(lin, { …tonescale's, white = [0.78, 0.8], sat = 1 }) → [r, g, b] display light: the tone scale on LUMINANCE only, the colour kept as ratios (no hue shifts, no channel clipping), then the path to white (from display 0.78 the chroma fades by up to 0.8, so skin highlights go white, never pink or orange)
+K.oklab(lin) → { L, a, b } · K.fromOklab({ L, a, b }) → lin · K.oklch(lin) → { L 0…1, C 0…~0.37, h 0…360° } · K.fromOklch({ L, C, h }) → lin (perceptual: change C and h without changing how bright it looks)
+K.hueBand(h, centre°, width°) → 0…1 (an Oklab hue qualifier with soft edges) · K.skinKey(o, centre = 51, width = 24) → 0…1 skin (o from K.oklch; take the centre from the scope's «skin Oklab h» of THIS footage)
+K.vibrant(C, amount, knee = [0.07, 0.22]) → chroma raised by amount where it is dull, untouched where it is already strong (greys stay grey)
+K.ceiling(C, top) → a soft chroma ceiling (linear to 0.6·top, then eases into top): vivid, never neon
+K.inGamut({ L, C, h } | { L, a, b }) → [r, g, b] linear light inside the display: the chroma is lowered only as far as needed (never a clipped channel, so no hue jumps)`;
 
 export const EDIT_KIT_API = `THE EDIT KIT (K) — times are whole milliseconds on the timeline:
 K.merge(ranges, gapMs = 0) → [[a, b], …] sorted, overlapping or nearer than gapMs joined
@@ -96,6 +128,9 @@ K.imageW(file, hPct, D) → the width (%) a picture of that file takes when its 
 K.grid(n, cols, area, gap = 0) → n boxes { x, y, w, h } (centres, %) filling area { x, y, w, h } (its top-left corner and size, %), row by row
 K.textW(text, sizePct, D) → about how wide (%) one line of that Arabic text is at that size · K.lines(text, sizePct, maxW, D) → the text broken into lines that fit maxW (%)
 K.round(x, d = 0) → x rounded to d decimals · K.clamp(x, lo, hi) · K.sortBy(list, key) · K.sum(list, f)`;
+
+/** Every camera's recorded gamut → Rec.709 (the editor's own matrices), for K.scene inside the page. */
+const GAMUTS_JSON = JSON.stringify(Object.fromEntries(LOGS.map((l) => [l.id, { camera: gamutToRec709(l.id, "camera"), rec709: gamutToRec709(l.id, "rec709"), rec2020: gamutToRec709(l.id, "rec2020") }])));
 
 /** The kit's code inside the page (plain JS). */
 const KIT_JS = String.raw`
@@ -161,6 +196,106 @@ var K = (function () {
   };
   K.hueWeight = function (c, centre, width) { var o = K.toHsl(c), d = Math.abs((((o.h - centre) % 360) + 540) % 360 - 180); return (1 - K.smoothstep(width * 0.5, width, d)) * K.smoothstep(0.05, 0.2, o.s); };
   K.rng = function (seed) { var a = seed >>> 0 || 1; return function () { a |= 0; a = (a + 0x6d2b79f5) | 0; var t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
+  // ── the colourist's kit: camera logs → scene light, a tone scale on luminance, Oklab ──
+  // (the logs are the editor's own published formulas, src/lib/editor/grade.ts logToLinear — a test keeps them equal)
+  var LOG_LEGAL = ["clog", "clog2", "clog3", "applelog", "hlg", "generic", "none"];
+  var GAMUTS = ${GAMUTS_JSON};
+  K.logs = Object.keys(GAMUTS);
+  var logLinear = function (id, x) {
+    var P = Math.pow;
+    switch (id) {
+      case "slog3": { var cut = 171.2102946929 / 1023; return x >= cut ? P(10, (x * 1023 - 420) / 261.5) * (0.18 + 0.01) - 0.01 : ((x * 1023 - 95) * 0.01125) / (171.2102946929 - 95); }
+      case "slog2": { var y = (x * 1023 - 64) / 876, c2 = 0.030001222851889303, k2 = (0.9 * 219) / 155; return y >= c2 ? k2 * (P(10, (y - 0.616596 - 0.03) / 0.432699) - 0.037584) : (k2 * (y - c2)) / 3.53881278538813; }
+      case "clog": return 0.9 * (x >= 0.12512248 ? (P(10, (x - 0.12512248) / 0.45310179) - 1) / 10.1596 : -(P(10, (0.12512248 - x) / 0.45310179) - 1) / 10.1596);
+      case "clog2": return 0.9 * (x >= 0.092864125 ? (P(10, (x - 0.092864125) / 0.24136077) - 1) / 87.09937546 : -(P(10, (0.092864125 - x) / 0.24136077) - 1) / 87.09937546);
+      case "clog3":
+        if (x > 0.15277891) return (0.9 * (P(10, (x - 0.12240537) / 0.36726845) - 1)) / 14.98325;
+        if (x < 0.097465473) return (-0.9 * (P(10, (0.12783901 - x) / 0.36726845) - 1)) / 14.98325;
+        return (0.9 * (x - 0.12512219)) / 1.9754798;
+      case "vlog": return x < 0.181 ? (x - 0.125) / 5.6 : P(10, (x - 0.598206) / 0.241514) - 0.00873;
+      case "logc3": return x > 5.367655 * 0.010591 + 0.092809 ? (P(10, (x - 0.385537) / 0.24719) - 0.052272) / 5.555556 : (x - 0.092809) / 5.367655;
+      case "logc4": {
+        var a4 = (P(2, 18) - 16) / 117.45, b4 = (1023 - 95) / 1023, c4 = 95 / 1023, s4 = (7 * Math.log(2) * P(2, 7 - (14 * c4) / b4)) / (a4 * b4), t4 = (P(2, 14 * (-c4 / b4) + 6) - 64) / a4;
+        return x < 0 ? x * s4 + t4 : (P(2, 14 * ((x - c4) / b4) + 6) - 64) / a4;
+      }
+      case "nlog": return x < 452 / 1023 ? P((x * 1023) / 650, 3) - 0.0075 : Math.exp((x * 1023 - 619) / 150);
+      case "dlog": return x <= 0.14 ? (x - 0.0929) / 6.025 : (P(10, (x - 0.584555) / 0.256663) - 0.0108) / 0.9892;
+      case "flog": return x < 0.100537775223865 ? (x - 0.092864) / 8.735631 : (P(10, (x - 0.790453) / 0.344676) - 0.009468) / 0.555556;
+      case "flog2": return x < 0.100686685370811 ? (x - 0.092864) / 8.799461 : (P(10, (x - 0.384316) / 0.245281) - 0.064829) / 5.555556;
+      case "bmd5": { var A5 = 0.08692876065491224, B5 = 0.005494072432257808, C5 = 0.5300133392291939, D5 = 8.283605932402494, E5 = 0.09246575342465753; return x < D5 * 0.005 + E5 ? (x - E5) / D5 : Math.exp((x - C5) / A5) - B5; }
+      case "applelog": { var R0 = -0.05641, cA = 47.28711236, Pt = cA * (0.01 - R0) * (0.01 - R0); if (x < 0) return R0; return x < Pt ? Math.sqrt(x / cA) + R0 : P(2, (x - 0.69336945) / 0.08550479) - 0.00964052; }
+      case "redlog3g10": return x < 0 ? x / 15.1927 - 0.01 : (P(10, x / 0.224282) - 1) / 155.975327 - 0.01;
+      case "hlg": return x <= 0.5 ? (x * x) / 3 : (Math.exp((x - 0.55991073) / 0.17883277) + 0.28466892) / 12;
+      case "generic": return 0.18 * P(2, (x - 0.4) * 13) - 0.18 * P(2, -0.4 * 13);
+      default: return x;
+    }
+  };
+  /** one browser pixel value of a log file (0…1) → scene light, exactly as the editor's «log» field decodes it */
+  K.logDecode = function (id, v, range) {
+    var legal = LOG_LEGAL.indexOf(id) >= 0, full = range === "full";
+    var x = !full ? (legal ? v : v * 876 / 1023 + 64 / 1023) : (legal ? v * 1023 / 876 - 64 / 876 : v);
+    return logLinear(id, x);
+  };
+  var srgbLin = function (x) { return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
+  var srgbEnc = function (x) { x = K.clamp(x); return x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055; };
+  K.decode = function (c) { return [srgbLin(c.r), srgbLin(c.g), srgbLin(c.b)]; };
+  K.encode = function (rgb) { return [srgbEnc(rgb[0]), srgbEnc(rgb[1]), srgbEnc(rgb[2])]; };
+  K.lum = function (rgb) { return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]; };
+  K.scene = function (c, o) {
+    o = o || {};
+    var log = o.log || "none", rgb;
+    if (log === "none") rgb = K.decode(c);
+    else {
+      if (!GAMUTS[log]) throw new Error("unknown log " + log + " (one of: " + K.logs.join(", ") + ")");
+      rgb = [K.logDecode(log, c.r, o.range), K.logDecode(log, c.g, o.range), K.logDecode(log, c.b, o.range)];
+      var m = GAMUTS[log][o.gamut || "camera"];
+      if (!m) throw new Error("gamut is camera, rec709 or rec2020");
+      rgb = [m[0] * rgb[0] + m[1] * rgb[1] + m[2] * rgb[2], m[3] * rgb[0] + m[4] * rgb[1] + m[5] * rgb[2], m[6] * rgb[0] + m[7] * rgb[1] + m[8] * rgb[2]];
+    }
+    var e = Math.pow(2, o.exposure || 0), p = o.printer || [1, 1, 1];
+    return [Math.max(0, rgb[0]) * e * p[0], Math.max(0, rgb[1]) * e * p[1], Math.max(0, rgb[2]) * e * p[2]];
+  };
+  K.tonescale = function (Y, o) {
+    o = o || {};
+    var p = o.contrast || 1.5, s1 = o.peak || 1.02, toe = o.toe === undefined ? 0.004 : o.toe, grey = o.grey || 0.11, black = o.black || 0;
+    var s0 = 0.18 / Math.pow((grey + toe * 0.9) / s1, 1 / p) - 0.18, y = Math.max(0, Y), f = s1 * Math.pow(y / (y + s0), p);
+    if (toe > 0) f = (f * f) / (f + toe);
+    return Math.max(0, f - black) / (1 - black);
+  };
+  K.display = function (lin, o) {
+    o = o || {};
+    var Y = Math.max(K.lum(lin), 1e-6), Yd = K.tonescale(Y, o), w = o.white || [0.78, 0.8];
+    var k = (1 - w[1] * Math.pow(K.smoothstep(w[0], 1, Yd), 1.5)) * (o.sat === undefined ? 1 : o.sat);
+    return [Yd * (1 + (lin[0] / Y - 1) * k), Yd * (1 + (lin[1] / Y - 1) * k), Yd * (1 + (lin[2] / Y - 1) * k)];
+  };
+  K.oklab = function (rgb) {
+    var r = Math.max(0, rgb[0]), g = Math.max(0, rgb[1]), b = Math.max(0, rgb[2]);
+    var l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b), m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b), s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return { L: 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, a: 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, b: 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s };
+  };
+  K.fromOklab = function (o) {
+    var l = o.L + 0.3963377774 * o.a + 0.2158037573 * o.b, m = o.L - 0.1055613458 * o.a - 0.0638541728 * o.b, s = o.L - 0.0894841775 * o.a - 1.291485548 * o.b;
+    l = l * l * l; m = m * m * m; s = s * s * s;
+    return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
+  };
+  K.oklch = function (rgb) { var o = K.oklab(rgb), h = Math.atan2(o.b, o.a) * 180 / Math.PI; return { L: o.L, C: Math.sqrt(o.a * o.a + o.b * o.b), h: (h + 360) % 360 }; };
+  K.fromOklch = function (o) { var h = o.h * Math.PI / 180; return K.fromOklab({ L: o.L, a: o.C * Math.cos(h), b: o.C * Math.sin(h) }); };
+  K.hueBand = function (h, centre, width) { var d = Math.abs((((h - centre) % 360) + 540) % 360 - 180), t = Math.max(0, 1 - d / width); return t * t; };
+  K.skinKey = function (o, centre, width) { return K.hueBand(o.h, centre === undefined ? 51 : centre, width || 24) * K.smoothstep(0.02, 0.06, o.C) * K.smoothstep(0.35, 0.55, o.L); };
+  K.vibrant = function (C, amount, knee) { knee = knee || [0.07, 0.22]; return C * (1 + amount * (1 - K.smoothstep(knee[0], knee[1], C))); };
+  K.ceiling = function (C, top) { var k = 0.6 * top; return C <= k ? C : k + (top - k) * Math.tanh((C - k) / (top - k)); };
+  K.inGamut = function (o) {
+    var a = o.a, b = o.b;
+    if (a === undefined) { var h = o.h * Math.PI / 180; a = o.C * Math.cos(h); b = o.C * Math.sin(h); }
+    var ok = function (v) { return v[0] >= -1e-4 && v[0] <= 1.0001 && v[1] >= -1e-4 && v[1] <= 1.0001 && v[2] >= -1e-4 && v[2] <= 1.0001; };
+    var L = K.clamp(o.L), v = K.fromOklab({ L: L, a: a, b: b });
+    if (!ok(v)) {
+      var lo = 0, hi = 1;
+      for (var i = 0; i < 14; i++) { var mid = (lo + hi) / 2; if (ok(K.fromOklab({ L: L, a: a * mid, b: b * mid }))) lo = mid; else hi = mid; }
+      v = K.fromOklab({ L: L, a: a * lo, b: b * lo });
+    }
+    return [K.clamp(v[0]), K.clamp(v[1]), K.clamp(v[2])];
+  };
   // ── edit ──
   K.round = function (x, d) { var m = Math.pow(10, d === undefined ? 0 : d); return Math.round(x * m) / m; };
   K.sortBy = function (list, key) { var f = typeof key === "function" ? key : function (o) { return o[key]; }; return list.slice().sort(function (a, b) { return f(a) - f(b); }); };
@@ -275,7 +410,14 @@ const RUNTIME_JS = String.raw`
       }
     }
     if (bad) throw new Error(bad + " colour values were not numbers; the first: " + first);
-    post({ type: "result", id: m.id, lut: out }, [out.buffer]);
+    // the optional finish(K): what a LUT cannot hold (it depends on where a pixel is) — vignette, halation, grain, sharpen
+    var fin = entry(m.code, "finish"), finish = null;
+    if (fin) {
+      finish = fin(K);
+      if (!finish || typeof finish !== "object" || Array.isArray(finish)) throw new Error("finish(K) must return an object like { vignette: { amount }, halation: { amount }, grain: { amount }, sharpen }");
+      finish = JSON.parse(JSON.stringify(finish));
+    }
+    post({ type: "result", id: m.id, lut: out, finish: finish }, [out.buffer]);
   }
   function runEdit(m) {
     var fn = entry(m.code, "edit"); if (!fn) throw new Error("the program must define function edit(T, K)");

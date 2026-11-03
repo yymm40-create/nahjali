@@ -34,15 +34,21 @@ import type { EditorAsset } from "./types";
 import { checkFootage, footageFrames, footageMatte, footageSeconds, footageSound, FootageSet, footageTotal, prepareFootage, type FootageInfo, type FootageSource } from "./lab-footage";
 import { footageLines, type FootageFrame, type FootageMeta } from "@/lib/editor/scene/footage";
 import { asksToSearch, REFS_MAX, type LabRef } from "@/lib/editor/scene/references";
+import { plainBrief, quickChoices, quickParams } from "@/lib/editor/scene/quick-params";
+import { labGate } from "@/lib/editor/scene/lab-gate";
 import "./motion-lab.css";
 
 type Stage = "brief" | "planning" | "plan" | "building" | "reviewing" | "ready" | "rendering";
+/** How many times a scene that throws is given back to حيدرا ماكس to fix, before the lab stops and asks the person. */
+const LAB_FIXES = 3;
 const REVIEW_MODES = {
   fast: { label: "بدون مراجعة", rounds: 0, description: "فحص التشغيل فقط، بدون مراجعة جودة. الأسرع والأرخص (الافتراضي)." },
   balanced: { label: "متوازن", rounds: 1, description: "مراجعة جودة واحدة وتصحيح عند الحاجة." },
   precise: { label: "دقيق", rounds: MAX_ROUNDS, description: `حتى ${MAX_ROUNDS} جولات، ويتوقف مبكرًا إذا اجتاز. أطول.` },
 } as const;
 type ReviewMode = keyof typeof REVIEW_MODES;
+/** The option under a version built with no review round (a change from the conversation): one round, when they want it. */
+const REVIEW_ONE = "🧐 راجعه";
 interface Saved {
   reviewMode?: ReviewMode;
   brief: string;
@@ -497,6 +503,9 @@ export default function MotionLab({
   const [now, setNow] = useState(0);
   const host = useRef<SceneHost | null>(null);
   const abort = useRef<AbortController | null>(null);
+  // the draft video renders on its own: it never borrows (or is left holding) another step's controller
+  const draftAbort = useRef<AbortController | null>(null);
+  const stopDraft = () => draftAbort.current?.abort();
   const viewCanvas = useRef<HTMLCanvasElement>(null);
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -585,6 +594,9 @@ export default function MotionLab({
 
   // the lab remembers its work on this device AND on the server (a refresh, another device: the conversation is there)
   useEffect(() => {
+    // the id this tab's own first save just made (handed up as `chatId`): it is the conversation already on screen, so
+    // nothing is read back (a snapshot from before the save would undo what changed since, mid-build too)
+    if (chatId && chatId === ownSaved.current) return;
     // a film of the timeline opened again: its own scene, not the lab's last work
     if (initialSource) {
       const src = initialSource.source;
@@ -653,6 +665,7 @@ export default function MotionLab({
   }, [store, brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footIds, foot, personOn, chat, params, versions, made, cover, serverId, spent]);
   // …and on the server, a moment after the last change (one save at a time; the first one makes the conversation)
   const saving = useRef<Promise<unknown> | null>(null);
+  const saveFailed = useRef(false);
   useEffect(() => {
     if (serverMissing || initialSource || (!chat.length && !plan && !code)) return;
     const tm = setTimeout(() => {
@@ -662,22 +675,30 @@ export default function MotionLab({
         await saving.current?.catch(() => undefined);
         const r = await postJson<{ id: string; missing: boolean }>(`/api/jawad/editor/projects/${projectId}`, { action: "lab_chat_put", id: serverIdRef.current ?? undefined, title, state });
         if (r.missing) return setServerMissing(true);
+        saveFailed.current = false;
         if (r.id && r.id !== serverIdRef.current) {
           serverIdRef.current = r.id;
+          ownSaved.current = r.id;
           setServerId(r.id);
           onChatId?.(r.id);
         }
       };
-      saving.current = run().catch(() => undefined);
+      // a save that fails is said once (the conversation is still on this device), not again on every change after it
+      saving.current = run().catch((e: unknown) => {
+        if (saveFailed.current) return;
+        saveFailed.current = true;
+        say1(`⚠️ ما انحفظت المحادثة على الخادم (باقية على هذا الجهاز): ${e instanceof Error ? e.message : e}`);
+      });
     }, 1500);
     return () => clearTimeout(tm);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat, plan, code, versions, params, picks, choices, cover, made, serverMissing, spent]);
   const serverIdRef = useRef<string | null>(chatId);
+  const ownSaved = useRef<string | null>(null);
   useEffect(() => {
     serverIdRef.current = serverId;
   }, [serverId]);
-  useEffect(() => () => (host.current?.destroy(), abort.current?.abort(), preview.current?.close(), reader.current?.r.close(), matte.current?.r?.close()), []);
+  useEffect(() => () => (host.current?.destroy(), abort.current?.abort(), draftAbort.current?.abort(), preview.current?.close(), reader.current?.r.close(), matte.current?.r?.close()), []);
   // حيدرا ماكس opened the lab (again) on one of the person's clips: that clip is the one, learnt afresh
   useEffect(() => {
     if (!initialFootage) return;
@@ -791,15 +812,17 @@ export default function MotionLab({
     }
   };
 
-  const call = useCallback(async <T,>(action: string, body: Record<string, unknown>, watch?: (written: string) => void) => {
-    // no clock of the lab's own (the owner's rule): the only thing that stops a step is «إلغاء»
-    const outer = abort.current?.signal;
+  const call = useCallback(async <T,>(action: string, body: Record<string, unknown>, watch?: (written: string) => void, signal?: AbortSignal) => {
+    // no clock of the lab's own (the owner's rule): the only thing that stops a step is «إلغاء». A step passes its OWN
+    // signal: one cancelled while a new step began must not borrow the new step's (and send a paid request it was told to stop)
+    const outer = signal ?? abort.current?.signal;
     // a step the platform's request time cannot hold is continued in the next request from where it stopped: what was
     // written so far is kept here and on the device (a closed tab loses nothing), and a request that went by in thought
     // alone makes the next one think less
     const sig = hashOf(JSON.stringify({ action, body }));
     let partialRaw = readPart(store, sig), cap: string | undefined, stuck = 0;
     for (;;) {
+      if (outer?.aborted) throw new DOMException("cancelled", "AbortError");
       if (partialRaw) say1(`⏳ انتهى وقت الطلب عند المنصة قبل ما يكمل حيدرا ماكس؛ أكمل من نفس النقطة (وصل ${Math.round(partialRaw.length / 1000)} ألف حرف) — ما أبدأ من جديد.`);
       const url = `/api/jawad/editor/projects/${projectId}`;
       const payload = { action, model: claude.id, ...body, stream: true, ...(partialRaw ? { partialRaw } : {}), ...(cap ? { effortCap: cap } : {}) };
@@ -846,6 +869,7 @@ export default function MotionLab({
 
   /** The scene page with this program, its fonts and its pictures; the probe catches a bug before anything else. */
   const loadCode = async (program: string, p: LabPlan, values: Record<string, string> = params, use: Chosen[] = chosen) => {
+    stopDraft();
     host.current?.destroy();
     const h = new SceneHost();
     host.current = h;
@@ -875,16 +899,32 @@ export default function MotionLab({
 
   /** Writes (or fixes) until the program runs cleanly in the page; returns it with what the scene says. The person
    * watches it being written: the program grows in the conversation's work card as حيدرا ماكس writes it. */
-  const buildRunning = async (p: LabPlan, previous = "", errors = "", use: Chosen[] = chosen) => {
+  const buildRunning = async (p: LabPlan, previous = "", errors = "", use: Chosen[] = chosen, signal?: AbortSignal) => {
     let program = previous, why = errors;
-    // no count of its own (the owner's rule): حيدرا ماكس fixes until the scene runs, and «إلغاء» is what stops it
+    // a fix comes back as a PATCH on the program first (its few changed lines, applied on the server); after one patch
+    // that failed — it did not apply, or what it made still broke — the whole program, as before
+    let patch = true, patched = false;
+    // a limit now (the owner, 2 November 2026: no hidden spending): it used to fix with no count until «إلغاء» stopped it
     for (let attempt = 0; ; attempt++) {
+      if (signal?.aborted) throw new DOMException("cancelled", "AbortError");
+      // three fixes, then stop and say so: every fix is a paid call (it had no limit)
+      if (attempt > LAB_FIXES) throw new Error(`المشهد ما اشتغل بعد ${LAB_FIXES} تصليحات. اكتب لحيدرا ماكس وش تبي يغيّر، أو ابنه من جديد.`);
       if (!program || why) {
         const line = attempt === 0 && !previous ? "✍️ حيدرا ماكس يكتب المشهد بالكود…" : `🛠️ يصلّح خطأ في المشهد (المحاولة ${attempt})…`;
         say1(line);
         workLine(line);
         setLiveCode("");
-        const r = await call<{ code: string; problems: string[]; notes: string }>("lab_write", { plan: p, seconds: p.seconds, assets: listOf(use), transparent, ...soundBody(), ...(program ? { code: program, errors: why } : { refs: refsBody }) }, (raw) => setLiveCode(partialField(raw, "code")));
+        type Wrote = { code: string; problems: string[]; notes: string; patchFailed?: string };
+        const write = (asPatch: boolean) => call<Wrote>("lab_write", { plan: p, seconds: p.seconds, assets: listOf(use), transparent, ...soundBody(), ...(program ? { code: program, errors: why, ...(asPatch ? { patch: true } : {}) } : { refs: refsBody }) }, (raw) => setLiveCode(partialField(raw, "code")), signal);
+        patched = Boolean(program) && patch;
+        let r = await write(patched);
+        if (r.patchFailed) {
+          // the patch did not apply: the same fix asked again as the whole program (once; not counted as another fix)
+          patch = patched = false;
+          workLine("↩️ التصليح الصغير ما انطبق؛ أطلب المشهد كامل…");
+          setLiveCode("");
+          r = await write(false);
+        }
         setLiveCode("");
         if (r.notes) {
           say1(r.notes);
@@ -895,6 +935,8 @@ export default function MotionLab({
         if (r.problems.length) {
           why = `The program breaks the machine's rules: ${r.problems.join("; ")}`;
           workLine(`⚠️ ${r.problems.join("، ")}`);
+          // a patched program that breaks the rules: the next fix is the whole program
+          if (patched) patch = false;
           continue;
         }
       }
@@ -902,11 +944,14 @@ export default function MotionLab({
         say1("▶️ أشغّل المشهد وأفحص كل لحظة فيه…");
         workLine("▶️ أشغّل المشهد وأفحص كل لحظة فيه…");
         const got = await loadCode(program, p, params, use);
+        if (signal?.aborted) throw new DOMException("cancelled", "AbortError");
         return { program, got };
       } catch (e) {
         // the person's video is gone: no change to the scene can bring it back, so حيدرا ماكس is not asked to fix it
         if (e instanceof LabSetupError) throw e;
         const se = e instanceof SceneError ? e : new SceneError(String(e), "load");
+        // what a fix's patch made still throws: the next fix is the whole program
+        if (patched) patch = false;
         why = `${se.where === "frame" ? `At t = ${se.t?.toFixed(2)} s the frame threw` : "Loading the scene threw"}: ${se.message}\n${se.stack2}`;
         say1(`⚠️ ${se.message}`);
         workLine(`⚠️ خطأ في التشغيل: ${se.message.slice(0, 160)}`);
@@ -1008,16 +1053,108 @@ export default function MotionLab({
   };
 
   /** One build becomes a version (never written over; the last few are kept) and gets its draft video. */
-  const keepVersion = (p: LabPlan, program: string, values: Record<string, string>) => {
+  const keepVersion = (p: LabPlan, program: string, values: Record<string, string>, more: string[] = []) => {
     const n = (versions[versions.length - 1]?.n ?? 0) + 1;
     setVersions((v) => [...v, { n, at: Date.now(), plan: p, code: program, params: values }].slice(-KEEP_VERSIONS));
-    post({ k: "version", n, title: p.title }, "", ["صدّره للتايملاين", "صمّم الكفر"]);
+    post({ k: "version", n, title: p.title }, "", [...more, "صدّره للتايملاين", "صمّم الكفر"]);
     return n;
   };
 
-  /** Builds, then the director's rounds: render sheets and stills, he scores and rewrites, until it passes. */
+  /**
+   * How much the picture changes between samples drawn small (for the page's own check before a review, lab-gate.ts):
+   * a few dozen tiny frames, spaced by how heavy the scene is here.
+   */
+  const motionOf = async (h: SceneHost, duration: number, cost: number, signal: AbortSignal) => {
+    const step = Math.max(cost > 400 ? 0.5 : cost > 150 ? 1 / 3 : 0.25, duration / 120);
+    const scale = Math.min(1, 96 / h.w);
+    const out: { t: number; d: number }[] = [];
+    let prev: Uint8ClampedArray | null = null;
+    for (let t = 0; t < duration; t += step) {
+      if (signal.aborted) throw new DOMException("cancelled", "AbortError");
+      const at = Math.min(t, duration - 1e-3);
+      const bm = await h.frame(at, { scale });
+      const c = new OffscreenCanvas(bm.width, bm.height);
+      const g = c.getContext("2d", { willReadFrequently: true })!;
+      g.drawImage(bm, 0, 0);
+      bm.close();
+      const px = g.getImageData(0, 0, c.width, c.height).data;
+      if (prev && prev.length === px.length) {
+        let sum = 0;
+        for (let i = 0; i < px.length; i += 4) sum += Math.abs(px[i] - prev[i]) + Math.abs(px[i + 1] - prev[i + 1]) + Math.abs(px[i + 2] - prev[i + 2]);
+        out.push({ t: at, d: sum / ((px.length / 4) * 3 * 255) });
+      }
+      prev = px;
+    }
+    return out;
+  };
+
+  /**
+   * The director's rounds on a program that runs: the page checks what it can measure (lab-gate.ts), renders the
+   * contact sheets and stills, he scores them, and below the bar his corrections are written in and run again — until
+   * it passes or the rounds end. A round after the first only runs when the one before failed (a pass ends them).
+   */
+  const reviewRounds = async (built: LabPlan, start: { program: string; got: SceneInfo }, use: Chosen[], rounds: number, mine: AbortSignal) => {
+    const stop = () => {
+      if (mine.aborted) throw new DOMException("cancelled", "AbortError");
+    };
+    let { program, got } = start;
+    const done: Review[] = [];
+    for (let round = 1; round <= rounds; round++) {
+      const h = host.current!;
+      // how heavy this scene is here decides how many frames the review is allowed to draw
+      const cost = await frameCost(h, got.duration, 1, mine);
+      const perSheet = cost > 400 ? 9 : cost > 150 ? 15 : 24;
+      // three full stills (the hook, the middle, the end) — five only for a long piece: each is ~1.2k tokens he reads
+      const shotTimes = cost > 400 || got.duration <= 20 ? reviewTimes(got.duration).filter((_, i) => i % 2 === 0) : reviewTimes(got.duration);
+      const gate = labGate({ duration: got.duration, sound: Boolean(got.sound), cues: readCues(got.cues, got.duration).map((c) => c.t), changes: built.shots.map((x) => x.from), motion: await motionOf(h, got.duration, cost, mine), footage: Boolean(source) });
+      if (gate.length) workLine(`🔎 فحص الصفحة قبل المراجعة: ${gate.length === 1 ? "ملاحظة وحدة" : `${gate.length} ملاحظات`} أعطيها لحيدرا ماكس.`);
+      workLine(`🎬 الجولة ${round} من ${rounds}: أصوّر أوراق التلامس واللقطات…`);
+      const half = got.duration / 2;
+      // 24 frames a sheet as 4 × 6 (it was 3 × 8: a sheet that tall was shrunk by the API to ~100-px cells, the words in
+      // them unreadable to him); fewer frames stay 3 across
+      const cols = perSheet >= 24 ? 4 : 3;
+      const sheets = [await contactSheet(h, 0, half, perSheet, cols), await contactSheet(h, half, got.duration, perSheet, cols)];
+      // the third sheet: every shot change seen one frame before, on, and after the cut
+      const cuts = cutTimes(built.shots.map((x) => x.from), got.duration, 30, cost > 400 ? 3 : 5);
+      if (cuts.length) sheets.push(await sheetAt(h, cuts, 3));
+      const times = shotTimes;
+      const shots = await stills(h, times, got.duration);
+      stop();
+      workLine("🧐 حيدرا ماكس يراجع كمخرج قاسي…");
+      const r = await call<{ review: Review; code: string; problems: string[] }>("lab_review", { plan: built, seconds: built.seconds, assets: listOf(use), code: program, sheets, stills: shots, times, gate, round, maxRounds: rounds, reviewOnly: true, ...soundBody() }, undefined, mine);
+      stop();
+      done.push(r.review);
+      setReviews([...done]);
+      post({ k: "review", review: r.review, round }, r.review.verdict);
+      if (r.review.pass) break;
+      post({ k: "work", title: "✍️ أطبّق ملاحظات المخرج", lines: [] });
+      // what the fix needs of the review, compact: the verdict, the worst problems with their exact fixes, the scores below the bar
+      const below = Object.fromEntries(Object.entries(r.review.scores).filter(([, v]) => v < PASS));
+      const next = await buildRunning(built, program, `Apply this visual review, preserving the approved plan and everything that already works: ${JSON.stringify({ verdict: r.review.verdict, worst: r.review.worst, below })}`, use, mine);
+      stop();
+      program = next.program;
+      got = next.got;
+      setCode(program);
+      setInfo(got);
+    }
+    return { program, got };
+  };
+
+  /** A finished build or review: ready, its sound, a version and its draft video. */
+  const finish = (built: LabPlan, program: string, got: SceneInfo, more: string[] = []) => {
+    setStage("ready");
+    void seekTo(Math.min(got.duration * 0.3, 2), got);
+    void refreshSound(got);
+    const n = keepVersion(built, program, params, more);
+    // the draft video comes by itself: quick, without motion blur, with its sound — watched right in the conversation
+    void renderDraft(n, got);
+  };
+
+  /** Builds, then the director's rounds: render sheets and stills, he scores and rewrites, until it passes. `review:
+   * false` — a change from the conversation: built and run with no review round (a small change does not need the
+   * whole review again), and «🧐 راجعه» is offered to run one. */
   const planNow = plan;
-  const build = async (given?: LabPlan, o: { quiet?: boolean; fresh?: boolean; previous?: string; errors?: string; title?: string } = {}): Promise<boolean> => {
+  const build = async (given?: LabPlan, o: { quiet?: boolean; fresh?: boolean; previous?: string; errors?: string; title?: string; review?: boolean } = {}): Promise<boolean> => {
     const plan = given ?? planNow;
     if (!plan) return false;
     if (voiceOn && !take && !source) {
@@ -1041,62 +1178,65 @@ export default function MotionLab({
     try {
       const use = o.previous ? chosen : await makePictures(built);
       stop();
-      let { program, got } = await buildRunning(built, o.previous ?? (o.fresh ? "" : code), o.errors ?? "", use);
+      let { program, got } = await buildRunning(built, o.previous ?? (o.fresh ? "" : code), o.errors ?? "", use, mine);
       stop();
       setCode(program);
       setInfo(got);
       setTransparentCode(transparent);
-      const rounds = REVIEW_MODES[reviewMode].rounds;
+      const asked = REVIEW_MODES[reviewMode].rounds;
+      const rounds = o.review === false ? 0 : asked;
       if (rounds > 0) setStage("reviewing");
       else workLine("✅ اجتاز فحص التشغيل.");
-      const done: Review[] = [];
-      for (let round = 1; round <= rounds; round++) {
-        const h = host.current!;
-        // how heavy this scene is here decides how many frames the review is allowed to draw
-        const cost = await frameCost(h, got.duration, 1, abort.current?.signal);
-        const perSheet = cost > 400 ? 9 : cost > 150 ? 15 : 24;
-        const shotTimes = cost > 400 ? reviewTimes(got.duration).filter((_, i) => i % 2 === 0) : reviewTimes(got.duration);
-        workLine(`🎬 الجولة ${round} من ${rounds}: أصوّر أوراق التلامس واللقطات…`);
-        const half = got.duration / 2;
-        const sheets = [await contactSheet(h, 0, half, perSheet, 3), await contactSheet(h, half, got.duration, perSheet, 3)];
-        // the third sheet: every shot change seen one frame before, on, and after the cut
-        const cuts = cutTimes(built.shots.map((x) => x.from), got.duration, 30, cost > 400 ? 3 : 5);
-        if (cuts.length) sheets.push(await sheetAt(h, cuts, 3));
-        const times = shotTimes;
-        const shots = await stills(h, times, got.duration);
-        workLine("🧐 حيدرا ماكس يراجع كمخرج قاسي…");
-        const r = await call<{ review: Review; code: string; problems: string[] }>("lab_review", { plan: built, seconds: built.seconds, assets: listOf(use), code: program, sheets, stills: shots, times, round, maxRounds: rounds, reviewOnly: true, ...soundBody() });
-        stop();
-        done.push(r.review);
-        setReviews([...done]);
-        post({ k: "review", review: r.review, round }, r.review.verdict);
-        if (r.review.pass) break;
-        post({ k: "work", title: "✍️ أطبّق ملاحظات المخرج", lines: [] });
-        const next = await buildRunning(built, program, `Apply this visual review, preserving the approved plan and everything that already works: ${JSON.stringify(r.review)}`, use);
-        stop();
-        program = next.program;
-        got = next.got;
-        setCode(program);
-        setInfo(got);
-      }
-      setStage("ready");
-      void seekTo(Math.min(got.duration * 0.3, 2), got);
-      void refreshSound(got);
-      const n = keepVersion(built, program, params);
-      // the draft video comes by itself: quick, without motion blur, with its sound — watched right in the conversation
-      void renderDraft(n, got);
+      ({ program, got } = await reviewRounds(built, { program, got }, use, rounds, mine));
+      finish(built, program, got, rounds === 0 && asked > 0 ? [REVIEW_ONE] : []);
       return true;
     } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") tell("⏹️ أوقفت الشغل.");
-      else {
+      // a build cancelled while another step already began leaves that step's stage alone
+      const current = abort.current?.signal === mine;
+      if (e instanceof DOMException && e.name === "AbortError") {
+        if (current || !mine.aborted) tell("⏹️ أوقفت الشغل.");
+      } else {
         const msg = e instanceof Error ? e.message : String(e);
         setError(msg);
         workLine(`⚠️ ${msg}`);
       }
-      setStage(code ? "ready" : "plan");
+      if (current) setStage(code ? "ready" : "plan");
       return false;
     } finally {
-      setLiveCode("");
+      if (abort.current?.signal === mine) setLiveCode("");
+    }
+  };
+
+  /** «🧐 راجعه»: one review round on the piece as it is now (a change from the conversation is built without one). */
+  const reviewNow = async () => {
+    if (!host.current || !info || !plan || !code) return;
+    setError(null);
+    abort.current?.abort();
+    abort.current = new AbortController();
+    const mine = abort.current.signal;
+    setLog([]);
+    setReviews([]);
+    setStage("reviewing");
+    setNow(0);
+    post({ k: "work", title: "🧐 أراجع المشهد", lines: [] });
+    try {
+      const built = sized(plan);
+      const out = await reviewRounds(built, { program: code, got: info }, chosen, 1, mine);
+      // it passed as it is: the same version stays; a correction is a new version
+      if (out.program === code) setStage("ready");
+      else finish(built, out.program, out.got);
+    } catch (e) {
+      const current = abort.current?.signal === mine;
+      if (e instanceof DOMException && e.name === "AbortError") {
+        if (current || !mine.aborted) tell("⏹️ أوقفت الشغل.");
+      } else {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
+        workLine(`⚠️ ${msg}`);
+      }
+      if (current) setStage("ready");
+    } finally {
+      if (abort.current?.signal === mine) setLiveCode("");
     }
   };
 
@@ -1104,17 +1244,23 @@ export default function MotionLab({
   const renderDraft = async (n: number, got: SceneInfo | null = info) => {
     const h = host.current;
     if (!h || !got || encodes === false) return;
+    stopDraft();
+    const ctl = new AbortController();
+    draftAbort.current = ctl;
     try {
       setDraftAt({ n, p: 0 });
       const audio = await makeSound({ got }).catch(() => null);
-      const blob = await renderVideo(h, { duration: got.duration, fps: 30, blur: 0, sub: 1, audio }, (pp) => setDraftAt({ n, p: pp }), abort.current?.signal);
+      const blob = await renderVideo(h, { duration: got.duration, fps: 30, blur: 0, sub: 1, audio }, (pp) => setDraftAt({ n, p: pp }), ctl.signal);
       const url = URL.createObjectURL(blob);
       pageLinks.current.push(url);
       setDrafts((d) => ({ ...d, [n]: url }));
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) workLine(`⚠️ المسودة: ${e instanceof Error ? e.message : e}`);
     } finally {
-      setDraftAt(null);
+      if (draftAbort.current === ctl) {
+        draftAbort.current = null;
+        setDraftAt(null);
+      }
     }
   };
   // the draft videos and the cover live as links on this page: let go of them only when the lab itself goes
@@ -1312,7 +1458,7 @@ export default function MotionLab({
     setStage("building");
     setNow(0);
     try {
-      const { program, got } = await buildRunning(plan, code, "The person asked for a transparent background AFTER this scene was already built. Rewrite it to drop every full-frame background fill, backdrop shape, gradient or vignette that covers the whole canvas — the canvas must stay transparent where nothing is drawn (never call scene({ background: … }) with a colour, never fillRect the whole frame). Keep the subject, its motion, timing, type and sound cues exactly as they are; only the backdrop goes.");
+      const { program, got } = await buildRunning(plan, code, "The person asked for a transparent background AFTER this scene was already built. Rewrite it to drop every full-frame background fill, backdrop shape, gradient or vignette that covers the whole canvas — the canvas must stay transparent where nothing is drawn (never call scene({ background: … }) with a colour, never fillRect the whole frame). Keep the subject, its motion, timing, type and sound cues exactly as they are; only the backdrop goes.", chosen, mine);
       if (mine.aborted) throw new DOMException("cancelled", "AbortError");
       setCode(program);
       setInfo(got);
@@ -1323,7 +1469,7 @@ export default function MotionLab({
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") say1("⏹️ أوقفت الشغل.");
       else setError(e instanceof Error ? e.message : String(e));
-      setStage("ready");
+      if (abort.current?.signal === mine) setStage("ready");
     }
   };
 
@@ -1335,6 +1481,9 @@ export default function MotionLab({
     setNow(0);
     setProgress(0);
     setRenderAt(null);
+    // the final render has the scene to itself: a draft still drawing stops, and so does any step before it
+    stopDraft();
+    abort.current?.abort();
     abort.current = new AbortController();
     post({ k: "work", title: "⬇️ الرندر النهائي بضبابية الحركة", lines: [] });
     const signal = abort.current.signal;
@@ -1457,7 +1606,22 @@ export default function MotionLab({
     if (/^اعتمد( الخطة)?( و)?ابن/.test(message) && plan && !busy) return () => build(plan, { fresh: true });
     if (/^صدّ?ره|^رندر|^نزّ?له في التايملاين/.test(message) && info && !busy) return exportFilm;
     if (/^صمّ?م الكفر$/.test(message) && info && !busy) return () => makeCover();
+    if (message === REVIEW_ONE && info && code && plan && !busy) return reviewNow;
     if (/^نزّ?ل الكفر$/.test(message) && coverUrl) return async () => download(await (await fetch(coverUrl)).blob(), `كفر - ${(plan?.title || "موشن").slice(0, 40)}.png`);
+    // «خلّ اللون ذهبي» on a colour (or a text) the scene exposes as a param: set here and drawn again, with NO call to
+    // حيدرا ماكس (it was a whole paid rewrite of the program); anything less sure goes to him
+    // a plain «اللون» on a piece with several colours is its accent (the plan's)
+    const ready = Boolean(info?.params?.length && code && plan && !busy);
+    const quick = ready ? quickParams(message, info!.params!, params, plan!.palette?.accent) : null;
+    if (quick)
+      return async () => {
+        setParams(quick.values);
+        await applyParams(quick.values);
+        say2(`${quick.field.type === "color" ? "🎨" : "✏️"} غيّرت «${quick.field.label}» إلى ${quick.field.type === "color" ? quick.value : `«${quick.value}»`} على طول. تقدر تعدّله أكثر من «✏️ النصوص والألوان».`);
+      };
+    // a colour or a text that could go on several of them: the person picks which (each pick is set here too)
+    const pick = ready ? quickChoices(message, info!.params!, params, plan!.palette?.accent) : null;
+    if (pick) return async () => say2("على أي واحد بالضبط؟ اختر:", pick);
     return null;
   };
   /** «💬»: one message of the conversation — حيدرا ماكس answers and decides: the scenario, a change (a new version), the
@@ -1471,6 +1635,9 @@ export default function MotionLab({
     setError(null);
     const own = direct(message);
     if (own) return void (await own());
+    // the first message of an empty lab that is plainly a brief goes straight to the scenario: the conversation step
+    // before it only ever answered «plan» with the same words (a question, a search, a greeting still go to him)
+    if (!plan && !code && !history.some((m) => m.role === "user") && !searchOn && !asksToSearch(message) && plainBrief(message)) return void (await makePlan({ brief: message }));
     abort.current?.abort();
     abort.current = new AbortController();
     setStage("planning");
@@ -1479,9 +1646,11 @@ export default function MotionLab({
       // «🌐»: asked to search (the button, or «ابحث…» in the message) — the web first, then حيدرا ماكس answers with it
       let found = searchOn || asksToSearch(message) ? await searchWeb(message) : "";
       setSearchOn(false);
-      type ChatReply = { reply: string; action: "none" | "plan" | "code" | "cover" | "render"; brief: string; code: string; problems: string[]; options?: string[]; search?: string };
-      const ask = () =>
+      type ChatReply = { reply: string; action: "none" | "plan" | "code" | "cover" | "render"; brief: string; code: string; problems: string[]; options?: string[]; search?: string; patchFailed?: string };
+      // `whole`: asked again after his patch (exact edits on the program, applied on the server) did not apply
+      const ask = (whole?: { patchFailed: string }) =>
         call<ChatReply>("lab_chat", {
+          ...(whole ? { whole: true, patchFailed: whole.patchFailed } : {}),
           message,
           history,
           plan,
@@ -1502,6 +1671,12 @@ export default function MotionLab({
         // with nothing found he has already said his piece (asking him again would only ask to search again)
         r = found ? await ask() : { ...r, reply: "" };
       }
+      // a change answered as a patch that did not apply on the program: asked once more, for the whole program
+      if (r.action === "code" && r.patchFailed) {
+        workLine("↩️ التعديل الصغير ما انطبق على المشهد؛ أطلبه كامل…");
+        r = await ask({ patchFailed: r.patchFailed });
+        if (r.action === "code" && !r.code) r = { ...r, action: "none" };
+      }
       if (r.reply) say2(r.reply, r.action === "none" ? r.options : undefined);
       if (r.action === "plan") {
         // the scenario first: it comes as a card and waits for «اعتمد وابنِ» (the owner's skills: never build before it)
@@ -1510,7 +1685,8 @@ export default function MotionLab({
       } else if (r.action === "code" && plan) {
         // a note: only what was named changes, and it is a NEW version (the one they saw stays in the list)
         setStage("ready");
-        await build(plan, { previous: r.code, errors: r.problems.length ? `The program breaks the machine's rules: ${r.problems.join("; ")}` : "", title: "🔧 أطبّق ملاحظتك" });
+        // with no review round (it ran them all again for a small change); «🧐 راجعه» runs one when they want it
+        await build(plan, { previous: r.code, errors: r.problems.length ? `The program breaks the machine's rules: ${r.problems.join("; ")}` : "", title: "🔧 أطبّق ملاحظتك", review: false });
       } else if (r.action === "cover") {
         setStage("ready");
         await makeCover(r.brief);
@@ -1655,6 +1831,7 @@ export default function MotionLab({
   const cancel = () => {
     // this really stops the work now: the request in flight is dropped and the loop breaks at its next step
     abort.current?.abort();
+    stopDraft();
     setStage(code ? "ready" : plan ? "plan" : "brief");
     setMinimized(false);
   };

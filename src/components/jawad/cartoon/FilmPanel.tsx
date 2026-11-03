@@ -8,6 +8,7 @@
 import { useRef, useState } from "react";
 import { CARTOON_PARTS_MAX, CARTOON_PLACES, type CartoonInput, type CartoonPlace } from "@config/jawad/cartoon";
 import Riyal from "@/components/Riyal";
+import { useClaudeModel } from "@/components/robots/claude-model";
 
 type Quote = { videoCoins: number; directorCoins?: number; parts?: number; totalCoins: number };
 type Prompts = { prompts: string[]; settings: Record<string, string | number | boolean>; placeSheet: string | null };
@@ -21,6 +22,8 @@ async function post<T>(body: unknown): Promise<T> {
 
 export default function FilmPanel({ outputId, input, places, owner, onStarted }: { outputId: string; input: CartoonInput; places: Record<string, string>; owner: boolean; onStarted: () => void }) {
   const [open, setOpen] = useState(false);
+  // the person's Claude model: «المخرج الخارق» writes the parts with it (never dearer than the fixed price)
+  const [claude] = useClaudeModel();
   const [place, setPlace] = useState<CartoonPlace>("garden");
   const [scenes, setScenes] = useState<string[]>([""]);
   const [quote, setQuote] = useState<{ value: Quote; snapshot: string; free: boolean; freeVideo: boolean } | null>(null);
@@ -42,13 +45,13 @@ export default function FilmPanel({ outputId, input, places, owner, onStarted }:
     setNote("");
     setBusy(action === "film_quote" ? "حساب السعر…" : !still ? "المخرج الخارق يطوّر قصتك… (حتى دقيقة)" : "بدء الفيلم…");
     try {
-      if (action === "film_prompt") setPrompts(await post<Prompts>({ action, outputId, film }));
+      if (action === "film_prompt") setPrompts(await post<Prompts>({ action, outputId, film, model: claude.id }));
       else if (action === "film_quote") {
         const data = await post<{ quote: Quote; free: boolean; freeVideo?: boolean }>({ action, outputId, film });
         setQuote({ value: data.quote, free: data.free, freeVideo: data.freeVideo === true, snapshot });
       } else if (valid) {
         key.current ??= crypto.randomUUID();
-        await post({ action, outputId, film, key: key.current, expectedCoins: valid.value.totalCoins });
+        await post({ action, outputId, film, key: key.current, expectedCoins: valid.value.totalCoins, model: claude.id });
         key.current = null;
         setQuote(null);
         setOpen(false);

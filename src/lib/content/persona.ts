@@ -42,7 +42,14 @@ export async function resetPersona() {
  * extra blocks (the catalogues, what the person chose, the closest examples) and the project's record.
  */
 export function systemText(persona: string, parts: string[] = [], record = "") {
-  return [persona, CONTENT_PLATFORM_RULES, CONTENT_TOOLS, HUSSEINI_MOURNING_FEED, ...parts, record ? `سجل المشروع الحالي (كما حفظته آخر مرة؛ حدّثه في "record" عند أي تغيير):\n${record}` : ""].filter(Boolean).join("\n\n");
+  return [persona, CONTENT_PLATFORM_RULES, CONTENT_TOOLS, HUSSEINI_MOURNING_FEED, ...parts, recordText(record)].filter(Boolean).join("\n\n");
+}
+
+const recordText = (record: string) => (record ? `سجل المشروع الحالي (كما حفظته آخر مرة؛ حدّثه في "record" عند أي تغيير):\n${record}` : "");
+
+/** What changes from one message to the next (examples, chosen blocks, the record): read with this turn, not in the system. */
+export function turnText(parts: string[] = [], record = "") {
+  return [...parts, recordText(record)].filter(Boolean).join("\n\n");
 }
 
 /** The two galleries the person can pick from, one line each (always the same text, so it caches). */

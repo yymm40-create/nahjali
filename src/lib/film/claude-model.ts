@@ -2,7 +2,7 @@
 // and every Claude call below it — the chat itself, the helpers it calls — uses that model and is priced by it.
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { claudeModelOf, type ClaudeModel } from "@config/claude-models";
+import { DEFAULT_CLAUDE_MODEL, capClaudeModel, claudeModelOf, type ClaudeModel } from "@config/claude-models";
 
 const als = new AsyncLocalStorage<ClaudeModel>();
 
@@ -11,3 +11,10 @@ export const withClaude = <T>(id: unknown, fn: () => Promise<T>): Promise<T> => 
 
 /** The model in force for the current request. */
 export const currentClaude = (): ClaudeModel => als.getStore() ?? claudeModelOf(null);
+
+/**
+ * A job sold at a FIXED price in coins, worked out for the default model («المخرج الخارق», «التعديل الذكي», زينب's
+ * prompt): it runs on the person's pick (cheaper for the platform when they chose a lighter mind), but never on a model
+ * dearer than the default, which the price would not cover.
+ */
+export const withFixedPriceClaude = <T>(id: unknown, fn: () => Promise<T>): Promise<T> => withClaude(capClaudeModel(id, claudeModelOf(DEFAULT_CLAUDE_MODEL).key), fn);

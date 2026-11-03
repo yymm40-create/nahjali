@@ -33,7 +33,9 @@ export const POST = mahdiRoute(async (req: Request) => {
     const mem = await withClaude(COACH.model, () => remember({ key: `abbas:${user.id}:${first}`, userId: user.id, robot: `${COACH.name} (مدرب الصحة العلوية)`, turns, window: COACH.keepTurns }));
     const r = await withClaude(COACH.model, () =>
       callClaudeJson<CoachAnswer>({
-        system: `${COACH_TASK}\n\n${coachState(profile, plan, screen, recent)}`,
+        // the task alone is the system (cached); the person's state today rides with this turn
+        system: COACH_TASK,
+        turnNote: coachState(profile, plan, screen, recent),
         turns: [...mem.lead, ...mem.kept.map((t) => ({ role: t.role, content: t.text }))],
         schema: COACH_SCHEMA,
         maxTokens: 6000,

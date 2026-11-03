@@ -14,6 +14,7 @@ export const GET = handle(async () => {
 export const POST = handle(async (req: Request) => {
   const { user } = await requireJawadApiUser();
   const body = (await req.json().catch(() => ({}))) as SmartUnderstandingBody;
-  const result = await robotTurn(user, "claude-opus-5-5", "فهم التعديل الذكي", () => smartEditUnderstanding(user, body), undefined, { memory: "isolated" });
+  // the person's model (the page sends it; none = the default), not a hard-coded Opus
+  const result = await robotTurn(user, body.model, "فهم التعديل الذكي", () => smartEditUnderstanding(user, body), undefined, { memory: "isolated" });
   return NextResponse.json(result);
 });
