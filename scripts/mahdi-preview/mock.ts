@@ -78,7 +78,8 @@ export const snapshot: Snapshot = {
     displayName: "جواد",
     avatarUrl: null,
     shrineId: "imam-ali",
-    theme: "cinematic",
+    // ?theme=<key> picks another look (config/mahdi.ts MAHDI_THEMES); «الحرم» by default
+    theme: (typeof location !== "undefined" && new URLSearchParams(location.search).get("theme")) || "cinematic",
     themeVariant: "",
     timeZone: "Asia/Riyadh",
     weekStart: 6,
