@@ -56,6 +56,9 @@ export default function BookletHome({ loginHref, name }: { loginHref: string | n
   // the conversation with the designer («عباس» or «زينب»)
   const [chat, setChat] = useState<Chat | null>(null);
   const [price, setPrice] = useState<Price | null>(null);
+  // exactly what was taken from the wallet in THIS conversation so far (halalas, not an estimate); read back from
+  // the server with the chat, so it survives a reload — 0 for a new one
+  const [spent, setSpent] = useState(0);
   const [draft, setDraft] = useState("");
   const box = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -86,8 +89,9 @@ export default function BookletHome({ loginHref, name }: { loginHref: string | n
     setChat({ id: base?.id ?? "", audience: base?.audience ?? (audience as Audience), messages: [...(base?.messages ?? []), { role: "user", text: said }], spec: base?.spec ?? null, orderId: base?.orderId ?? null });
     setBusy("chat");
     try {
-      const r = await postJson<{ chat: Chat }>("/api/booklet/chat", { chatId: base?.id || null, audience, message: said, model: model.id });
+      const r = await postJson<{ chat: Chat; spent?: number }>("/api/booklet/chat", { chatId: base?.id || null, audience, message: said, model: model.id });
       setChat(r.chat);
+      setSpent(Math.max(0, Number(r.spent) || 0));
       if (r.chat.spec) setPrice((await api<{ price: Price | null }>(`/api/booklet/chats?id=${r.chat.id}`)).price);
       if (!base?.id) void load();
     } catch (e) {
@@ -101,8 +105,9 @@ export default function BookletHome({ loginHref, name }: { loginHref: string | n
     setError("");
     setBusy("open");
     try {
-      const r = await api<{ chat: Chat; price: Price | null }>(`/api/booklet/chats?id=${id}`);
+      const r = await api<{ chat: Chat & { spentHalalas?: number }; price: Price | null }>(`/api/booklet/chats?id=${id}`);
       setChat(r.chat);
+      setSpent(Math.max(0, Number(r.chat.spentHalalas) || 0));
       setPrice(r.price);
       setView("chat");
     } catch (e) {
@@ -138,6 +143,7 @@ export default function BookletHome({ loginHref, name }: { loginHref: string | n
   const toDesign = () => {
     setChat(null);
     setPrice(null);
+    setSpent(0);
     setView("chat");
     const a = audience!;
     const forWhom = a.kind === "child" ? `${a.gender === "female" ? "بنتي" : "ولدي"} ${a.name} (${a.age} سنة)` : `${a.gender === "female" ? "لي (امرأة)" : "لي"}، اسمي ${a.name} وعمري ${a.age}`;
@@ -277,7 +283,7 @@ export default function BookletHome({ loginHref, name }: { loginHref: string | n
           <header className="tb-chat-top">
             <button type="button" className="tb-btn" onClick={() => (setView("home"), void load())}>→ كتيباتي</button>
             <b><RobotFace id={robot.icon} size={26} /> {robot.name} · {chat?.audience ? `كتيب ${chat.audience.name}` : "كتيب جديد"}</b>
-            <ClaudeModelPicker className="tb-claude" disabled={!!busy} />
+            <ClaudeModelPicker className="tb-claude" disabled={!!busy} spent={spent} />
           </header>
           <div className="tb-msgs">
             {(chat?.messages ?? []).map((m, i, all) => {

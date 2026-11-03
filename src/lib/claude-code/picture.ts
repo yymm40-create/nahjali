@@ -9,6 +9,7 @@ import { UserError } from "@/lib/api";
 import { robotTurn, type RobotUser } from "@/lib/claude-run";
 import { callClaudeJson, claudeCost, claudeWhy, type ClaudePart } from "@/lib/film/anthropic";
 import { FONT_BY_ID } from "@/lib/editor/fonts";
+import { pinnedFont } from "@config/content-fonts";
 import { checkScene, LAB_FONTS } from "@/lib/editor/scene/contract";
 import { MILLION_DOLLAR, SCENE_CONTRACT } from "@/lib/editor/scene/skill";
 import { applyEdits, readEdits } from "@/lib/patch";
@@ -128,6 +129,8 @@ export async function pictureWrite(user: RobotUser, b: Record<string, unknown>) 
   if (prompt.length < 2) throw new UserError("اكتب وش تبي في الصورة.", 400);
   const [w, h] = pictureSize(b.aspect);
   const style = text(b.style, 2000);
+  // the font the person chose in «صانع المحتوى» (carried in the look): every word is set in it
+  const pin = pinnedFont(style);
   const previous = text(b.code, 140_000);
   const errors = text(b.errors, 4000);
   if (b.edit === true && previous && !errors) return pictureEdit(user, b, prompt, previous, [w, h], style);
@@ -136,7 +139,7 @@ export async function pictureWrite(user: RobotUser, b: Record<string, unknown>) 
       type: "text",
       text: `${previous ? "FIX the picture's program below." : "DRAW this picture in code."}
 THE REQUEST (the person's words — every word they want written appears EXACTLY as given, Arabic right to left): ${prompt}
-FRAME: ${w}×${h} (${b.aspect ?? "1:1"}) · FONTS you may pick (catalogue ids): ${fontMenu()}
+FRAME: ${w}×${h} (${b.aspect ?? "1:1"}) · ${pin ? `THE FONT the person chose (catalogue id): ${pin} — set every Arabic word in it, and return it as both fonts` : `FONTS you may pick (catalogue ids): ${fontMenu()}`}
 ${style ? `THE LOOK the person chose («الستايل»), to follow in every shape, light and texture: ${style}` : "No look chosen: pick a bold, original one that fits the request (never the safe template look)."}
 ${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the scene page — fix exactly this):\n${errors || "(no error text)"}` : ""}
 Return the COMPLETE program and the two fonts it uses.`,
@@ -146,7 +149,7 @@ Return the COMPLETE program and the two fonts it uses.`,
   ];
   const r = await ask<{ code: string; fonts: { head: string; body: string }; notes: string }>(user, b.model, previous ? "حيدرا ماكس · تصليح الصورة" : "حيدرا ماكس · رسم الصورة", parts, WRITE_SCHEMA, 64_000);
   const chk = checkScene(r.data.code);
-  return { code: chk.code, problems: chk.problems, fonts: { head: font(r.data.fonts?.head, LAB_FONTS[0]), body: font(r.data.fonts?.body, LAB_FONTS[0]) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, model: r.model };
+  return { code: chk.code, problems: chk.problems, fonts: pin ? { head: pin, body: pin } : { head: font(r.data.fonts?.head, LAB_FONTS[0]), body: font(r.data.fonts?.body, LAB_FONTS[0]) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, model: r.model };
 }
 
 /**

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Chat, Turn } from "@/lib/content/chats";
-import { MAKER_CODE, MAKER_GPT, MAKER_LABEL } from "@/lib/content/maker";
+import { CAROUSEL_LABEL, FONT_LABEL, MAKER_CODE, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE } from "@/lib/content/maker";
 
 // One message to «محمد باقر» end to end, with Claude, the database and the editor replaced by stand-ins: what he is
 // given (the catalogues, what the person picked, the state of an earlier carousel) and what the site does with his
@@ -22,7 +22,7 @@ vi.mock("@/lib/content/chats", async (orig) => {
     ...real,
     getChat: vi.fn(async () => (db.chat ? structuredClone(db.chat) : null)),
     saveChat: vi.fn(async (_u: string, id: string | null, patch: { messages: Turn[]; record?: string; pending?: unknown; addUsd?: number }) => {
-      const c = (db.chat as Chat | null) ?? ({ id: "chat-1", title: "t", record: "", pending: null, usd: 0, updatedAt: "", messages: [] } as Chat);
+      const c = (db.chat as Chat | null) ?? ({ id: "chat-1", title: "t", record: "", pending: null, usd: 0, spentHalalas: 0, updatedAt: "", messages: [] } as Chat);
       c.messages = structuredClone(patch.messages);
       if (patch.record !== undefined) c.record = patch.record;
       if (patch.pending !== undefined) c.pending = structuredClone(patch.pending) as Chat["pending"];
@@ -63,7 +63,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 import { say } from "@/lib/content/chat";
 import { findStyle } from "@config/film-styles";
-import { styleLine, templateLine } from "@/lib/content/marks";
+import { answerLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, FONT_AUTO_LINE, fontLine, styleLine, templateLine } from "@/lib/content/marks";
 
 const empty = { on: false, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: [] };
 const noHandoff = { on: false, title: "", shape: "9:16", package: "" };
@@ -72,6 +72,11 @@ const answer = (o: Record<string, unknown>) => {
 };
 const slides = (prompt = "clean design") => [{ n: 1, text: "العنوان", prompt: `${prompt} "العنوان"` }, { n: 2, text: "الخطوة", prompt: `${prompt} "الخطوة"` }];
 const chat = () => db.chat as Chat;
+// a look with no realistic pictures, so the only step left is who makes it
+const FONT = fontLine({ id: "cairo", name: "القاهرة" });
+// a style and its font, as pressed before who makes it
+const FLAT = `${carouselLine({ id: "white-text", name: "الشريحة البيضاء" })}\n${FONT}`;
+const picked = (maker: string) => `${FLAT}\n${answerLine(MAKER_LABEL, [maker])}`;
 
 beforeEach(() => {
   claude.answer = null;
@@ -92,7 +97,7 @@ describe("what he is given", () => {
 
   it("an earlier answer reaches him with the buttons he offered and the state of its carousel", async () => {
     db.chat = {
-      id: "chat-1", title: "t", record: "REC", pending: null, usd: 0, updatedAt: "",
+      id: "chat-1", title: "t", record: "REC", pending: null, usd: 0, spentHalalas: 0, updatedAt: "",
       messages: [
         { role: "user", text: "أبي كاروسيل" },
         {
@@ -119,7 +124,7 @@ describe("what he is given", () => {
 describe("his answer", () => {
   it("the questions become buttons, kept with the answer", async () => {
     answer({ questions: [{ label: "المنصة؟", kind: "choice", options: ["انستغرام", "لينكدإن"], multi: false }, { label: "القالب؟", kind: "templates", options: [], multi: false }, { label: "فارغ", kind: "choice", options: [], multi: false }] });
-    const r = await say("u", null, "أبي كاروسيل", []);
+    const r = await say("u", null, "أبي سكربت ريل", []);
     expect(r.questions).toEqual([{ label: "المنصة؟", kind: "choice", options: ["انستغرام", "لينكدإن"], multi: false }, { label: "القالب؟", kind: "templates", options: [], multi: false }]);
     expect(r.pending).toBeNull();
     expect(chat().messages[1].questions).toHaveLength(2);
@@ -127,14 +132,14 @@ describe("his answer", () => {
 
   it("a carousel ordered: it waits to be drawn with the valid template and style, and its slides appear as placeholders", async () => {
     answer({ produce: { on: true, mode: "all", aspect: "2:3", template_id: "scrapbook", style_id: "ghibli", slides: slides() } });
-    const r = await say("u", null, MAKER_GPT, []);
+    const r = await say("u", null, picked(MAKER_GPT), []);
     expect(r.pending).toEqual({ total: 2, mode: "all", todo: [1, 2] });
     expect(chat().pending).toMatchObject({ aspect: "2:3", templateId: "scrapbook", styleId: "ghibli", mode: "all", at: 1 });
     expect(chat().messages[1].slides).toMatchObject({ todo: [1, 2], running: true, total: 2 });
     // an id the site doesn't know is dropped, not trusted
     answer({ produce: { on: true, mode: "all", aspect: "9:99", template_id: "nope", style_id: "nope", slides: slides() } });
     db.chat = null;
-    await say("u", null, MAKER_GPT, []);
+    await say("u", null, picked(MAKER_GPT), []);
     expect(chat().pending).toMatchObject({ aspect: "1:1", templateId: "", styleId: "" });
     expect(findStyle("ghibli")).toBeDefined();
   });
@@ -145,23 +150,23 @@ describe("his answer", () => {
     expect(claude.calls[0].system).toContain("آخر خطوة قبل تصنيع أي كاروسيل جديد");
     expect(claude.calls[0].system).toContain("GPT Image 2 (رسم كامل بالذكاء الاصطناعي)");
     // the model sends the slides without a pick (or claims one): nothing is made, the question goes out
-    for (const maker of [undefined, "code", "gpt"]) {
+    for (const maker of [undefined, "code", "gpt", "mix"]) {
       answer({ produce: { on: true, mode: "all", ...(maker ? { maker } : {}), aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
       db.chat = null;
-      const r = await say("u", null, "أنتج", []);
+      const r = await say("u", null, FLAT, []);
       expect(r.pending).toBeNull();
       expect(chat().pending).toBeNull();
-      expect(r.questions!.at(-1)).toMatchObject({ label: MAKER_LABEL, kind: "choice", options: [MAKER_CODE, MAKER_GPT] });
+      expect(r.questions!.at(-1)).toMatchObject({ label: MAKER_LABEL, kind: "choice", options: [MAKER_CODE, MAKER_GPT, MAKER_MIX] });
     }
     // a pick typed in words is not the pressed answer
     answer({ produce: { on: true, mode: "all", maker: "gpt", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
     db.chat = null;
-    expect((await say("u", null, "سو بحيدرا ماكس", [])).pending).toBeNull();
-    // the pressed answer decides, whatever the model puts in "maker"
+    expect((await say("u", null, `${FLAT}\nسو بحيدرا ماكس`, [])).pending).toBeNull();
+    // the pressed answer decides, whatever the model puts in "maker": alone, or as a line of a batch
     const chosen = async (pressed: string, maker: string) => {
       answer({});
       db.chat = null;
-      await say("u", null, "أبي كاروسيل", []);
+      await say("u", null, FLAT, []);
       answer({ produce: { on: true, mode: "all", maker, aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
       await say("u", "chat-1", pressed, []);
     };
@@ -170,11 +175,88 @@ describe("his answer", () => {
     expect(chat().pending!.maker).toBeUndefined();
     await chosen(MAKER_CODE, "gpt");
     expect(chat().pending!.maker).toBe("code");
+    expect(chat().pending!.mix).toBeUndefined();
+    await chosen(answerLine(MAKER_LABEL, [MAKER_CODE]), "gpt");
+    expect(chat().pending!.maker).toBe("code");
+    // the third way: GPT Image 2's pictures with «حيدرا ماكس»'s writing
+    await chosen(MAKER_MIX, "gpt");
+    expect(chat().pending).toMatchObject({ maker: "code", mix: true, carouselId: "white-text", fontId: "cairo" });
+    expect(chat().messages.at(-1)!.slides).toMatchObject({ maker: "code", mix: true, carouselId: "white-text", fontId: "cairo" });
+  });
+
+  it("a carousel opens the table of styles, and nothing is made until a style is picked", async () => {
+    answer({ questions: [{ label: "المنصة؟", kind: "choice", options: ["انستغرام", "لينكدإن"], multi: false }, { label: "الألوان؟", kind: "palettes", options: [], multi: false }, { label: "القالب؟", kind: "templates", options: [], multi: false }] });
+    const first = await say("u", null, "أبي كاروسيل", []);
+    // the table stands in for the colours and the templates he might still offer
+    expect(first.questions).toEqual([{ label: "المنصة؟", kind: "choice", options: ["انستغرام", "لينكدإن"], multi: false }, { label: CAROUSEL_LABEL, kind: "carousels", options: [], multi: false }]);
+    for (const t of ["جدول ستايلات الكاروسيل", "- notebook — 1) الدفتر", "- choose-path — 50) اختر مسارك", "كيف تكتب توجيه GPT Image 2", "لا تسأل العميل عن الألوان ولا الهوامش", "امرأة بالغة واقعية"]) expect(claude.calls[0].system).toContain(t);
+    // slides without a pick: the table again, not a carousel
+    answer({ produce: { on: true, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
+    const second = await say("u", "chat-1", `أنتج\n${answerLine(MAKER_LABEL, [MAKER_GPT])}`, []);
+    expect(second.pending).toBeNull();
+    expect(second.questions!.at(-1)).toMatchObject({ label: CAROUSEL_LABEL, kind: "carousels" });
+  });
+
+  it("after the style comes the font: the list goes out, the style's ready font is named, and the pick is kept with the carousel", async () => {
+    answer({ produce: { on: true, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
+    const r = await say("u", null, carouselLine({ id: "soft-3d", name: "ثري دي ناعم" }), []);
+    expect(r.pending).toBeNull();
+    expect(r.questions!.at(-1)).toMatchObject({ label: FONT_LABEL, kind: "fonts" });
+    expect(r.text).toContain("بالو بهايجان");
+    expect(claude.calls[0].system).toContain('kind="fonts"');
+    // the font is left to him: the one he names in "font_id" is kept
+    answer({ produce: { on: true, mode: "all", font_id: "lemonada", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
+    await say("u", "chat-1", `${FONT_AUTO_LINE}\n${answerLine(MAKER_LABEL, [MAKER_GPT])}`, []);
+    expect(chat().pending).toMatchObject({ carouselId: "soft-3d", fontId: "lemonada" });
+  });
+
+  it("help me choose is not a pick: he helps, and his recommendations are shown first in the table", async () => {
+    answer({ questions: [{ label: "اختر من ترشيحاتي", kind: "carousels", options: ["notebook", "nope", "tweet-dark"], multi: false }], produce: { on: true, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
+    const r = await say("u", null, CAROUSEL_HELP_LINE, []);
+    expect(claude.calls[0].system).toContain("رشّح له ٣ ستايلات");
+    expect(r.pending).toBeNull();
+    expect(r.questions).toEqual([{ label: "اختر من ترشيحاتي", kind: "carousels", options: ["notebook", "tweet-dark"], multi: false }]);
+    // his own recommendations are kept when he only offers them; an id the site doesn't know is dropped
+    answer({ questions: [{ label: "اختر من ترشيحاتي", kind: "carousels", options: ["notebook", "nope", "tweet-dark"], multi: false }] });
+    expect((await say("u", "chat-1", "الهدف توعية", [])).questions).toEqual([{ label: "اختر من ترشيحاتي", kind: "carousels", options: ["notebook", "tweet-dark"], multi: false }]);
+  });
+
+  it("something not in the table is a pick in the person's own words", async () => {
+    answer({ produce: { on: true, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
+    const r = await say("u", null, `${carouselOwnLine("ستايل خشب محروق")}\n${FONT_AUTO_LINE}\n${answerLine(MAKER_LABEL, [MAKER_GPT])}`, []);
+    expect(claude.calls[0].system).toContain("يريد شكلًا غير الموجود");
+    expect(r.pending).toEqual({ total: 2, mode: "all", todo: [1, 2] });
+    expect(chat().pending!.carouselId).toBeUndefined();
+  });
+
+  it("a realistic style asks: their own pictures, or made from zero, with the idea of what to add", async () => {
+    const NOTEBOOK = carouselLine({ id: "notebook", name: "الدفتر" });
+    const order = () => answer({ produce: { on: true, mode: "all", refs: [], aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
+    order();
+    const asked = await say("u", null, NOTEBOOK, []);
+    expect(claude.calls[0].system).toContain("أضيف صوري");
+    expect(asked.pending).toBeNull();
+    expect(asked.questions!.at(-1)).toMatchObject({ label: PHOTOS_LABEL, options: [PHOTOS_MINE, PHOTOS_MAKE] });
+    expect(asked.text).toContain("صوّر صفحة من دفترك");
+    // made from zero: on to who makes it, then made
+    db.chat = null;
+    order();
+    const zero = await say("u", null, `${NOTEBOOK}\n${FONT}\n${answerLine(PHOTOS_LABEL, [PHOTOS_MAKE])}`, []);
+    expect(zero.questions!.at(-1)).toMatchObject({ label: MAKER_LABEL });
+    order();
+    expect((await say("u", "chat-1", MAKER_MIX, [])).pending).toEqual({ total: 2, mode: "all", todo: [1, 2] });
+    expect(chat().pending).toMatchObject({ carouselId: "notebook", mix: true });
+    // their own pictures: nothing is made until they arrive
+    db.chat = null;
+    order();
+    const mine = await say("u", null, `${NOTEBOOK}\n${FONT}\n${answerLine(PHOTOS_LABEL, [PHOTOS_MINE])}\n${answerLine(MAKER_LABEL, [MAKER_GPT])}`, []);
+    expect(mine.pending).toBeNull();
+    expect(mine.text).toContain("أرفقها بزر 📎");
   });
 
   it("a second carousel asks again; the pick of the first does not carry over", async () => {
     const turns = (maker?: "code") => ({
-      id: "chat-1", title: "t", record: "", pending: null, usd: 0, updatedAt: "",
+      id: "chat-1", title: "t", record: "", pending: null, usd: 0, spentHalalas: 0, updatedAt: "",
       messages: [
         { role: "user", text: MAKER_CODE },
         { role: "assistant", text: "تمام", slides: { aspect: "1:1", items: [{ n: 1, fileId: "f1", name: "slide-01", text: "t" }], todo: [], failed: [], running: false, total: 1, styleId: "", templateId: "", ...(maker ? { maker } : {}) } },
@@ -187,7 +269,7 @@ describe("his answer", () => {
 
   it("slides drawn again go back to the way the carousel was made, whatever the answer says", async () => {
     const made = (maker?: "code") => ({
-      id: "chat-1", title: "t", record: "", pending: null, usd: 0, updatedAt: "",
+      id: "chat-1", title: "t", record: "", pending: null, usd: 0, spentHalalas: 0, updatedAt: "",
       messages: [
         { role: "user", text: "أبي كاروسيل" },
         { role: "assistant", text: "تمام", slides: { aspect: "1:1", items: [{ n: 1, fileId: "f1", name: "slide-01", text: "t" }], todo: [], failed: [], running: false, total: 1, styleId: "", templateId: "", ...(maker ? { maker } : {}) } },
@@ -205,7 +287,7 @@ describe("his answer", () => {
 
   it("slides drawn again: only those slides, in the carousel that exists, with its style kept", async () => {
     db.chat = {
-      id: "chat-1", title: "t", record: "", pending: null, usd: 0, updatedAt: "",
+      id: "chat-1", title: "t", record: "", pending: null, usd: 0, spentHalalas: 0, updatedAt: "",
       messages: [
         { role: "user", text: "أبي كاروسيل" },
         { role: "assistant", text: "تمام", slides: { aspect: "9:16", items: [{ n: 1, fileId: "f1", name: "slide-01", text: "t" }, { n: 2, fileId: "f2", name: "slide-02", text: "t", flag: "حرف مقطوع" }], todo: [], failed: [{ n: 3, reason: "r", text: "t", prompt: "p" }], running: false, total: 3, styleId: "ghibli", templateId: "scrapbook", report: "قديم" } },

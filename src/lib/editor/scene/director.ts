@@ -119,7 +119,7 @@ const stepSignal = (b: Record<string, unknown>) => (b.__signal instanceof AbortS
  * 800 s, counted from its start (`b.__at`, stamped by the route), and the step's own work before Claude is in that.
  */
 const WINDOW_MS = 660_000;
-type Asked<T> = { data: T; coins: number; model: string; partialRaw?: undefined } | { data?: undefined; coins: number; model: string; partialRaw: string; noProgress: boolean; effortUsed: string };
+type Asked<T> = { data: T; coins: number; worth: number; model: string; partialRaw?: undefined } | { data?: undefined; coins: number; worth: number; model: string; partialRaw: string; noProgress: boolean; effortUsed: string };
 type Level = "low" | "medium" | "high" | "xhigh";
 /** The request's own effort, the SAME on every lab call (a different top-level effort restarts the cache); each reply's
  * level rides as `turnEffort` — high for a plan, a write and a review, medium for a fix, a patch and the chat. */
@@ -177,9 +177,9 @@ async function ask<T>(
   );
   if (r.partial) {
     const now = stitchCode(written, r.raw);
-    return { partialRaw: now, noProgress: now.length <= written.length, effortUsed: level, coins: r.coins, model: r.model };
+    return { partialRaw: now, noProgress: now.length <= written.length, effortUsed: level, coins: r.coins, worth: r.worth, model: r.model };
   }
-  if (!written) return { data: resultOf<T>(r.data, kind)!, coins: r.coins, model: r.model };
+  if (!written) return { data: resultOf<T>(r.data, kind)!, coins: r.coins, worth: r.worth, model: r.model };
   // a continued reply is raw text (no format): the written part and the rest together are the same `{ "result": … }`
   const whole = stitchCode(written, r.raw);
   let data: T | null = null;
@@ -192,7 +192,7 @@ async function ask<T>(
     console.error("motion lab", label, "continued reply is not the JSON asked for", whole.slice(-200));
     throw new UserError("ما قدرت أجمع رد حيدرا ماكس بعد ما انقطع. جرّب مرة ثانية.", 502);
   }
-  return { data, coins: r.coins, model: r.model };
+  return { data, coins: r.coins, worth: r.worth, model: r.model };
 }
 
 /** 1 · PLAN: the idea, the look and the shot list (the person approves it before any code). */
@@ -239,7 +239,7 @@ ${kindAsk("plan")}`,
   if (r.partialRaw !== undefined) return r;
   // the picks ride with the plan, so writing and review see them too
   const plan = { ...readPlan(r.data, seconds, assets.map((a) => a.id), foot?.seconds), choices, ...(foot ? { narration: [] } : {}) };
-  return { plan, say: text(r.data.say, 600), coins: r.coins, model: r.model };
+  return { plan, say: text(r.data.say, 600), coins: r.coins, worth: r.worth, model: r.model };
 }
 
 /** 2 · WRITE: the scene program on the kit, from the approved plan (or a fix of the last one, from its errors). */
@@ -283,9 +283,9 @@ ${kindAsk(patch ? "patch" : "write")}`,
   if (r.partialRaw !== undefined) return r;
   const out = patch ? patchOf(previous, r.data) : { code: r.data.code };
   // a patch that cannot be applied: no program, and the page asks for the whole one (once)
-  if ("patchFailed" in out) return { code: "", problems: [], notes: text(r.data.notes, 600), patchFailed: out.patchFailed, coins: r.coins, model: r.model };
+  if ("patchFailed" in out) return { code: "", problems: [], notes: text(r.data.notes, 600), patchFailed: out.patchFailed, coins: r.coins, worth: r.worth, model: r.model };
   const chk = checkScene(out.code);
-  return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), coins: r.coins, model: r.model };
+  return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), coins: r.coins, worth: r.worth, model: r.model };
 }
 
 /** 3 · REVIEW: he looks at what the browser rendered, scores it, and rewrites it when it is below the bar. */
@@ -330,7 +330,7 @@ ${code}`,
   if (r.partialRaw !== undefined) return r;
   const review = readReview(r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkScene(r.data.code) : null;
-  return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };
+  return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, worth: r.worth, model: r.model };
 }
 
 /**
@@ -420,6 +420,7 @@ THEIR NEW MESSAGE: ${message}`,
     ...(patchFailed ? { patchFailed } : {}),
     search,
     coins: r.coins,
+    worth: r.worth,
     model: r.model,
   };
 }
@@ -443,7 +444,7 @@ export async function labSearch(p: EditorProject, who: Who, b: Record<string, un
       }),
     (x) => x.usd,
   );
-  return { text: text(r.text, 6000), sources: r.sources, coins: r.coins, model: r.model };
+  return { text: text(r.text, 6000), sources: r.sources, coins: r.coins, worth: r.worth, model: r.model };
 }
 
 /**

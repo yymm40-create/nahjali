@@ -6,6 +6,8 @@ import { HUSSEINI_MOURNING_FEED } from "@config/husseini-mourning";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BAQIR_PERSONA, CONTENT_KV, CONTENT_PLATFORM_RULES, CONTENT_TOOLS } from "@config/content";
 import { CAROUSEL_TEMPLATES, designSystem, findTemplate, structureName } from "@config/content-templates";
+import { CAROUSEL_GPT_CRAFT, CAROUSEL_STYLES, carouselStyleBlock, findCarouselStyle } from "@config/content-carousel-styles";
+import { CONTENT_FONTS, findContentFont, FONT_GROUPS } from "@config/content-fonts";
 import { FILM_STYLES, findStyle } from "@config/film-styles";
 import { findPalette, lightness } from "@config/content-palettes";
 import { MOODS, MOTION_STYLES, moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
@@ -54,7 +56,9 @@ export function turnText(parts: string[] = [], record = "") {
 export function catalogBlock(): string {
   const tpl = CAROUSEL_TEMPLATES.map((t) => `- ${t.id} — ${t.name} (${t.group}) — ${t.description} يناسب: ${t.bestFor}. بنيات: ${t.structures.map(structureName).join("، ")}. حتى ${t.words} كلمة في الشريحة.`).join("\n");
   const sty = FILM_STYLES.map((x) => `- ${x.id} — ${x.name} (${x.group} · ${x.school}) — ${x.feel}`).join("\n");
-  return `قوالب الكاروسيل التي يعرضها الموقع للعميل (معرض kind="templates"؛ يختار واحدًا أو لا يختار):\n${tpl}\n\nخريطة الستايلات (${FILM_STYLES.length} ستايلًا في ١٤ عائلة، كل واحد تحت شركته أو مدرسته) لرسوم الصور (معرض kind="styles"؛ يطبّق الموقع نص الستايل حرفيًا على الرسوم والشخصيات والمشاهد المرسومة فقط، لا على تخطيط الكتابة):\n${sty}`;
+  const car = CAROUSEL_STYLES.map((s) => `- ${s.id} — ${s.n}) ${s.name} (${s.niche})${s.winner ? " ★الأقوى في نيشه" : ""}${s.photoIdea ? " [صور واقعية]" : ""}${s.font ? ` [خطه الجاهز: ${s.font}]` : ""} — ${s.description} يناسب: ${s.bestFor}.`).join("\n");
+  const fonts = CONTENT_FONTS.map((f) => `- ${f.id} — ${f.name} (${f.group})${f.top ? " ★" : ""} — ${f.feel} يناسب: ${f.bestFor}.`).join("\n");
+  return `جدول ستايلات الكاروسيل (${CAROUSEL_STYLES.length} ستايلًا مصنفة بالنيش، بصورتين لكل واحد: غلاف وشريحة؛ جدول kind="carousels"؛ هو طريقة اختيار شكل الكاروسيل):\n${car}\n\nقائمة الخطوط العربية (${CONTENT_FONTS.length} خطًا في ${FONT_GROUPS.length} أنواع؛ قائمة kind="fonts"؛ تُسأل بعد الستايل: الموقع يعرضها بنفسه، وإذا رشّحت خطوطًا فضع معرّفاتها في "options"):\n${fonts}\n\n${CAROUSEL_GPT_CRAFT}\n\nقوالب الكاروسيل التي يعرضها الموقع للعميل (معرض kind="templates"؛ يختار واحدًا أو لا يختار):\n${tpl}\n\nخريطة الستايلات (${FILM_STYLES.length} ستايلًا في ١٤ عائلة، كل واحد تحت شركته أو مدرسته) لرسوم الصور (معرض kind="styles"؛ يطبّق الموقع نص الستايل حرفيًا على الرسوم والشخصيات والمشاهد المرسومة فقط، لا على تخطيط الكتابة):\n${sty}`;
 }
 
 /**
@@ -72,6 +76,8 @@ const STYLE_MARK = /\[ستايل:([a-z0-9-]+)\]/g;
 const MOTION_MARK = /\[موشن:([a-z0-9-]+)\]/g;
 const MOOD_MARK = /\[مزاج:([a-z0-9-]+)\]/g;
 const PALETTE_MARK = /\[ألوان:([a-z0-9-]+)\]/g;
+const CAROUSEL_MARK = /\[كاروسيل:([a-z0-9-]+)\]/g;
+const FONT_MARK = /\[خط:([a-z0-9-]+)\]/g;
 
 /** What the person picked in the galleries: the last mark of each kind in their messages ("none" = they chose neither). */
 export interface Chosen {
@@ -82,6 +88,10 @@ export interface Chosen {
   mood?: string | null;
   /** one of the 100 four-colour palettes ("none" = he chooses the colours) */
   palette?: string | null;
+  /** a style of the table of 103 ("help" = help me choose, "own" = something not in the table) */
+  carousel?: string | null;
+  /** a font of the list of 50 ("style" = the style's ready font, "auto" = he picks) */
+  font?: string | null;
 }
 export function chosenIds(userTexts: string[]): Required<Chosen> {
   let template: string | null = null;
@@ -89,19 +99,41 @@ export function chosenIds(userTexts: string[]): Required<Chosen> {
   let motion: string | null = null;
   let mood: string | null = null;
   let palette: string | null = null;
+  let carousel: string | null = null;
+  let font: string | null = null;
   for (const t of userTexts) {
     for (const m of t.matchAll(TEMPLATE_MARK)) template = m[1];
     for (const m of t.matchAll(STYLE_MARK)) style = m[1];
     for (const m of t.matchAll(MOTION_MARK)) motion = m[1];
     for (const m of t.matchAll(MOOD_MARK)) mood = m[1];
     for (const m of t.matchAll(PALETTE_MARK)) palette = m[1];
+    for (const m of t.matchAll(CAROUSEL_MARK)) carousel = m[1];
+    for (const m of t.matchAll(FONT_MARK)) font = m[1];
   }
-  return { template, style, motion, mood, palette };
+  return { template, style, motion, mood, palette, carousel, font };
 }
 
 /** The full details of what was picked (the design system to copy into every slide, the style's meaning). */
 export function chosenBlock(ids: Chosen): string {
   const out: string[] = [];
+  const car = ids.carousel ? findCarouselStyle(ids.carousel) : null;
+  if (car) {
+    out.push(
+      `ستايل الكاروسيل الذي اختاره العميل: ${car.n}) ${car.name} (${car.id}) من نيش «${car.niche}». ${car.description}\nضع معرّفه في "carousel_id". ألوانه وخطه وهوامشه محسومة فيه: لا تسأل عنها، ولا تعرض معرض الألوان ولا القوالب إلا إذا طلب العميل تغيير شيء بنفسه. حتى ${car.words} كلمة في الشريحة.\nوصف الستايل كما يضيفه الموقع حرفيًا إلى كل شريحة (للعلم، لا تنسخه في "prompt"؛ اكتب فيه ما يخص الشريحة فقط):\n${carouselStyleBlock(car)}${
+        car.photoIdea
+          ? `\nهذا الستايل فيه صور واقعية، فاسأله في ردّك التالي سؤالًا kind="choice" نصّه «هذا الستايل فيه صور واقعية: تضيف صورك أو نسويها لك؟» بخيارين حرفيًا: «أضيف صوري» و«سوّوها لي من الصفر»، وأعطه الفكرة لما يضيفه: ${car.photoIdea} وإذا اختار صوره فاطلب منه إرفاقها بزر 📎 وضع معرّفاتها في "refs"، وقل له أي صورة تذهب لأي شريحة (مثلًا: في الغلاف بوستر بصورتك هكذا).`
+          : ""
+      }`,
+    );
+  } else if (ids.carousel === "help") {
+    out.push('العميل لا يعرف أي ستايل يختار، فساعده: اسأله عمّا لم تعرفه بعد فقط (الهدف، والجمهور، وهل عنده صور)، ثم رشّح له ٣ ستايلات من الجدول تناسبه مع سبب من سطر واحد لكل ستايل، واعرضها بسؤال kind="carousels" و"options" فيها معرّفات الثلاثة، فتظهر له أولًا ويقدر يفتح الجدول كله.');
+  } else if (ids.carousel === "own") {
+    out.push('العميل يريد شكلًا غير الموجود في الجدول، بكلامه هو: نفّذ وصفه كما هو، واترك "carousel_id" فارغًا. اكتب في "prompt" كل شريحة نظامًا واحدًا كاملًا (الألوان برموزها، والخط، والتخطيط)، ولا تسأله عن الهوامش. وإذا كان وصفه فيه صور واقعية فاسأله: يضيف صوره أو تصنعها له.');
+  }
+  const fontId = ids.font === "style" ? (car?.font ?? "auto") : ids.font;
+  const font = fontId ? findContentFont(fontId) : null;
+  if (font) out.push(`الخط الذي اختاره العميل: ${font.name} (${font.id}) من نوع «${font.group}». ضع معرّفه في "font_id". الموقع يضيف وصفه إلى كل شريحة، وحيدرا ماكس يكتب بملفه الحقيقي؛ لا تسأل عن الخط مرة ثانية.`);
+  else if (fontId === "auto") out.push(`العميل ترك الخط لك: اختر من قائمة الخطوط الأنسب للستايل والموضوع${car?.font ? ` (للستايل خط جاهز: ${car.font})` : ""}، وضع معرّفه في "font_id"، واذكر له اسمه في ردّك.`);
   const t = ids.template ? findTemplate(ids.template) : null;
   if (t) {
     out.push(

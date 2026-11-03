@@ -3,6 +3,8 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CONTENT, type CarouselAspect } from "@config/content";
+import { findCarouselStyle } from "@config/content-carousel-styles";
+import { findContentFont } from "@config/content-fonts";
 
 const db = () => createAdminClient();
 
@@ -53,6 +55,12 @@ export interface SlidesBlock {
   report?: string;
   /** "code": the slides are drawn by «Claude Code» in the person's browser (absent = GPT Image 2 through جواد) */
   maker?: "code";
+  /** with "code": GPT Image 2 paints every slide's picture and «حيدرا ماكس» only writes on it */
+  mix?: boolean;
+  /** the style of the table of 50 this carousel follows */
+  carouselId?: string;
+  /** the font of the list of 50 the carousel is written in */
+  fontId?: string;
 }
 
 /** One picture or video «محمد باقر» asked جواد for (outside a carousel), and where it stands. */
@@ -90,7 +98,8 @@ export interface MediaBlock {
 /** A question of a batch, answered by pressing (or writing). */
 export interface Question {
   label: string;
-  kind: "choice" | "templates" | "styles" | "motion" | "moods" | "palettes";
+  kind: "choice" | "templates" | "styles" | "motion" | "moods" | "palettes" | "carousels" | "fonts";
+  /** the answers of "choice"; with "carousels", the styles he recommends (their ids); with "fonts", the fonts he recommends */
   options: string[];
   multi: boolean;
 }
@@ -130,6 +139,12 @@ export interface PendingProduce {
   /** "code": «حيدرا ماكس» designs each slide in the person's browser (every new carousel; absent only on carousels
    * ordered before, which GPT Image 2 finishes as they were) */
   maker?: "code";
+  /** with "code": GPT Image 2 paints every slide's picture and «حيدرا ماكس» only writes on it */
+  mix?: boolean;
+  /** the style of the table of 50 this carousel follows */
+  carouselId?: string;
+  /** the font of the list of 50 the carousel is written in */
+  fontId?: string;
   /** made in this production so far */
   made: Slide[];
   failed: SlideFailure[];
@@ -144,6 +159,8 @@ export interface Chat {
   record: string;
   pending: PendingProduce | null;
   usd: number;
+  /** exactly what was taken from the wallet across this whole conversation (halalas, not an estimate) */
+  spentHalalas: number;
   updatedAt: string;
 }
 
@@ -203,8 +220,9 @@ export function readMedia(v: unknown): MediaItem[] {
 export function readQuestions(v: unknown): Question[] | undefined {
   const out = objs(v)
     .map((q): Question => {
-      const kind = q.kind === "templates" || q.kind === "styles" || q.kind === "motion" || q.kind === "moods" || q.kind === "palettes" ? q.kind : "choice";
-      const options = kind === "choice" ? (Array.isArray(q.options) ? q.options : []).filter((o): o is string => typeof o === "string" && o.trim().length > 0).map((o) => o.trim().slice(0, 140)).slice(0, 8) : [];
+      const kind = q.kind === "templates" || q.kind === "styles" || q.kind === "motion" || q.kind === "moods" || q.kind === "palettes" || q.kind === "carousels" || q.kind === "fonts" ? q.kind : "choice";
+      const given = (Array.isArray(q.options) ? q.options : []).filter((o): o is string => typeof o === "string" && o.trim().length > 0).map((o) => o.trim());
+      const options = kind === "choice" ? given.map((o) => o.slice(0, 140)).slice(0, 8) : kind === "carousels" ? given.filter((o) => findCarouselStyle(o)).slice(0, 5) : kind === "fonts" ? given.filter((o) => findContentFont(o)).slice(0, 5) : [];
       return { label: str(q.label, 120).trim(), kind, options, multi: q.multi === true && kind === "choice" };
     })
     .filter((q) => q.label && (q.kind !== "choice" || q.options.length > 0))
@@ -242,6 +260,9 @@ export function cleanHistory(raw: unknown): Turn[] {
         total: num(s.total),
         styleId: str(s.styleId, 60),
         ...(s.maker === "code" ? { maker: "code" as const } : {}),
+        ...(s.mix === true ? { mix: true } : {}),
+        ...(typeof s.carouselId === "string" && findCarouselStyle(s.carouselId) ? { carouselId: s.carouselId } : {}),
+        ...(typeof s.fontId === "string" && findContentFont(s.fontId) ? { fontId: s.fontId } : {}),
         templateId: str(s.templateId, 60),
         ...(typeof s.report === "string" && s.report ? { report: s.report.slice(0, 4000) } : {}),
       };
@@ -276,6 +297,9 @@ export function readPending(v: unknown): PendingProduce | null {
     ...(Array.isArray(p.refs) && p.refs.length ? { refs: p.refs.filter((r): r is string => typeof r === "string").slice(0, 6) } : {}),
     mode: p.mode === "fix" ? "fix" : "all",
     ...(p.maker === "code" ? { maker: "code" as const } : {}),
+    ...(p.mix === true ? { mix: true } : {}),
+    ...(typeof p.carouselId === "string" && findCarouselStyle(p.carouselId) ? { carouselId: p.carouselId } : {}),
+    ...(typeof p.fontId === "string" && findContentFont(p.fontId) ? { fontId: p.fontId } : {}),
     ...(p.arts && typeof p.arts === "object" && !Array.isArray(p.arts) ? { arts: Object.fromEntries(Object.entries(p.arts as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> } : {}),
     made: objs(p.made).filter((x) => typeof x.fileId === "string").map(readSlide),
     failed: objs(p.failed).map(readFailure),
@@ -300,6 +324,7 @@ const view = (r: Record<string, unknown>): Chat => ({
   record: str(r.record, 20_000),
   pending: readPending(r.pending),
   usd: Number(r.usd ?? 0),
+  spentHalalas: Math.max(0, Number(r.spent_halalas ?? 0)),
   updatedAt: String(r.updated_at ?? ""),
 });
 

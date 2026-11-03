@@ -1,8 +1,8 @@
-// «صانع المحتوى» — the produce step: the slides of a carousel «محمد باقر» ordered. Every new carousel is designed by
-// «حيدرا ماكس» in code in the person's browser, slide by slide (the exact Arabic writing, the shapes, the layout); a slide
-// that needs a painted picture gets it FIRST from جواد with GPT Image 2 — with no writing in it — and he places it. The
-// part below the «حيدرا ماكس» line is that. The older way (GPT Image 2 drawing whole slides with their writing, then a
-// check of its Arabic) only finishes carousels that were ordered before it ended:
+// «صانع المحتوى» — the produce step: the slides of a carousel «محمد باقر» ordered, made the way the person picked:
+// «حيدرا ماكس» in code in the person's browser, slide by slide (the exact Arabic writing, the shapes, the layout; a slide
+// that needs a painted picture gets it FIRST from جواد with GPT Image 2 — with no writing in it — and he places it);
+// or GPT Image 2's picture as the whole slide with «حيدرا ماكس» only writing on it (the part below the «حيدرا ماكس» line
+// is those two); or GPT Image 2 drawing each whole slide with its writing, then a check of its Arabic:
 //
 // It works a few slides at a time (the page calls it again until nothing is left), so each call finishes well inside
 // the server's time limit and the page can show the slides as they arrive:
@@ -20,11 +20,13 @@ import { UserError } from "@/lib/api";
 import { unlimitedFor } from "@/lib/access";
 import { deskImage, deskReference, DeskError, type DeskOutput, type DeskReceipt, type DeskWho } from "./jawad";
 import { ARABIC_TEXT_RULES } from "@config/content-templates";
+import { carouselStyleBlock, carouselStyleForCode, findCarouselStyle, NO_REALISTIC_WOMEN } from "@config/content-carousel-styles";
+import { findContentFont, FONT_PIN, fontBlock } from "@config/content-fonts";
 import { NO_TEXT_RULE } from "@config/designer";
 import { findStyle } from "@config/film-styles";
 import { getChat, saveChat, type Chat, type PendingProduce, type Slide, type SlideFailure, type SlidesBlock } from "./chats";
 import { addProduced, addProducedFromOutput, attachmentsOf, deleteProduced, producedBytes, producedLinks, producedRow, uploadLinks } from "./files";
-import { checkSlide, fixNote, type SlideCheck } from "./verify";
+import { checkSlide, fixNote, showsRealWoman, WOMAN_PROBLEM, type SlideCheck } from "./verify";
 
 /** GPT Image 2 for the slides: the standard sizes (a 1:1 slide is 1024×1024), high quality for readable Arabic. */
 export const IMAGE_MODEL = "gpt-image-2-2026-04-21";
@@ -63,6 +65,10 @@ export interface CodeSlide {
   aspect: string;
   refs: string[];
   photos: string[];
+  /** the look of the carousel's style, for his «الستايل» */
+  style?: string;
+  /** GPT Image 2's picture is the whole slide: he only writes on it */
+  mix?: boolean;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -87,8 +93,10 @@ export const reasonOf = (e: unknown) =>
 const detailOf = (e: unknown) => (e instanceof DeskError ? e.detail || e.reason : e instanceof Error ? e.message : String(e)).slice(0, 300);
 
 /** The full prompt of one slide: where it stands, the design (Baqir's), the style (verbatim), the slide, the rules. */
-export function slidePrompt(o: { n: number; total: number; prompt: string; styleId: string; withRef: boolean; userRefs?: number; fix?: string }): string {
+export function slidePrompt(o: { n: number; total: number; prompt: string; styleId: string; carouselId?: string; fontId?: string; withRef: boolean; userRefs?: number; fix?: string }): string {
   const style = o.styleId ? findStyle(o.styleId) : null;
+  const car = o.carouselId ? findCarouselStyle(o.carouselId) : null;
+  const font = o.fontId ? findContentFont(o.fontId) : null;
   return [
     o.withRef
       ? o.n === 1
@@ -96,9 +104,12 @@ export function slidePrompt(o: { n: number; total: number; prompt: string; style
         : `Slide ${o.n} of ${o.total} of one carousel. The reference picture is slide 1: match its design system EXACTLY — the same colours, typography, margins, layout grid, logo placement and decorative elements — so the carousel reads as one set. Only the content changes.`
       : `Slide ${o.n} of ${o.total} of a carousel (the first: it sets the design system every other slide will copy).`,
     o.userRefs ? `The client's own attached picture${o.userRefs > 1 ? "s are" : " is"} also given as reference${o.userRefs > 1 ? "s" : ""} (named ref1${o.userRefs > 1 ? "…" : ""}): use ${o.userRefs > 1 ? "them" : "it"} where the slide's brief asks (a logo, a photo, a product), exactly as ${o.userRefs > 1 ? "they are" : "it is"}, without redrawing or altering ${o.userRefs > 1 ? "them" : "it"}.` : "",
+    car ? carouselStyleBlock(car) : "",
+    font ? fontBlock(font) : "",
     style ? `ILLUSTRATION STYLE (verbatim; applies to every drawn character, object and scene — not to the lettering layout): ${style.text}` : "",
     o.prompt,
     ARABIC_TEXT_RULES,
+    NO_REALISTIC_WOMEN,
     o.fix ?? "",
   ]
     .filter(Boolean)
@@ -143,7 +154,7 @@ async function makeSlide(c: { userId: string; chatId: string; owner: boolean; t0
       const r = await deskImage(c.who, {
         key: `c-${randomUUID().replace(/-/g, "")}`,
         kind: "image",
-        prompt: slidePrompt({ n: s.n, total: c.total, prompt: s.prompt, styleId: p.styleId, withRef: !!ref, userRefs: mine.length, fix }),
+        prompt: slidePrompt({ n: s.n, total: c.total, prompt: s.prompt, styleId: p.styleId, carouselId: p.carouselId, fontId: p.fontId, withRef: !!ref, userRefs: mine.length, fix }),
         aspect: p.aspect,
         resolution: IMAGE_TIER,
         quality: IMAGE_QUALITY,
@@ -173,6 +184,8 @@ async function makeSlide(c: { userId: string; chatId: string; owner: boolean; t0
     redrawn = true;
   }
 
+  // a realistic adult woman is never handed over, however the rest came out
+  if (bad?.check.problems.includes(WOMAN_PROBLEM)) return { failed: { n: s.n, reason: `${WOMAN_PROBLEM}. غيّر وصف الشريحة ثم أعد المحاولة.`, text: s.text, prompt: s.prompt }, usd };
   if (bad) {
     // still wrong after the tries: a text problem is kept and said plainly
     const flag = bad.check.problems.join("، ").slice(0, 300) || "خطأ في الكتابة";
@@ -211,7 +224,8 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
     const item = block.items.find((x) => x.n === n);
     const row = item ? await producedRow(userId, item.fileId) : null;
     const prompt = typeof row?.meta.prompt === "string" ? row.meta.prompt : "";
-    if (item && prompt) slides.push({ n, text: item.text, prompt });
+    const picture = typeof row?.meta.picture === "string" ? row.meta.picture : "";
+    if (item && prompt) slides.push({ n, text: item.text, prompt, ...(picture ? { picture } : {}) });
   }
   if (!slides.length) throw new UserError("ما لقينا شرائح نعيد رسمها.", 409);
   // the attached pictures the carousel was made with go again with the slides drawn again
@@ -233,6 +247,9 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
     templateId: block.templateId,
     mode: "fix",
     ...(block.maker === "code" ? { maker: "code" as const } : {}),
+    ...(block.mix ? { mix: true } : {}),
+    ...(block.carouselId ? { carouselId: block.carouselId } : {}),
+    ...(block.fontId ? { fontId: block.fontId } : {}),
     made: [],
     failed: [],
     carry: block.failed.filter((f) => !slides.some((s) => s.n === f.n)),
@@ -323,6 +340,9 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
     styleId: p.styleId,
     templateId: p.templateId,
     ...(p.maker === "code" ? { maker: "code" as const } : {}),
+    ...(p.mix ? { mix: true } : {}),
+    ...(p.carouselId ? { carouselId: p.carouselId } : {}),
+    ...(p.fontId ? { fontId: p.fontId } : {}),
     ...(old?.report && left.length ? { report: old.report } : {}),
   };
   let report: string | null = null;
@@ -340,24 +360,41 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
 
 /** What «حيدرا ماكس» is told about the painted picture he places in a slide (it is photo1). */
 const ART_NOTE = 'photo1 is the PICTURE painted for this slide by GPT Image 2 (it has no writing in it): place it as the slide asks (crop it with K.picture, frame it, grade it to the carousel\'s palette) and set EVERY word yourself in code. Never paint text into it or redraw it.';
+/** The third way: the picture IS the slide, and he only writes on it. */
+const MIX_NOTE = 'photo1 is the WHOLE SLIDE, painted by GPT Image 2 with no writing in it: draw it full-bleed filling the frame with K.picture, untouched. Your only job is the Arabic writing: set EVERY word exactly as given, in the calm area the picture leaves, large and perfectly readable (add a soft gradient scrim behind the words only if the picture is too busy there). Add no other shapes, icons or drawings.';
+
+/** A slide that must have a painted picture and got no brief for one: the slide's own brief, with its writing taken out. */
+const pictureFrom = (prompt: string) => `The full picture of this slide, with calm empty areas where text will be added later: ${prompt.replace(/"[^"]*"/g, "").replace(/\s+/g, " ").trim()}`;
 
 /** The brief of one slide for «حيدرا ماكس»: the slide's full prompt (its exact writing), the shape, slide 1 and the
  * person's pictures as references — and its painted picture, made now by GPT Image 2 (no writing) when it needs one. */
 async function codeSlide(userId: string, chatId: string, messages: Chat["messages"], p: PendingProduce, s: PendingProduce["slides"][number], total: number, slide1: Slide | null, who: DeskWho): Promise<CodeSlide> {
   let art = p.arts?.[String(s.n)] ?? null;
-  if (!art && s.picture) {
+  const car = p.carouselId ? findCarouselStyle(p.carouselId) : null;
+  const font = p.fontId ? findContentFont(p.fontId) : null;
+  // the third way paints every slide; so does a realistic style with no pictures of the person's: realistic things are never drawn in code
+  const hasOwn = (p.refs?.length ?? 0) > 0;
+  const brief = s.picture ?? (p.mix || (car?.photoIdea && !hasOwn) ? pictureFrom(s.prompt) : "");
+  if (!art && brief) {
     // the person's own pictures guide the painting (a product, a logo's colours); it never carries any writing
     const { list } = await attachmentsOf(userId, p.refs ?? []);
     const refs = list.filter((a) => a.kind === "image").slice(0, 6).map((a, i) => ({ uploadId: a.id, name: `ref${i + 1}` }));
     const style = p.styleId ? findStyle(p.styleId) : null;
     try {
-      const r = await deskImage(who, { key: `c-${randomUUID().replace(/-/g, "")}`, kind: "image", prompt: [s.picture, style ? `ILLUSTRATION STYLE (verbatim): ${style.text}` : "", NO_TEXT_RULE].filter(Boolean).join("\n\n"), aspect: p.aspect, resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
-      const file = await addProducedFromOutput({ userId, chatId, out: r.out, name: `picture-${String(s.n).padStart(2, "0")}`, meta: { slide: s.n, picture: s.picture, aspect: p.aspect, batch: p.id, desk: r.receipt } });
+      const paint = (extra: string) => deskImage(who, { key: `c-${randomUUID().replace(/-/g, "")}`, kind: "image", prompt: [brief, car ? `LOOK OF THE CAROUSEL (for the picture only): ${car.look}` : "", style ? `ILLUSTRATION STYLE (verbatim): ${style.text}` : "", NO_REALISTIC_WOMEN, extra, NO_TEXT_RULE].filter(Boolean).join("\n\n"), aspect: p.aspect, resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
+      let r = await paint("");
+      // a picture that came out with a realistic adult woman is painted once more; a second one stops the slide
+      if ((await showsRealWoman(r.bytes)).woman) {
+        r = await paint("The previous attempt showed a realistic adult woman, which is forbidden: show no woman at all.");
+        if ((await showsRealWoman(r.bytes)).woman) throw new UserError(`${WOMAN_PROBLEM}. غيّر وصف صورة الشريحة ${s.n} وجرّب مرة ثانية.`, 422);
+      }
+      const file = await addProducedFromOutput({ userId, chatId, out: r.out, name: `picture-${String(s.n).padStart(2, "0")}`, meta: { slide: s.n, picture: brief, aspect: p.aspect, batch: p.id, desk: r.receipt } });
       art = file.id;
       p.arts = { ...(p.arts ?? {}), [String(s.n)]: art };
       // kept with the carousel (the messages as this call just saved them), so it is painted once
       await saveChat(userId, chatId, { messages, pending: p });
     } catch (e) {
+      if (e instanceof UserError) throw e;
       console.error("content slide picture", e instanceof DeskError ? e.detail : e);
       throw new UserError(e instanceof DeskError ? e.reason : "ما قدر جواد يرسم صورة الشريحة الحين؛ جرّب مرة ثانية.", 502);
     }
@@ -372,8 +409,16 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
   const mine = [...(await uploadLinks(userId, list.filter((a) => a.kind === "image").map((a) => a.id))).values()];
   refs.push(...mine);
   const artUrl = art ? (links.get(art) ?? null) : null;
-  const prompt = slidePrompt({ n: s.n, total, prompt: s.prompt, styleId: p.styleId, withRef: refs.length > mine.length, userRefs: mine.length });
-  return { n: s.n, prompt: artUrl ? `${prompt}\n\n${ART_NOTE}` : prompt, aspect: p.aspect, refs: refs.slice(0, 4), photos: artUrl ? [artUrl] : [] };
+  const prompt = slidePrompt({ n: s.n, total, prompt: s.prompt, styleId: p.styleId, carouselId: p.carouselId, fontId: p.fontId, withRef: refs.length > mine.length, userRefs: mine.length });
+  return {
+    n: s.n,
+    prompt: artUrl ? `${prompt}\n\n${p.mix ? MIX_NOTE : ART_NOTE}` : prompt,
+    aspect: p.aspect,
+    refs: refs.slice(0, 4),
+    photos: artUrl ? [artUrl] : [],
+    ...(car || font ? { style: [font ? `${FONT_PIN(font.id)} ${fontBlock(font)}` : "", car ? carouselStyleForCode(car) : ""].filter(Boolean).join("\n") } : {}),
+    ...(p.mix ? { mix: true } : {}),
+  };
 }
 
 /** The PNG the page drew from «حيدرا ماكس»'s program becomes slide `n` of the carousel being made. */
@@ -390,6 +435,14 @@ export async function produceFromCode(userId: string, chatId: string, b: { n?: u
   const sharp = (await import("sharp")).default;
   const meta = await sharp(bytes).metadata().catch(() => null);
   if (meta?.format !== "png" || !meta.width || !meta.height) throw new UserError("صورة الشريحة مو صالحة.", 400);
+  // the rule holds for what was placed in the slide too (a person's attached picture)
+  const seen = await showsRealWoman(bytes);
+  if (seen.woman) {
+    const messages = [...chat.messages];
+    const at = Math.min(p.at, messages.length - 1);
+    const base = new Map((messages[at]?.slides?.items ?? []).map((x) => [x.n, x]));
+    return settle({ userId, chatId, chat, p, messages, at, base }, [{ failed: { n: s.n, reason: `${WOMAN_PROBLEM}. غيّر الصورة أو وصفها ثم أعد المحاولة.`, text: s.text, prompt: s.prompt }, usd: seen.usd }]);
+  }
   const file = await addProduced({
     userId,
     chatId,
@@ -397,10 +450,10 @@ export async function produceFromCode(userId: string, chatId: string, b: { n?: u
     name: `slide-${String(s.n).padStart(2, "0")}`,
     width: meta.width,
     height: meta.height,
-    meta: { slide: s.n, aspect: p.aspect, text: s.text, prompt: s.prompt, styleId: p.styleId, templateId: p.templateId, batch: p.id, ...(p.refs?.length ? { refs: p.refs } : {}), maker: "code", claudeCode: { rounds: Math.round(Number(b.rounds) || 0), scores: b.scores ?? null } },
+    meta: { slide: s.n, aspect: p.aspect, text: s.text, prompt: s.prompt, styleId: p.styleId, templateId: p.templateId, batch: p.id, ...(p.refs?.length ? { refs: p.refs } : {}), ...(s.picture ? { picture: s.picture } : {}), maker: "code", claudeCode: { rounds: Math.round(Number(b.rounds) || 0), scores: b.scores ?? null } },
   });
   const messages = [...chat.messages];
   const at = Math.min(p.at, messages.length - 1);
   const base = new Map((messages[at]?.slides?.items ?? []).map((x) => [x.n, x]));
-  return settle({ userId, chatId, chat, p, messages, at, base }, [{ made: { n: s.n, fileId: file.id, name: file.name, text: s.text }, usd: 0 }]);
+  return settle({ userId, chatId, chat, p, messages, at, base }, [{ made: { n: s.n, fileId: file.id, name: file.name, text: s.text }, usd: seen.usd }]);
 }

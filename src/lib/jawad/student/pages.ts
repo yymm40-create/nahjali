@@ -1,6 +1,7 @@
 // «الطالب الذكي» — the page count the student asked for, kept exactly. Pure (no server imports): the writer gets a word
-// budget per chapter from it, the PDF is set to land on that count (type scaled a little, never below readable), and a
-// file still off by more than that is rewritten shorter or longer (outputs.ts).
+// budget per chapter from it and the PDF is set to land on that count (type scaled a little, never below readable). A
+// file still off is kept as it came out: it is rewritten shorter or longer only when the student presses
+// «اضبط عدد الصفحات» (outputs.ts).
 
 /** Words of body text one page holds at the normal size (Arabic, the book's type and line spacing). */
 export const PAGE_WORDS = { A4: 300, A5: 140 } as const;
@@ -8,9 +9,6 @@ export type PageSize = keyof typeof PAGE_WORDS;
 
 /** How far the type may be scaled to land on the count: readable at the smallest, not childish at the largest. */
 export const FIT_SCALE = { min: 0.84, max: 1.28 } as const;
-
-/** Rewrites (shorter or longer) allowed when the type alone can't reach the count. */
-export const MAX_REFITS = 2;
 
 /** The pages that aren't body text: a cover from 4 pages up, a contents page from 6 pages up (more than one chapter). */
 export function frontPages(pages: number, chapters: number) {

@@ -102,6 +102,8 @@ export interface Reply {
   pending: boolean;
   /** a picture is to be split into layers (the page calls the split step with this upload id) */
   split: string | null;
+  /** what this conversation had taken from the wallet BEFORE this turn (halalas); the route adds this turn's charge */
+  spentHalalas: number;
 }
 
 const KIND_AR = { image: "صورة", video: "فيديو", audio: "صوت" , doc: "ملف PDF" } as const;
@@ -209,7 +211,7 @@ export async function say(userId: string, chatId: string | null, message: string
 
   const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : undefined, pending, addUsd: usd });
   usd = Math.round(usd * 10000) / 10000;
-  return { chatId: id, text: reply.text, questions: questions ?? null, usd, pending: !!pending, split };
+  return { chatId: id, text: reply.text, questions: questions ?? null, usd, pending: !!pending, split, spentHalalas: before?.spentHalalas ?? 0 };
 }
 
 /** The aspects as the page lists them (label and pixels). */

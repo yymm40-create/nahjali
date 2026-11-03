@@ -68,7 +68,7 @@ async function ask<T>(who: Who, model: unknown, label: string, parts: ClaudePart
     undefined,
     "max",
   );
-  return { data: resultOf<T>(r.data, kind)!, coins: r.coins, model: r.model };
+  return { data: resultOf<T>(r.data, kind)!, coins: r.coins, worth: r.worth, model: r.model };
 }
 
 /** What the cover is for: the film's idea, its words and its look (from the plan), and what the person asked. */
@@ -109,7 +109,7 @@ ${kindAsk("cover")}`,
   ];
   const r = await ask<{ headline: string; code: string; notes: string }>(who, b.model, previous ? "مختبر الموشن · تصليح الكفر" : "مختبر الموشن · الكفر", parts, "cover", 48_000, previous ? "medium" : "high", onText);
   const chk = checkScene(r.data.code);
-  return { code: chk.code, problems: chk.problems, headline: text(r.data.headline, 80), notes: text(r.data.notes, 600), coins: r.coins, model: r.model };
+  return { code: chk.code, problems: chk.problems, headline: text(r.data.headline, 80), notes: text(r.data.notes, 600), coins: r.coins, worth: r.worth, model: r.model };
 }
 
 export interface CoverReview {
@@ -158,5 +158,5 @@ ${code}`,
   const r = await ask<Record<string, unknown>>(who, b.model, `مختبر الموشن · مراجعة الكفر ${round}`, parts, "cover_review", 48_000, "high");
   const review = readCoverReview(r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkScene(r.data.code) : null;
-  return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };
+  return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, worth: r.worth, model: r.model };
 }

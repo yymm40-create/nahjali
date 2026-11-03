@@ -134,15 +134,16 @@ describe("a page count missed by the type: one or two chapters, not all", () => 
     expect(resizeTargets([500, 500], [1, 1], 1.01)).toEqual([]);
   });
 
-  it("the final step fits with targets, and holds only what that can cost", () => {
+  it("«اضبط عدد الصفحات» resizes one or two chapters, and nothing is held for the page count", () => {
     const outputs = read("src/lib/jawad/student/outputs.ts");
     expect(outputs).toContain("const targets = resizeTargets(now, plan.chapters.map((ch) => segChars(c, ch.segments)), ratio);");
-    // the old way rewrote every chapter with a new word scale
-    expect(outputs).not.toContain("_wordScale: Math.round(k * 1000) / 1000");
-    expect(outputs).toContain("Math.min(all, biggest * MAX_REFITS)");
-    // already-written chapters (kept, or the trial's) are never priced again
+    // every chapter with a new word scale only when the miss is too big for one or two
+    expect(outputs).toContain("if (targets.length && targets.length < plan.chapters.length) return");
+    // a file a page or two off is kept: no rewrite is held for it; written or kept chapters are never priced again
+    expect(outputs).not.toContain("biggest * MAX_REFITS");
     expect(outputs).toContain("(written[i] ? 0 : chapterUsd(i))");
   });
+
 });
 
 describe("the server takes the cheap path", () => {

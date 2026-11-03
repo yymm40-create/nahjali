@@ -18,8 +18,8 @@ export const GET = handle(async (req: Request) => {
   if (!chat) throw new UserError("ما لقينا هذي المحادثة.", 404);
   // the files جواد made in this conversation, by short-lived link, so the pictures and the videos show again
   const links = await outputLinks(user.id, chat.messages.flatMap((t) => (t.deliver?.media ?? []).map((m) => m.fileId ?? "")));
-  const { id: cid, title, messages, stage, updatedAt } = chat;
-  return NextResponse.json({ chat: { id: cid, title, messages, stage, updatedAt }, links: Object.fromEntries(links) });
+  const { id: cid, title, messages, stage, updatedAt, spentHalalas } = chat;
+  return NextResponse.json({ chat: { id: cid, title, messages, stage, updatedAt, spent: spentHalalas }, links: Object.fromEntries(links) });
 });
 
 export const DELETE = handle(async (req: Request) => {

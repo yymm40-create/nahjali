@@ -44,6 +44,8 @@ interface Kept {
   title: string;
   at: number;
   msgs: Msg[];
+  /** exactly what was taken from the wallet in this conversation so far (halalas); missing on chats kept before this existed */
+  spent?: number;
 }
 const KEEP_CHATS = 30;
 
@@ -114,6 +116,9 @@ export default function AssistantChat({
   const [chats, setChats] = useState<Kept[]>([]);
   const [chatId, setChatId] = useState<string>(() => uid());
   const [list, setList] = useState(false);
+  // exactly what was taken from the wallet in THIS conversation (halalas): 0 on a new one, kept with its messages
+  // on this device so it survives leaving and coming back, and reset only when a different/new conversation opens
+  const [spent, setSpent] = useState(0);
   useEffect(() => {
     queueMicrotask(() => {
       try {
@@ -123,6 +128,7 @@ export default function AssistantChat({
         if (all[0]) {
           setChatId(all[0].id);
           setMsgs(all[0].msgs);
+          setSpent(all[0].spent ?? 0);
         }
       } catch {
         // nothing kept
@@ -134,7 +140,7 @@ export default function AssistantChat({
     if (!loaded || !msgs.some((m) => m.role === "user")) return;
     const first = msgs.find((m) => m.role === "user")?.text ?? "";
     setChats((all) => {
-      const next = [{ id: chatId, title: first.slice(0, 60) || "محادثة", at: Date.now(), msgs: msgs.slice(-60) }, ...all.filter((c) => c.id !== chatId)].slice(0, KEEP_CHATS);
+      const next = [{ id: chatId, title: first.slice(0, 60) || "محادثة", at: Date.now(), msgs: msgs.slice(-60), spent }, ...all.filter((c) => c.id !== chatId)].slice(0, KEEP_CHATS);
       try {
         localStorage.setItem(storeKey(storage), JSON.stringify({ chats: next }));
       } catch {
@@ -142,7 +148,7 @@ export default function AssistantChat({
       }
       return next;
     });
-  }, [msgs, loaded, storage, chatId]);
+  }, [msgs, loaded, storage, chatId, spent]);
   const fresh = () => {
     if (sending.current || attaching.current) return;
     setChatId(uid());
@@ -151,6 +157,7 @@ export default function AssistantChat({
     setText("");
     setNotice("");
     setList(false);
+    setSpent(0);
   };
   const openChat = (c: Kept) => {
     if (sending.current || attaching.current) return;
@@ -159,6 +166,7 @@ export default function AssistantChat({
     setNotice("");
     setChatId(c.id);
     setMsgs(c.msgs);
+    setSpent(c.spent ?? 0);
     setList(false);
   };
   const dropChat = (id: string) => {
@@ -244,7 +252,7 @@ export default function AssistantChat({
     setPending([]);
     setBusy(true);
     try {
-      const r = await post<AssistantAnswer>("/api/jawad/assistant", {
+      const r = await post<AssistantAnswer & { coins?: number; worth?: number }>("/api/jawad/assistant", {
         chatId,
         sectionId: section.id,
         messages: history,
@@ -255,6 +263,8 @@ export default function AssistantChat({
       });
       if (requestSession !== session.current) return;
       if (!r.ok) throw new Error(r.body.error ?? "تعذّر على جواد الرد الآن.");
+      // exactly what this reply really took (the server's real usage + its margin, to the halala) — added to this chat's running total
+      setSpent((s) => s + Math.max(0, Number(r.body.worth ?? r.body.coins) || 0));
       const views = ready.map((p) => p.view!);
       const set = r.body.set ?? {};
       const hasChange = Object.keys(set).some((k) => k !== "thumbnail");
@@ -401,7 +411,7 @@ export default function AssistantChat({
             ))}
           </ul>
         )}
-        <ClaudeModelPicker className="mb-1.5" disabled={busy} />
+        <ClaudeModelPicker className="mb-1.5" disabled={busy} spent={spent} />
         <div className="flex items-end gap-2">
           {canAttach && (
             <>

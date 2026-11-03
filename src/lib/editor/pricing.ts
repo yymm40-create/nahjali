@@ -51,7 +51,7 @@ export async function charged<T>(who: Who, price: Extract<LimitKey, `editor_pric
  * failed call takes nothing. `usdOf` reads the real cost from what `run` returned. `kind` "max": «حيدرا ماكس»'s
  * programs (the cut and colour programs, the motion lab), at their own profit.
  */
-export async function claudeCharged<T>(who: Who, modelId: unknown, label: string, run: () => Promise<T>, usdOf: (r: T) => number, memo?: Memo<T>, kind: "claude" | "max" = "claude"): Promise<T & { model: string; coins: number }> {
+export async function claudeCharged<T>(who: Who, modelId: unknown, label: string, run: () => Promise<T>, usdOf: (r: T) => number, memo?: Memo<T>, kind: "claude" | "max" = "claude"): Promise<T & { model: string; coins: number; worth: number }> {
   // a code may cap the model (the owner's «الأكواد»): a dearer pick is served by the ceiling's model
   const model = claudeModelOf(await claudeFor(who.email, modelId));
   const bill = await claudeMeter(who, model, label, kind);
@@ -64,5 +64,5 @@ export async function claudeCharged<T>(who: Who, modelId: unknown, label: string
     console.error("claude settle failed", e);
     return 0;
   });
-  return { ...out, model: model.id, coins };
+  return { ...out, model: model.id, coins, worth: bill.worth };
 }

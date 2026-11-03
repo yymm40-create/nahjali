@@ -63,14 +63,14 @@ export async function listChats(userId: string) {
   return (data ?? []).map((r) => ({ id: r.id as string, title: String(r.title || "محادثة"), updatedAt: String(r.updated_at) }));
 }
 
-export async function getChat(userId: string, id: string): Promise<{ id: string; title: string; messages: ChatTurn[] } | null> {
+export async function getChat(userId: string, id: string): Promise<{ id: string; title: string; messages: ChatTurn[]; spentHalalas: number } | null> {
   if (memoryOff) return null;
-  const { data, error } = await db().from("islamic_chats").select("id,title,messages").eq("id", id).eq("user_id", userId).maybeSingle();
+  const { data, error } = await db().from("islamic_chats").select("id,title,messages,spent_halalas").eq("id", id).eq("user_id", userId).maybeSingle();
   if (error) {
     if (missing(error)) memoryOff = true;
     return null;
   }
-  return data ? { id: data.id as string, title: String(data.title ?? ""), messages: cleanTurns(data.messages) } : null;
+  return data ? { id: data.id as string, title: String(data.title ?? ""), messages: cleanTurns(data.messages), spentHalalas: Math.max(0, Number(data.spent_halalas ?? 0)) } : null;
 }
 
 /** Keeps the conversation (a new one when `id` is null); returns its id, or null when there is no memory yet. */

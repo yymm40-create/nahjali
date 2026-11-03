@@ -32,8 +32,12 @@ export async function reserveSeries(series: Pick<FilmSeries, "id" | "user_id" | 
   return { ref, series, who, took, claude: o.claude };
 }
 
-/** The work is done: its real cost replaces the estimate. */
-export const settleSeries = (c: SeriesCharge, usd: number) => settleCoins(c.ref, usd, c.claude).catch((e) => console.error("series settle failed", e));
+/** The work is done: its real cost replaces the estimate. Returns the exact halalas really charged. */
+export const settleSeries = (c: SeriesCharge, usd: number) =>
+  settleCoins(c.ref, usd, c.claude).catch((e) => {
+    console.error("series settle failed", e);
+    return 0;
+  });
 
 /** The work failed: everything held goes back (the attempt too). */
 export async function refundSeries(c: SeriesCharge) {
@@ -41,14 +45,15 @@ export async function refundSeries(c: SeriesCharge) {
   if (c.took) await giveAttempt(c.series.id, c.who.id).catch(() => {});
 }
 
-/** Runs a paid piece of work: reserved first, settled to its real cost, given back if it throws. */
-export async function seriesPaid<T>(series: Pick<FilmSeries, "id" | "user_id" | "mode">, who: Who, usd: number, label: string, run: () => Promise<{ value: T; usd: number }>, o: { attempt?: boolean } = {}) {
+/** Runs a paid piece of work: reserved first, settled to its real cost, given back if it throws. Returns the work's
+ * own value together with the exact halalas really charged for it. */
+export async function seriesPaid<T>(series: Pick<FilmSeries, "id" | "user_id" | "mode">, who: Who, usd: number, label: string, run: () => Promise<{ value: T; usd: number }>, o: { attempt?: boolean } = {}): Promise<{ value: T; charged: number }> {
   // every caller is Claude's own work (سجاد): the real cost + 10%
   const c = await reserveSeries(series, who, usd, label, { ...o, claude: true });
   try {
     const r = await run();
-    await settleSeries(c, r.usd);
-    return r.value;
+    const charged = await settleSeries(c, r.usd);
+    return { value: r.value, charged };
   } catch (e) {
     await refundSeries(c);
     throw e;

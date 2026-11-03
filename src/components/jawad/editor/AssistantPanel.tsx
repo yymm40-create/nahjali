@@ -213,12 +213,12 @@ export default function AssistantPanel({
   }, [msgs, busy]);
 
   // ---------- the edit's conversation stays with the project (server; before the migration, this device) ----------
-  const [chat, setChat] = useState<{ loaded: boolean; stored: boolean; handoff: string | null; chats: number }>({ loaded: false, stored: false, handoff: null, chats: 1 });
+  const [chat, setChat] = useState<{ loaded: boolean; stored: boolean; handoff: string | null; chats: number; spent: number }>({ loaded: false, stored: false, handoff: null, chats: 1, spent: 0 });
   const [showHandoff, setShowHandoff] = useState(false);
   useEffect(() => {
     let live = true;
     postJson<Chat>(`/api/jawad/editor/projects/${projectId}`, { action: "chat" })
-      .catch(() => ({ messages: [], handoff: null, chats: 1, stored: false }) as Chat)
+      .catch(() => ({ messages: [], handoff: null, chats: 1, stored: false, spentHalalas: 0 }) as Chat)
       .then((c) => {
         if (!live) return;
         let saved: { msgs: Msg[]; handoff: string | null; chats: number } = { msgs: c.messages, handoff: c.handoff, chats: c.chats };
@@ -232,7 +232,7 @@ export default function AssistantPanel({
         }
         // anything said while it was loading stays after what was kept
         setMsgs((now) => [...saved.msgs, ...now]);
-        setChat({ loaded: true, stored: c.stored, handoff: saved.handoff, chats: saved.chats });
+        setChat({ loaded: true, stored: c.stored, handoff: saved.handoff, chats: saved.chats, spent: Math.max(0, Number(c.spentHalalas) || 0) });
       });
     return () => {
       live = false;
@@ -253,7 +253,7 @@ export default function AssistantPanel({
     try {
       const c = await postJson<Chat>(`/api/jawad/editor/projects/${projectId}`, { action: "handoff", messages: msgs.filter((m) => !m.error), handoff: chat.handoff, model: claude.id });
       setMsgs([]);
-      setChat((x) => ({ ...x, handoff: c.handoff, chats: c.chats }));
+      setChat((x) => ({ ...x, handoff: c.handoff, chats: c.chats, spent: Math.max(0, Number(c.spentHalalas) || 0) }));
       setShowHandoff(true);
     } catch (e) {
       setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
@@ -510,7 +510,7 @@ export default function AssistantPanel({
       }
       const found = await talkFace(message).catch(() => null);
       setBusy("حيدرا ماكس يشتغل على التايملاين…");
-      const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; quick?: string[]; options?: { label: string; choices: string[]; multi: boolean }[]; requests?: MakeRequest[]; checkClipId?: string | null; assets?: EditorAsset[] }>(`/api/jawad/editor/projects/${projectId}`, {
+      const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; quick?: string[]; options?: { label: string; choices: string[]; multi: boolean }[]; requests?: MakeRequest[]; checkClipId?: string | null; assets?: EditorAsset[]; spent?: number }>(`/api/jawad/editor/projects/${projectId}`, {
         action: "assistant",
         model: claude.id,
         message,
@@ -529,6 +529,7 @@ export default function AssistantPanel({
         face: found?.face ?? null,
       }, signal);
       setPending([]);
+      setChat((x) => ({ ...x, spent: Math.max(0, Number(r.spent) || 0) }));
       reply = r.reply;
       let done = 0;
       let now = found?.timeline ?? tl;
@@ -992,7 +993,7 @@ export default function AssistantPanel({
               onStyles={() => setGallery(true)}
               diag={diag ? { on: diagOn, toggle: () => setDiagOn((v) => !v) } : undefined}
             />
-            <ClaudeModelPicker menu disabled={!!busy} />
+            <ClaudeModelPicker menu disabled={!!busy} spent={chat.spent} />
             <span className="flex-1" />
             {talkable && (
               <>

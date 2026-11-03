@@ -17,6 +17,7 @@ import { seriesPaid } from "./series-pay";
 import { getOwnedProject } from "./access";
 import { rewindSummary, REWIND_POINTS, type RewindPoint } from "./rewind";
 import { failJob, logReplyTokens, startJob, succeedJob } from "./usage";
+import { addChatSpent } from "@/lib/chat-spend";
 import { rightsText } from "./team-rights";
 import { FILM_STAGES } from "@config/film";
 import { CHAT_GUIDANCE } from "@config/jawad/chat-guidance";
@@ -63,10 +64,10 @@ export interface SajjadAction {
 type Scope = { kind: "series"; series: FilmSeries; canEdit: boolean } | { kind: "film"; project: FilmProject; series: FilmSeries | null };
 const scopeKey = (s: Scope) => (s.kind === "series" ? `series:${s.series.id}` : `film:${s.project.id}`);
 
-async function loadChat(key: string): Promise<{ messages: SajjadMessage[]; memory: string[] }> {
-  const { data, error } = await db().from("sajjad_chats").select("messages,memory").eq("scope", key).maybeSingle();
+async function loadChat(key: string): Promise<{ messages: SajjadMessage[]; memory: string[]; spentHalalas: number }> {
+  const { data, error } = await db().from("sajjad_chats").select("messages,memory,spent_halalas").eq("scope", key).maybeSingle();
   if (error) throw new UserError("تعذّر تحميل محادثتك السابقة؛ جرّب مرة ثانية حتى نكمل من نفس المكان.", 503);
-  return { messages: (data?.messages as SajjadMessage[] | undefined) ?? [], memory: (data?.memory as string[] | undefined) ?? [] };
+  return { messages: (data?.messages as SajjadMessage[] | undefined) ?? [], memory: (data?.memory as string[] | undefined) ?? [], spentHalalas: Math.max(0, Number(data?.spent_halalas ?? 0)) };
 }
 
 async function saveChat(key: string, messages: SajjadMessage[], memory: string[]) {
@@ -321,8 +322,8 @@ async function resolveScope(kind: unknown, id: unknown, userId: string): Promise
 /** The conversation so far (and whether this person may develop the series with him). */
 export async function sajjadChat(kind: unknown, id: unknown, userId: string) {
   const scope = await resolveScope(kind, id, userId);
-  const { messages, memory } = await loadChat(scopeKey(scope));
-  return { messages, memory, canEdit: scope.kind === "series" && scope.canEdit, plan: scope.kind === "series" ? (scope.series.pending_plan ?? null) : null, research: researchOf(scope), canDecide: canDecideResearch(scope) };
+  const { messages, memory, spentHalalas } = await loadChat(scopeKey(scope));
+  return { messages, memory, canEdit: scope.kind === "series" && scope.canEdit, plan: scope.kind === "series" ? (scope.series.pending_plan ?? null) : null, research: researchOf(scope), canDecide: canDecideResearch(scope), spent: spentHalalas };
 }
 
 /** One question or message to سجاد: he answers from everything he knows and (where allowed) develops the series. */
@@ -331,7 +332,7 @@ export async function askSajjad(kind: unknown, id: unknown, user: { id: string; 
   if (!text) throw new UserError("اكتب سؤالك أو ردّك.", 400);
   const scope = await resolveScope(kind, id, user.id);
   const key = scopeKey(scope);
-  const { messages, memory } = await loadChat(key);
+  const { messages, memory, spentHalalas } = await loadChat(key);
   const me = (await usernames([user.id])).get(user.id) ?? null;
   const context = scope.kind === "series" ? await seriesContext(scope.series) : await filmContext(scope.project, scope.series);
   const rules = scope.kind === "film" ? FILM_ONLY : scope.canEdit ? SERIES_EDITOR : SERIES_VIEWER;
@@ -365,16 +366,21 @@ export async function askSajjad(kind: unknown, id: unknown, user: { id: string; 
     return { value: { ...r, found }, usd };
   };
   let r: Awaited<ReturnType<typeof call>>["value"];
+  // exactly what this turn took from the wallet (whoever paid: the series' owner or team, or the film's) — added to
+  // this chat's running «أُخذ منك» total
+  let charged = 0;
   try {
     if (scope.kind === "series") {
-      r = await seriesPaid(scope.series, user, ESTIMATE_USD, "سؤال لسجاد", call);
+      const sp = await seriesPaid(scope.series, user, ESTIMATE_USD, "سؤال لسجاد", call);
+      r = sp.value;
+      charged = sp.charged;
     } else {
       // a film's (or scene's) question is one of its jobs: its owner, or the team series it belongs to, pays
       const { job } = await startJob({ projectId: scope.project.id, user, service: "anthropic", operation: "sajjad", idempotencyKey: `sajjad:${crypto.randomUUID()}`, estimateUsd: ESTIMATE_USD, units: 0, unit: "tokens" });
       try {
         const got = await call();
         r = got.value;
-        await succeedJob(job.id, { costUsd: got.usd, units: totalTokens(r.usage) });
+        charged = await succeedJob(job.id, { costUsd: got.usd, units: totalTokens(r.usage) });
       } catch (e) {
         await failJob(job.id, e);
         throw e;
@@ -404,7 +410,9 @@ export async function askSajjad(kind: unknown, id: unknown, user: { id: string; 
   const known = new Set(memory);
   const notes = [...memory, ...d.remember.map((m) => m.trim()).filter((m) => m && !known.has(m))];
   await saveChat(key, next, notes);
-  return { message: next.at(-1)!, changes, plan: scope.kind === "series" && scope.canEdit && d.plan.episodes.length ? d.plan : null, research: r.found };
+  // exactly what this conversation has taken from the wallet now (never an estimate), read back next time too
+  const spent = await addChatSpent("sajjad_chats", "scope", key, spentHalalas, charged);
+  return { message: next.at(-1)!, changes, plan: scope.kind === "series" && scope.canEdit && d.plan.episodes.length ? d.plan : null, research: r.found, spent };
 }
 
 // ───────────── «تدخّل سجاد»: the work itself changed, after the person sees what it costs ─────────────
@@ -705,12 +713,12 @@ ${await seriesContext(series)}
 === YOUR NOTES ===
 ${memory.length ? memory.map((m) => `- ${m}`).join("\n") : "(none)"}`;
   try {
-    return await seriesPaid(series, who, ESTIMATE_USD, "سجاد يجهّز مشهد", async () => {
+    return (await seriesPaid(series, who, ESTIMATE_USD, "سجاد يجهّز مشهد", async () => {
       const r = await callClaudeJson<SceneUnderstanding>({ system, turns: [{ role: "user", content: ask }], schema: SCENE_SCHEMA, maxTokens: 12000, effort: "medium" });
       const d = r.data;
       if (mode === "mine") d.story = text;
       return { value: { ...d, number }, usd: claudeCost(r.usage) };
-    });
+    })).value;
   } catch (e) {
     if (e instanceof UserError) throw e;
     console.error("sajjad scene failed", e);

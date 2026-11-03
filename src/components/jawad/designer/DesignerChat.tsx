@@ -145,6 +145,9 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   const router = useRouter();
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
+  // exactly what was taken from the wallet in THIS conversation so far (halalas, not an estimate); read back from
+  // the server with the chat, so it survives a reload — 0 for a new one
+  const [spent, setSpent] = useState(0);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<"" | "writing" | "drawing" | "splitting">("");
@@ -242,15 +245,16 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   async function open(id: string) {
     setSide(false);
     try {
-      const r = await api<{ chat: { id: string; messages: Msg[]; pending: boolean } }>(`/api/designer/chats?id=${id}`);
+      const r = await api<{ chat: { id: string; messages: Msg[]; pending: boolean; spent?: number } }>(`/api/designer/chats?id=${id}`);
       setChatId(r.chat.id);
       setMsgs(r.chat.messages);
+      setSpent(Math.max(0, Number(r.chat.spent) || 0));
       if (r.chat.pending) void runProduce(r.chat.id);
     } catch (e) {
       setMsgs([{ role: "assistant", text: e instanceof Error ? e.message : "تعذّر فتح المحادثة.", error: true }]);
     }
   }
-  const fresh = () => { setChatId(null); setMsgs([]); setPending([]); setSide(false); };
+  const fresh = () => { setChatId(null); setMsgs([]); setPending([]); setSide(false); setSpent(0); };
 
   // coming back from «زهراء فوتو ماستر» (or a link): open that conversation
   const opened = useRef(false);
@@ -310,8 +314,9 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
     let produceId: string | null = null;
     let splitOf: string | null = null;
     try {
-      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: boolean; split: string | null }>("/api/designer/chat", { chatId, message, attachments: files.map((f) => f.id), model: claude.id });
+      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: boolean; split: string | null; spent?: number }>("/api/designer/chat", { chatId, message, attachments: files.map((f) => f.id), model: claude.id });
       setChatId(r.chatId);
+      setSpent(Math.max(0, Number(r.spent) || 0));
       // the design's state and layers are read back fresh (the answer may have opened a design)
       const full = await api<{ chat: { messages: Msg[] } }>(`/api/designer/chats?id=${r.chatId}`).catch(() => null);
       if (full) setMsgs(full.chat.messages);
@@ -485,7 +490,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                   ))}
                 </div>
               )}
-              <ClaudeModelPicker className="dz-claude" disabled={!!busy} />
+              <ClaudeModelPicker className="dz-claude" disabled={!!busy} spent={spent} />
               <div className="dz-compose-row">
                 <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp" onChange={(e) => void attach(e.target.files)} />
                 <button type="button" className="dz-attach" aria-label="أرفق حتى 20 صورة" title="أرفق حتى 20 قالبًا أو صورة" disabled={uploading || !!busy || pending.length >= JAWAD_ATTACHMENT_LIMIT} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>

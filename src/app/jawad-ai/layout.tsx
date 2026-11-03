@@ -11,7 +11,6 @@ import { giveSignupGift } from "@/lib/gift";
 import { hasPurchased } from "@/lib/credits/orders";
 import { signupFreeImageAvailable } from "@/lib/jawad/server/free-image";
 import { loadCreditSettings } from "@/lib/credits/settings";
-import { bonusPct } from "@config/credits";
 import SubscribePopup from "@/components/jawad/SubscribePopup";
 import InDevelopment from "@/components/jawad/InDevelopment";
 import JawadHeader from "@/components/jawad/JawadHeader";
@@ -59,7 +58,7 @@ export default async function JawadLayout({ children }: { children: React.ReactN
   const needsPacks =
     user && !preview && !owner && balance != null && balance < POPUP_BELOW_HALALAS && !(await freeFor(user)) && !(await hasPurchased(user.id).catch(() => false)) && !(await signupFreeImageAvailable(user.id, user.created_at).catch(() => false));
   const popupPacks = needsPacks
-    ? (await loadCreditSettings().catch(() => null))?.packs.map((p) => ({ id: p.id, name: p.name, price: p.price, credit: p.credit, tag: p.tag, bonus: bonusPct(p) })) ?? []
+    ? (await loadCreditSettings().catch(() => null))?.packs.map((p) => ({ id: p.id, name: p.name, price: p.price, credit: p.credit, tag: p.tag })) ?? []
     : [];
   const bar = { ...rt, sections: await barSections(rt, user, owner) };
   return (

@@ -22,7 +22,7 @@ import { docDocx } from "./render/docx";
 import { brochureHtml, docHtml, quizHtml, transcriptHtml } from "./render/html";
 import { colorsOf } from "./render/css";
 import { designFonts, fitPdf, fontFacesData, framePdf, htmlToPdf, slidesPdf, slidesPptx } from "./render/server";
-import { countWords, frontPages, MAX_REFITS, maxChapters, refitRatio, resizeTargets, wordBudget, type PageSize } from "./pages";
+import { countWords, frontPages, maxChapters, refitRatio, resizeTargets, wordBudget, type PageSize } from "./pages";
 import { chapterSig, contentKey, keptChapters } from "./keep";
 import { drawSlide, picturesPdf, picturesPptx, slideImageUsd, slideSig, type SlideQuality } from "./slide-images";
 import { capSlides } from "./draw";
@@ -108,9 +108,6 @@ export async function estimate(userId: string, o: Output, action: string, chapte
   return partsUsd(await estimateParts(userId, o, action, chapter));
 }
 
-/** The chapters a missed page count is most likely fitted with (keep.ts / pages.ts): the two with the most material. */
-const REFIT_CHAPTERS = 2;
-
 /** The estimate split by kind, so each part is charged its own profit (Claude 40٪, GPT Image 2 pictures 30٪, sound the general). */
 export async function estimateParts(userId: string, o: Output, action: string, chapter = -1, questions: number[] = []): Promise<StepParts> {
   if (o.kind === "transcript") return parts();
@@ -194,12 +191,9 @@ async function estimateBase(c: Ctx, o: Output, action: string, chapter = -1, que
   if (action === "revise") {
     return parts(chapter >= 0 && chapter < p.chapters.length ? chapterUsd(chapter) : p.chapters.reduce((s, _, i) => s + chapterUsd(i), 0));
   }
-  // a page count the type alone can't reach has one or two chapters (the most material) made longer or shorter, up to
-  // MAX_REFITS times: held, and given back when not needed (it was a hold for rewriting every chapter)
-  const all = p.chapters.reduce((s, _, i) => s + chapterUsd(i), 0);
-  const biggest = p.chapters.map((_, i) => chapterUsd(i)).sort((a, b) => b - a).slice(0, REFIT_CHAPTERS).reduce((a, b) => a + b, 0);
-  const refit = pagesOf(o.settings) && !verbatim ? Math.min(all, biggest * MAX_REFITS) : 0;
-  return parts(p.chapters.reduce((s, _, i) => s + (written[i] ? 0 : chapterUsd(i)), 0) + refit, imgs(p.chapters));
+  // no rewrite is held for the page count: a file a page or two off is kept, and the student asks for «اضبط عدد الصفحات»
+  // if they want; a chapter already written (or kept from before a new plan) is not paid again
+  return parts(p.chapters.reduce((s, _, i) => s + (written[i] ? 0 : chapterUsd(i)), 0), imgs(p.chapters));
 }
 
 const segChars = (c: Ctx, ids: string[]) => ids.reduce((s, id) => s + (c.seg.get(id)?.text.length ?? 0), 0);
@@ -981,6 +975,23 @@ async function finalStep(job: Job): Promise<StepResult> {
   const plan = o.plan as DocPlan;
   const doc = (o.content as Doc | null) ?? { title: plan.title, subtitle: plan.subtitle, chapters: [] };
   const revise = job.kind === "revise" ? { note: String(job.input.note ?? ""), chapter: Number(job.input.chapter ?? -1), kind: String(job.input.requestKind ?? "edit") } : null;
+  // «اضبط عدد الصفحات»: only when the STUDENT asks for it (job.input.refit) — a file that came out a page or two off is
+  // never rewritten on its own. Once per press: the one or two chapters with the most material are made shorter or
+  // longer (resizeTargets); a miss too big for that moves the word scale and rewrites every chapter, as before.
+  if (job.input.refit && !job.progress.refit) {
+    const want = pagesOf(o.settings);
+    const got = Number((o.content as { pages?: number } | null)?.pages) || 0;
+    if (!want || !got || got === want) throw new UserError("الملف بعدد الصفحات اللي طلبته.");
+    const ratio = refitRatio(want, got, frontPages(want, plan.chapters.length).count);
+    // only as many chapters as the difference needs — the ones with the most material, usually one or two — are made
+    // longer or shorter (resizeTargets); a miss too big for that rewrites them all to a new word scale, as before
+    const now = doc.chapters.map((ch) => countWords(docText({ title: "", subtitle: "", chapters: [{ title: "", blocks: ch.blocks }] })));
+    const targets = resizeTargets(now, plan.chapters.map((ch) => segChars(c, ch.segments)), ratio);
+    if (targets.length && targets.length < plan.chapters.length) return { done: false, stage: `الملف ${got} صفحة بدل ${want}: يضبط طول ${targets.length === 1 ? "فصل واحد" : `${targets.length} فصول`} فقط`, progress: { ...job.progress, refit: { n: 1, done: [], todo: targets } } };
+    const k = (Number(o.settings._wordScale) || 1) * ratio;
+    await saveOutput(o.id, { settings: { ...o.settings, _wordScale: Math.round(k * 1000) / 1000 } });
+    return { done: false, stage: `الملف ${got} صفحة بدل ${want}: يعيد ضبط الطول`, progress: { ...job.progress, refit: { done: [] } } };
+  }
   const words = chapterWords(c, o, plan);
   // a page count missed by the type alone: the chapters picked for it (the most material first, usually one or two) are
   // made longer or shorter to their target words (progress.refit; a refit started before targets were kept does them all)
@@ -1018,25 +1029,15 @@ async function finalStep(job: Job): Promise<StepResult> {
   // «حيدرا ماكس»: the written chapters are laid out as designed pages instead of the template
   if (isMax(o)) return maxFinal(job, await getOutput(job.user_id, o.id));
   const want = pagesOf(o.settings);
+  // the type is scaled to land on the count; a file still off is kept as it is (the student decides whether to adjust it)
   const pdf = await renderDoc(o, c, doc, plan, false);
-  if (want && pdf.pages !== want && words && !revise) {
-    // the type at its limit (fitPdf) still misses the count: only as many chapters as the difference needs — the ones
-    // with the most material, usually one or two — are made shorter or longer (twice at most), never all of them again
-    const n = (refit?.n ?? 0) + 1;
-    if (n <= MAX_REFITS) {
-      const ratio = refitRatio(want, pdf.pages, frontPages(want, plan.chapters.length).count);
-      const now = doc.chapters.map((ch) => countWords(docText({ title: "", subtitle: "", chapters: [{ title: "", blocks: ch.blocks }] })));
-      const targets = resizeTargets(now, plan.chapters.map((ch) => segChars(c, ch.segments)), ratio);
-      if (targets.length) return { done: false, stage: `الملف طلع ${pdf.pages} صفحة بدل ${want}: يضبط طول ${targets.length === 1 ? "فصل واحد" : `${targets.length} فصول`} فقط`, progress: { ...job.progress, refit: { n, todo: targets, done: [] } } };
-    }
-  }
   const files: Record<string, string> = { ...o.files, pdf: pdf.path };
   if (wantsDocx(o.settings)) files.docx = await renderDocx(o, c, doc, plan);
   else delete files.docx;
   const { draft: _draft, ...whole } = doc as Doc & { draft?: boolean };
   void _draft;
   await saveOutput(o.id, { status: "review", files, content: { ...whole, pages: pdf.pages || undefined } }, { kind: revise ? "revision" : "final", snapshot: doc, userId: o.user_id });
-  return { done: true, stage: want && pdf.pages !== want ? `${outputName(o.kind)} جاهز (${pdf.pages} صفحة؛ أقرب ما وصل له من ${want})` : `${outputName(o.kind)} جاهز` };
+  return { done: true, stage: want && pdf.pages !== want ? `${outputName(o.kind)} جاهز (${pdf.pages} صفحة بدل ${want})` : `${outputName(o.kind)} جاهز` };
 }
 
 async function transcriptStep(o: Output): Promise<StepResult> {

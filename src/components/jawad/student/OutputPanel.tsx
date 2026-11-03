@@ -6,7 +6,7 @@ import Icon from "@/components/jawad/Icon";
 import { settingsLine } from "@/lib/jawad/student/summary";
 import { isWritten, settingsChange, stable, wishOf, type SettingsChange } from "@/lib/jawad/student/keep";
 import CapacityAsk from "./CapacityAsk";
-import { BROCHURE_FOLDS, DENSITIES, DESIGNED_KINDS, FORMATS, MAX_NAME, maxAvailable, maxOn, OUTPUT_STATUS, pagesOf, QUESTION_TYPES, STUDENT, formatOf, type DesignWish, type OutputKind } from "@config/jawad/student";
+import { BROCHURE_FOLDS, DENSITIES, DESIGNED_KINDS, FORMATS, isDoc, MAX_NAME, maxAvailable, maxOn, OUTPUT_STATUS, pagesOf, QUESTION_TYPES, STUDENT, emptyWish, formatOf, type Design, type DesignWish, type OutputKind } from "@config/jawad/student";
 import { readSermonLength, SERMON_LENGTHS } from "@config/jawad/khateeb";
 import type { AudioPlan, BrochurePlan, Doc, DocPlan, QuizPlan, SlidePlan } from "@/lib/jawad/student/model";
 import type { OutputView } from "./client";
@@ -290,7 +290,15 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
             const want = Number(o.settings.pages) || 0;
             const got = Number((o.content as { pages?: number } | null)?.pages) || 0;
             if (!want || !got) return null;
-            return <p className={`text-sm ${got === want ? "text-jw-ok" : "text-jw-warn"}`}>{got === want ? `✓ ${got.toLocaleString("ar")} صفحة بالضبط مثل ما طلبت` : `طلع ${got.toLocaleString("ar")} صفحة (طلبت ${want.toLocaleString("ar")}) — هذا أقرب ما وصل له بدون ما يحذف من المادة. اطلب تعديل لو تبيه أقصر أو أطول.`}</p>;
+            if (got === want) return <p className="text-sm text-jw-ok">{`✓ ${got.toLocaleString("ar")} صفحة بالضبط مثل ما طلبت`}</p>;
+            // kept as it came out: rewriting it to the count is the student's choice, never automatic
+            const canFit = isDoc(o.kind) && o.kind !== "sermon" && !maxOn(o.settings) && !(o.kind === "book" && o.settings.writing === "verbatim");
+            return (
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm text-jw-warn">{`طلع ${got.toLocaleString("ar")} صفحة (طلبت ${want.toLocaleString("ar")}). الملف محفوظ كذا، ولو تبيه ${want.toLocaleString("ar")} بالضبط اضغط الزر.`}</p>
+                {canFit && <PaidButton label={`📏 اضبطه على ${want.toLocaleString("ar")} صفحة`} primary={false} what="يعيد كتابة الفصول أقصر أو أطول مرة وحدة ليطلع الملف بعدد الصفحات اللي طلبته." disabled={running} run={(b) => act({ action: "refit_pages", ...b })} />}
+              </div>
+            );
           })()}
           {o.kind === "book" && <PdfFrame o={o} name="pdf" />}
           {o.kind === "brochure" && (

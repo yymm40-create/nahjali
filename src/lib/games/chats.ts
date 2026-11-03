@@ -12,6 +12,8 @@ export interface Chat {
   messages: Turn[];
   /** the way the person chose: the game built here, or a prompt to take elsewhere ("" = not chosen) */
   mode: GamesMode;
+  /** exactly what was taken from the wallet across this whole conversation (halalas, not an estimate) */
+  spentHalalas: number;
   updatedAt: string;
 }
 
@@ -45,7 +47,7 @@ export function forModel(history: Turn[]): Turn[] {
 /** A short title from the first thing the person said. */
 export const titleOf = (first: string) => first.replace(/\s+/g, " ").trim().slice(0, 60) || "محادثة جديدة";
 
-const view = (r: Record<string, unknown>): Chat => ({ id: r.id as string, title: String(r.title ?? ""), messages: cleanHistory(r.messages), mode: modeOf(r.mode), updatedAt: String(r.updated_at ?? "") });
+const view = (r: Record<string, unknown>): Chat => ({ id: r.id as string, title: String(r.title ?? ""), messages: cleanHistory(r.messages), mode: modeOf(r.mode), spentHalalas: Math.max(0, Number(r.spent_halalas ?? 0)), updatedAt: String(r.updated_at ?? "") });
 
 /** A write that also sets the way (`mode`), and again without it when the column is not there yet (0050 not run). */
 async function withMode<R extends { error: { code?: string; message?: string } | null }>(mode: GamesMode | null, run: (extra: { mode?: GamesMode }) => PromiseLike<R>): Promise<R> {

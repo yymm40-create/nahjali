@@ -693,7 +693,10 @@ export async function outputAction(user: User, id: string, b: Body) {
     // «محادثة مع صادق»: one message, answered now (paid by its real use, like every robot's turn)
     case "chat": {
       const r = await robotTurn(user, b.model, "محادثة مع صادق (الطالب الذكي)", () => chatTurn(user.id, o, b.message, isAdmin(user.email)));
-      return { messages: r.messages, coins: r.coins };
+      // exactly what this conversation has taken from the wallet now (never an estimate), read back next time too
+      const spent = r.spentHalalas + r.worth;
+      await saveOutput(o.id, { content: { messages: r.messages, spentHalalas: spent } });
+      return { messages: r.messages, coins: r.coins, spent };
     }
     // «صادق يصنع من المحادثة»: the student presses the card under his message. Nothing was made or charged before.
     case "chat_make": {
@@ -898,6 +901,15 @@ export async function outputAction(user: User, id: string, b: Body) {
       const { data } = await sdb().from("student_audio_parts").select("text").eq("output_id", o.id).eq("run", c.run).eq("status", "failed");
       const chars = ((data ?? []) as { text: string }[]).reduce((s, r) => s + r.text.length, 0);
       return run("final", (chars / 1000) * 0.08 * 1.02, { run: c.run, retry: true }, "إعادة المقاطع المتعثرة", "running");
+    }
+    // «اضبط عدد الصفحات»: a written output that came out a page or two off is kept; this rewrites it to the count, once
+    case "refit_pages": {
+      if (!isDoc(o.kind) || o.kind === "sermon" || isMax(o) || !["review", "done"].includes(o.status)) throw new UserError(NOT_NOW);
+      if (o.kind === "book" && o.settings.writing === "verbatim") throw new UserError(NOT_NOW);
+      const want = Number(o.settings.pages) || 0;
+      const got = Number((o.content as { pages?: number } | null)?.pages) || 0;
+      if (!want || !got || got === want) throw new UserError("الملف بعدد الصفحات اللي طلبته.");
+      return run("revise", await estimateParts(user.id, o, "revise"), { refit: true }, "ضبط عدد الصفحات", "running", { approved: false });
     }
     case "request": {
       // «عدّل» or «أمر آخر» on a finished output

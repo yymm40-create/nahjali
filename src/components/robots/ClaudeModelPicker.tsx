@@ -13,7 +13,7 @@ import { useClaudeModel } from "./claude-model";
  * usage is CLAUDE_MARGIN_PCT, said here.
  * Neutral colours (they follow the text colour) so it sits in any robot's page.
  */
-export default function ClaudeModelPicker({ className = "", disabled = false, menu = false }: { className?: string; disabled?: boolean; /** a small name in a composer that opens a menu above it (Claude's way) */ menu?: boolean }) {
+export default function ClaudeModelPicker({ className = "", disabled = false, menu = false, spent = 0 }: { className?: string; disabled?: boolean; /** a small name in a composer that opens a menu above it (Claude's way) */ menu?: boolean; /** what was really taken in THIS conversation so far (halalas); 0 before the first reply, shown instead of the estimate */ spent?: number }) {
   const [picked, choose] = useClaudeModel();
   const [open, setOpen] = useState(false);
   // a code («الأكواد») may cap the model and price everything at cost: the list stops at the ceiling, and a pick above it shows as the ceiling
@@ -50,6 +50,11 @@ export default function ClaudeModelPicker({ className = "", disabled = false, me
                 </button>
               ))}
               <span style={{ display: "block", padding: "6px 12px 4px", opacity: 0.7, fontSize: 11.5, lineHeight: 1.6 }}>💡 {model.advice}</span>
+              {spent > 0 && (
+                <span style={{ display: "block", padding: "2px 12px 6px", fontWeight: 700, fontSize: 12 }}>
+                  💰 {perks.free ? "قيمة هذي المحادثة" : "أُخذ منك في هذي المحادثة"} <Coined text={coinStr(spent)} size={12} />
+                </span>
+              )}
             </span>
           </>
         )}
@@ -64,7 +69,7 @@ export default function ClaudeModelPicker({ className = "", disabled = false, me
         disabled={disabled}
         style={{ border: line, borderRadius: 999, padding: "2px 10px", background: "transparent", color: "inherit", cursor: "pointer", fontSize: 12 }}
       >
-        🧠 {model.name} · <Coined text={`≈ ${coinStr(reply(model))} للرد`} size={12} /> {open ? "▴" : "▾"}
+        🧠 {model.name} · <Coined text={spent > 0 ? (perks.free ? `قيمة هذي المحادثة ${coinStr(spent)} (مجانية لك)` : `أُخذ منك ${coinStr(spent)} في هذي المحادثة`) : `≈ ${coinStr(reply(model))} للرد`} size={12} /> {open ? "▴" : "▾"}
       </button>
       {open && (
         <div style={{ marginTop: 6, border: line, borderRadius: 12, padding: 10 }}>
@@ -93,8 +98,11 @@ export default function ClaudeModelPicker({ className = "", disabled = false, me
             ))}
           </div>
           <p style={{ margin: "8px 0 0" }}>💡 {model.advice}</p>
+          {spent > 0 && (perks.free
+            ? <p style={{ margin: "4px 0 0", fontWeight: 700 }}>💰 قيمة هذي المحادثة بالضبط <Coined text={coinStr(spent)} size={12} /> لين الحين — مجانية لك، ما ينخصم من رصيدك شي.</p>
+            : <p style={{ margin: "4px 0 0", fontWeight: 700 }}>💰 أُخذ منك بالضبط <Coined text={coinStr(spent)} size={12} /> في هذي المحادثة لين الحين.</p>)}
           <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
-            الرد العادي تقريبًا <Coined text={coinStr(reply(model))} size={12} />، ويختلف حسب طول المحادثة والموديل. {perks.atCost ? "الخصم من رصيدك هو تكلفة الاستخدام الفعلية (مدخلات ومخرجات) بدون أي ربح." : `الخصم من رصيدك هو تكلفة الاستخدام الفعلية + ${CLAUDE_MARGIN_PCT}٪ فقط ربح للمنصة.`}
+            {spent > 0 ? "كل رد" : "الرد العادي"} تقريبًا <Coined text={coinStr(reply(model))} size={12} />، ويختلف حسب طول المحادثة والموديل. {perks.atCost ? "الخصم من رصيدك هو تكلفة الاستخدام الفعلية (مدخلات ومخرجات) بدون أي ربح." : `الخصم من رصيدك هو تكلفة الاستخدام الفعلية + ${CLAUDE_MARGIN_PCT}٪ فقط ربح للمنصة.`}
           </p>
         </div>
       )}
