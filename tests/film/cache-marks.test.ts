@@ -90,4 +90,24 @@ describe("the cache marks of a request", () => {
     expect(bodies.length).toBe(2);
     expect(bodies[1].output_config.format?.schema).toEqual(narrow);
   });
+
+  it("a refusal with a per-message effort is asked again with the server-side fallback (and the plain effort)", async () => {
+    process.env.ANTHROPIC_API_KEY = "test";
+    const bodies: { messages: { role: string }[]; fallbacks?: string; output_config: { effort?: string } }[] = [];
+    const refused = () => {
+      const events = [
+        { type: "message_start", message: { model: "claude-opus-5-5", usage: { input_tokens: 10, output_tokens: 1 } } },
+        { type: "message_delta", delta: { stop_reason: "refusal" }, usage: { output_tokens: 1 } },
+        { type: "message_stop" },
+      ];
+      return new Response(events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(""), { status: 200 });
+    };
+    vi.stubGlobal("fetch", vi.fn(async (_u: string, init: RequestInit) => (bodies.push(JSON.parse(String(init.body))), bodies.length === 1 ? refused() : sse('{"ok":true}'))));
+    await callClaudeJson({ system: "TASK", schema: { type: "object" }, maxTokens: 100, turns: [{ role: "user", content: "x" }], effort: "medium", turnEffort: "high" });
+    expect(bodies.length).toBe(2);
+    expect(bodies[0].fallbacks).toBeUndefined();
+    expect(bodies[1].fallbacks).toBe("default");
+    expect(bodies[1].messages.some((m) => m.role === "system")).toBe(false);
+    expect(bodies[1].output_config.effort).toBe("high");
+  });
 });

@@ -433,7 +433,7 @@ export async function callClaudeJson<T>({
 
   // Haiku has no server-side fallback model
   // Haiku has no server-side fallback model; a per-message effort is not understood by the fallback models either
-  const withFallback = fallback && asked.key !== "haiku" && !turnEffort;
+  let withFallback = fallback && asked.key !== "haiku" && !turnEffort;
   let perTurn = Boolean(turnEffort && asked.effort);
   let useSchema = schema;
   const call = async (level: typeof effort) => {
@@ -494,6 +494,14 @@ export async function callClaudeJson<T>({
   // Once more, thinking less, before giving up.
   if (body.stop_reason === "max_tokens" && asked.effort && effort !== "low") body = await call("low");
   if (body.stop_reason === "max_tokens") throw new Error("Claude reply was cut off (max_tokens)");
+  // a refusal with a per-message effort had no server-side fallback (the fallback models don't take that message): once
+  // more the plain way WITH the fallback, so a refused request is answered by the fallback model as it used to be
+  if (body.stop_reason === "refusal" && turnEffort && asked.key !== "haiku") {
+    console.warn("claude: refused with a per-message effort — asked again with the server-side fallback");
+    perTurn = false;
+    withFallback = true;
+    body = await call(effort);
+  }
   if (body.stop_reason === "refusal") throw new Error("Claude declined this request");
 
   const textOf = (b: Awaited<ReturnType<typeof call>>) => (b.content ?? []).filter((x: { type: string }) => x.type === "text").map((x: { text?: string }) => x.text ?? "").join("");
