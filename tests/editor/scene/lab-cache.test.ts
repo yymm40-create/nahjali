@@ -26,6 +26,8 @@ vi.mock("@/lib/film/anthropic", () => ({
 vi.mock("@/lib/editor/pricing", () => ({ claudeCharged: async (_w: unknown, _m: unknown, _l: string, run: () => Promise<object>, usd: (x: never) => number) => { const r = await run(); s.paid.push(usd(r as never)); return { ...r, coins: 1, model: "claude-opus-5-5" }; } }));
 vi.mock("@/lib/editor/server", () => ({ stillOpen: () => {} }));
 vi.mock("@/lib/robot-handoff", () => ({ remember: async () => ({ lead: [], kept: [], usd: 0, fresh: false }), withNote: (t: string) => t }));
+// the person's recent pieces ride in the step's own (uncached) text; never in a cached part
+vi.mock("@/lib/editor/scene/recent", async (orig) => ({ ...(await orig<typeof import("@/lib/editor/scene/recent")>()), recentPieces: async () => [{ title: "قديم", idea: "غبار يصير كلمة", format: "dust", shots: 3, moves: ["needle zoom"], palette: "#0b0b10 #d78d45", fonts: "alexandria", here: true, days: 1 }] }));
 
 const project = { id: "p1", user_id: "u1", timeline: { width: 1080, height: 1920 } } as never;
 const who = { id: "u1", owner: false };
@@ -54,6 +56,9 @@ describe("the lab's calls cache what repeats and nothing else", () => {
     expect(c.maxTokens).toBe(32_000);
     expect(c.cacheTail).toBe(false);
     expect(c.cacheTtl).toBe("1h");
+    // the recent pieces are in the plan's own text, not in any cached part (the prefix stays the same bytes)
+    expect(c.parts[1].text).toContain("THIS PERSON'S RECENT PIECES");
+    expect(cached(c.parts).join("")).not.toContain("RECENT PIECES");
   });
 
   it("the write leads with the taste files, the plan's skill files and the reference scenes — the review with the SAME first two", async () => {
@@ -66,7 +71,7 @@ describe("the lab's calls cache what repeats and nothing else", () => {
     expect(w[1]).toContain(`<skill-file id="${ref}">`);
     // the taste file the plan also named is not given twice
     expect(w[1]).not.toContain(`<skill-file id="${ALWAYS_AT_PLAN[0]}">`);
-    expect(w[2]).toContain("REFERENCE SCENES");
+    expect(w[2]).toContain("REFERENCE TECHNIQUES");
     expect(s.calls[0].parts.slice(0, 3).every((p) => p.cache)).toBe(true);
     expect(s.calls[0].cacheTail).toBe(false);
 
@@ -143,7 +148,7 @@ describe("one Claude conversation: every lab step reads the same cached prefix (
     const ours = (c: Call) => c.parts.filter((x) => x.cache);
     expect(ours(p)).toEqual(ours(w).slice(0, 1));
     expect(ours(r)).toEqual(ours(w).slice(0, 2));
-    expect(ours(w)[2].text).toContain("REFERENCE SCENES");
+    expect(ours(w)[2].text).toContain("REFERENCE TECHNIQUES");
     // they lead the turn, before the step's own text (≤ 3 marks besides the system's)
     for (const c of [p, w, r]) expect(c.parts.slice(0, ours(c).length)).toEqual(ours(c));
     expect(ours(w).length).toBeLessThanOrEqual(3);

@@ -3,6 +3,8 @@
     "type": "object",
     "additionalProperties": false,
     "required": [
+      "understanding",
+      "variety",
       "title",
       "idea",
       "hook",
@@ -22,6 +24,39 @@
       "say"
     ],
     "properties": {
+      "understanding": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "subject",
+          "audience",
+          "feeling",
+          "surprise"
+        ],
+        "description": "BEFORE anything else, from the request and what you know: the piece's own starting point (no format, recipe or reference yet)",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "what the subject really is — its specific nature, material, world and details, not its category"
+          },
+          "audience": {
+            "type": "string",
+            "description": "who it is for and what they already know or expect"
+          },
+          "feeling": {
+            "type": "string",
+            "description": "the ONE feeling it should leave"
+          },
+          "surprise": {
+            "type": "string",
+            "description": "what would genuinely surprise this audience about this subject"
+          }
+        }
+      },
+      "variety": {
+        "type": "string",
+        "description": "what is clearly NEW this time against the person's recent pieces (idea, structure, opening, motion and transition language, palette, type) — or \"first piece\", or which piece they asked to repeat or continue"
+      },
       "title": {
         "type": "string"
       },
@@ -35,7 +70,7 @@
       },
       "format": {
         "type": "string",
-        "description": "the viral format (or your own)"
+        "description": "the form of THIS piece in a few words — your own, from the understanding; name a library format only if you truly built on one"
       },
       "wow": {
         "type": "string",
@@ -235,7 +270,7 @@
         "items": {
           "type": "string"
         },
-        "description": "ids from <skill-catalogue> to have open, word for word, while writing and reviewing this piece (≤ 12)"
+        "description": "optional: ids from <skill-catalogue> whose craft you want open, word for word, while writing and reviewing this piece (≤ 12) — references, not a style to follow"
       },
       "say": {
         "type": "string",
@@ -277,6 +312,7 @@
         "required": [
           "hook",
           "concept",
+          "fresh",
           "hero",
           "motion",
           "camera",
@@ -296,6 +332,10 @@
           "concept": {
             "type": "integer",
             "description": "One clear concept a viewer can say in one sentence; every shot serves it"
+          },
+          "fresh": {
+            "type": "integer",
+            "description": "Fresh & specific to THIS request (not a template): the idea, structure, motion language, palette and type grow from this subject and its audience — not a recipe, a viral format, a preset, a reference scene or the person's recent pieces filled in with new words; the plan's \"variety\" promise is kept on screen. A piece that could be moved to another brief by swapping its words scores ≤ 6"
           },
           "hero": {
             "type": "integer",

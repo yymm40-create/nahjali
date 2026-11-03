@@ -2,8 +2,11 @@
 // model; Opus 5.5 by default): PLAN (the idea, the look and the shot list, from the brief, the references and the
 // assets), WRITE (the scene program on the kit), REVIEW (he LOOKS at contact sheets and stills rendered in the
 // person's browser, scores them like a harsh director and, below the bar, rewrites the program). The owner's motion
-// skill is given word for word as the method; the lab's training (skill.ts) is the machine and the bar. Paid by real
-// use like every robot turn. Rendering never happens here: the browser renders (scene-host.ts).
+// skill is given word for word; the lab's training (skill.ts) is the machine and the bar. HE decides (the owner: «الميزات
+// اللي مدرب عليها لا تخليها تحكم. كلاود كود هو الحاكم عليها»): every piece starts from the request and his understanding of
+// it (the plan's "understanding"), all the trained material is a library and a quality bar, and the person's recent pieces
+// (recent.ts) ride with the plan and the write so the next one is clearly different (the plan's "variety", the review's
+// «fresh»). Paid by real use like every robot turn. Rendering never happens here: the browser renders (scene-host.ts).
 
 import { createHash } from "node:crypto";
 import { remember, withNote } from "@/lib/robot-handoff";
@@ -15,7 +18,8 @@ import { MOTION_DIRECTOR_SKILL_TEXT } from "@/lib/editor/motion-director-text";
 import { claudeCharged, type Who } from "@/lib/editor/pricing";
 import { stillOpen, type EditorProject } from "@/lib/editor/server";
 import { checkScene, LAB_FONTS, readPlan, readReview, SECONDS, type LabPlan } from "./contract";
-import { EXEMPLARS } from "./exemplars";
+import { EXEMPLARS_TEXT } from "./exemplars";
+import { recentPieces, recentText } from "./recent";
 import { MAX_ROUNDS, MOTION_LAB_SKILL, PASS, RUBRIC } from "./skill";
 import { askKind, kindAsk, LAB_SCHEMA, resultOf, soloSchema, type LabKind } from "./schemas";
 import { applyEdits, readEdits } from "@/lib/patch";
@@ -27,7 +31,7 @@ import { readRefs, refsParts, refsText, researchText, SEARCH_SYSTEM, searchPromp
 
 const SYSTEM = `${MOTION_LAB_SKILL}
 
-THE OWNER'S METHOD — his own skill file, word for word, between <motion-skill> tags. It is the method (the brief, the director/producer knowledge, the intensity table, the catalogue, the principles, colour, sound, 3D, typography, the reference protocol, the recipes, the QA). It was written for a machine with a terminal: HERE THE LAB IS THAT MACHINE — its deterministic drawFrame(t) is your scene's draw(K, t, ctx), its render CLI and contact sheets are the lab's renders (you receive the sheets and stills), its ffmpeg is the browser's encoder. Skip only its terminal mechanics (folders, PROGRESS.md, .env, MCPs, Playwright, ffmpeg commands); everything else applies.
+THE OWNER'S METHOD — his own skill file, word for word, between <motion-skill> tags: his craft knowledge (the brief, the director/producer knowledge, the intensity table, the catalogue, the principles, colour, sound, 3D, typography, the reference protocol, the QA). Consult it as a reference library and hold its craft as the bar — it does not choose the piece for you. Its recipes (§14 A–D, with their brands, palettes and fonts) are worked examples of how ONE given reference was reverse-engineered: never a look, a palette or a structure to reuse when the person did not bring that reference; its structures (hook → problem → solution → proof → CTA) and catalogues are options, used only when this request calls for them. It was written for a machine with a terminal: HERE THE LAB IS THAT MACHINE — its deterministic drawFrame(t) is your scene's draw(K, t, ctx), its render CLI and contact sheets are the lab's renders (you receive the sheets and stills), its ffmpeg is the browser's encoder. Skip only its terminal mechanics (folders, PROGRESS.md, .env, MCPs, Playwright, ffmpeg commands); everything else applies.
 <motion-skill>
 ${MOTION_DIRECTOR_SKILL_TEXT}
 </motion-skill>
@@ -86,18 +90,18 @@ Time the picture to the words: the line's key idea appears as it is said (a key 
 }
 
 const fontMenu = () => LAB_FONTS.map((id) => `${id} (${FONT_BY_ID.get(id)?.kind})`).join(", ");
-const exemplarsText = () => EXEMPLARS.map((e) => `<example name="${e.name}" shows="${e.shows}">\n${e.code}\n</example>`).join("\n\n");
 
 // The texts that are the same on every call, each its own leading part with a cache mark, ALWAYS IN ONE ORDER — the taste
 // files, then the plan's skill files, then the reference scenes — before the step's own text, so a step reads what the step
 // before it wrote: every lab call has the same system, the same reply format (LAB_SCHEMA), the same top-level effort and
 // the same hour's cache, like one Claude conversation (the owner: «وحد الصيغة لكل الخطوات، نفس كلود»). The plan writes
-// [system · taste]; the write reads it and writes [· skills · examples]; every review round reads [system · taste ·
+// [system · taste]; the write reads it and writes [· skills · techniques]; every review round reads [system · taste ·
 // skills]. A fix and the chat carry none of them (they read the system).
 /** The client-taste files both skills say to read before designing (always opened at the plan, the write and every review). */
 const tastePart = (): ClaudePart => ({ type: "text", text: openRefs(ALWAYS_AT_PLAN, Infinity).text, cache: true });
-/** The reference scenes (the level of craft expected), for a first write (after the taste and skill files). */
-const exemplarsPart = (): ClaudePart => ({ type: "text", text: `REFERENCE SCENES (the level of craft expected — learn the technique, never copy them):\n${exemplarsText()}`, cache: true });
+/** The reference techniques, for a first write (after the taste and skill files): the craft the reference scenes prove, in
+ * words, and one compact kit snippet with placeholder content — never their whole programs (they were copied as layouts). */
+const exemplarsPart = (): ClaudePart => ({ type: "text", text: EXEMPLARS_TEXT, cache: true });
 /** The skill files the plan named (the taste files are given on their own): ONE block, the same bytes at the write and at every review round (right after the taste files). */
 function skillRefsPart(plan: LabPlan): ClaudePart[] {
   const t = openRefs(knownRefs(plan.skillRefs).filter((id) => !ALWAYS_AT_PLAN.includes(id))).text;
@@ -213,22 +217,28 @@ export async function labPlan(p: EditorProject, who: Who, b: Record<string, unkn
   const chosen = choicesText(choices);
   // the files of the picks (the taste files lead, on their own)
   const picked = openRefs(choicesRefs(choices).filter((id) => !ALWAYS_AT_PLAN.includes(id))).text;
+  // what this person made lately (compact, in this step's own text — never in the cached prefix): this one must differ
+  const recent = recentText(await recentPieces(who.id, p.id));
   const parts: ClaudePart[] = [
     // the taste files (its skill files are not chosen yet): the write and every review read them from here
     ...fixedParts(null),
     {
       type: "text",
-      text: `PLAN a motion-graphics piece for this project. Do NOT write code yet.
+      text: `PLAN a motion-graphics piece for this project. Do NOT write code yet. YOU decide the piece: it starts from THIS request and your understanding of it, not from the library.
 THE BRIEF (the person's words): ${brief}${chosen ? `\n\n${chosen}\n` : ""}
 LENGTH: ${seconds} s${foot ? " (exactly the video's length)" : ""} · FRAME: ${f.w}×${f.h} (${f.shape}) · INTENSITY wanted: ${Number(b.intensity) || "your call from the brief"} · LANGUAGE: ${text(b.language, 40) || "Arabic (Gulf)"}
 BRAND: ${text(b.brand, 800) || "none given — design a palette for the idea (one accent)"}
 ASSETS the scene can draw (by id): ${assets.length ? assets.map((a) => `${a.id} = «${a.name}» ${a.w}×${a.h}`).join("; ") : "none — you draw everything in code"}
 FONTS you may pick (catalogue ids): ${fontMenu()}
-${refs.length ? refsText(refs) : "No references: avoid the safe default look; pick a viral format and push it."}${research ? `\n${research}` : ""}
+${refs.length ? refsText(refs) : "No references: the look comes from the subject itself — avoid the safe default look and your own habits (a dark ground with a warm accent, particles flying into a word, one morphing shape, a 2.5D dive through planes) unless this subject truly calls for one."}${research ? `\n${research}` : ""}
 ${foot ? `"narration" is [] (their voice is the video's own sound). Every shot names its "frame". ` : soundAsk(b).voice ? `THE PERSON WILL RECORD THEIR OWN VOICE reading a narration YOU write: fill "narration" with the lines in order (${text(b.language, 40) || "Gulf Arabic"}, spoken words, short lines of one idea each, about 2 words a second so it is never rushed, from/to on the shots); the visuals are built to follow those words. ` : `"narration" is [] (no voice). `}${soundAsk(b).text}
-Make it a studio piece: a hook on frame 1, one hero per shot, the beat grid, one object carrying across shots, the "wow" moment, a held ending or a loop. Times in seconds; shots cover the whole length without gaps. Every on-screen word written exactly (Arabic as it will appear).
-Follow the owner's Higgsfield skills' workflow for a film (brief → passport → scenario with the shot table on the beat grid and the trigger map), and pick in "skillRefs" the files of theirs you will need open.${footagePart(b, false)}${footFrames.length ? `\nFRAMES OF THEIR VIDEO: ${footFrames.length} below (spread over it) — see the person, the room, the light and the colours; design the stage and the palette to sit with them.` : ""}
-The owner's client-taste files are above (read them before designing).${picked ? `\n\n${picked}` : ""}
+HOW TO PLAN:
+1. "understanding" FIRST, before any format, recipe, preset or reference film: what this subject really is (its specific nature, materials, world and details — use what you know about it), who it is for, the ONE feeling, what would surprise them.
+2. From that understanding invent the idea, the structure (how many shots, their rhythm and how they connect — no fixed beat sheet), the motion language, the palette and the type. The library (the owner's method and recipes, the Higgsfield skills, the formats, the taste files, the kit's themes) is there to consult for craft: take a technique when it serves this idea, never a whole recipe, format, preset or reference film as the piece.
+3. "variety": ${recent ? "what is clearly new against the recent pieces listed below" : "this person has no recent pieces in the lab — write \"first piece\", and still keep clear of the library's stock looks"}.
+THE BAR holds (craft, not content): a hook within the first second, one hero per moment, readable type inside the safe zone, motivated transitions, a "wow" moment nobody has seen in a template, a held ending or a loop. Times in seconds; shots cover the whole length without gaps. Every on-screen word written exactly (Arabic as it will appear).
+Work in the owner's Higgsfield order (brief → passport → scenario with the shot table and the trigger map) — what goes in each step is yours — and pick in "skillRefs" only the files whose craft you will need (optional references).${footagePart(b, false)}${footFrames.length ? `\nFRAMES OF THEIR VIDEO: ${footFrames.length} below (spread over it) — see the person, the room, the light and the colours; design the stage and the palette to sit with them.` : ""}
+The owner's client-taste files are above: read them for what was rejected and the craft numbers that passed; the looks they approved belonged to those clients' films, not to this one.${picked ? `\n\n${picked}` : ""}${recent ? `\n\n${recent}` : ""}
 ${kindAsk("plan")}`,
     },
     ...footFrames.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `THEIR VIDEO, FRAME ${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
@@ -258,6 +268,8 @@ export async function labWrite(p: EditorProject, who: Who, b: Record<string, unk
   const transparent = b.transparent === true;
   // the references go with a first write too: the plan says what was taken, the pictures show how it looks
   const refs = previous ? [] : readRefs(b);
+  // a first write sees the person's recent pieces too (its layouts must not echo them); a fix does not need them
+  const recent = previous ? "" : recentText(await recentPieces(who.id, p.id));
   const bg = transparent
     ? "\nTRANSPARENT BACKGROUND (the person will composite this over something else): never call scene({ background: … }) with a colour, never fillRect / draw a shape, gradient or vignette across the whole K.W×K.H frame. Draw ONLY the subject itself (and its own shadow/glow if any) — everywhere else stays empty (alpha 0). A light contact shadow under a floating subject is fine; a filled backdrop is not."
     : "";
@@ -269,11 +281,11 @@ export async function labWrite(p: EditorProject, who: Who, b: Record<string, unk
       text: `${previous ? "FIX the scene program below." : "WRITE the scene program for this approved plan."}
 THE PLAN (approved by the person — follow it; improve only what the bar demands):
 ${planText(plan)}
-FRAME: ${f.w}×${f.h} (${f.shape}) · FONTS loaded for you: K.fonts.head = ${plan.fonts.head}, K.fonts.body = ${plan.fonts.body}
+${previous ? "" : `Build THIS plan's own idea, from its "understanding" and its "variety": the libraries above (the taste files, the skill files, the reference techniques) serve the craft only — no layout, palette, structure or signature move taken whole from them or from the person's recent pieces.\n`}FRAME: ${f.w}×${f.h} (${f.shape}) · FONTS loaded for you: K.fonts.head = ${plan.fonts.head}, K.fonts.body = ${plan.fonts.body}
 ASSETS: ${assets.length ? assets.map((a) => `K.img("${a.id}") = «${a.name}» ${a.w}×${a.h}`).join("; ") : "none"}${bg}
 ${soundAsk(b).text}${voiceText(b) ? `
 ${voiceText(b)}` : ""}${footagePart(b, true)}
-${refs.length ? `${refsText(refs)}\n` : ""}${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the scene page — fix exactly this, keep everything else):\n${errors || "(no error text)"}` : "The owner's client-taste files, the skill files you opened and the reference scenes are above."}
+${refs.length ? `${refsText(refs)}\n` : ""}${recent ? `${recent}\n` : ""}${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the scene page — fix exactly this, keep everything else):\n${errors || "(no error text)"}` : "The owner's client-taste files, the skill files you opened and the reference techniques are above (craft only)."}
 ${patch ? `Answer with "edits" on THE PROGRAM that fix exactly this and change nothing else (code empty); the complete program in "code" only when the fix rewrites most of it.` : "Write the COMPLETE program (it replaces the old one)."} duration = ${plan.seconds}, bpm = ${plan.bpm}. Use the palette's hex values. Cues on the changes. Make every frame worthy of the bar.
 ${kindAsk(patch ? "patch" : "write")}`,
     },
@@ -311,6 +323,7 @@ export async function labReview(p: EditorProject, who: Who, b: Record<string, un
       text: `REVIEW ROUND ${round} of ${maxRounds}${round === maxRounds ? " (the last: identify the most important remaining corrections precisely)" : ""}. Be a HARSH motion director, not a proud author.
 Below: ${sheets.length} contact sheet(s) (the frames of the whole piece in order, the time under each${sheets.length > 2 ? "; the LAST sheet is the shot changes, each as three frames — one before the cut, on it, one after: look there for doubled half-transparent text, a frame blended across a hard cut, a zoom that flips direction across the cut, a jump in position or a pop" : ""}) and ${stills.length} full-size still(s)${times.length ? ` at ${times.map((t) => `${t.toFixed(2)} s`).join(", ")}` : ""}, rendered from THE PROGRAM. Judge what you SEE, not what the code intends.
 Score every criterion 1–10 (10 = indistinguishable from a top studio): ${RUBRIC.map((r) => `${r.id}: ${r.en}`).join(" | ")}.
+Score "fresh" against THE PLAN's "understanding" and "variety": what you see must be specific to this subject and as different from the person's recent pieces as the plan promised — frames that look like a stock format, a recipe, a preset or a reference technique filled with new words are ≤ 6, and the fix is a design from the subject, not a polish.
 Check the blacklist. Name the 3 worst problems with their times and the exact fix. ${reviewOnly ? "Return code as an empty string. A separate writing step will apply your exact corrections; describe the fixes precisely and do not claim you applied them." : `If ANY score is below ${PASS}, return the COMPLETE revised program that fixes them (keep what already works); otherwise return code as an empty string.`}
 Judge it also against the owner's Higgsfield skills (their non-negotiables, their motion grammar and their QA list).
 THE PLAN: ${planText(plan)}${voiceText(b) ? `
@@ -318,7 +331,7 @@ ${voiceText(b)}` : ""}${footageOf(b) ? `\nTHE PERSON'S VIDEO is in these frames:
 Check the sound by reading sound() and the cues against what you see at those times (you cannot hear it): every big change has its sound on its frame, and the program has a sound() at all.${gate.length ? `
 MEASURED BY THE PAGE on every frame and on the program (exact facts the stills cannot show — weigh them with what you see; a real problem here lowers its criterion):
 ${gate.map((g) => `- ${g}`).join("\n")}` : ""}
-Judge against the owner's client-taste files and the skill files the plan named (above).
+Judge the craft against the owner's client-taste files and the skill files the plan named (above) — their rejections and numbers are the bar; their looks are not required of this piece.
 ${kindAsk("review")}
 THE PROGRAM:
 ${code}`,

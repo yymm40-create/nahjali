@@ -65,7 +65,18 @@ export interface Shot {
   /** on the person's own video: how it sits in this shot (full, card, split, corner, away, over); "" otherwise */
   frame: FootageFrame | "";
 }
+/** The request understood before any recipe (the plan writes it first): the piece's own starting point. */
+export interface LabUnderstanding {
+  subject: string;
+  audience: string;
+  feeling: string;
+  surprise: string;
+}
 export interface LabPlan {
+  /** what the subject is, who it is for, the one feeling, what would surprise (written before any recipe is chosen) */
+  understanding?: LabUnderstanding;
+  /** what is new this time against the person's recent pieces (checked by the review's «fresh») */
+  variety?: string;
   title: string;
   idea: string;
   hook: string;
@@ -109,11 +120,15 @@ export function readPlan(raw: unknown, seconds: number, assetIds: string[] = [],
   const pal = (o.palette ?? {}) as Record<string, unknown>;
   const fo = (o.fonts ?? {}) as Record<string, unknown>;
   const secs = fixed ?? num(o.seconds, SECONDS.min, SECONDS.max, seconds);
+  const u = (o.understanding ?? {}) as Record<string, unknown>;
+  const understanding = { subject: str(u.subject, 400), audience: str(u.audience, 300), feeling: str(u.feeling, 200), surprise: str(u.surprise, 300) };
   const shots = (Array.isArray(o.shots) ? o.shots : []).map((x) => {
     const s = (x ?? {}) as Record<string, unknown>;
     return { from: num(s.from, 0, secs, 0), to: num(s.to, 0, secs, secs), what: str(s.what, 400), motion: str(s.motion, 300), camera: str(s.camera, 200), text: str(s.text, 160), transition: str(s.transition, 200), sound: str(s.sound, 160), frame: ((FRAMES as readonly string[]).includes(String(s.frame)) ? String(s.frame) : "") as FootageFrame | "" };
   }).filter((s) => s.to > s.from);
   return {
+    ...(Object.values(understanding).some(Boolean) ? { understanding } : {}),
+    ...(str(o.variety, 400) ? { variety: str(o.variety, 400) } : {}),
     title: str(o.title, 80) || "موشن",
     idea: str(o.idea, 400),
     hook: str(o.hook, 300),

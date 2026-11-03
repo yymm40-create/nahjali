@@ -64,8 +64,9 @@ describe("what the lab accepts from حيدرا ماكس", () => {
 });
 
 describe("حيدرا ماكس's training for motion in code", () => {
-  it("scores a piece on twelve criteria, the million-dollar test among them", () => {
-    expect(RUBRIC.map((r) => r.id)).toEqual(["hook", "concept", "hero", "motion", "camera", "light", "type", "color", "variety", "sound", "wow", "clean"]);
+  it("scores a piece on thirteen criteria, the million-dollar test and «fresh» (not a template) among them", () => {
+    expect(RUBRIC.map((r) => r.id)).toEqual(["hook", "concept", "fresh", "hero", "motion", "camera", "light", "type", "color", "variety", "sound", "wow", "clean"]);
+    expect(RUBRIC.find((r) => r.id === "fresh")!.en).toMatch(/not a template/);
     expect(PASS).toBe(8);
   });
   it("cues only sounds the editor's library really has", () => {

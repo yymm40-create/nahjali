@@ -7,12 +7,26 @@ import { PASS, RUBRIC } from "./skill";
 export const PLAN_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["title", "idea", "hook", "format", "wow", "intensity", "seconds", "bpm", "palette", "fonts", "shots", "assets", "pictures", "music", "narration", "skillRefs", "say"],
+  required: ["understanding", "variety", "title", "idea", "hook", "format", "wow", "intensity", "seconds", "bpm", "palette", "fonts", "shots", "assets", "pictures", "music", "narration", "skillRefs", "say"],
   properties: {
+    // written FIRST (the owner: «كلاود كود هو الحاكم»): the request understood before any recipe, format or reference is chosen
+    understanding: {
+      type: "object",
+      additionalProperties: false,
+      required: ["subject", "audience", "feeling", "surprise"],
+      description: "BEFORE anything else, from the request and what you know: the piece's own starting point (no format, recipe or reference yet)",
+      properties: {
+        subject: { type: "string", description: "what the subject really is — its specific nature, material, world and details, not its category" },
+        audience: { type: "string", description: "who it is for and what they already know or expect" },
+        feeling: { type: "string", description: "the ONE feeling it should leave" },
+        surprise: { type: "string", description: "what would genuinely surprise this audience about this subject" },
+      },
+    },
+    variety: { type: "string", description: "what is clearly NEW this time against the person's recent pieces (idea, structure, opening, motion and transition language, palette, type) — or \"first piece\", or which piece they asked to repeat or continue" },
     title: { type: "string" },
     idea: { type: "string", description: "the one idea in one sentence" },
     hook: { type: "string", description: "what is on frame 1 and why it stops the scroll" },
-    format: { type: "string", description: "the viral format (or your own)" },
+    format: { type: "string", description: "the form of THIS piece in a few words — your own, from the understanding; name a library format only if you truly built on one" },
     wow: { type: "string", description: "the one moment nobody has seen in a template" },
     intensity: { type: "integer" },
     seconds: { type: "number" },
@@ -40,7 +54,7 @@ export const PLAN_SCHEMA = {
       description: "only when the person records their own voice: the lines they will read, in order, with the seconds planned for each; otherwise []",
       items: { type: "object", additionalProperties: false, required: ["text", "from", "to"], properties: { text: { type: "string" }, from: { type: "number" }, to: { type: "number" } } },
     },
-    skillRefs: { type: "array", items: { type: "string" }, description: "ids from <skill-catalogue> to have open, word for word, while writing and reviewing this piece (≤ 12)" },
+    skillRefs: { type: "array", items: { type: "string" }, description: "optional: ids from <skill-catalogue> whose craft you want open, word for word, while writing and reviewing this piece (≤ 12) — references, not a style to follow" },
     say: { type: "string", description: "to the person, in Gulf Arabic, 1–2 sentences: the idea and why it will stop the scroll" },
   },
 };

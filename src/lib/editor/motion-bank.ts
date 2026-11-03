@@ -366,7 +366,7 @@ export function nearestMotionExamples(message: string, o: { mood?: MotionMood; s
 /** The examples as a block for حيدرا ماكس's request: each a whole, working storyboard. */
 export function motionExamplesBrief(pieces: BankPiece[]): string {
   if (!pieces.length) return "";
-  return `WORKED EXAMPLES of motion pieces (from the site's bank of a million; each came out clean through the layout engine — copy their craft, not their words):\n${pieces
+  return `WORKED EXAMPLES of motion pieces (from the site's bank of a million; each came out clean through the layout engine — learn their craft only — never reuse their words, layout or idea; the piece is designed from the request):\n${pieces
     .map((p) => `· ${MOODS.find((m) => m.id === p.mood)!.ar} / ${MOTION_STYLES.find((s) => s.id === p.style)!.ar} / ${p.ratio}: ${JSON.stringify(p.raw)}`)
     .join("\n")}`;
 }
