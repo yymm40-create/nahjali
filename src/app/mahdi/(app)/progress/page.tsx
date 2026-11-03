@@ -10,6 +10,8 @@ import TrendLine from "@/components/mahdi/TrendLine";
 import { BarRow, Insights, ProgressTabs, Tile } from "@/components/mahdi/Stats";
 import { FeedbackCard } from "@/components/mahdi/Feedback";
 import { useMahdi } from "@/components/mahdi/Provider";
+import ReviewNote from "@/components/mahdi/ReviewNote";
+import { WeekNoteWhen } from "@/components/mahdi/WeekNote";
 
 /** Overview of all projects: this week, streaks, trends, projects and habits. */
 export default function ProgressPage() {
@@ -34,6 +36,15 @@ export default function ProgressPage() {
     <div className="space-y-6">
       <h1 className="m-display text-3xl">{t.progress.title}</h1>
       <ProgressTabs />
+
+      {/* «حاسبوا أنفسكم»: the notes first — today's and this week's, written here or from the home */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ReviewNote kind="day" start={today} />
+        <div className="space-y-2">
+          <ReviewNote kind="week" start={ws} />
+          <WeekNoteWhen />
+        </div>
+      </div>
 
       {!hasData ? (
         <p className="m-card p-6 text-center m-muted">{t.progress.notEnough}</p>

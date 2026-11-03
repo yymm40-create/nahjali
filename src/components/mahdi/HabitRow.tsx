@@ -6,6 +6,7 @@ import { fmtNum, t } from "@/lib/mahdi/i18n";
 import { habitColorHex } from "@config/mahdi";
 import { describeGoal, habitTint, quantity } from "@/lib/mahdi/client/derive";
 import type { Habit, Project } from "@/lib/mahdi/types";
+import AlertBell from "./AlertBell";
 import Icon from "./Icon";
 import LogSheet from "./LogSheet";
 import ProgressRing from "./ProgressRing";
@@ -24,6 +25,7 @@ export default function HabitRow({ habit, inst, date, project }: { habit: Habit;
   const [open, setOpen] = useState(false);
   const [bump, setBump] = useState(0);
   const v = versionAt({ ...habit, logs: {} }, date);
+  const own = state.snap.habits.some((h) => h.id === habit.id);
   if (!v) return null;
 
   const dayValue = state.logs[habit.id]?.[date] ?? 0;
@@ -105,6 +107,18 @@ export default function HabitRow({ habit, inst, date, project }: { habit: Habit;
           </span>
         )}
       </button>
+
+      {/* «اجعله تنبيهًا»: the habit's own reminder time (one of the person's own habits; a challenge's or a group's is not theirs to change) */}
+      {own && (
+        <AlertBell
+          name={habit.name}
+          time={habit.reminderTime ? habit.reminderTime.slice(0, 5) : null}
+          hint={t.alert.habitHint}
+          onSave={async (time) => {
+            await store.mutate(`/api/mahdi/habits/${habit.id}`, "PATCH", { reminderTime: time });
+          }}
+        />
+      )}
 
       <LogSheet open={open} onClose={() => setOpen(false)} habit={habit} version={v} inst={inst} date={date} commit={commit} dayValue={dayValue} />
     </li>
