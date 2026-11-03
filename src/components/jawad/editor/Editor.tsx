@@ -107,14 +107,15 @@ const THEMES = {
 type ThemeId = keyof typeof THEMES;
 const RAIL_NAV = {
   // «كاب كت»: the menus as tabs at the top of the left column, their contents under them
-  tabs: "cut-tabs hidden lg:grid",
+  // one thin row that scrolls sideways (the owner, 3 November 2026: the menus took the column's room)
+  tabs: "cut-tabs jw-scroll hidden lg:flex",
   side: "jw-glass jw-scroll my-2 hidden w-[4.25rem] shrink-0 flex-col gap-0.5 overflow-y-auto rounded-2xl p-1 lg:flex",
   clouds: "jw-scroll mx-2 mt-1 hidden gap-2 overflow-x-auto px-1 pb-2 pt-1 lg:flex",
   pages: "jw-glass jw-scroll mx-2 mb-2 hidden gap-px overflow-x-auto p-0.5 lg:flex",
   // (the phone keeps its own tool bar)
 } as const;
 const RAIL_ITEM = {
-  tabs: "flex-col justify-center gap-0.5 rounded-lg px-0.5 py-1.5 text-[10.5px] leading-tight",
+  tabs: "gap-1 rounded-full px-2.5 py-1 text-[11.5px] leading-none",
   side: "flex-col gap-0.5 rounded-xl px-0.5 py-1 text-[10px] leading-tight",
   clouds: "min-w-[4.75rem] flex-col justify-center gap-0.5 rounded-full px-3 py-2 text-xs font-bold",
   pages: "gap-1.5 rounded-sm px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide",
@@ -611,16 +612,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     }
   };
   const openClaude = (on?: boolean) => {
-    // a computer: حيدرا ماكس is one of the menus at the top left (his conversation shows under them)
-    if (wideRef.current) {
-      const open = on ?? railRef.current !== "haidara";
-      if (open) {
-        setAssisting(true);
-        setChat(true);
-        setRail("haidara");
-      } else if (railRef.current === "haidara") setRail("media");
-      return;
-    }
+    // حيدرا ماكس's conversation is a window over the work on a computer too (the owner, 3 November 2026: in the left
+    // column it was squeezed); his tab in the menus opens and closes it
     setAssisting((v) => on ?? !v);
     setChat((v) => on ?? !v);
   };
@@ -1650,7 +1643,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     <nav className={`${RAIL_NAV[variant]} ${variant === "side" ? "lg:order-last" : ""}`} aria-label="أقسام المحرر">
       {RAIL.filter((r) => !r.tab || !seen.kind || rail !== "inspector" || TABS_OF[seen.kind].includes(r.tab)).map((r, i) => {
             const label = r.id === "edit" && seen.kind && rail === "inspector" ? EDIT_LABEL[seen.kind] : r.label;
-            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.id === "haidara" ? rail === "haidara" : r.tab ? rail === "inspector" && tab === r.tab : false;
+            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.id === "haidara" ? assisting : r.tab ? rail === "inspector" && tab === r.tab : false;
             return (
               <button
                 key={r.id}
@@ -1659,7 +1652,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                 title={r.hint}
                 onClick={() => {
                   if (r.id === "captions") return setCaptioning(true);
-                  if (r.id === "haidara") return openClaude(true);
+                  if (r.id === "haidara") return openClaude();
                   if (r.tab) {
                     setTab(r.tab);
                     setRail("inspector");
@@ -1668,7 +1661,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                 }}
                 className={`jw-3d flex shrink-0 items-center ${RAIL_ITEM[variant]} ${on ? "jw-rail-on" : variant === "clouds" ? `jw-cloud-${i % 5} text-jw-ink` : "bg-jw-surface text-jw-muted hover:text-jw-ink"}`}
               >
-                <Icon name={r.icon} size={variant === "clouds" ? 22 : variant === "pages" ? 14 : 16} />
+                <Icon name={r.icon} size={variant === "clouds" ? 22 : variant === "pages" || variant === "tabs" ? 14 : 16} />
                 <span className="whitespace-nowrap">{label}</span>
               </button>
             );
@@ -2007,7 +2000,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           </MovableBubble>
         )}
 
-        {assisting && !wide && (
+        {assisting && (
           <aside className={`hd-pop ${chatBig ? "big" : ""}`} ref={sizeChat} aria-label="حيدرا ماكس" dir="rtl">
             <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
               <Guard name="حيدرا ماكس"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} onDock={wide ? () => setChatDock(true) : undefined} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => (setChatBig(false), openClaude(false))} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number, clipId?: string | null) => openLab(brief, secs, clipId)} /></Guard>
@@ -2076,13 +2069,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
         {/* «كاب كت»: the left column — the menus as tabs at its top, what each opens under them (حيدرا ماكس too); on a phone
             its parts stay the bottom sheets they were (display: contents) */}
-        <div className={`cut-left ${colorRoom || big ? "contents" : "contents lg:relative lg:my-2 lg:flex lg:min-h-0 lg:shrink-0 lg:flex-col lg:overflow-hidden lg:rounded-2xl jw-glass-lg"}`} style={wide && !colorRoom && !big ? { order: 3, width: assisting && rail === "haidara" ? Math.max(layout.panelW, 500) : layout.panelW } : undefined}>
+        <div className={`cut-left ${colorRoom || big ? "contents" : "contents lg:relative lg:my-2 lg:flex lg:min-h-0 lg:shrink-0 lg:flex-col lg:overflow-hidden lg:rounded-2xl jw-glass-lg"}`} style={wide && !colorRoom && !big ? { order: 3, width: layout.panelW } : undefined}>
           {wide && !big && !colorRoom && railNav("tabs")}
-          {wide && assisting && !big && !colorRoom && (
-            <div className={`hd-left min-h-0 flex-1 flex-col ${rail === "haidara" ? "flex" : "hidden"}`} aria-label="حيدرا ماكس" dir="rtl">
-              <Guard name="حيدرا ماكس"><AssistantPanel big={false} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number, clipId?: string | null) => openLab(brief, secs, clipId)} /></Guard>
-            </div>
-          )}
         <aside
           className={`${sheet === "library" ? "fixed inset-x-0 bottom-0 z-50 flex h-[72dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:relative lg:z-auto ${rail === "media" && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl ${rail === "media" ? floatCls("panel") : ""}`}
           style={placeStyle("panel", { width: layout.panelW })}

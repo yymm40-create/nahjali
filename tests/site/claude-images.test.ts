@@ -33,4 +33,16 @@ describe("pictures for Claude", () => {
     const [n] = await fitImages(imageAt("https://r2.example/gone.jpg"));
     expect((n.content as unknown as Blk[])[1].source).toEqual({ type: "url", url: "https://r2.example/gone.jpg" });
   });
+
+  it("never sends Claude a link it refuses: a desktop file or a relative path that can't be fetched becomes a line of text", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new TypeError("unknown scheme");
+    }));
+    for (const url of ["haidara-media://file/abc", "/api/files/x.jpg", "http://example.com/a.jpg"]) {
+      const [m] = await fitImages(imageAt(url));
+      const b = (m.content as unknown as { type: string; text?: string; source?: unknown }[])[1];
+      expect(b.type).toBe("text");
+      expect(b.source).toBeUndefined();
+    }
+  });
 });

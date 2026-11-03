@@ -375,8 +375,10 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     const parts: ClaudePart[] = typeof last.content === "string" ? [{ type: "text", text: last.content }] : [...last.content];
     parts.push({ type: "text", text: `REFERENCES the person attached to this message (in the library now — use their ids): ${refs.map((a) => `${a.id} · ${a.kind} · «${a.name}»${a.durationMs ? ` · ${(a.durationMs / 1000).toFixed(1)} s` : ""}${a.width ? ` · ${a.width}×${a.height}` : ""}`).join(" | ")}` });
     for (const a of refs) {
-      if (a.kind === "image" && a.url) parts.push({ type: "text", text: `Reference «${a.name}» (${a.id}):` }, { type: "image", url: a.url });
-      for (const f of looks.get(a.id) ?? []) parts.push({ type: "text", text: `Reference video «${a.name}» (${a.id}) at ${(f.t / 1000).toFixed(1)} s:` }, { type: "image64", data: f.data, mediaType: "image/jpeg" });
+      // a picture by its link only when Claude can open it (https); a file kept on the person's computer
+      // (haidara-media://…) comes as pixels from the page (refLooks), or by name
+      if (a.kind === "image" && a.url && /^https:\/\//.test(a.url)) parts.push({ type: "text", text: `Reference «${a.name}» (${a.id}):` }, { type: "image", url: a.url });
+      for (const f of looks.get(a.id) ?? []) parts.push({ type: "text", text: a.kind === "image" ? `Reference «${a.name}» (${a.id}):` : `Reference video «${a.name}» (${a.id}) at ${(f.t / 1000).toFixed(1)} s:` }, { type: "image64", data: f.data, mediaType: "image/jpeg" });
     }
     last.content = parts;
   }

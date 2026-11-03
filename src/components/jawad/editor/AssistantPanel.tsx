@@ -503,9 +503,11 @@ export default function AssistantPanel({
       if (signal.aborted) throw Object.assign(new Error("⏹️ وقّفت الطلب."), { name: "AbortError" });
       // the attached videos: a few of their moments, so حيدرا ماكس sees what is in them (pictures go as they are)
       const refLooks: { id: string; frames: { t: number; data: string }[] }[] = [];
-      for (const a of pending.filter((x) => x.kind === "video" && x.url)) {
+      // (a picture kept on this computer by the desktop program — haidara-media://… — is seen here and sent as pixels: the
+      // server can't open that link and Claude only takes https ones)
+      for (const a of pending.filter((x) => (x.kind === "video" || (x.kind === "image" && !/^https:\/\//.test(x.url ?? ""))) && x.url)) {
         setBusy(`حيدرا ماكس يشوف المرجع «${a.name}»…`);
-        const frames = await framesOf(a.url!, "video", 0, a.durationMs ?? 3000, 3).catch(() => []);
+        const frames = await framesOf(a.url!, a.kind === "image" ? "image" : "video", 0, a.durationMs ?? 3000, a.kind === "image" ? 1 : 3, a.kind === "image" ? 768 : 360).catch(() => []);
         if (frames.length) refLooks.push({ id: a.id, frames: frames.map((f) => ({ t: f.t, data: f.data })) });
       }
       const found = await talkFace(message).catch(() => null);
