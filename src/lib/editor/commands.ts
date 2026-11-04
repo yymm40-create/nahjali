@@ -112,6 +112,13 @@ export type Command =
   | { type: "add_text"; at: number; body?: string; duration?: number }
   /** «مسار الموشن»: a motion element at `at` on the motion track (made when missing) */
   | { type: "add_motion"; kind: MotionKind; at: number; duration?: number; motion?: Partial<MotionEl> }
+  /**
+   * «ورا الشخص»: a text or motion clip goes behind the person — the video under it is copied, for the clip's own
+   * seconds, onto a picture track right above it with its background taken off, so the person stands in front.
+   */
+  | { type: "behind_person"; clipId: string }
+  /** «لفّه حول الشخص»: a ribbon split in two — its far half behind the person's cut-out, its near half in front */
+  | { type: "wrap_ribbon"; clipId: string }
   /** `trackId: "new"` puts it on a new track of its kind (above the pictures, or a new sound track) */
   | { type: "move_clip"; clipId: string; trackId: string; start: number }
   /** a copy of the clip put where it is dropped (⌘/Ctrl/Alt + drag); the clip itself stays */
@@ -271,6 +278,19 @@ function backgroundTrack(t: Timeline, at: number, len: number): Track {
   t.tracks.splice(t.tracks.indexOf(track), 1);
   t.tracks.unshift(track);
   return track;
+}
+/** «ورا الشخص»: the picture track that holds the person cut out over the text. */
+export const BEHIND_TRACK = "الشخص فوق الكتابة";
+/** The «ورا الشخص» track above track `from` (−1 = any) whose cut-outs cover `s`–`e` fully, or −1. */
+function behindAt(t: Timeline, from: number, s: number, e: number) {
+  for (let i = Math.max(0, from + 1); i < t.tracks.length; i++) {
+    const x = t.tracks[i];
+    if (x.kind !== "video" || x.name !== BEHIND_TRACK || x.hidden) continue;
+    let at = s;
+    for (const c of [...x.clips].sort((a, b) => a.start - b.start)) if (c.bg && c.start <= at && clipEnd(c) > at) at = clipEnd(c);
+    if (at >= e) return i;
+  }
+  return -1;
 }
 /** A text or motion clip goes only on a track of its own sort (a caption never lands on the motion track, nor back). */
 const sameSort = (x: Track, c: Clip) => !!x.motion === !!c.motion;
@@ -440,6 +460,79 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       };
       place(track, c);
       return { timeline: t, label: `أضفت ${MOTION_KINDS[motion.kind].label}`, select: [c.id] };
+    }
+
+    case "behind_person": {
+      const { track: tt, clip: tc } = owned(t, cmd.clipId);
+      if (tt.kind !== "text") fail("«ورا الشخص» للكتابة وعناصر الموشن.");
+      const s = tc.start;
+      const e = clipEnd(tc);
+      // already under a cut-out of the person for all its seconds: nothing to add
+      if (behindAt(t, t.tracks.indexOf(tt), s, e) >= 0) return { timeline: t, label: "الكتابة أصلًا ورا الشخص", select: [tc.id] };
+      // the top picture under it (what is seen there) that has a person to cut out
+      const under = t.tracks.slice(0, t.tracks.indexOf(tt)).filter((x) => x.kind === "video" && !x.hidden && !x.role);
+      let src: Clip | null = null;
+      for (const tr of [...under].reverse()) {
+        const c = tr.clips.find((c) => !!c.assetId && !c.text && !c.motion && c.start < e && clipEnd(c) > s && assets.get(c.assetId!)?.kind !== "audio");
+        if (c) {
+          src = c;
+          break;
+        }
+      }
+      if (!src) fail("ما فيه فيديو أو صورة تحت هذي الكتابة عشان نقص الشخص منها.");
+      if (countClips(t) >= LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
+      const from = Math.max(s, src!.start);
+      const to = Math.min(e, clipEnd(src!));
+      const copy: Clip = {
+        ...structuredClone(src!),
+        id: newId("c"),
+        start: from,
+        in: Math.round(src!.in + (from - src!.start) * src!.speed),
+        out: Math.round(src!.in + (to - src!.start) * src!.speed),
+        volume: 0,
+        transition: null,
+        fadeIn: 0,
+        fadeOut: 0,
+        key: null,
+        anim: null,
+        fix: null,
+        bg: { ...DEFAULT_BACKDROP, ...(src!.bg ?? {}), mode: "remove", show: false },
+      };
+      // the track right above the text: the one made last time when it has room, else a new one
+      const above = t.tracks[t.tracks.indexOf(tt) + 1];
+      let track = above && above.kind === "video" && above.name === BEHIND_TRACK && !above.locked && free(above, from, to) ? above : null;
+      if (!track) {
+        if (t.tracks.length >= LIMITS.tracks) fail("وصلت لأكثر عدد من المسارات.");
+        track = { id: newId("t"), kind: "video", name: BEHIND_TRACK, muted: true, hidden: false, locked: false, duck: false, clips: [] };
+        t.tracks.splice(t.tracks.indexOf(tt) + 1, 0, track);
+      }
+      place(track, copy);
+      return { timeline: t, label: "حطيت الكتابة ورا الشخص", select: [tc.id] };
+    }
+
+    case "wrap_ribbon": {
+      const { track: rt, clip: rc } = owned(t, cmd.clipId);
+      if (rc.motion?.kind !== "ribbon") fail("هذي للشريط اللي يلف.");
+      rc.motion = { ...rc.motion!, part: "back" };
+      // a cut-out of the person is already there (a text behind them): the far half goes right under it, so what is
+      // in front of the person (a face frame, captions) stays in front; otherwise the person is cut out for it
+      const have = behindAt(t, -1, rc.start, clipEnd(rc));
+      let r: Applied;
+      if (have >= 0 && t.tracks.indexOf(rt) > have) {
+        if (t.tracks.length >= LIMITS.tracks) fail("وصلت لأكثر عدد من المسارات.");
+        rt.clips = rt.clips.filter((c) => c.id !== rc.id);
+        const under: Track = { id: newId("t"), kind: "text", name: `موشن ${t.tracks.filter((x) => x.motion).length + 1}`, muted: false, hidden: false, locked: false, duck: false, color: "#8b5cf6", motion: true, clips: [] };
+        t.tracks.splice(have, 0, under);
+        place(under, rc);
+        r = { timeline: t, label: "" };
+      } else r = have >= 0 ? { timeline: t, label: "" } : apply(t, { type: "behind_person", clipId: rc.id }, assets);
+      const front: Clip = { ...structuredClone(rc), id: newId("c"), motion: { ...rc.motion!, part: "front" } };
+      if (countClips(r.timeline) >= LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
+      // a motion track of its own on top of everything (above the person)
+      const top = newTrack(r.timeline, "text");
+      Object.assign(top, { name: `موشن ${r.timeline.tracks.filter((x) => x.motion).length + 1}`, color: "#8b5cf6", motion: true });
+      place(top, front);
+      return { timeline: r.timeline, label: "لفّيت الشريط حول الشخص", select: [rc.id] };
     }
 
     case "copy_clip": {

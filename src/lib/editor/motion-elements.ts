@@ -11,6 +11,8 @@ export const MOTION_KINDS = {
   phrase: { label: "عبارة", icon: "💬", hint: "جملة وكلمة منها مميّزة" },
   big: { label: "رقم كبير", icon: "🔢", hint: "رقم يعدّ لين قيمته وتحته وصف" },
   ambient: { label: "عناصر تتحرك", icon: "✨", hint: "خلفية ناعمة: أشكال تطفو بهدوء تحت الكلام" },
+  facehud: { label: "تتبّع الوجه", icon: "🎯", hint: "مربع أصفر يمشي مع الوجه وجنبه أرقام تتغيّر" },
+  ribbon: { label: "شريط يلف", icon: "🎀", hint: "شريط ينرسم ويلف حول الشخص: نصّه وراه ونصّه قدّامه" },
 } as const;
 export type MotionKind = keyof typeof MOTION_KINDS;
 export const isMotionKind = (v: unknown): v is MotionKind => typeof v === "string" && v in MOTION_KINDS;
@@ -41,6 +43,19 @@ export type MotionEnter = keyof typeof MOTION_ENTERS;
 /** «عناصر تتحرك»: what floats on the background. */
 export const AMBIENT_SHAPES = { orbs: "دوائر ناعمة", khatim: "نجمة ثمانية", stars: "نجوم", sparks: "لمعات" } as const;
 export type AmbientShape = keyof typeof AMBIENT_SHAPES;
+
+/** «شريط يلف»: which half of the loop this clip draws (put «ورا» under the person's cut-out and «قدّام» over it). */
+export const RIBBON_PARTS = { whole: "كامل", back: "النص اللي ورا", front: "النص اللي قدّام" } as const;
+export type RibbonPart = keyof typeof RIBBON_PARTS;
+
+/** «تتبّع الوجه»: where the face is at a moment (ms from the element's start), as fractions of the frame. */
+export interface FaceSample {
+  t: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /** One line of an element: its words and when it comes in (ms from the element's start). */
 export interface MotionItem {
@@ -75,21 +90,27 @@ export interface MotionEl {
   shape: AmbientShape;
   /** «عناصر تتحرك»: how fast they drift, 0.25–2 (1 = calm) */
   speed: number;
+  /** «تتبّع الوجه»: the face over time (read from the video under it); empty = a still frame at x/y */
+  track: FaceSample[];
+  /** «شريط يلف»: the whole loop, or only the half behind / in front of the person */
+  part: RibbonPart;
 }
 
-export const MOTION_LIMITS = { title: 120, sub: 80, item: 90, items: 8, unit: 8 } as const;
+export const MOTION_LIMITS = { title: 120, sub: 80, item: 90, items: 8, unit: 8, track: 900 } as const;
 /** The shortest and the default element on the timeline. */
 export const MOTION_MS = { min: 600, default: 4000 } as const;
 
 /** A new element of each kind, ready to show (Arabic sample words the person replaces). */
 export function newMotion(kind: MotionKind, o: Partial<MotionEl> = {}): MotionEl {
-  const base: MotionEl = { kind, title: "", sub: "", items: [], x: 0.5, y: 0.5, size: 1, theme: "navy", colors: null, panel: true, enter: "rise", font: "readex", unit: "", shape: "orbs", speed: 1 };
+  const base: MotionEl = { kind, title: "", sub: "", items: [], x: 0.5, y: 0.5, size: 1, theme: "navy", colors: null, panel: true, enter: "rise", font: "readex", unit: "", shape: "orbs", speed: 1, track: [], part: "whole" };
   const sample: Record<MotionKind, Partial<MotionEl>> = {
     title: { title: "العنوان", sub: "سطر صغير تحته", y: 0.3 },
     list: { title: "العنوان", items: [{ text: "النقطة الأولى", at: 500 }, { text: "النقطة الثانية", at: 1300 }, { text: "النقطة الثالثة", at: 2100 }], y: 0.62 },
     phrase: { title: "موضوع اللهجة مهم جدًا", sub: "مهم", y: 0.7, panel: false },
     big: { title: "من المتابعين", sub: "250", unit: "K", y: 0.4 },
     ambient: { theme: "comfort", shape: "khatim" },
+    facehud: { title: "FACE", y: 0.4, panel: false, theme: "gold", enter: "fade" },
+    ribbon: { y: 0.62, size: 1, panel: false, theme: "gold", enter: "fade", colors: { bg: "#17120a", panel: "#241a0c", text: "#fff7e6", accent: "#8a5a2b", second: "#f5d27a" } },
   };
   return readMotion({ ...base, ...sample[kind], ...o }) ?? base;
 }
@@ -131,14 +152,35 @@ export function readMotion(v: unknown): MotionEl | null {
     unit: str(o.unit, MOTION_LIMITS.unit),
     shape: typeof o.shape === "string" && o.shape in AMBIENT_SHAPES ? (o.shape as AmbientShape) : "orbs",
     speed: num(o.speed, 0.25, 2, 1),
+    track: (Array.isArray(o.track) ? o.track : [])
+      .slice(0, MOTION_LIMITS.track)
+      .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
+      .map((f) => ({ t: Math.round(num(f.t, 0, 600_000, 0)), x: num(f.x, -1, 2, 0.5), y: num(f.y, -1, 2, 0.5), w: num(f.w, 0.005, 1, 0.1), h: num(f.h, 0.005, 1, 0.1) }))
+      .sort((a, b) => a.t - b.t),
+    part: typeof o.part === "string" && o.part in RIBBON_PARTS ? (o.part as RibbonPart) : "whole",
   };
+}
+
+/** «تتبّع الوجه»: the face at `local` ms, between the samples (eased, never jumping); null when there are none. */
+export function faceAt(track: FaceSample[], local: number): Omit<FaceSample, "t"> | null {
+  if (!track.length) return null;
+  if (local <= track[0].t) return track[0];
+  const last = track[track.length - 1];
+  if (local >= last.t) return last;
+  let i = 1;
+  while (track[i].t < local) i++;
+  const a = track[i - 1];
+  const b = track[i];
+  const k = (local - a.t) / Math.max(1, b.t - a.t);
+  const mix = (p: number, q: number) => p + (q - p) * k;
+  return { x: mix(a.x, b.x), y: mix(a.y, b.y), w: mix(a.w, b.w), h: mix(a.h, b.h) };
 }
 
 /** The colours an element is drawn with (its own over its theme's). */
 export const motionColors = (m: Pick<MotionEl, "theme" | "colors">): MotionColors => m.colors ?? MOTION_THEMES[m.theme];
 
 /** What the timeline shows on the clip (its kind and its first words). */
-export const motionLabel = (m: MotionEl) => `${MOTION_KINDS[m.kind].icon} ${m.title || MOTION_KINDS[m.kind].label}`.slice(0, 60);
+export const motionLabel = (m: MotionEl) => `${MOTION_KINDS[m.kind].icon} ${(m.kind === "facehud" || m.kind === "ribbon" ? "" : m.title) || MOTION_KINDS[m.kind].label}`.slice(0, 60);
 
 /** The smooth ease every entrance uses (no bounce: Majed's rules). */
 export const easeOut = (p: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, p)), 3);

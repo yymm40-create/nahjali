@@ -9,7 +9,7 @@ const withVideo = () => apply(emptyTimeline("9:16"), { type: "add_clip", assetId
 
 describe("«مسار الموشن»: elements, not a rendered video", () => {
   it("has the elements and the themes", () => {
-    expect(Object.keys(MOTION_KINDS)).toEqual(["title", "list", "phrase", "big", "ambient"]);
+    expect(Object.keys(MOTION_KINDS)).toEqual(["title", "list", "phrase", "big", "ambient", "facehud", "ribbon"]);
     expect(Object.values(MOTION_THEMES).map((t) => t.label)).toEqual(expect.arrayContaining(["ليل كحلي", "بحر فيروزي", "ذهبي فاخر"]));
     const list = newMotion("list");
     expect(list.items.length).toBe(3);

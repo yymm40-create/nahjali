@@ -35,6 +35,7 @@ import {
   type Timeline,
   type Transform,
   NEW_KEY,
+  SILHOUETTE,
 } from "@/lib/editor/model";
 import type { ClipPatch, Command } from "@/lib/editor/commands";
 import Icon from "../Icon";
@@ -300,7 +301,7 @@ export default function Inspector({
     );
   }
   // «مسار الموشن»: an element has its own settings (its words, lines and their moments, place, size, theme)
-  if (clip.motion) return <MotionPanel clip={clip} motion={clip.motion} locked={locked} run={run} player={player ?? null} />;
+  if (clip.motion) return <MotionPanel clip={clip} motion={clip.motion} locked={locked} run={run} player={player ?? null} tl={tl} assets={assets} flash={flash} />;
   const set = (patch: ClipPatch, key: string) => run({ type: "update_clip", clipId: clip.id, patch }, { coalesce: `${clip.id}:${key}` });
   const text = clip.text;
   // a video's sound taken out onto a sound track is only sound
@@ -506,6 +507,11 @@ export default function Inspector({
             </div>
           )}
           {text && <TextControls text={text} locked={locked} setText={setText} />}
+          {text && !clip.motion && (
+            <button type="button" disabled={locked} className="jw-btn jw-btn-quiet w-full text-xs" onClick={() => run({ type: "behind_person", clipId: clip.id })} title="ننسخ الفيديو اللي تحت الكتابة بنفس ثوانيها ونشيل خلفيته في مسار فوقها، فيصير الشخص قدّام الكلام">
+              🧍 حط الكتابة ورا الشخص
+            </button>
+          )}
           {text && clip.words.length > 0 && <p className="text-[11px] text-jw-faint">كابشن بتوقيت الكلمات: صحّح أي كلمة بنفس عددها وتبقى متزامنة.</p>}
           {text && track.clips.length > 1 && (
             <div className="space-y-1.5 border-t border-jw-line pt-3">
@@ -677,6 +683,16 @@ export default function Inspector({
               <input type="color" disabled={locked} value={clip.bg.color} onChange={(e) => set({ bg: { color: e.target.value } }, "bg:color")} className="h-8 w-12 cursor-pointer rounded border border-jw-line bg-transparent" />
             </label>
           )}
+          {clip.bg && (
+            <div className="space-y-1.5 rounded-lg border border-jw-line p-2">
+              <label className="flex items-center gap-2 text-xs">
+                <input type="checkbox" disabled={locked} checked={!!clip.bg.fill} onChange={(e) => set({ bg: e.target.checked ? { fill: SILHOUETTE.fill, ...(clip.bg!.mode === "blur" ? { mode: "color", color: SILHOUETTE.paper } : {}) } : { fill: "" } }, "bg:fill")} className="accent-[var(--jw-accent)]" />
+                🖤 ظل (الشخص بلون واحد مثل البوستر)
+                {clip.bg.fill && <input type="color" disabled={locked} value={clip.bg.fill} onChange={(e) => set({ bg: { fill: e.target.value } }, "bg:fill")} className="h-6 w-8 rounded border border-jw-line bg-transparent" aria-label="لون الظل" />}
+              </label>
+              {clip.bg.fill && <p className="text-[11px] leading-5 text-jw-faint">مع «لون بدلها» بلون فاتح (مثل الورق) يصير شكل البوستر: الشخص ظل أسود والكتابة وراه.</p>}
+            </div>
+          )}
           {clip.bg?.mode === "remove" && (
             <p className="rounded-lg bg-jw-surface-2 p-2 text-[11px] leading-5 text-jw-muted">
               مكان الخلفية يصير شفاف، فيبان اللي تحت هذا المقطع في التايملاين. لتحط صورة أو فيديو خلف الشخص: حط هذا المقطع في مسار فوق (اسحبه للأعلى) والخلفية الجديدة في الرئيسي تحته.
@@ -800,6 +816,9 @@ function TextControls({ text, locked, setText }: { text: TextStyle; locked: bool
         </label>
       </div>
       <Slider label="عمق ثلاثي الأبعاد" value={Math.round((text.depth ?? 0) * 100)} min={0} max={100} step={5} disabled={locked} onChange={(v) => setText({ depth: v / 100 }, "depth")} format={(v) => (v ? `${v}%` : "بدون")} />
+      {/* «ميلان ثلاثي»: the words turned in 3D with a perspective (one side nearer, or the top leaning back) */}
+      <Slider label="ميلان ثلاثي: يمين ↔ يسار" value={text.tiltY ?? 0} min={-60} max={60} step={1} disabled={locked} onChange={(v) => setText({ tiltY: v }, "tiltY")} format={(v) => (v ? `${v}°` : "بدون")} />
+      <Slider label="ميلان ثلاثي: لورا ↔ لقدّام" value={text.tiltX ?? 0} min={-60} max={60} step={1} disabled={locked} onChange={(v) => setText({ tiltX: v }, "tiltX")} format={(v) => (v ? `${v}°` : "بدون")} />
       <FontPicker value={text.font} disabled={locked} onPick={(f) => setText({ font: f }, "font")} />
       <div className="jw-seg" role="radiogroup" aria-label="السماكة">
         {([400, 700, 900] as const).map((w) => (
