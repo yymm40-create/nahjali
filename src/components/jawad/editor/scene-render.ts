@@ -42,9 +42,9 @@ export function cutTimes(changes: number[], duration: number, fps = 30, most = 5
 }
 
 /** A sheet of the frames at exactly these times, tiled with the time under each. */
-export async function sheetAt(host: SceneHost, times: number[], cols = 6): Promise<string> {
+export async function sheetAt(host: SceneHost, times: number[], cols = 6, cell?: number): Promise<string> {
   const count = times.length;
-  const cellW = host.w >= host.h ? 320 : 180;
+  const cellW = cell ?? (host.w >= host.h ? 320 : 180);
   const cellH = Math.round((cellW * host.h) / host.w);
   const rows = Math.ceil(count / cols);
   const pad = 22;

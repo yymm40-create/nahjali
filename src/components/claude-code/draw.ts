@@ -4,7 +4,10 @@
 
 import { postJson } from "@/lib/fetch";
 import { CODE_FIXES, CODE_ROUNDS } from "@/lib/claude-code/skill";
-import { SceneHost, SceneError, sceneFont } from "@/components/jawad/editor/scene-host";
+import { SceneHost, SceneError, sceneFont, type SceneInfo } from "@/components/jawad/editor/scene-host";
+import { canExport, probe, renderVideo, sheetAt } from "@/components/jawad/editor/scene-render";
+import { mixSoundtrack } from "@/components/jawad/editor/lab-sound";
+import { readCues } from "@/lib/editor/scene/contract";
 
 const URL = "/api/jawad/claude-code";
 
@@ -24,6 +27,19 @@ export interface DrawResult {
   program?: { code: string; fonts: { head: string; body: string }; size: [number, number] };
   /** the picture is a CHANGE patched onto the program of a picture drawn before (the edit path took) */
   edited?: boolean;
+  /** a motion slide: its MP4, with its sound (`png` is its last frame) */
+  video?: Blob;
+}
+
+/** A motion carousel's slide: drawn as a moving scene, its frames reviewed, then rendered to MP4 here with its sound. */
+export interface DrawMotion {
+  n: number;
+  seconds: number;
+  style: string;
+  first: boolean;
+  total: number;
+  /** the library's sound effects (id → link), for the scene's cues */
+  sfx?: Record<string, string>;
 }
 
 /**
@@ -68,7 +84,7 @@ async function photoBitmap(url: string, side: number): Promise<ImageBitmap | nul
   }
 }
 
-type DrawOptions = { prompt: string; aspect: string; style: string; references: string[]; photos?: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" | "content"; edit?: DrawEdit | null };
+type DrawOptions = { prompt: string; aspect: string; style: string; references: string[]; photos?: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" | "content"; edit?: DrawEdit | null; motion?: DrawMotion | null };
 
 /**
  * Draws the picture by program, with up to CODE_ROUNDS looks and rewrites. `photos` are the person's pictures to PUT IN
@@ -76,6 +92,7 @@ type DrawOptions = { prompt: string; aspect: string; style: string; references: 
  * than ten (up to twenty) are placed in a SECOND drawing whose base is the first picture.
  */
 export async function drawWithCode(o: DrawOptions): Promise<DrawResult> {
+  if (o.motion) return drawMotion(o, o.motion);
   const all = (o.photos ?? []).slice(0, PHOTOS_MAX);
   if (o.edit && all.length <= PHOTOS_PER_ROUND) {
     const tried = await drawEdit({ ...o, photos: all }, o.edit);
@@ -112,7 +129,8 @@ async function prepare(o: DrawOptions) {
   const loaded = (await Promise.all(list.map(async (url) => ({ bm: await photoBitmap(url, side), small: await smallJpeg(url) })))).filter((p): p is { bm: ImageBitmap; small: string } => !!p.bm && !!p.small);
   const assets = loaded.map((p, i) => ({ id: `photo${i + 1}`, bitmap: p.bm }));
   const photos = loaded.map((p) => p.small);
-  const call = <T>(body: Record<string, unknown>) => postJson<T>(URL, { model: o.model, prompt: o.prompt, aspect: o.aspect, style: o.style, references: o.references, photos, from: o.from ?? "studio", ...body }, o.signal);
+  const motion = o.motion ? { n: o.motion.n, motion: { seconds: o.motion.seconds, style: o.motion.style, first: o.motion.first, total: o.motion.total } } : {};
+  const call = <T>(body: Record<string, unknown>) => postJson<T>(URL, { model: o.model, prompt: o.prompt, aspect: o.aspect, style: o.style, references: o.references, photos, from: o.from ?? "studio", ...motion, ...body }, o.signal);
   return { assets, call };
 }
 
@@ -218,6 +236,79 @@ async function drawOnce(o: DrawOptions): Promise<DrawResult> {
       problems = r.problems;
     }
     return { ...best!, coins };
+  } finally {
+    host.destroy();
+    for (const a of assets) a.bitmap.close();
+  }
+}
+
+const stopped = (o: DrawOptions) => {
+  if (o.signal?.aborted) throw Object.assign(new Error("⏹️ وقّفت الرسم."), { name: "AbortError" });
+};
+
+/**
+ * A MOTION SLIDE: he writes the slide as a moving scene, the page loads it (its errors go back to be fixed), he looks at
+ * a sheet of its frames and rewrites it below the bar, then the page renders the best one to MP4 with its sound (the
+ * scene's own sound() and the library's effects at its cues). `png` is its last frame.
+ */
+async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
+  const { assets, call } = await prepare({ ...o, photos: (o.photos ?? []).slice(0, PHOTOS_PER_ROUND) });
+  let coins = 0;
+  o.onStep({ text: `🎬 حيدرا ماكس يكتب الشريحة ${m.n} مشهدًا متحركًا…` });
+  let w = await call<Wrote>({ action: "write" });
+  coins += w.coins ?? 0;
+  let code = w.code;
+  let problems = w.problems;
+  const fonts = w.fonts;
+  const [W, H] = w.size;
+  if (!(await canExport(W, H))) throw new Error("متصفحك ما يقدر يطلّع فيديو الشريحة. افتح الصفحة في Chrome أو Edge على الكمبيوتر وأعد المحاولة.");
+  const host = new SceneHost();
+  try {
+    let best: { result: DrawResult; code: string } | null = null;
+    let info: SceneInfo | null = null;
+    for (let round = 1; round <= CODE_ROUNDS; round++) {
+      for (let fix = 0; ; fix++) {
+        stopped(o);
+        try {
+          if (problems.length) throw new SceneError(problems.join("; "), "check");
+          o.onStep({ text: `أشغّل الشريحة ${m.n} من برنامجها${round > 1 ? ` (جولة ${round})` : ""}…` });
+          info = await host.load(code, { w: W, h: H, fps: 30, assets, fonts: sceneFonts(fonts) });
+          const err = await probe(host, info.duration);
+          if (err) throw err;
+          break;
+        } catch (e) {
+          if (!(e instanceof SceneError) || fix >= CODE_FIXES) throw e instanceof SceneError ? new Error(`برنامج الشريحة ما اشتغل بعد ${fix + 1} محاولات: ${e.message}`) : e;
+          o.onStep({ text: "البرنامج طلع فيه خطأ — حيدرا ماكس يصلّحه…" });
+          w = await call<Wrote>({ action: "write", code, errors: `${e.where}${e.t != null ? ` at t=${e.t.toFixed(2)}s` : ""}: ${e.message}\n${e.stack2}` });
+          coins += w.coins ?? 0;
+          code = w.code;
+          problems = w.problems;
+        }
+      }
+      const d = info!.duration;
+      const last = await host.frame(Math.max(0, d - 1 / 30));
+      const png = await bitmapTo(last, "image/png");
+      const still = await bitmapTo(last, "image/jpeg", 1280, 0.85);
+      last.close();
+      // big enough cells for him to read the Arabic of every frame
+      const sheet = await sheetAt(host, Array.from({ length: 12 }, (_, i) => Math.min((d * i) / 11, d - 1 / 30)), 4, 300);
+      o.onStep({ text: `حيدرا ماكس يشوف فريمات الشريحة ${m.n} ويقيّمها (جولة ${round} من ${CODE_ROUNDS})…`, preview: `data:image/jpeg;base64,${still}` });
+      const r = await call<Reviewed>({ action: "review", code, still: sheet, round });
+      coins += r.coins ?? 0;
+      best = { result: { png, scores: r.review.scores, pass: r.review.pass, verdict: r.review.verdict, rounds: round, coins }, code };
+      if (r.review.pass || !r.code) break;
+      code = r.code;
+      problems = r.problems;
+    }
+    // the best version is the one on the scene page (a rewrite is only kept when it was loaded and looked at)
+    if (best!.code !== code) info = await host.load(best!.code, { w: W, h: H, fps: 30, assets, fonts: sceneFonts(fonts) });
+    stopped(o);
+    o.onStep({ text: `🔊 أركّب صوت الشريحة ${m.n}…` });
+    const synth = info!.sound ? await host.sound().catch(() => null) : null;
+    const cues = readCues(info!.cues, info!.duration).flatMap((c) => (m.sfx?.[c.sfx] ? [{ url: m.sfx[c.sfx], t: c.t, vol: c.vol }] : []));
+    const audio = synth || cues.length ? await mixSoundtrack({ duration: info!.duration, synth, cues, voice: null, music: null }) : null;
+    const video = await renderVideo(host, { duration: info!.duration, fps: 30, blur: info!.blur, sub: info!.blur > 0 ? 3 : 1, audio }, (p) => o.onStep({ text: `🎞️ أطلّع فيديو الشريحة ${m.n}… ${Math.round(p * 100)}٪` }), o.signal);
+    return { ...best!.result, coins, video };
   } finally {
     host.destroy();
     for (const a of assets) a.bitmap.close();

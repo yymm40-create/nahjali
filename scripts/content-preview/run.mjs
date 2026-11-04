@@ -61,6 +61,24 @@ await new Promise((r) => setTimeout(r, 900));
 await page.screenshot({ path: join(out, "recommended.png") });
 const first = await page.evaluate(() => document.querySelector(".ct-ctable .niche th").textContent);
 if (!first.includes("ترشيحات")) { bad++; console.log("  ✗ recommendations are not first"); }
+// the table of motion styles: ten rows with a moving preview each, his recommendations first, a pick sends its mark
+for (const [name, w, h] of [["move-phone", 390, 844], ["move-desk", 1280, 900]]) {
+  const mp = await browser.newPage();
+  await mp.setViewport({ width: w, height: h, isMobile: w < 700, hasTouch: w < 700 });
+  mp.on("pageerror", (e) => { bad++; console.log("  pageerror:", e.message); });
+  await mp.goto(`http://127.0.0.1:${port}/?move=1&rec=counter`);
+  await new Promise((r) => setTimeout(r, 1200));
+  const o = await mp.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth, rows: document.querySelectorAll(".ct-mvtable tbody tr:not(.niche)").length, previews: document.querySelectorAll(".ct-mvtable .mvp").length, first: document.querySelector(".ct-mvtable .niche th")?.textContent ?? "" }));
+  if (o.sw > o.iw) { bad++; console.log(`  ✗ ${name}: sideways overflow ${o.sw} > ${o.iw}`); }
+  if (o.rows !== 11 || o.previews !== 11) { bad++; console.log(`  ✗ ${name}: ${o.rows} rows, ${o.previews} previews`); }
+  if (!o.first.includes("ترشيحات")) { bad++; console.log(`  ✗ ${name}: recommendations are not first`); }
+  await mp.screenshot({ path: join(out, `${name}.png`) });
+  await mp.evaluate(() => [...document.querySelectorAll(".ct-mvtable .act button")][1].click());
+  await new Promise((r) => setTimeout(r, 200));
+  const sent = await mp.$eval("#log", (e) => e.textContent);
+  if (!/\[حركة:calm-reveal\]/.test(sent)) { bad++; console.log(`  ✗ ${name}: pick sent «${sent}»`); }
+  await mp.close();
+}
 // the list of fonts after the style: the style's ready font first, every font written in itself
 for (const [name, w, h] of [["fonts-phone", 390, 844], ["fonts-desk", 1280, 900]]) {
   const fp = await browser.newPage();

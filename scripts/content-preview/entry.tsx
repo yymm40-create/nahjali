@@ -1,4 +1,4 @@
-// Draws the table of carousel styles (and, with ?fonts=1, the list of fonts) with its real data (no server): node scripts/content-preview/run.mjs
+// Draws the table of carousel styles (with ?fonts=1, the list of fonts; with ?move=1, the motion styles) with its real data (no server): node scripts/content-preview/run.mjs
 import { createRoot } from "react-dom/client";
 import "@/app/jawad-ai/content/content.css";
 import { Questions } from "@/components/jawad/content/ContentChat";
@@ -11,13 +11,14 @@ const q = new URLSearchParams(location.search);
 const options = q.get("rec") ? q.get("rec")!.split(",") : [];
 const batch = q.get("batch") === "1";
 const fontsQ = q.get("fonts") === "1";
+const moveQ = q.get("move") === "1";
 
 createRoot(document.getElementById("root")!).render(
   <div className="ct" style={{ overflow: "visible", padding: 12 }}>
     <div className="ct-msg bot" style={{ maxWidth: 900, margin: "0 auto" }}>
       <p>تمام، قبل نبدأ اختر شكل الكاروسيل.</p>
       <Questions
-        questions={[...(batch ? [{ label: "المنصة", kind: "choice" as const, options: ["انستغرام", "لينكدإن"], multi: false }] : []), fontsQ ? { label: "اختر الخط", kind: "fonts" as const, options, multi: false } : { label: "اختر ستايل الكاروسيل", kind: "carousels" as const, options, multi: false }]}
+        questions={[...(batch ? [{ label: "المنصة", kind: "choice" as const, options: ["انستغرام", "لينكدإن"], multi: false }] : []), moveQ ? { label: "اختر ستايل الحركة", kind: "motioncarousels" as const, options, multi: false } : fontsQ ? { label: "اختر الخط", kind: "fonts" as const, options, multi: false } : { label: "اختر ستايل الكاروسيل", kind: "carousels" as const, options, multi: false }]}
         gal={{ templates: [], styles: [], carousels, niches: [...CAROUSEL_NICHES], fonts, fontGroups: [...FONT_GROUPS] }}
         styleId={fontsQ ? "soft-3d" : null}
         disabled={false}

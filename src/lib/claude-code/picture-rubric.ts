@@ -12,3 +12,7 @@ export const PICTURE_RUBRIC = [
 ] as const;
 
 export const pictureSize = (aspect: unknown): [number, number] => PICTURE_SIZES[String(aspect)] ?? PICTURE_SIZES["1:1"];
+
+/** A motion carousel's slide: Instagram's own sizes (a tall slide is 4:5, 1080×1350), small enough to render 30 frames a second. */
+export const MOTION_SIZES: Record<string, [number, number]> = { "1:1": [1080, 1080], "2:3": [1080, 1350], "4:5": [1080, 1350], "9:16": [1080, 1350], "16:9": [1920, 1080] };
+export const motionSize = (aspect: unknown): [number, number] => MOTION_SIZES[String(aspect)] ?? MOTION_SIZES["4:5"];

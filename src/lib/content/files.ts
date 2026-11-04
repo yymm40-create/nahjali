@@ -76,6 +76,17 @@ export async function addProducedFromOutput(o: { userId: string; chatId: string;
   return { id: data.id as string, path: o.out.path, name: o.name, bytes: 0 };
 }
 
+/** A motion slide's MP4 (already stored as the person's upload), recorded as the conversation's file; its id. */
+export async function addProducedVideo(o: { userId: string; chatId: string; path: string; bytes: number; name: string; meta: Record<string, unknown> }): Promise<string> {
+  const { data, error } = await db()
+    .from("content_files")
+    .insert({ chat_id: o.chatId, user_id: o.userId, kind: "video", bucket: JAWAD_BUCKET, path: o.path, name: o.name.slice(0, 200), mime: "video/mp4", bytes: o.bytes, meta: o.meta })
+    .select("id")
+    .single();
+  if (error || !data) throw new UserError("ما قدرنا نسجّل فيديو الشريحة.", 500);
+  return data.id as string;
+}
+
 /** Short-lived links of a conversation's produced files (by id). */
 export async function producedLinks(userId: string, chatId: string, download = false): Promise<Map<string, string>> {
   const out = new Map<string, string>();
@@ -115,6 +126,6 @@ export async function deleteProduced(userId: string, fileId: string) {
   const row = await producedRow(userId, fileId);
   if (!row) return;
   await db().from("content_files").delete().eq("id", fileId).eq("user_id", userId);
-  // a picture جواد made is his (and in «أعمالي»): only the conversation's record goes
-  if (!row.meta.outputId) await storage.from(JAWAD_BUCKET).remove([row.path]).catch(() => null);
+  // a picture جواد made is his (and in «أعمالي»), and a slide's video is the person's upload: only the conversation's record goes
+  if (!row.meta.outputId && !row.meta.uploadId) await storage.from(JAWAD_BUCKET).remove([row.path]).catch(() => null);
 }
