@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { refundCoins, reserveCoins, reserveTeamCoins, settleCoins } from "@/lib/coins";
 import { giveAttempt, teamPayment, teamSeriesOf } from "./team";
 import { serviceKind } from "./credits";
+import { hasAdminAccess } from "./admin-access";
 import { claudeCost, type ClaudeUsage } from "./anthropic";
 
 /** What a coin movement says in the user's history. */
@@ -9,6 +10,7 @@ const COIN_LABELS: Record<string, string> = {
   screenwriter: "رد السيناريست",
   sheets: "رد صانع الشيت",
   sheet_image: "صورة شيت",
+  sheet_likeness: "وصف ملامح صورة واقعية",
   director: "رد المخرج",
   director_video: "فيديو",
   voice_line: "صوت جملة (ElevenLabs)",
@@ -54,12 +56,17 @@ export interface StartJobInput {
   assetId?: string | null;
 }
 
-/** Who pays for a project's operations: its owner (a team member working on the owner's scene uses the owner's coins). */
+/**
+ * Who pays for a project's operations: its owner (a team member working on the owner's scene uses the owner's coins),
+ * except an admin the owner allowed in, who pays for what he makes himself.
+ */
 export async function payerOf(projectId: string, actor: { id: string; email?: string | null }): Promise<{ id: string; email?: string | null }> {
   const db = createAdminClient();
   const { data } = await db.from("film_projects").select("user_id").eq("id", projectId).maybeSingle();
   const owner = data?.user_id as string | undefined;
   if (!owner || owner === actor.id) return actor;
+  // an admin the owner allowed into his project pays for his own work there: the owner's coins are never spent by him
+  if (await hasAdminAccess(projectId, actor)) return actor;
   const { data: u } = await db.auth.admin.getUserById(owner);
   return { id: owner, email: u.user?.email ?? null };
 }

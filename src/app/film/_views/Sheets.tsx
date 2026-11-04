@@ -2,7 +2,7 @@ import { credits } from "@/lib/film/credits";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
-import { latestJob, runningImageJobs, sheetAssets, sheetVersions } from "@/lib/film/sheets";
+import { latestJob, runningImageJobs, runningLikeness, sheetAssets, sheetVersions } from "@/lib/film/sheets";
 import { projectCost } from "@/lib/film/usage";
 import { FILM_BUCKET } from "@/lib/film/types";
 import { FILM_STYLES } from "@config/film-styles";
@@ -18,11 +18,12 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
   const project = await requireProject(id, user.id);
   if (project.stage === "screenwriter") redirect(`${base}/${id}/script`);
 
-  const [versions, assets, job, imageJobs, cost, pictures] = await Promise.all([
+  const [versions, assets, job, imageJobs, likenessJobs, cost, pictures] = await Promise.all([
     sheetVersions(id),
     sheetAssets(id),
     latestJob(id, "sheets"),
     runningImageJobs(id),
+    runningLikeness(id),
     projectCost(id),
     stylePicturesSafe(),
   ]);
@@ -52,7 +53,7 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
         versions={versions}
         assets={assets.map((a) => ({ id: a.id, kind: a.kind, ref_key: a.ref_key, status: a.status, error: a.error, meta: a.meta, url: a.storage_path ? (url[a.storage_path] ?? "") : "", created_at: a.created_at, version_id: a.version_id ?? null }))}
         job={job ? { status: job.status, error: job.error } : null}
-        imagesRunning={imageJobs.length}
+        imagesRunning={imageJobs.length + likenessJobs.length}
         seriesCast={series.map((c) => ({ id: c.id, kind: c.kind, name: c.name, url: seriesLinks[c.id] ?? "" }))}
         styles={FILM_STYLES.map(({ id, family, school, name, description, feel, bestFor, photoreal }) => ({ id, family, school, name, description, feel, bestFor, photoreal, image: pictures[id] ?? null }))}
       />

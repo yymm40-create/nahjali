@@ -5,6 +5,7 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { FilmProject } from "./types";
+import { hasAdminAccess } from "./admin-access";
 import { isTeamStage, TEAM_STAGES, type TeamStage } from "./team-rights";
 
 export { isTeamStage, TEAM_STAGES, type TeamStage };
@@ -17,6 +18,7 @@ export const OPERATION_STAGE: Record<string, TeamStage> = {
   screenwriter: "screenwriter",
   sheets: "sheets",
   sheet_image: "sheets",
+  sheet_likeness: "sheets",
   director: "director",
   director_video: "director",
   lipsync: "director",
@@ -86,6 +88,8 @@ export async function teamPayment(projectId: string, actorId: string, operation:
   if (!data) return null;
   const series = await teamSeriesOf(data as Pick<FilmProject, "series_id">);
   if (!series) return null;
+  // an admin the owner allowed in is not a team member: no attempts taken, and he pays himself (see payerOf)
+  if (data.user_id !== actorId && (await hasAdminAccess(projectId, actorId))) return null;
   const stage = OPERATION_STAGE[operation];
   if (stage) await assertTeamStage(data as Pick<FilmProject, "user_id" | "series_id">, actorId, stage);
   // asking سجاد is not an attempt (attempts are what gets made), nor is preparing the lines' pronunciation (each line spoken is one)

@@ -7,6 +7,8 @@ import { isAdmin } from "@config/site";
 import { FILM_STAGES } from "@config/film";
 import StylePictures from "./StylePictures";
 import CartoonPictures from "./CartoonPictures";
+import AdminAccessButton from "@/components/film/AdminAccessButton";
+import { requestsOfAdmin } from "@/lib/film/admin-access";
 
 export const metadata = { title: "فرع الفيلم | لوحة التحكم" };
 export const dynamic = "force-dynamic";
@@ -32,11 +34,12 @@ export default async function FilmAdminPage() {
   ]);
 
   // Every film project with its maker, stage, pictures, videos and cost
-  const [{ data: plist }, { data: alist }, { data: ulist }, people] = await Promise.all([
+  const [{ data: plist }, { data: alist }, { data: ulist }, people, myRequests] = await Promise.all([
     db.from("film_projects").select("id,user_id,title,stage,created_at,updated_at").order("updated_at", { ascending: false }),
     db.from("film_assets").select("project_id,kind"),
     db.from("film_usage").select("project_id,state,estimated_cost_usd,actual_cost_usd"),
     listAllUsers().then((users) => ({ data: { users } })),
+    requestsOfAdmin(user.id),
   ]);
   const emailOf = new Map((people.data?.users ?? []).map((u) => [u.id, u.email ?? ""]));
   const projectRows = (plist ?? []).map((p) => {
@@ -101,7 +104,7 @@ export default async function FilmAdminPage() {
 
       <section className="card space-y-2 p-4">
         <h2 className="text-xl font-extrabold">مشاريع الأفلام ({projectRows.length})</h2>
-        <p className="text-sm font-bold text-muted">اضغط أي مشروع تشوف كل نص وصورة وفيديو انصنع فيه.</p>
+        <p className="text-sm font-bold text-muted">اضغط أي مشروع تشوف كل نص وصورة وفيديو انصنع فيه. «🔑 اطلب الدخول» يرسل لصاحبه إشعار، ولو وافق يطلع المشروع في صانع الأفلام حقك وكل تعديل تسويه يصير عنده.</p>
         {projectRows.length === 0 && <p className="font-bold text-muted">ما فيه مشاريع للحين.</p>}
         <ul className="space-y-2">
           {projectRows.map((p) => (
@@ -115,6 +118,9 @@ export default async function FilmAdminPage() {
                   {p.email} · {FILM_STAGES.find((s) => s.key === p.stage)?.label ?? p.stage} · 🖼️ {p.images} · 🎬 {p.videos}
                 </span>
               </Link>
+              <div className="mt-1 px-3">
+                <AdminAccessButton projectId={p.id} request={myRequests[p.id] ?? null} own={p.user_id === user.id} />
+              </div>
             </li>
           ))}
         </ul>

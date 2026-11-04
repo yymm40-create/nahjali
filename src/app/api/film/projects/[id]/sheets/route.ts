@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { handle } from "@/lib/api";
 import { getOwnedProject, requireFilmApiUser } from "@/lib/film/access";
 import { withClaude } from "@/lib/film/claude-model";
-import { confirmSheetUpload, latestJob, runningImageJobs, sheetAction, sheetUploadUrl, takeSeriesCast, type MapChoice, type SheetAction } from "@/lib/film/sheets";
+import { confirmSheetUpload, latestJob, runningImageJobs, runningLikeness, sheetAction, sheetUploadUrl, takeSeriesCast, type MapChoice, type SheetAction } from "@/lib/film/sheets";
 import { claudeFor } from "@/lib/access-perks";
 
 // Replies and images are produced in the background (after()), within this route's time limit
@@ -38,9 +38,10 @@ export const GET = handle(async (_req: Request, { params }: { params: Promise<{ 
   const user = await requireFilmApiUser();
   const { id } = await params;
   await getOwnedProject(id, user.id);
-  const [job, images] = await Promise.all([latestJob(id, "sheets"), runningImageJobs(id)]);
+  // a real person's features being written count as pictures on the way (his single images follow by themselves)
+  const [job, images, likeness] = await Promise.all([latestJob(id, "sheets"), runningImageJobs(id), runningLikeness(id)]);
   return NextResponse.json(
-    { status: job?.status ?? null, error: job?.status === "failed" ? job.error : null, imagesRunning: images.length },
+    { status: job?.status ?? null, error: job?.status === "failed" ? job.error : null, imagesRunning: images.length + likeness.length },
     { headers: { "Cache-Control": "no-store" } },
   );
 });

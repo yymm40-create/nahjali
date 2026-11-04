@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { can } from "@/lib/access";
 import type { FilmProject } from "./types";
 import { assertTeamStage, type TeamStage } from "./team";
+import { hasAdminAccess } from "./admin-access";
 
 export const FILM_MESSAGES = {
   noAccess: "صانع الأفلام الذكي مقفل لحسابك حاليًا.",
@@ -52,9 +53,12 @@ export async function isSeriesTeamMember(seriesId: string | null | undefined, us
   return s?.mode === "team" && Boolean(m);
 }
 
-/** The project's owner, or (for a scene of a series in team mode) one of the people its owner added. */
+/**
+ * The project's owner, (for a scene of a series in team mode) one of the people its owner added, or an admin the owner
+ * allowed in («اسمح للأدمن بالدخول على مشروعك», lib/film/admin-access.ts): he works on the owner's project itself.
+ */
 export async function canOpenProject(project: FilmProject, userId: string) {
-  return project.user_id === userId || isSeriesTeamMember(project.series_id, userId);
+  return project.user_id === userId || (await isSeriesTeamMember(project.series_id, userId)) || hasAdminAccess(project.id, userId);
 }
 
 /** API: loads a project and verifies the user may work on it (the owner's admin role gives no extra access here). */
