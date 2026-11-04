@@ -12,6 +12,10 @@ import { hasPurchased } from "@/lib/credits/orders";
 import { signupFreeImageAvailable } from "@/lib/jawad/server/free-image";
 import { loadCreditSettings } from "@/lib/credits/settings";
 import SubscribePopup from "@/components/jawad/SubscribePopup";
+import OfferBar from "@/components/jawad/OfferBar";
+import { loadSettings as loadCourseSettings } from "@/lib/course/settings";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { COURSE, saleBarAt } from "@config/course";
 import InDevelopment from "@/components/jawad/InDevelopment";
 import JawadHeader from "@/components/jawad/JawadHeader";
 import RobotGuide from "@/components/jawad/RobotGuide";
@@ -35,6 +39,22 @@ export const viewport: Viewport = { themeColor: "#0b0c0f", colorScheme: "dark" }
 
 /** The packages popup leaves a wallet with this much (¤10, in halalas) or more alone. */
 const POPUP_BELOW_HALALAS = 1000;
+
+/** What the bar over the site says: the clock course's limited price, with its name and when it ends (null when none runs). */
+async function courseSaleBar() {
+  try {
+    const s = await loadCourseSettings();
+    const now = Date.now();
+    const r = saleBarAt(s, now);
+    if (!r) return null;
+    const { data: c } = await createAdminClient().from("learn_courses").select("title").eq("id", r.courseId).eq("published", true).maybeSingle();
+    if (!c) return null;
+    const until = new Date(r.endsAt).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { timeZone: "Asia/Riyadh", weekday: "long", hour: "numeric", minute: "2-digit" });
+    return { href: `${COURSE.base}/${r.courseId}`, price: r.price, was: r.was, endsAt: r.endsAt, serverNow: now, until, name: String(c.title ?? "") };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * «الجواد الذكي!» | JAWAD AI: its own identity, header and sections bar, separate from «نهج علي» (the site's chrome
@@ -60,6 +80,8 @@ export default async function JawadLayout({ children }: { children: React.ReactN
   const popupPacks = needsPacks
     ? (await loadCreditSettings().catch(() => null))?.packs.map((p) => ({ id: p.id, name: p.name, price: p.price, credit: p.credit, tag: p.tag })) ?? []
     : [];
+  // the limited course price, for everyone (not on the course page, which already shows it, nor on the dashboard)
+  const sale = path.startsWith(JAWAD.base + "/admin") || path.startsWith(COURSE.base) ? null : await courseSaleBar();
   const bar = { ...rt, sections: await barSections(rt, user, owner) };
   return (
     <div className={`jw ${readex.variable}`} dir="rtl" lang="ar" style={{ ["--jw-accent" as string]: rt.brand.accent }} suppressHydrationWarning>
@@ -68,6 +90,7 @@ export default async function JawadLayout({ children }: { children: React.ReactN
       <a href="#jw-main" className="sr-only z-50 rounded-lg bg-jw-accent px-3 py-2 text-white focus:not-sr-only focus:fixed focus:start-3 focus:top-3">
         تخطَّ إلى المحتوى
       </a>
+      {sale && <OfferBar {...sale} />}
       <JawadHeader rt={bar} user={user} owner={owner || (user ? await freeFor(user) : false)} boss={owner} balance={balance} username={username} preview={!allowed} version={(process.env.VERCEL_GIT_COMMIT_SHA ?? "dev").slice(0, 7)} />
       <main id="jw-main">{preview ? <InDevelopment logoUrl={rt.brand.logoUrl} customLogo={rt.brand.customLogo} /> : children}</main>
       {/* the page's robot introduces itself (a movable bubble afterwards) */}
