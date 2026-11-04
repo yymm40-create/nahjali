@@ -15,13 +15,21 @@ export default function OfferBar({ href, price, was, endsAt, serverNow, until, n
   const [now, setNow] = useState(serverNow);
   const [hidden, setHidden] = useState(false);
   useEffect(() => {
-    try {
-      if (sessionStorage.getItem(KEY) === String(endsAt)) setHidden(true);
-    } catch {
-      /* private mode: the bar just shows */
-    }
-    const t = setInterval(() => setNow(Date.now() + skew), 1000);
-    return () => clearInterval(t);
+    // the clock and the «closed for this visit» mark are read in a callback (the first one right away), never in the effect body
+    const tick = () => {
+      setNow(Date.now() + skew);
+      try {
+        setHidden(sessionStorage.getItem(KEY) === String(endsAt));
+      } catch {
+        /* private mode: the bar just shows */
+      }
+    };
+    const first = setTimeout(tick, 0);
+    const t = setInterval(tick, 1000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(t);
+    };
   }, [skew, endsAt]);
   const left = endsAt - now;
   if (hidden || left <= 0) return null;
