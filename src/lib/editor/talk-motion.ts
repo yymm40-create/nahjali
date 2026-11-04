@@ -299,13 +299,53 @@ type Tx = { x: number; y: number; scale: number; rotate: number; opacity: number
 
 // ───────── the frames: how the screen is laid out while a moment shows ─────────
 
-/** One moment's frame: the box, the screen cut in two (the person on top or below), a corner circle, a punch-in. */
-export type FrameMode = "shrink" | "split-top" | "split-bottom" | "corner" | "punch";
-/** «mix»: the turns the frame takes (never the same twice in a row). */
-const MIX: FrameMode[] = ["split-top", "shrink", "corner", "split-bottom", "punch", "split-top", "corner", "shrink", "split-bottom"];
+/**
+ * One moment's frame: the box, the screen cut in two (the person on top or below), a corner circle, a punch-in, or
+ * «card» (the person calm in a big framed window high on a designed page, the words under it — for a question).
+ */
+export type FrameMode = "shrink" | "split-top" | "split-bottom" | "corner" | "punch" | "card";
+/** «mix» with nothing said that settles it: the turns the frame takes (never the same twice in a row). */
+const MIX: FrameMode[] = ["split-top", "shrink", "card", "corner", "split-bottom", "punch", "split-top", "corner", "shrink", "card", "split-bottom"];
 
-/** The frame of each shrink window for a layout. */
-export function frameModes(layout: TalkLayout, n: number): FrameMode[] {
+/** A question, as people say it (a «؟», or one of the Gulf question words first). */
+const QUESTION = /[؟?]\s*$|^(شنو|شلون|ليش|كيف|متى|وين|مين|منو|هل|كم|ايش|وش|اشلون|شو)(\s|$)/;
+export const isQuestion = (text: string) => QUESTION.test(text.trim());
+
+/**
+ * «يتنقّل بذكاء»: the frame each window takes in «mix», from WHAT IS SAID in it — a route or a place needs a half of
+ * the screen (the map), an app the corner (its icon big), a number the punch-in (the number beside the face), a
+ * question the calm card, an emoji the box; plain words take turns. Never the same frame twice in a row (a split
+ * alternates its side), so one reel moves between them instead of freezing on one.
+ */
+export function smartFrames(groups: TalkCue[][]): FrameMode[] {
+  const out: FrameMode[] = [];
+  let turn = 0;
+  for (const g of groups) {
+    const prev = out[out.length - 1];
+    const lastSplit = [...out].reverse().find((m) => m === "split-top" || m === "split-bottom");
+    const split: FrameMode = lastSplit === "split-top" ? "split-bottom" : "split-top";
+    const has = (k: CueKind) => g.some((c) => c.kind === k);
+    let want: FrameMode | null = has("route") || has("pin") ? split : has("brand") ? "corner" : has("stat") ? "punch" : g.some((c) => c.kind === "word" && isQuestion(c.text)) ? "card" : has("emoji") ? "shrink" : null;
+    const same = (m: FrameMode | null) => !!m && !!prev && (m === prev || (m.startsWith("split") && prev.startsWith("split")));
+    if (!want || same(want)) {
+      // the next turn that differs from the frame before
+      for (let k = 0; k < MIX.length; k++) {
+        const m = MIX[(turn + k) % MIX.length];
+        if (!same(m)) {
+          want = m.startsWith("split") ? split : m;
+          turn = (turn + k + 1) % MIX.length;
+          break;
+        }
+      }
+    }
+    out.push(want!);
+  }
+  return out;
+}
+
+/** The frame of each shrink window for a layout (`groups`: the cues of each window, for «mix»). */
+export function frameModes(layout: TalkLayout, n: number, groups?: TalkCue[][]): FrameMode[] {
+  if (layout === "mix" && groups && groups.length === n) return smartFrames(groups);
   return Array.from({ length: n }, (_, i) =>
     layout === "split" ? (i % 2 ? "split-bottom" : "split-top") : layout === "corner" ? "corner" : layout === "mix" ? MIX[i % MIX.length] : "shrink",
   );
@@ -314,6 +354,8 @@ export function frameModes(layout: TalkLayout, n: number): FrameMode[] {
 type Area = { x: number; y: number; w: number; h: number };
 const FULL: Tx = { x: 0.5, y: 0.5, scale: 1, rotate: 0, opacity: 1 };
 const CORNER_BOX = { x: 0.73, y: 0.2, scale: 0.42 };
+/** «card»: the person big and calm in a window high on the page (tall frames), the words under it. */
+const CARD_BOX = { x: 0.5, y: 0.34, scale: 0.56 };
 /** The panels are drawn at half the frame's size (lighter files; the picture is scaled up on the frame). */
 const PANEL_K = 0.5;
 
@@ -328,6 +370,7 @@ export function frameGeo(mode: FrameMode, W: number, H: number, face?: FaceBox |
   const person = (full: Tx): Tx => {
     if (mode === "shrink") return boxTransform(full, talkLayout(W, H, face, "shrink").box, face);
     if (mode === "corner") return boxTransform(full, cornerBox(W, H, face), face);
+    if (mode === "card") return boxTransform(full, H >= W ? CARD_BOX : { x: 0.32, y: 0.5, scale: 0.56 }, face);
     if (mode === "punch") {
       // a punch-in on the face: bigger, the face where it was, the picture still covering the whole frame
       const k = 1.18;
@@ -367,6 +410,21 @@ export function frameGeo(mode: FrameMode, W: number, H: number, face?: FaceBox |
     // the area under the circle, and the captions under the area (a picture with its word stacks a little taller than it)
     area = { x: 0.5, y: Math.min(limit - 0.27, cy + d / H / 2 + 0.22), w: 0.84, h: 0.34 };
     caption = Math.min(limit, area.y + area.h / 2 + 0.1);
+  } else if (mode === "card") {
+    const t = person(FULL);
+    const k = H >= W ? CARD_BOX.scale : 0.56;
+    const pw = W * k * PANEL_K, ph = H * k * PANEL_K;
+    panel = { w: PW, h: PH, x: 0.5, y: 0.5, hole: clipHole({ x: t.x * PW - pw / 2, y: t.y * PH - ph / 2, w: pw, h: ph, round: false }, PW, PH), enter: "fade" };
+    const limit = 1 - (H > W ? 0.16 : 0.1) - 0.01;
+    if (H >= W) {
+      // the words between the card's bottom edge and the captions
+      const top = t.y + k / 2 + 0.02;
+      area = { x: 0.5, y: +((top + limit - 0.06) / 2).toFixed(4), w: 0.84, h: +Math.max(0.12, limit - 0.06 - top).toFixed(4) };
+      caption = limit - 0.02;
+    } else {
+      area = { x: 0.76, y: 0.45, w: 0.4, h: 0.5 };
+      caption = 0.9;
+    }
   } else if (mode === "shrink") {
     const L = talkLayout(W, H, face, "shrink");
     const t = person(FULL);
@@ -379,7 +437,9 @@ export function frameGeo(mode: FrameMode, W: number, H: number, face?: FaceBox |
   } else {
     // punch-in: the person stays, the cues on cards where the face isn't
     area = talkLayout(W, H, face ?? { x: 0.5, y: 0.4, w: 0.4, h: 0.3 }, "over").area;
-    caption = null;
+    // the captions under the cues' area (a number with its words stacks to the area's bottom edge)
+    const limit = 1 - (H > W ? 0.16 : 0.1) - 0.01;
+    caption = area.y > 0.5 ? +limit.toFixed(4) : null;
   }
   return { mode, person, area, caption, panel, divider };
 }
@@ -531,7 +591,8 @@ export function planFrames(plan: TalkPlan, W: number, H: number, endMs: number) 
   const times = cueTimes(plan.cues, endMs);
   const framed = plan.layout !== "over" && plan.layout !== "over3d";
   const windows = framed ? windowsOf(times) : [];
-  const modes = frameModes(plan.layout, windows.length);
+  const groups = windows.map((w) => plan.cues.filter((_, i) => times[i].start >= w.start && times[i].start < w.end));
+  const modes = frameModes(plan.layout, windows.length, groups);
   const geos = windows.map((_, i) => frameGeo(modes[i], W, H, plan.face));
   const style = pickTalkStyle(plan.style, plan.cues.map((c) => c.text || c.to || c.value || c.emoji || "").join("|"));
   /** the window a cue falls in (its frame), or -1 (the "over" layouts) */
@@ -750,6 +811,25 @@ export function talkCommands(plan: TalkPlan, tl: Timeline, base = 0, art?: Map<s
         sounds.push({ kind: "hit", at: start });
         break;
     }
+  });
+
+  // 2b) a punch-in keeps the person whole on the screen: a mark joins them there, from what is said — a question
+  // comes as an app's card, an emoji pops beside the head, an exclamation gets speed lines, a word a hand-drawn circle
+  // or arrow around the face (taking turns). One mark a window, never over the face.
+  let marks = 0;
+  windows.forEach((w, wi) => {
+    if (F.modes[wi] !== "punch") return;
+    const cs = plan.cues.filter((_, i) => times[i].start >= w.start && times[i].start < w.end);
+    const c = cs[0];
+    if (!c) return;
+    const face = plan.face ?? { x: 0.5, y: 0.4, w: 0.3, h: 0.2 };
+    const at = w.start, duration = Math.max(1200, w.end - w.start);
+    if (c.kind === "word" && isQuestion(c.text)) out.push({ type: "add_motion", kind: "uicard", at, duration, motion: { title: "سؤال", sub: c.text, x: 0.5, y: Math.min(0.7, face.y + face.h / 2 + 0.16), theme: "paper", enter: "rise" } });
+    else if (c.kind === "emoji" && c.emoji) out.push({ type: "add_motion", kind: "emojipop", at, duration, motion: { title: c.emoji, x: face.x, y: face.y, track: [{ t: 0, ...face }] } });
+    else if (c.kind === "word" && /[!！]\s*$/.test(c.text)) out.push({ type: "add_motion", kind: "speedlines", at, duration: Math.min(duration, 1600), motion: { x: face.x, y: face.y, track: [{ t: 0, ...face }] } });
+    else if (c.kind === "word") out.push({ type: "add_motion", kind: "doodle", at, duration, motion: { mark: marks++ % 2 ? "arrow" : "circle", x: face.x, y: face.y, theme: "mono", track: [{ t: 0, ...face }] } });
+    else return;
+    sounds.push({ kind: "swish", at });
   });
 
   // 3) the person: every piece of the talking video shrinks into the box for each window, then grows back

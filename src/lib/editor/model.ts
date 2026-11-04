@@ -67,6 +67,7 @@ export const CAPTION_STYLES = {
   classic: { label: "كلاسيكي", style: { color: "#ffffff", highlight: null, weight: 700, size: 0.052, box: null, font: "readex" } },
   box: { label: "على خلفية", style: { color: "#ffffff", highlight: null, weight: 700, size: 0.05, box: "#000000b3", font: "readex" } },
   neon: { label: "نيون", style: { color: "#b8f53d", highlight: "#ffffff", weight: 900, size: 0.064, box: null, font: "kufi" } },
+  pop2: { label: "كلمتين كلمتين", style: { color: "#ffffff", highlight: "#facc15", weight: 900, size: 0.084, box: null, font: "readex" } },
   poem: { label: "قصيدة", style: { color: "#fef3c7", highlight: "#f59e0b", weight: 700, size: 0.058, box: null, font: "naskh" } },
 } as const satisfies Record<string, { label: string; style: Partial<TextStyle> }>;
 export type CaptionStyle = keyof typeof CAPTION_STYLES;
@@ -138,7 +139,14 @@ export interface Backdrop {
   spillColor: string;
   /** «ظل»: the person kept filled with one colour (a silhouette, like a poster), "" = their own picture */
   fill?: string;
+  /**
+   * «حافة الشخص»: around the cut-out — "sticker" (a thick white edge, like a paper sticker), "glow" (a soft light
+   * around them) or "echo" (tinted copies of them that spread sideways with the beat); none = nothing.
+   */
+  edge?: PersonEdge;
 }
+export const PERSON_EDGES = { sticker: "ستيكر بحافة بيضاء", glow: "توهّج حوله", echo: "نسخ ملوّنة وراه" } as const;
+export type PersonEdge = keyof typeof PERSON_EDGES;
 export const DEFAULT_BACKDROP: Backdrop = { mode: "blur", color: "#16a34a", blur: 40, feather: 0.3, shrink: 0, steady: 0.5, show: false, despill: 0, spillColor: "" };
 /** «ظل»: the colours offered for the silhouette and the paper behind it (the poster look) */
 export const SILHOUETTE = { fill: "#141010", paper: "#efe6d6" } as const;
@@ -159,6 +167,10 @@ export function readBackdrop(v: Record<string, unknown>, base: Backdrop = DEFAUL
     ...((): { fill?: string } => {
       const f = v.fill === undefined ? (base.fill ?? "") : v.fill;
       return typeof f === "string" && /^#[0-9a-f]{6}$/i.test(f) ? { fill: f.toLowerCase() } : {};
+    })(),
+    ...((): { edge?: PersonEdge } => {
+      const e = v.edge === undefined ? base.edge : v.edge;
+      return typeof e === "string" && e in PERSON_EDGES ? { edge: e as PersonEdge } : {};
     })(),
   };
 }
