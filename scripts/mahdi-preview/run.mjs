@@ -87,6 +87,9 @@ const SHOTS = [
   ["challenges", "challenges", "/mahdi/challenges"],
   ["progress", "progress", "/mahdi/progress", true],
   ["week", "week", "/mahdi/progress/week"],
+  ["month", "month", "/mahdi/progress/month"],
+  ["calendar", "calendar", "/mahdi/progress/calendar"],
+  ["compare", "compare", "/mahdi/progress/compare"],
   ["priorities", "progress", "/mahdi/progress", false, async (page) => {
     // the past days' priorities in «حاسبوا أنفسكم», the newest day opened
     await page.locator("#priorities button[aria-expanded]").first().click();

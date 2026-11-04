@@ -17,6 +17,9 @@ import CommunityPage from "@/app/mahdi/(app)/community/page";
 import ChallengesPage from "@/app/mahdi/(app)/challenges/page";
 import ProgressPage from "@/app/mahdi/(app)/progress/page";
 import WeekReport from "@/app/mahdi/(app)/progress/week/WeekReport";
+import MonthReport from "@/app/mahdi/(app)/progress/month/MonthReport";
+import CalendarView from "@/app/mahdi/(app)/progress/calendar/CalendarView";
+import CompareView from "@/app/mahdi/(app)/progress/compare/CompareView";
 import { api, shrine, snapshot } from "./mock";
 import "@/app/mahdi/mahdi.css";
 
@@ -31,6 +34,9 @@ const PAGES: Record<string, [string, ComponentType]> = {
   challenges: ["/mahdi/challenges", ChallengesPage],
   progress: ["/mahdi/progress", ProgressPage],
   week: ["/mahdi/progress/week", () => <WeekReport />],
+  month: ["/mahdi/progress/month", () => <MonthReport />],
+  calendar: ["/mahdi/progress/calendar", () => <CalendarView />],
+  compare: ["/mahdi/progress/compare", CompareView],
 };
 
 // Every call to the API answers from the mock account
