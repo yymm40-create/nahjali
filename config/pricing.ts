@@ -70,4 +70,4 @@ export const BANK_TRANSFER_ENABLED = true;
  * everyone else sees «الدفع بالبطاقة يتفعّل قريبًا إن شاء الله» and pays by bank transfer; the server refuses card payment to
  * anyone else too. Set to true once a test payment went through.
  */
-export const CARD_PAYMENT_PUBLIC = false;
+export const CARD_PAYMENT_PUBLIC = true;
