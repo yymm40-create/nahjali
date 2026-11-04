@@ -9,6 +9,7 @@ import { CAROUSEL_TEMPLATES, designSystem, findTemplate, structureName } from "@
 import { CAROUSEL_GPT_CRAFT, CAROUSEL_STYLES, carouselStyleBlock, findCarouselStyle } from "@config/content-carousel-styles";
 import { CONTENT_FONTS, findContentFont, FONT_GROUPS } from "@config/content-fonts";
 import { findMotionCarouselStyle, routeById } from "@config/content-motion-carousel";
+import { findPath, PATH_EDIT_RULES, PATH_TALK_RULES, PATH_VERBOSE_RULES } from "@config/content-paths";
 import { FILM_STYLES, findStyle } from "@config/film-styles";
 import { findPalette, lightness } from "@config/content-palettes";
 import { MOODS, MOTION_STYLES, moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
@@ -80,6 +81,7 @@ const PALETTE_MARK = /\[ألوان:([a-z0-9-]+)\]/g;
 const CAROUSEL_MARK = /\[كاروسيل:([a-z0-9-]+)\]/g;
 const FONT_MARK = /\[خط:([a-z0-9-]+)\]/g;
 const MOVE_MARK = /\[حركة:([a-z0-9-]+)\]/g;
+const PATH_MARK = /\[مسار:([a-z0-9-]+)\]/g;
 
 /** What the person picked in the galleries: the last mark of each kind in their messages ("none" = they chose neither). */
 export interface Chosen {
@@ -96,6 +98,8 @@ export interface Chosen {
   font?: string | null;
   /** a motion-carousel style of the ten ("help" = help me choose, "own" = built from zero with him) */
   move?: string | null;
+  /** the path of the four the person opened: carousel, motion-carousel, motion-graphics, reel-graphics */
+  path?: string | null;
 }
 export function chosenIds(userTexts: string[]): Required<Chosen> {
   let template: string | null = null;
@@ -106,7 +110,9 @@ export function chosenIds(userTexts: string[]): Required<Chosen> {
   let carousel: string | null = null;
   let font: string | null = null;
   let move: string | null = null;
+  let path: string | null = null;
   for (const t of userTexts) {
+    for (const m of t.matchAll(PATH_MARK)) path = m[1];
     for (const m of t.matchAll(MOVE_MARK)) move = m[1];
     for (const m of t.matchAll(TEMPLATE_MARK)) template = m[1];
     for (const m of t.matchAll(STYLE_MARK)) style = m[1];
@@ -116,7 +122,17 @@ export function chosenIds(userTexts: string[]): Required<Chosen> {
     for (const m of t.matchAll(CAROUSEL_MARK)) carousel = m[1];
     for (const m of t.matchAll(FONT_MARK)) font = m[1];
   }
-  return { template, style, motion, mood, palette, carousel, font, move };
+  return { template, style, motion, mood, palette, carousel, font, move, path };
+}
+
+/**
+ * The talk's rules (short by default, longer when the person asks), how edits are read, and the steps of the path the person is on.
+ * «جرافكس على ريل» also gets the skills for a talking video (the catalogue of motion on the speaker).
+ */
+export function pathBlock(ids: Chosen, verbose: boolean): string {
+  const p = findPath(ids.path);
+  const talk = p?.id === "reel-graphics" ? `مهارات الموشن على المتكلم (للعرض كخيارات):\n${MOTION_STYLES.filter((x) => x.talk).map((x) => `- ${x.id} — ${x.ar} ${x.icon} — ${x.hint}.`).join("\n")}` : "";
+  return [PATH_TALK_RULES, verbose ? PATH_VERBOSE_RULES : "", p ? `${p.flow}${talk ? `\n\n${talk}` : ""}` : "", PATH_EDIT_RULES].filter(Boolean).join("\n\n");
 }
 
 /** The full details of what was picked (the design system to copy into every slide, the style's meaning). */

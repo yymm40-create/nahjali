@@ -718,3 +718,23 @@
 @keyframes mv-push { 0% { transform: scale(1); } 100% { transform: scale(1.12) translateY(-3%); } }
 @keyframes mv-fade { 0% { opacity: 0; transform: translateY(14%); } 30%, 90% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .mvp *, .mvp { animation: none !important; } .mvp b, .mvp .el, .mvp .mark, .mvp .bg { opacity: 1; } }
+
+/* the four paths: the decisions made so far (each one tappable to change it), the longer-talk switch, the edit bar */
+.ct-decs { position: relative; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px 0; }
+.ct-dec {
+  border: 1px solid color-mix(in srgb, var(--ct-amber) 40%, transparent);
+  background: color-mix(in srgb, var(--ct-amber) 10%, transparent);
+  color: #e9dfcf;
+  padding: 3px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s;
+}
+.ct-dec b { color: var(--ct-amber); font-weight: 600; }
+.ct-dec:hover:not(:disabled) { background: color-mix(in srgb, var(--ct-amber) 22%, transparent); transform: translateY(-1px); }
+.ct-dec:disabled { opacity: 0.55; cursor: default; }
+.ct-pathmenu { position: absolute; top: 100%; inset-inline-start: 14px; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border-radius: 12px; background: #1c1712; border: 1px solid color-mix(in srgb, var(--ct-amber) 35%, transparent); box-shadow: 0 10px 24px #0008; }
+.ct-compose-opts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ct-verbose.on { background: color-mix(in srgb, var(--ct-teal) 24%, transparent); color: #fff; }
+.ct-editbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; font-size: 12.5px; color: #e9dfcf; background: color-mix(in srgb, var(--ct-amber) 14%, transparent); border: 1px dashed color-mix(in srgb, var(--ct-amber) 50%, transparent); }

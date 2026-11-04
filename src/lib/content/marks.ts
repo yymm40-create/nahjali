@@ -1,12 +1,14 @@
 // «صانع المحتوى» — what a press in the questions becomes as a message: the answers as bullets, a pick in a gallery
-// carrying a mark ([قالب:id] / [ستايل:id] / [موشن:id] / [مزاج:id] / [ألوان:id] / [كاروسيل:id] / [خط:id] / [حركة:id]) that the server reads and the page hides. Pure (server and browser).
+// carrying a mark ([قالب:id] / [ستايل:id] / [موشن:id] / [مزاج:id] / [ألوان:id] / [كاروسيل:id] / [خط:id] / [حركة:id] / [مسار:id]) that the server reads and the page hides. Pure (server and browser).
 
 export interface Pick {
   id: string;
   name: string;
 }
 
-const MARK = /\s*\[(?:قالب|ستايل|موشن|مزاج|ألوان|كاروسيل|خط|حركة):[a-z0-9-]+\]/g;
+import { findPath } from "@config/content-paths";
+
+const MARK = /\s*\[(?:قالب|ستايل|موشن|مزاج|ألوان|كاروسيل|خط|حركة|مسار):[a-z0-9-]+\]/g;
 
 /** The text as the person reads it (the marks are for the server). */
 export const stripMarks = (text: string) => text.replace(MARK, "");
@@ -58,3 +60,43 @@ export const answerLine = (label: string, answers: string[]) => `• ${label}: $
 
 /** What is sent when the person lets him decide what they left unanswered. */
 export const DELEGATE_LINE = "• ما لم أحدده أعلاه: اختر أنت الأنسب لهدفي وجمهوري (تلقائي)، واذكر اختياراتك.";
+
+/** The path the person opened (one of the four): the message that starts it carries this mark. */
+export const pathLine = (id: string, text: string) => `${text.trim()} [مسار:${id}]`;
+
+/** What the person has decided so far, read from the marks of their messages (the last of each kind wins): the chips over the chat, each one tappable to change it. */
+export interface Decision {
+  key: "path" | "carousel" | "font" | "move" | "palette" | "template" | "style" | "motion" | "mood";
+  /** what the chip says before the value */
+  label: string;
+  name: string;
+  id: string;
+  /** the message a tap sends to change it */
+  change: string;
+}
+
+const KINDS: { key: Decision["key"]; label: string; mark: string; change: string }[] = [
+  { key: "path", label: "المسار", mark: "مسار", change: "أبي أغيّر المسار" },
+  { key: "carousel", label: "الستايل", mark: "كاروسيل", change: "أبي أغيّر ستايل الكاروسيل" },
+  { key: "font", label: "الخط", mark: "خط", change: "أبي أغيّر الخط" },
+  { key: "move", label: "الحركة", mark: "حركة", change: "أبي أغيّر ستايل الحركة" },
+  { key: "motion", label: "مهارة الموشن", mark: "موشن", change: "أبي أغيّر مهارة الموشن" },
+  { key: "mood", label: "المزاج", mark: "مزاج", change: "أبي أغيّر مزاج الموشن" },
+  { key: "palette", label: "الألوان", mark: "ألوان", change: "أبي أغيّر الألوان" },
+  { key: "template", label: "القالب", mark: "قالب", change: "أبي أغيّر القالب" },
+  { key: "style", label: "الستايل الكرتوني", mark: "ستايل", change: "أبي أغيّر الستايل الكرتوني" },
+];
+const SPECIAL: Record<string, string> = { help: "ساعدني", own: "مخصّص", none: "تلقائي", auto: "تلقائي", style: "خط الستايل" };
+
+export function decisionsOf(userTexts: string[]): Decision[] {
+  const out: Decision[] = [];
+  for (const k of KINDS) {
+    let hit: { id: string; name: string } | null = null;
+    const named = new RegExp(`[^\\[\\n«]*(?:«([^»\\n]+)»)?[^\\[\\n]*\\[${k.mark}:([a-z0-9-]+)\\]`, "g");
+    for (const t of userTexts) for (const m of t.matchAll(named)) hit = { id: m[2], name: m[1] ?? "" };
+    if (!hit) continue;
+    const name = k.key === "path" ? (findPath(hit.id)?.name ?? hit.id) : (hit.name || SPECIAL[hit.id] || "تم الاختيار");
+    out.push({ key: k.key, label: k.label, name, id: hit.id, change: k.change });
+  }
+  return out;
+}

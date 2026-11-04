@@ -23,7 +23,7 @@ import { findContentFont } from "@config/content-fonts";
 import { findStyle } from "@config/film-styles";
 import { cleanHistory, getChat, readMedia, readQuestions, saveChat, type Attachment, type MediaItem, type MotionPlan, type PendingProduce, type Turn } from "./chats";
 import { attachmentsOf, uploadLinks } from "./files";
-import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, systemText, turnText } from "./persona";
+import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, pathBlock, systemText, turnText } from "./persona";
 import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
@@ -194,12 +194,15 @@ function toClaudeTurn(t: Turn, links: Map<string, string>): ClaudeTurn {
 }
 
 /** The person says something in a conversation (a new one when `chatId` is null). */
-export async function say(userId: string, chatId: string | null, message: string, attachmentIds: unknown, email: string | null = null): Promise<Reply> {
+export async function say(userId: string, chatId: string | null, message: string, attachmentIds: unknown, email: string | null = null, opts: { verbose?: boolean; from?: number } = {}): Promise<Reply> {
   const said = message.trim().slice(0, CONTENT.messageMax);
   const { list: files } = await attachmentsOf(userId, attachmentIds);
   if (!said && !files.length) throw new Error("empty message");
-  const before = chatId ? await getChat(userId, chatId) : null;
-  if (chatId && !before) throw new Error("chat not found");
+  const full = chatId ? await getChat(userId, chatId) : null;
+  if (chatId && !full) throw new Error("chat not found");
+  // an old message of theirs was edited: the talk goes on from there (what came after it is dropped, and so are the pending carousel and the record kept for it: what he decided is in the marks and the messages that stay)
+  const cut = full && Number.isInteger(opts.from) && opts.from! >= 0 && opts.from! < full.messages.length && full.messages[opts.from!].role === "user" ? opts.from! : -1;
+  const before = full && cut >= 0 ? { ...full, messages: full.messages.slice(0, cut), record: "", pending: null } : full;
   const history = cleanHistory([...(before?.messages ?? []), { role: "user", text: said || "(ملفات مرفقة)", files: files.length ? files : undefined }]);
   // a long conversation: his own handoff of everything before, then the latest turns (lib/robot-handoff)
   const mem = await remember({ key: `content:${chatId ?? ""}`, userId, robot: "محمد باقر (صانع المحتوى)", turns: history, window: CONTENT.historyTurns });
@@ -215,9 +218,11 @@ export async function say(userId: string, chatId: string | null, message: string
   // full price each message when it sat in the system)
   const parts = [
     // the motion skills, feelings and drawing tools: when the work is motion graphics
-    ...(ids.motion || ids.mood || /موشن|motion|انترو|إنترو|تايبوغرافي|إنفوجرافيك|انفوجرافيك/i.test(`${ask} ${before?.record ?? ""}`) ? [motionCatalogBlock()] : []),
+    ...(ids.motion || ids.mood || ids.path === "motion-graphics" || ids.path === "reel-graphics" || /موشن|motion|انترو|إنترو|تايبوغرافي|إنفوجرافيك|انفوجرافيك/i.test(`${ask} ${before?.record ?? ""}`) ? [motionCatalogBlock()] : []),
     // the motion carousel (Instagram's rules, when it helps, how each slide moves and sounds): when the talk is a carousel or motion
-    ...(ids.carousel || isMotionCarouselAsk(`${ask} ${before?.record ?? ""}`) ? [MOTION_CAROUSEL_GUIDE] : []),
+    ...(ids.carousel || ids.path === "motion-carousel" || isMotionCarouselAsk(`${ask} ${before?.record ?? ""}`) ? [MOTION_CAROUSEL_GUIDE] : []),
+    // the talk's rules, how edits are read, and the steps of the path the person is on
+    pathBlock(ids, !!opts.verbose),
     chosenBlock(ids),
     contentExamplesBrief(nearestContentExamples(ask, 3)),
     // selling: the method (the four steps) and the closest worked sales examples, when that is what the person wants
@@ -333,9 +338,9 @@ export async function say(userId: string, chatId: string | null, message: string
     }
   }
 
-  const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : undefined, pending, addUsd: usd });
+  const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : cut >= 0 ? "" : undefined, pending, addUsd: usd });
   usd = Math.round(usd * 10000) / 10000;
-  return { chatId: id, text: reply.text, questions: reply.questions ?? null, usd, pending: pending ? { total: pending.slides.length, mode: pending.mode, todo: pending.slides.map((x) => x.n) } : null, editor, media, spentHalalas: before?.spentHalalas ?? 0 };
+  return { chatId: id, text: reply.text, questions: reply.questions ?? null, usd, pending: pending ? { total: pending.slides.length, mode: pending.mode, todo: pending.slides.map((x) => x.n) } : null, editor, media, spentHalalas: full?.spentHalalas ?? 0 };
 }
 
 /**

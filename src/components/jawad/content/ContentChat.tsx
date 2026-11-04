@@ -13,7 +13,8 @@ import { useClaudeModel } from "@/components/robots/claude-model";
 import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
-import { answerLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, DELEGATE_LINE, FONT_AUTO_LINE, fontLine, fontStyleLine, moodLine, MOTION_CAROUSEL_HELP_LINE, motionCarouselLine, motionCarouselOwnLine, motionLine, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
+import { answerLine, decisionsOf, pathLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, DELEGATE_LINE, FONT_AUTO_LINE, fontLine, fontStyleLine, moodLine, MOTION_CAROUSEL_HELP_LINE, motionCarouselLine, motionCarouselOwnLine, motionLine, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
+import { CONTENT_PATHS, findPath, type ContentPath } from "@config/content-paths";
 import CarouselTable, { type CarouselItem } from "./CarouselTable";
 import FontTable, { type FontItem } from "./FontTable";
 import MotionCarouselTable from "./MotionCarouselTable";
@@ -39,6 +40,8 @@ interface Msg {
   media?: { items: MediaView[] };
   editor?: { id: string; title: string; lab?: string };
   error?: boolean;
+  /** written on this page (the opening of a path), never saved with the conversation */
+  local?: boolean;
 }
 interface ChatItem { id: string; title: string }
 interface Pending { total: number; mode: "all" | "fix"; todo: number[] }
@@ -56,13 +59,7 @@ const GALLERY: Record<GalleryKind, { open: string; none: string; line: (p: { id:
   palettes: { open: "🎨 افتح معرض الألوان (١٠٠ لوحة)", none: "🎲 اختر لي الألوان الأنسب", line: paletteLine },
 };
 
-const STARTS = [
-  { ic: "🖼️", t: "كاروسيل", d: "من فكرة أو نص إلى شرائح جاهزة بالصور", m: "أبي كاروسيل. اسألني عن اللي تحتاجه عشان نبدأ.", c: "#f6b73c" },
-  { ic: "🎬", t: "سكربت ريل", d: "هوك قوي ونص منطوق وتوجيهات تصوير", m: "أبي سكربت ريل. اسألني عن اللي تحتاجه.", c: "#ff7a59" },
-  { ic: "✂️", t: "ريل منتج", d: "من مقاطعي إلى ريل جاهز مع حيدرا ماكس", m: "أبي ريل منتج من مقاطعي. اسألني عن اللي تحتاجه، وبرفع لك الملفات هنا.", c: "#35c4b5" },
-  { ic: "✨", t: "موشن جرافيكس", d: "مشاهد وحركة وصوت، ينفّذها حيدرا ماكس", m: "أبي موشن جرافيكس. اسألني عن اللي تحتاجه.", c: "#a78bfa" },
-  { ic: "🔁", t: "أعد توظيف محتوى", d: "محتوى واحد إلى عدة مخرجات مترابطة", m: "عندي محتوى وأبي أعيد توظيفه في أكثر من مخرج. اسألني عن اللي تحتاجه.", c: "#fbbf24" },
-];
+// the start cards are the four paths (config/content-paths.ts)
 
 const KIND_IC = { image: "🖼️", video: "🎞️", audio: "🎧", doc: "📄" } as const;
 
@@ -518,8 +515,11 @@ export function MediaBox({ items, busy, owner, onRetry }: { items: MediaView[]; 
 // a wallet that ran out, a reload, a phone closing the tab) brings the person back to the same conversation with
 // محمد باقر — never to an empty one that knows nothing (the owner, 28 October 2026)
 const OPEN_KEY = "jw-content-open";
+const VERBOSE_KEY = "jw-content-verbose";
 const draftKey = (id: string | null) => `jw-content-draft:${id ?? "new"}`;
 const UUID_RE = /^[0-9a-f-]{36}$/i;
+/** a message that carries a pick of a gallery is changed by picking again (the chips), not by editing its words */
+const PICK_MARK = /\[(?:قالب|ستايل|موشن|مزاج|ألوان|كاروسيل|خط|حركة):/;
 const store = {
   get: (k: string) => {
     try {
@@ -555,6 +555,13 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const [pending, setPending] = useState<FileView[]>([]);
   const [uploading, setUploading] = useState(false);
   const [gal, setGal] = useState<Galleries | null>(null);
+  /** the path opened before the conversation began (its mark goes with the first message) */
+  const [pathId, setPathId] = useState<string | null>(null);
+  const [pathMenu, setPathMenu] = useState(false);
+  /** the longer talk (the default is short, to cost less); remembered on this device */
+  const [verbose, setVerbose] = useState(false);
+  /** an old message being edited: the talk goes on from it */
+  const [editFrom, setEditFrom] = useState<number | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -569,6 +576,11 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     } catch { /* the list is a convenience */ }
   }, [loginHref]);
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    const t = window.setTimeout(() => setVerbose(store.get(VERBOSE_KEY) === "1"), 0);
+    return () => window.clearTimeout(t);
+  }, []);
+  const toggleVerbose = () => setVerbose((v) => { store.set(VERBOSE_KEY, v ? null : "1"); return !v; });
   useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs, busy]);
 
   // the galleries load once, when a message first asks for one
@@ -662,6 +674,9 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
 
   async function open(id: string, quiet = false) {
     setSide(false);
+    setPathId(null);
+    setPathMenu(false);
+    setEditFrom(null);
     try {
       const r = await api<{ chat: { id: string; messages: Msg[]; pending: Pending | null; spent?: number } }>(`/api/content/chats?id=${id}`);
       setChatId(r.chat.id);
@@ -681,7 +696,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       setMsgs([{ role: "assistant", text: e instanceof Error ? e.message : "تعذّر فتح المحادثة.", error: true }]);
     }
   }
-  const fresh = () => { setChatId(null); setMsgs([]); setQ(store.get(draftKey(null)) ?? ""); setPending([]); setSide(false); setSpent(0); };
+  const fresh = () => { setPathId(null); setPathMenu(false); setEditFrom(null); setChatId(null); setMsgs([]); setQ(store.get(draftKey(null)) ?? ""); setPending([]); setSide(false); setSpent(0); };
 
   // back on the page: the conversation of the address (?chat=) or of the last visit opens again
   useEffect(() => {
@@ -737,18 +752,53 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     claudeId.current = claude.id;
   }, [claude.id]);
 
-  async function send(text = q) {
-    const message = text.trim();
-    if ((!message && !pending.length) || busy || uploading) return;
-    const files = pending;
+  /** A path opened: its first questions appear at once (written here, so opening one costs nothing); the person answers by a press or by writing. */
+  function openPath(path: ContentPath) {
+    setPathId(path.id);
+    setPathMenu(false);
+    setMsgs([{ role: "assistant", text: path.opening, questions: path.first, local: true }]);
+    window.setTimeout(() => box.current?.focus(), 0);
+  }
+  /** Another path in the middle of the talk: its mark goes with the message, and the last mark wins. */
+  function switchPath(path: ContentPath) {
+    setPathMenu(false);
+    if (!chatId) openPath(path);
+    else void send(pathLine(path.id, `خلنا نحوّل إلى مسار «${path.name}»`));
+  }
+  function startEdit(i: number) {
+    const m = msgs[i];
+    if (!m || busy) return;
+    setEditFrom(i);
+    setQ(stripMarks(m.text).replace("(ملفات مرفقة)", "").trim());
+    setPending(m.files ?? []);
+    box.current?.focus();
+  }
+  function cancelEdit() {
+    setEditFrom(null);
     setQ("");
     setPending([]);
+  }
+
+  async function send(text = q) {
+    const typed = text.trim();
+    if ((!typed && !pending.length) || busy || uploading) return;
+    const files = pending;
+    // the first message of a path carries its mark; an edited old message keeps the mark it had, and the talk goes on from there
+    const editing = editFrom;
+    const keepPath = editing != null ? (msgs[editing]?.text.match(/\[مسار:[a-z0-9-]+\]/)?.[0] ?? "") : "";
+    const message = editing != null ? `${typed} ${keepPath}`.trim() : !chatId && pathId ? pathLine(pathId, typed || "(ملفات مرفقة)") : typed;
+    const from = editing != null ? msgs.slice(0, editing).filter((x) => !x.local && !x.error).length : undefined;
+    const before = msgs;
+    setQ("");
+    setPending([]);
+    setEditFrom(null);
     setBusy("writing");
-    setMsgs((m) => [...m, { role: "user", text: message || "(ملفات مرفقة)", files: files.length ? files : undefined }]);
+    const mine: Msg = { role: "user", text: message || "(ملفات مرفقة)", files: files.length ? files : undefined };
+    setMsgs((m) => (editing != null ? [...m.slice(0, editing), mine] : [...m, mine]));
     let produceId: string | null = null;
     let mediaId: string | null = null;
     try {
-      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string; lab?: string } | null; media: MediaView[] | null; spent?: number }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id), model: claude.id });
+      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string; lab?: string } | null; media: MediaView[] | null; spent?: number }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id), model: claude.id, verbose, ...(from !== undefined ? { from } : {}) });
       setChatId(r.chatId);
       setSpent(Math.max(0, Number(r.spent) || 0));
       setMsgs((m) => {
@@ -768,10 +818,11 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     } catch (e) {
       // not answered (the wallet ran out, the network…): the message goes back into the box with its files, ready to
       // send again — the conversation itself stays as it was on the server
-      setQ((now) => now || message);
+      setQ((now) => now || typed);
+      if (editing != null) setEditFrom(editing);
       setPending((now) => (now.length ? now : files));
       setMsgs((m) => [
-        ...m.slice(0, -1),
+        ...(editing != null ? before : m.slice(0, -1)),
         { role: "assistant", text: `${e instanceof Error ? e.message : "تعذّر الرد."}\n\nرسالتك رجعت في الخانة تحت، والمحادثة محفوظة كما هي: ${e instanceof Error && /رصيد/.test(e.message) ? "اشحن وارجع لهنا، وأرسلها" : "أرسلها مرة ثانية"} ويكمل محمد باقر من نفس المكان.`, error: true },
       ]);
     } finally {
@@ -803,6 +854,12 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   };
 
   const lastAssistant = msgs.map((x) => x.role).lastIndexOf("assistant");
+  // what they decided so far, from the marks of their messages (the path opened but not yet sent counts too)
+  const decisions = (() => {
+    const d = decisionsOf(msgs.filter((m) => m.role === "user").map((m) => m.text));
+    const open = findPath(pathId);
+    return !d.some((x) => x.key === "path") && open ? [{ key: "path" as const, label: "المسار", name: open.name, id: open.id, change: "" }, ...d] : d;
+  })();
 
   return (
     <div className="ct" ref={root} onPointerMove={move}>
@@ -839,6 +896,23 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
             </div>
           </header>
 
+          {!loginHref && decisions.length > 0 && (
+            <div className="ct-decs" role="group" aria-label="قراراتك (اضغط أي واحد لتغيّره)">
+              {decisions.map((d) => (
+                <button key={d.key} type="button" className="ct-dec" disabled={!!busy} onClick={() => (d.key === "path" ? setPathMenu((v) => !v) : void send(d.change))} title="غيّره">
+                  {d.label}: <b>{d.name}</b> ✎
+                </button>
+              ))}
+              {pathMenu && (
+                <div className="ct-pathmenu" role="menu">
+                  {CONTENT_PATHS.map((x) => (
+                    <button key={x.id} type="button" role="menuitem" className="ct-mini" onClick={() => switchPath(x)}>{x.ic} {x.name}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="ct-feed">
             {loginHref ? (
               <div className="ct-msg bot">
@@ -849,14 +923,14 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
               <>
                 <div className="ct-msg bot">
                   <h3>أهلًا، أنا {persona} ✍️</h3>
-                  <p>أرافقك من الفكرة أو النص إلى محتوى جاهز: كاروسيل بالصور، سكربت ريل، ريل منتج أو موشن جرافيكس مع حيدرا ماكس، وعناوين وكابشن. اختر نقطة بداية أو اكتب لي مباشرة، وارفق ملفاتك بزر 📎.</p>
+                  <p>اختر مسارك: أسألك أقل ما يمكن، وتجاوب بضغطة أو بكلامك، وتقدر تغيّر أي قرار في أي لحظة. ولو تبي سكربت ريل أو عناوين أو إعادة توظيف، اكتب لي مباشرة.</p>
                 </div>
                 <div className="ct-start">
-                  {STARTS.map((s, i) => (
-                    <button key={s.t} className="ct-card" style={{ ["--c" as string]: s.c, animationDelay: `${i * 90}ms` }} onClick={() => send(s.m)}>
-                      <span className="ic">{s.ic}</span>
-                      <b>{s.t}</b>
-                      <small>{s.d}</small>
+                  {CONTENT_PATHS.map((x, i) => (
+                    <button key={x.id} className="ct-card" style={{ ["--c" as string]: x.color, animationDelay: `${i * 90}ms` }} onClick={() => openPath(x)}>
+                      <span className="ic">{x.ic}</span>
+                      <b>{x.name}</b>
+                      <small>{x.short}</small>
                     </button>
                   ))}
                 </div>
@@ -894,8 +968,11 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                   {i === lastAssistant && !busy && !loginHref && m.questions?.length ? (
                     <Questions key={`q${i}-${msgs.length}`} questions={m.questions} gal={gal} styleId={styleBefore(msgs, i)} disabled={!!busy} onSend={(t) => void send(t)} onWrite={() => box.current?.focus()} />
                   ) : null}
-                  {m.role === "assistant" && !m.error && (
+                  {m.role === "assistant" && !m.error && !m.local && (
                     <div className="ct-actions"><button className="ct-mini" onClick={() => navigator.clipboard?.writeText(m.text).catch(() => null)}>انسخ</button></div>
+                  )}
+                  {m.role === "user" && !busy && !loginHref && !PICK_MARK.test(m.text) && (
+                    <div className="ct-actions"><button className="ct-mini" onClick={() => startEdit(i)}>✏️ عدّل</button></div>
                   )}
                 </div>
               ))
@@ -922,7 +999,18 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                   ))}
                 </div>
               )}
-              <ClaudeModelPicker className="ct-claude" disabled={!!busy} spent={spent} />
+              {editFrom != null && (
+                <div className="ct-editbar">
+                  ✏️ تعدّل رسالتك: المحادثة ترجع من هنا وتنحذف الردود اللي بعدها.
+                  <button type="button" className="ct-mini" onClick={cancelEdit}>إلغاء</button>
+                </div>
+              )}
+              <div className="ct-compose-opts">
+                <ClaudeModelPicker className="ct-claude" disabled={!!busy} spent={spent} />
+                <button type="button" className={`ct-mini ct-verbose${verbose ? " on" : ""}`} aria-pressed={verbose} onClick={toggleVerbose} title="الافتراضي مختصر لتوفير رصيدك؛ المفصّلة فيها شرح وبدائل وأسئلة أعمق">
+                  {verbose ? "📝 محادثة مفصّلة ✓" : "📝 خلّها مفصّلة"}
+                </button>
+              </div>
               <div className="ct-compose-row">
                 <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/mpeg,audio/wav,application/pdf" onChange={(e) => void attach(e.target.files)} />
                 <button type="button" className="ct-attach" aria-label="أرفق حتى 20 ملفًا" title="أرفق حتى 20 صورة أو فيديو أو صوت أو PDF" disabled={uploading || !!busy || pending.length >= JAWAD_ATTACHMENT_LIMIT} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
@@ -934,7 +1022,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                   rows={1}
                   value={q}
                   maxLength={8000}
-                  placeholder={busy === "producing" ? "الشرائح قيد الرسم…" : `اكتب لـ${persona}…`}
+                  placeholder={busy === "producing" ? "الشرائح قيد الرسم…" : !chatId && pathId ? "اكتب فكرتك أو الصق نصك هنا…" : `اكتب لـ${persona}…`}
                   onChange={(e) => setQ(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }}
                 />

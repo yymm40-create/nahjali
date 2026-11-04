@@ -12,7 +12,7 @@ describe("محمد باقر keeps the conversation when the wallet runs out", ()
   });
 
   it("an unanswered message goes back into the box with its files, and the draft is kept", () => {
-    expect(chat).toMatch(/setQ\(\(now\) => now \|\| message\)/);
+    expect(chat).toMatch(/setQ\(\(now\) => now \|\| typed\)/);
     expect(chat).toMatch(/setPending\(\(now\) => \(now\.length \? now : files\)\)/);
     expect(chat).toMatch(/store\.set\(draftKey\(chatId\)/);
   });
