@@ -134,13 +134,15 @@ export function readCreditSettings(raw: unknown): CreditSettings {
  */
 // the smallest is 3 riyals (the owner, 28 October 2026): the payment gateway takes a fixed fee on every transaction
 export const EXACT_MIN_SAR = 3;
+/** «اختر الرصيد اللي تبي تدفعه» (the owner, 4 November 2026: «لو اختار ١ يجيه ١»): any whole riyals from 1, the same exact-<riyals> order. */
+export const CUSTOM_MIN_SAR = 1;
 export const EXACT_MAX_SAR = 1000;
 export const exactSar = (halalas: number) => Math.min(EXACT_MAX_SAR, Math.max(EXACT_MIN_SAR, Math.ceil(Math.max(0, halalas) / 100 - 1e-9)));
 export const exactPack = (sar: number): Pack => ({ id: `exact-${sar}`, name: "بمقدار اللي تحتاجه", price: sar, credit: sar, tag: "", note: "شحن بمقدار العملية بس" });
 export function exactPackOf(id: unknown): Pack | null {
   const m = typeof id === "string" ? /^exact-(\d{1,4})$/.exec(id) : null;
   const sar = m ? Number(m[1]) : 0;
-  return sar >= EXACT_MIN_SAR && sar <= EXACT_MAX_SAR ? exactPack(sar) : null;
+  return sar >= CUSTOM_MIN_SAR && sar <= EXACT_MAX_SAR ? exactPack(sar) : null;
 }
 export const packOf = (s: CreditSettings, id: unknown) => s.packs.find((p) => p.id === id) ?? exactPackOf(id);
 

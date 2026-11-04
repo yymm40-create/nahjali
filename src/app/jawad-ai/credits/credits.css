@@ -163,3 +163,18 @@
 .pm-points { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; text-align: start; color: #ece6ff; font-size: 14px; font-weight: 700; }
 .pm-points li { display: flex; align-items: center; gap: 8px; }
 .pm-points .pm-lock, .pm-points i { flex: none; width: 16px; height: 16px; color: var(--cr-green, #4ade80); font-style: normal; text-align: center; line-height: 16px; }
+
+/* «اختر الرصيد اللي تبي تدفعه»: one glowing card above the packages, a big amount field, quick amounts, and its own pay button */
+.cs-custom { padding-bottom: 6px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.cs-custom .cu-card { width: 100%; max-width: 460px; animation: cu-glow 3.2s ease-in-out infinite; }
+@keyframes cu-glow { 50% { box-shadow: 0 30px 80px -26px rgba(255, 138, 31, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.06); } }
+@media (prefers-reduced-motion: reduce) { .cs-custom .cu-card { animation: none; } }
+.cu-field { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 18px; background: rgba(0, 0, 0, 0.28); border: 1.5px solid rgba(255, 255, 255, 0.18); cursor: text; transition: border-color 0.15s; }
+.cu-field:focus-within { border-color: var(--pr-orange); }
+.cu-field input { flex: 1; min-width: 0; width: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: #fff; font: inherit; font-size: 46px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; text-align: right; font-variant-numeric: tabular-nums; }
+.cu-field input::placeholder { color: rgba(255, 255, 255, 0.28); }
+.cu-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.cu-chip { flex: 1 0 auto; min-width: 52px; min-height: 40px; padding: 6px 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.08); color: #fff; font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; }
+.cu-chip.on, .cu-chip:hover { background: rgba(255, 138, 31, 0.22); border-color: var(--pr-orange); }
+.cu-chip:focus-visible { outline: 3px solid var(--pr-orange); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

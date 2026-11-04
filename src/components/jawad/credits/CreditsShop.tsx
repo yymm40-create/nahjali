@@ -17,7 +17,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Riyal from "@/components/Riyal";
 import SmartCoin from "@/components/SmartCoin";
-import { CREDITS, packYield, supportLink, type Pack, type UnitPrices } from "@config/credits";
+import { CREDITS, CUSTOM_MIN_SAR, EXACT_MAX_SAR, packYield, supportLink, type Pack, type UnitPrices } from "@config/credits";
 import { waLink, type Bank } from "@config/course";
 import { track, visitorSource } from "@/lib/track";
 import PayMarks, { Lock } from "./PayMarks";
@@ -158,6 +158,12 @@ export default function CreditsShop({
   const [support, setSupport] = useState("");
   // the name on the transfer: the owner sees it in Telegram and matches the money to the order
   const [payer, setPayer] = useState("");
+
+  // «اختر الرصيد اللي تبي تدفعه»: any whole riyals, paid as an exact-<riyals> order (1 riyal → 1 riyal of balance)
+  const [amount, setAmount] = useState("");
+  const sar = /^\d{1,4}$/.test(amount) ? Number(amount) : 0;
+  const sarOk = sar >= CUSTOM_MIN_SAR && sar <= EXACT_MAX_SAR;
+  const customId = `exact-${sar}`;
 
   const there = (id: string) => `${CREDITS.base}?pack=${id}`;
 
@@ -321,6 +327,45 @@ export default function CreditsShop({
           <p className="pr-pay">أو اختر باقة تحت، وكل ما كبرت زاد رصيدك المجاني 👇</p>
         </section>
       )}
+
+      <section className="pr cs-custom" aria-label="اختر الرصيد اللي تبي تدفعه">
+        <article className="pr-card star cu-card">
+          <div className="pr-top">
+            <h2 className="pr-name">اختر الرصيد اللي تبي تدفعه</h2>
+            <span className="pr-pill">على كيفك</span>
+          </div>
+          <p className="pr-note">اكتب المبلغ، وكل ريال تدفعه يوصلك ريال رصيد.</p>
+          <label className="cu-field">
+            <span className="sr-only">المبلغ بالريال</span>
+            <SmartCoin size={30} className="pr-mark" />
+            <input
+              inputMode="numeric"
+              pattern="[0-9]*"
+              dir="ltr"
+              placeholder="0"
+              value={amount}
+              maxLength={4}
+              aria-label="المبلغ بالريال"
+              onChange={(e) => setAmount(e.target.value.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).replace(/\D/g, "").replace(/^0+/, "").slice(0, 4))}
+              onKeyDown={(e) => { if (e.key === "Enter" && sarOk) void pay(customId); }}
+            />
+          </label>
+          <div className="cu-chips" role="group" aria-label="مبالغ سريعة">
+            {[5, 10, 25, 50, 100].map((n) => (
+              <button key={n} type="button" className={`cu-chip${sar === n ? " on" : ""}`} onClick={() => setAmount(String(n))}>{n}</button>
+            ))}
+          </div>
+          <p className="pr-get">
+            {sarOk ? <>يوصلك رصيد <Riyal halalas={sar * 100} size={14} className="pr-gn" /></> : sar > EXACT_MAX_SAR ? <>أكثر شي <Riyal halalas={EXACT_MAX_SAR * 100} size={14} /> بالمرة</> : <>من <Riyal halalas={CUSTOM_MIN_SAR * 100} size={14} /> لين <Riyal halalas={EXACT_MAX_SAR * 100} size={14} /></>}
+          </p>
+          {card && <PayMarks small label="تقدر تدفع بـ" />}
+          <button type="button" className={`pr-btn${payable ? "" : " off"}`} disabled={!payable || !sarOk || (!!busy && busy !== customId)} aria-busy={busy === customId} onClick={() => void pay(customId)}>
+            {busy === customId ? <span className="pr-spin" aria-label="جاري التحويل للدفع" /> : !payable ? "الدفع يفتح بعد قليل إن شاء الله" : sarOk ? <>{card && <Lock />}ادفع <Riyal halalas={sar * 100} size={16} /> ←</> : "اكتب المبلغ"}
+          </button>
+          {error && errAt === customId && <p className="pr-card-err" role="alert">{error}</p>}
+        </article>
+        <p className="pr-pay">أو اختر باقة، وكل ما كبرت زاد رصيدك المجاني 👇</p>
+      </section>
 
       <section className="pr" aria-label="الباقات">
         <div className="pr-grid" ref={gridRef}>
