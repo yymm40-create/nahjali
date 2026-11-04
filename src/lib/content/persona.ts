@@ -8,6 +8,7 @@ import { BAQIR_PERSONA, CONTENT_KV, CONTENT_PLATFORM_RULES, CONTENT_TOOLS } from
 import { CAROUSEL_TEMPLATES, designSystem, findTemplate, structureName } from "@config/content-templates";
 import { CAROUSEL_GPT_CRAFT, CAROUSEL_STYLES, carouselStyleBlock, findCarouselStyle } from "@config/content-carousel-styles";
 import { CONTENT_FONTS, findContentFont, FONT_GROUPS } from "@config/content-fonts";
+import { findMotionCarouselStyle, routeById } from "@config/content-motion-carousel";
 import { FILM_STYLES, findStyle } from "@config/film-styles";
 import { findPalette, lightness } from "@config/content-palettes";
 import { MOODS, MOTION_STYLES, moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
@@ -78,6 +79,7 @@ const MOOD_MARK = /\[مزاج:([a-z0-9-]+)\]/g;
 const PALETTE_MARK = /\[ألوان:([a-z0-9-]+)\]/g;
 const CAROUSEL_MARK = /\[كاروسيل:([a-z0-9-]+)\]/g;
 const FONT_MARK = /\[خط:([a-z0-9-]+)\]/g;
+const MOVE_MARK = /\[حركة:([a-z0-9-]+)\]/g;
 
 /** What the person picked in the galleries: the last mark of each kind in their messages ("none" = they chose neither). */
 export interface Chosen {
@@ -92,6 +94,8 @@ export interface Chosen {
   carousel?: string | null;
   /** a font of the list of 50 ("style" = the style's ready font, "auto" = he picks) */
   font?: string | null;
+  /** a motion-carousel style of the ten ("help" = help me choose, "own" = built from zero with him) */
+  move?: string | null;
 }
 export function chosenIds(userTexts: string[]): Required<Chosen> {
   let template: string | null = null;
@@ -101,7 +105,9 @@ export function chosenIds(userTexts: string[]): Required<Chosen> {
   let palette: string | null = null;
   let carousel: string | null = null;
   let font: string | null = null;
+  let move: string | null = null;
   for (const t of userTexts) {
+    for (const m of t.matchAll(MOVE_MARK)) move = m[1];
     for (const m of t.matchAll(TEMPLATE_MARK)) template = m[1];
     for (const m of t.matchAll(STYLE_MARK)) style = m[1];
     for (const m of t.matchAll(MOTION_MARK)) motion = m[1];
@@ -110,7 +116,7 @@ export function chosenIds(userTexts: string[]): Required<Chosen> {
     for (const m of t.matchAll(CAROUSEL_MARK)) carousel = m[1];
     for (const m of t.matchAll(FONT_MARK)) font = m[1];
   }
-  return { template, style, motion, mood, palette, carousel, font };
+  return { template, style, motion, mood, palette, carousel, font, move };
 }
 
 /** The full details of what was picked (the design system to copy into every slide, the style's meaning). */
@@ -134,6 +140,10 @@ export function chosenBlock(ids: Chosen): string {
   const font = fontId ? findContentFont(fontId) : null;
   if (font) out.push(`الخط الذي اختاره العميل: ${font.name} (${font.id}) من نوع «${font.group}». ضع معرّفه في "font_id". الموقع يضيف وصفه إلى كل شريحة، وحيدرا ماكس يكتب بملفه الحقيقي؛ لا تسأل عن الخط مرة ثانية.`);
   else if (fontId === "auto") out.push(`العميل ترك الخط لك: اختر من قائمة الخطوط الأنسب للستايل والموضوع${car?.font ? ` (للستايل خط جاهز: ${car.font})` : ""}، وضع معرّفه في "font_id"، واذكر له اسمه في ردّك.`);
+  const mv = ids.move ? findMotionCarouselStyle(ids.move) : null;
+  if (mv) out.push(`ستايل الحركة الذي اختاره العميل للموشن كاروسيل: ${mv.n}) ${mv.name} (${mv.id}) — ${mv.feel} كل شريحة نحو ${mv.seconds} ثوانٍ. الموقع يضيف طريقته لكل شريحة؛ اكتب في "prompt" ما يخص الشريحة (ما يدخل وبأي ترتيب، وما يبقى ثابتًا في آخرها). أرخص طريقة صنع تناسبه: ${routeById(mv.route)!.label}.`);
+  else if (ids.move === "help") out.push('العميل لا يعرف أي ستايل حركة يختار، فساعده: رشّح له ٣ من ستايلات الحركة العشرة تناسب موضوعه مع سبب من سطر لكل واحد، وأرخصها أولًا، واعرضها بسؤال kind="motioncarousels" و"options" فيها معرّفات الثلاثة.');
+  else if (ids.move === "own") out.push("العميل يبني ستايل الحركة من الصفر معك بكلامه: افهم منه كيف يدخل الكلام، وماذا يتحرك، والصوت، والخلفية، واقترح عليه ما ينقصه، ثم اكتب ذلك في \"prompt\" كل شريحة. الموقع يسلّم وصفه لحيدرا ماكس مع كل شريحة.");
   const t = ids.template ? findTemplate(ids.template) : null;
   if (t) {
     out.push(

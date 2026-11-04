@@ -24,8 +24,10 @@ import { carouselStyleBlock, carouselStyleForCode, findCarouselStyle, NO_REALIST
 import { findContentFont, FONT_PIN, fontBlock } from "@config/content-fonts";
 import { NO_TEXT_RULE } from "@config/designer";
 import { findStyle } from "@config/film-styles";
+import { findMotionCarouselStyle, motionStyleForCode } from "@config/content-motion-carousel";
+import { falFile, falReady, falRun, falUrl } from "@/lib/jawad/server/providers/fal";
 import { getChat, saveChat, type Chat, type PendingProduce, type Slide, type SlideFailure, type SlidesBlock } from "./chats";
-import { addProduced, addProducedFromOutput, attachmentsOf, deleteProduced, producedBytes, producedLinks, producedRow, uploadLinks } from "./files";
+import { addProduced, addProducedFromOutput, addProducedVideo, attachmentsOf, deleteProduced, producedBytes, producedLinks, producedRow, uploadLinks } from "./files";
 import { checkSlide, fixNote, showsRealWoman, WOMAN_PROBLEM, type SlideCheck } from "./verify";
 
 /** GPT Image 2 for the slides: the standard sizes (a 1:1 slide is 1024×1024), high quality for readable Arabic. */
@@ -69,6 +71,8 @@ export interface CodeSlide {
   style?: string;
   /** GPT Image 2's picture is the whole slide: he only writes on it */
   mix?: boolean;
+  /** a motion carousel's slide: he writes it as a moving scene of `seconds`, and the page renders it to MP4 */
+  motion?: { seconds: number; style: string; first: boolean; total: number };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -250,6 +254,7 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
     ...(block.mix ? { mix: true } : {}),
     ...(block.carouselId ? { carouselId: block.carouselId } : {}),
     ...(block.fontId ? { fontId: block.fontId } : {}),
+    ...(block.motion ? { motion: block.motion } : {}),
     made: [],
     failed: [],
     carry: block.failed.filter((f) => !slides.some((s) => s.n === f.n)),
@@ -319,7 +324,10 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
       p.made.push(r.made);
       // the slide it replaced goes away (the new one is already stored)
       const old = base.get(r.made.n);
-      if (old && p.mode === "fix") await deleteProduced(userId, old.fileId);
+      if (old && p.mode === "fix") {
+        await deleteProduced(userId, old.fileId);
+        if (old.video) await deleteProduced(userId, old.video);
+      }
     }
     if (r.failed) p.failed.push(r.failed);
   }
@@ -343,6 +351,7 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
     ...(p.mix ? { mix: true } : {}),
     ...(p.carouselId ? { carouselId: p.carouselId } : {}),
     ...(p.fontId ? { fontId: p.fontId } : {}),
+    ...(p.motion ? { motion: p.motion } : {}),
     ...(old?.report && left.length ? { report: old.report } : {}),
   };
   let report: string | null = null;
@@ -363,6 +372,30 @@ const ART_NOTE = 'photo1 is the PICTURE painted for this slide by GPT Image 2 (i
 /** The third way: the picture IS the slide, and he only writes on it. */
 const MIX_NOTE = 'photo1 is the WHOLE SLIDE, painted by GPT Image 2 with no writing in it: draw it full-bleed filling the frame with K.picture, untouched. Your only job is the Arabic writing: set EVERY word exactly as given, in the calm area the picture leaves, large and perfectly readable (add a soft gradient scrim behind the words only if the picture is too busy there). Add no other shapes, icons or drawings.';
 
+/** A motion slide's painted picture: the scene he moves (push, parallax, light) and writes over. */
+const PICTURE_NOTE = "photo1 is this slide's PICTURE, painted by GPT Image 2 with no writing in it: make it the moving heart of the slide (full-bleed or framed, with a slow camera push, a parallax drift, a light sweep, graded to the carousel's look) and set EVERY word yourself in code over its calm area. Never paint text into it.";
+/** A motion slide's element: a cut-out on a transparent background, moved over the background he draws. */
+const ELEMENT_NOTE = "photo1 is this slide's ELEMENT, painted by GPT Image 2 and cut out of its background (a transparent PNG): draw the slide's background yourself in code, then bring the element in with motion (a soft pop, a slide, a float) with a soft contact shadow, and set EVERY word yourself in code. Never redraw or distort the element.";
+/** What a picture for an element asks of GPT Image 2: one clear object, alone, on a plain background, so it cuts out clean. */
+const ELEMENT_RULE = "ONE single clear subject (a product, a character, an object or an icon), whole and centred with space around it, alone on a plain flat light-grey background with no shadow, no floor, no scene and no other object, so it can be cut out cleanly.";
+
+/** The subject of a picture cut out of its background (BiRefNet on fal, trimmed to its own box), or null when it can't be. */
+async function cutOut(bytes: Buffer): Promise<{ bytes: Buffer; width: number; height: number } | null> {
+  if (!falReady()) return null;
+  try {
+    const sharp = (await import("sharp")).default;
+    const out = await falRun<Record<string, unknown>>("fal-ai/birefnet/v2", { image_url: `data:image/png;base64,${(await sharp(bytes).png().toBuffer()).toString("base64")}`, model: "General Use (Heavy)", operating_resolution: "1024x1024", output_format: "png", refine_foreground: true }, 150_000);
+    const url = falUrl(out, "image");
+    if (!url) return null;
+    const trimmed = await sharp(await falFile(url)).trim().png().toBuffer();
+    const m = await sharp(trimmed).metadata();
+    return m.width && m.height ? { bytes: trimmed, width: m.width, height: m.height } : null;
+  } catch (e) {
+    console.error("content element cut-out", e);
+    return null;
+  }
+}
+
 /** A slide that must have a painted picture and got no brief for one: the slide's own brief, with its writing taken out. */
 const pictureFrom = (prompt: string) => `The full picture of this slide, with calm empty areas where text will be added later: ${prompt.replace(/"[^"]*"/g, "").replace(/\s+/g, " ").trim()}`;
 
@@ -374,14 +407,17 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
   const font = p.fontId ? findContentFont(p.fontId) : null;
   // the third way paints every slide; so does a realistic style with no pictures of the person's: realistic things are never drawn in code
   const hasOwn = (p.refs?.length ?? 0) > 0;
-  const brief = s.picture ?? (p.mix || (car?.photoIdea && !hasOwn) ? pictureFrom(s.prompt) : "");
+  // a motion carousel paints only by the way the person picked (cheapest first): «حيدرا ماكس» alone draws everything in code
+  const route = p.motion?.route;
+  const brief = route === "code" ? "" : route ? (s.picture ?? pictureFrom(s.prompt)) : (s.picture ?? (p.mix || (car?.photoIdea && !hasOwn) ? pictureFrom(s.prompt) : ""));
+  const element = route === "elements";
   if (!art && brief) {
     // the person's own pictures guide the painting (a product, a logo's colours); it never carries any writing
     const { list } = await attachmentsOf(userId, p.refs ?? []);
     const refs = list.filter((a) => a.kind === "image").slice(0, 6).map((a, i) => ({ uploadId: a.id, name: `ref${i + 1}` }));
     const style = p.styleId ? findStyle(p.styleId) : null;
     try {
-      const paint = (extra: string) => deskImage(who, { key: `c-${randomUUID().replace(/-/g, "")}`, kind: "image", prompt: [brief, car ? `LOOK OF THE CAROUSEL (for the picture only): ${car.look}` : "", style ? `ILLUSTRATION STYLE (verbatim): ${style.text}` : "", NO_REALISTIC_WOMEN, extra, NO_TEXT_RULE].filter(Boolean).join("\n\n"), aspect: p.aspect, resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
+      const paint = (extra: string) => deskImage(who, { key: `c-${randomUUID().replace(/-/g, "")}`, kind: "image", prompt: [brief, element ? ELEMENT_RULE : "", car ? `LOOK OF THE CAROUSEL (for the picture only): ${car.look}` : "", style ? `ILLUSTRATION STYLE (verbatim): ${style.text}` : "", NO_REALISTIC_WOMEN, extra, NO_TEXT_RULE].filter(Boolean).join("\n\n"), aspect: p.aspect, resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
       let r = await paint("");
       // a picture that came out with a realistic adult woman is painted once more; a second one stops the slide
       if ((await showsRealWoman(r.bytes)).woman) {
@@ -390,6 +426,11 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
       }
       const file = await addProducedFromOutput({ userId, chatId, out: r.out, name: `picture-${String(s.n).padStart(2, "0")}`, meta: { slide: s.n, picture: brief, aspect: p.aspect, batch: p.id, desk: r.receipt } });
       art = file.id;
+      // an element: cut out of its plain background (a transparent PNG he moves over the background he draws)
+      if (element) {
+        const cut = await cutOut(r.bytes);
+        if (cut) art = (await addProduced({ userId, chatId, bytes: cut.bytes, name: `element-${String(s.n).padStart(2, "0")}`, width: cut.width, height: cut.height, meta: { slide: s.n, picture: brief, batch: p.id, cutout: file.id } })).id;
+      }
       p.arts = { ...(p.arts ?? {}), [String(s.n)]: art };
       // kept with the carousel (the messages as this call just saved them), so it is painted once
       await saveChat(userId, chatId, { messages, pending: p });
@@ -410,19 +451,21 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
   refs.push(...mine);
   const artUrl = art ? (links.get(art) ?? null) : null;
   const prompt = slidePrompt({ n: s.n, total, prompt: s.prompt, styleId: p.styleId, carouselId: p.carouselId, fontId: p.fontId, withRef: refs.length > mine.length, userRefs: mine.length });
+  const motion = p.motion ? { seconds: p.motion.seconds, style: motionStyleForCode(p.motion.styleId === "own" ? null : findMotionCarouselStyle(p.motion.styleId), p.motion.own ?? ""), first: s.n === 1, total } : null;
   return {
     n: s.n,
-    prompt: artUrl ? `${prompt}\n\n${p.mix ? MIX_NOTE : ART_NOTE}` : prompt,
+    prompt: artUrl ? `${prompt}\n\n${motion ? (element ? ELEMENT_NOTE : PICTURE_NOTE) : p.mix ? MIX_NOTE : ART_NOTE}` : prompt,
     aspect: p.aspect,
     refs: refs.slice(0, 4),
     photos: artUrl ? [artUrl] : [],
     ...(car || font ? { style: [font ? `${FONT_PIN(font.id)} ${fontBlock(font)}` : "", car ? carouselStyleForCode(car) : ""].filter(Boolean).join("\n") } : {}),
     ...(p.mix ? { mix: true } : {}),
+    ...(motion ? { motion } : {}),
   };
 }
 
 /** The PNG the page drew from «حيدرا ماكس»'s program becomes slide `n` of the carousel being made. */
-export async function produceFromCode(userId: string, chatId: string, b: { n?: unknown; png?: unknown; rounds?: unknown; scores?: unknown }): Promise<Produced> {
+export async function produceFromCode(userId: string, chatId: string, b: { n?: unknown; png?: unknown; rounds?: unknown; scores?: unknown; video?: unknown }): Promise<Produced> {
   const chat = await getChat(userId, chatId);
   if (!chat) throw new Error("chat not found");
   const p = chat.pending;
@@ -443,6 +486,8 @@ export async function produceFromCode(userId: string, chatId: string, b: { n?: u
     const base = new Map((messages[at]?.slides?.items ?? []).map((x) => [x.n, x]));
     return settle({ userId, chatId, chat, p, messages, at, base }, [{ failed: { n: s.n, reason: `${WOMAN_PROBLEM}. غيّر الصورة أو وصفها ثم أعد المحاولة.`, text: s.text, prompt: s.prompt }, usd: seen.usd }]);
   }
+  // a motion carousel's slide comes with its MP4 (put up by the page as the person's upload, then recorded here)
+  const video = p.motion ? await producedVideo(userId, chatId, b.video, s.n, p.id) : null;
   const file = await addProduced({
     userId,
     chatId,
@@ -455,5 +500,13 @@ export async function produceFromCode(userId: string, chatId: string, b: { n?: u
   const messages = [...chat.messages];
   const at = Math.min(p.at, messages.length - 1);
   const base = new Map((messages[at]?.slides?.items ?? []).map((x) => [x.n, x]));
-  return settle({ userId, chatId, chat, p, messages, at, base }, [{ made: { n: s.n, fileId: file.id, name: file.name, text: s.text }, usd: seen.usd }]);
+  return settle({ userId, chatId, chat, p, messages, at, base }, [{ made: { n: s.n, fileId: file.id, name: file.name, text: s.text, ...(video ? { video } : {}) }, usd: seen.usd }]);
+}
+
+/** The MP4 the page rendered of a motion slide (the person's ready video upload), recorded as the conversation's file. */
+async function producedVideo(userId: string, chatId: string, uploadId: unknown, n: number, batch: string): Promise<string> {
+  const { rows } = await attachmentsOf(userId, [uploadId]);
+  const up = rows[0];
+  if (!up || up.kind !== "video") throw new UserError("ما وصل فيديو الشريحة؛ أعد المحاولة.", 400);
+  return addProducedVideo({ userId, chatId, path: up.storage_path, bytes: Number(up.bytes) || 0, name: `slide-${String(n).padStart(2, "0")}`, meta: { slide: n, batch, uploadId: up.id, maker: "code", motion: true } });
 }

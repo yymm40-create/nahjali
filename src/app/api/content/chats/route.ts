@@ -26,7 +26,7 @@ export const GET = handle(async (req: Request) => {
     ...m,
     files: m.files?.map((f) => ({ ...f, url: ups.get(f.id) ?? null })),
     slides: m.slides
-      ? { ...m.slides, items: m.slides.items.map((s) => ({ ...s, url: links.get(s.fileId) ?? null, download: downloads.get(s.fileId) ?? null })), failed: m.slides.failed.map(({ n, reason, detail, text }) => ({ n, reason, text, ...(isAdmin(user.email) ? { detail } : {}) })) }
+      ? { ...m.slides, items: m.slides.items.map((s) => ({ ...s, url: links.get(s.fileId) ?? null, download: downloads.get(s.fileId) ?? null, ...(s.video ? { videoUrl: links.get(s.video) ?? null, videoDownload: downloads.get(s.video) ?? null } : {}) })), failed: m.slides.failed.map(({ n, reason, detail, text }) => ({ n, reason, text, ...(isAdmin(user.email) ? { detail } : {}) })) }
       : undefined,
     media: m.media ? { items: m.media.items.map((x) => ({ ...x, url: x.fileId ? links.get(x.fileId) ?? null : null, download: x.fileId ? downloads.get(x.fileId) ?? null : null, ...(isAdmin(user.email) ? {} : { detail: undefined }) })) } : undefined,
   }));
