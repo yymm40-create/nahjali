@@ -20,6 +20,7 @@ import SmartCoin from "@/components/SmartCoin";
 import { CREDITS, packYield, supportLink, type Pack, type UnitPrices } from "@config/credits";
 import { waLink, type Bank } from "@config/course";
 import { track, visitorSource } from "@/lib/track";
+import PayMarks, { Lock } from "./PayMarks";
 
 interface Waiting {
   id: string;
@@ -311,8 +312,9 @@ export default function CreditsShop({
               <Roll value={exact.pack.price} on={rolled} delay={0} />
             </div>
             <p className="pr-get">يوصلك رصيد <Riyal halalas={exact.pack.credit * 100} size={14} className="pr-gn" /></p>
+            {card && <PayMarks small label="تقدر تدفع بـ" />}
             <button type="button" className={`pr-btn${payable ? "" : " off"}`} disabled={!payable || (!!busy && busy !== exact.pack.id)} aria-busy={busy === exact.pack.id} onClick={() => void pay(exact.pack.id)}>
-              {busy === exact.pack.id ? <span className="pr-spin" aria-label="جاري التحويل للدفع" /> : !payable ? "الدفع يفتح بعد قليل إن شاء الله" : <>ادفع <Riyal halalas={exact.pack.price * 100} size={16} /> بس ←</>}
+              {busy === exact.pack.id ? <span className="pr-spin" aria-label="جاري التحويل للدفع" /> : !payable ? "الدفع يفتح بعد قليل إن شاء الله" : <>{card && <Lock />}ادفع <Riyal halalas={exact.pack.price * 100} size={16} /> بس ←</>}
             </button>
             {error && errAt === exact.pack.id && <p className="pr-card-err" role="alert">{error}</p>}
           </article>
@@ -345,8 +347,9 @@ export default function CreditsShop({
                     <li key={l}><i aria-hidden>✓</i>{l}</li>
                   ))}
                 </ul>
+                {card && <PayMarks small label="تقدر تدفع بـ" />}
                 <button type="button" className={`pr-btn${payable ? "" : " off"}`} disabled={!payable || (!!busy && !mine)} aria-busy={mine} onClick={() => void pay(p.id)}>
-                  {mine ? <span className="pr-spin" aria-label="جاري التحويل للدفع" /> : !payable ? "الدفع يفتح بعد قليل إن شاء الله" : star ? "ادفع الآن ←" : "ادفع الآن"}
+                  {mine ? <span className="pr-spin" aria-label="جاري التحويل للدفع" /> : !payable ? "الدفع يفتح بعد قليل إن شاء الله" : <>{card && <Lock />}{star ? "ادفع الآن ←" : "ادفع الآن"}</>}
                 </button>
                 {error && errAt === p.id && <p className="pr-card-err" role="alert">{error}</p>}
               </article>
@@ -358,7 +361,18 @@ export default function CreditsShop({
           {error && !errAt && <p className="cr-error" role="alert">{error}</p>}
           {payable && (
             <>
-              <p className="pr-pay">{card ? (gateway === "moyasar" ? "💳 بطاقة · مدى — الدفع آمن عبر ميسّر" : "💳 بطاقة · مدى · Apple Pay · STC Pay — الدفع آمن عبر Paylink") : "🏦 تحويل بنكي — ينضاف الرصيد بعد ما نتأكد من التحويل"}</p>
+              {card ? (
+                <div className="pm-trust">
+                  <PayMarks />
+                  <ul className="pm-points">
+                    <li><Lock /> دفع آمن ومشفّر عبر {gateway === "moyasar" ? "ميسّر" : "Paylink"}، وبيانات بطاقتك ما تمر علينا</li>
+                    <li><i aria-hidden>⚡</i> الرصيد ينضاف لحسابك على طول بعد الدفع</li>
+                    <li><i aria-hidden>↩</i> أي توليد يفشل يرجع رصيده تلقائيًا</li>
+                  </ul>
+                </div>
+              ) : (
+                <p className="pr-pay">🏦 تحويل بنكي — ينضاف الرصيد بعد ما نتأكد من التحويل</p>
+              )}
               {!cardOn && cardSoon && <p className="pr-pay">💳 الدفع بالبطاقة ومدى وApple Pay يتفعّل قريبًا إن شاء الله</p>}
               {cardOn && bankOk && (
                 <p className="pr-pay">
