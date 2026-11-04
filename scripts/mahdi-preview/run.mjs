@@ -34,11 +34,11 @@ const gcss = join(root, "src/app/globals.css");
 const tw = await postcss([tailwind({ base: root })]).process(readFileSync(gcss, "utf8"), { from: gcss });
 writeFileSync(join(work, "app.css"), tw.css);
 
-// 3. the app's fonts (IBM Plex Sans Arabic, Amiri, Amiri Quran), saved once next to the shots
-const fontsCss = join(work, "fonts.css");
+// 3. the app's fonts (IBM Plex Sans Arabic, Amiri, Amiri Quran, and Marhey for «الدفتر»), saved once next to the shots
+const fontsCss = join(work, "fonts-v2.css");
 if (!existsSync(fontsCss)) {
   const ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
-  let css = execFileSync("curl", ["-sS", "-A", ua, "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Amiri:wght@400;700&family=Amiri+Quran&display=block"], { encoding: "utf8" });
+  let css = execFileSync("curl", ["-sS", "-A", ua, "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Amiri:wght@400;700&family=Amiri+Quran&family=Marhey:wght@400;700&display=block"], { encoding: "utf8" });
   let i = 0;
   css = css.replace(/url\((https:[^)]+)\)/g, (_, u) => {
     const name = `f${i++}.woff2`;
@@ -49,8 +49,8 @@ if (!existsSync(fontsCss)) {
 }
 
 const html = `<!doctype html><html lang="ar" dir="rtl" class="h-full antialiased"><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
-<link rel=stylesheet href="/fonts.css"><link rel=stylesheet href="/app.css"><link rel=stylesheet href="/bundle.css">
-<style>.pv-fonts{--font-plex:'IBM Plex Sans Arabic';--font-amiri:'Amiri';--font-quran:'Amiri Quran'} nextjs-portal{display:none}</style></head>
+<link rel=stylesheet href="/fonts-v2.css"><link rel=stylesheet href="/app.css"><link rel=stylesheet href="/bundle.css">
+<style>.pv-fonts{--font-plex:'IBM Plex Sans Arabic';--font-amiri:'Amiri';--font-quran:'Amiri Quran';--font-marhey:'Marhey'} nextjs-portal{display:none}</style></head>
 <body class="flex min-h-full flex-col font-sans"><div id=root></div><script src="/bundle.js"></script></body></html>`;
 const types = { ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".jpg": "image/jpeg", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".webp": "image/webp" };
 const server = createServer((req, res) => {
@@ -90,6 +90,10 @@ const SHOTS = [
   ["month", "month", "/mahdi/progress/month"],
   ["calendar", "calendar", "/mahdi/progress/calendar"],
   ["compare", "compare", "/mahdi/progress/compare"],
+  ["compare-day", "compare", "/mahdi/progress/compare", false, async (page) => {
+    // today against yesterday
+    await page.getByRole("radio", { name: "يومي", exact: true }).first().click();
+  }],
   ["priorities", "progress", "/mahdi/progress", false, async (page) => {
     // the past days' priorities in «حاسبوا أنفسكم», the newest day opened
     await page.locator("#priorities button[aria-expanded]").first().click();
@@ -125,7 +129,7 @@ for (const [name, key, path, full, act] of SHOTS) {
   const o = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
   if (o.sw > o.iw) problems.push(`sideways overflow ${o.sw} > ${o.iw}`);
   await page.screenshot({ path: join(out, `${name}.png`) });
-  if (full || (allFull && !act)) {
+  if (full || allFull) {
     // a phone as tall as the page, so the floating bar and buttons sit at its bottom instead of over the middle
     const h = await page.evaluate(() => document.documentElement.scrollHeight);
     await page.setViewportSize({ width: 390, height: h });
