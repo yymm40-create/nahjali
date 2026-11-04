@@ -19,11 +19,11 @@ import { pickedMotionStyle, routeNote, slidePictureHalalas } from "@/lib/content
 import { motionSize } from "@/lib/claude-code/picture-rubric";
 import { readMotionSlide } from "@/lib/claude-code/picture";
 
-describe("the ten motion styles and the ways of making them", () => {
-  it("has ten styles, numbered, each with its cheapest way and a length a slide can loop in", () => {
-    expect(MOTION_CAROUSEL_STYLES).toHaveLength(10);
-    expect(MOTION_CAROUSEL_STYLES.map((s) => s.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-    expect(new Set(MOTION_CAROUSEL_STYLES.map((s) => s.id)).size).toBe(10);
+describe("the twenty-one motion styles and the ways of making them", () => {
+  it("has twenty-one styles, numbered, each with its cheapest way and a length a slide can loop in", () => {
+    expect(MOTION_CAROUSEL_STYLES).toHaveLength(21);
+    expect(MOTION_CAROUSEL_STYLES.map((s) => s.n)).toEqual(Array.from({ length: 21 }, (_, i) => i + 1));
+    expect(new Set(MOTION_CAROUSEL_STYLES.map((s) => s.id)).size).toBe(21);
     for (const s of MOTION_CAROUSEL_STYLES) {
       expect(["code", "picture", "elements"]).toContain(s.route);
       expect(s.seconds).toBeGreaterThanOrEqual(3);
@@ -32,7 +32,7 @@ describe("the ten motion styles and the ways of making them", () => {
       expect(MOTION_CAROUSEL_GUIDE).toContain(`${s.id} — ${s.n}) ${s.name}`);
     }
     // most are made in code alone: the cheapest way
-    expect(MOTION_CAROUSEL_STYLES.filter((s) => s.route === "code").length).toBeGreaterThanOrEqual(7);
+    expect(MOTION_CAROUSEL_STYLES.filter((s) => s.route === "code").length).toBeGreaterThanOrEqual(17);
   });
   it("offers the ways cheapest first, with the price of a picture per slide on the paid ones", () => {
     expect(MOTION_ROUTES.map((r) => r.id)).toEqual(["code", "picture", "elements"]);

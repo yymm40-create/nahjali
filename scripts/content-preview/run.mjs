@@ -70,7 +70,7 @@ for (const [name, w, h] of [["move-phone", 390, 844], ["move-desk", 1280, 900]])
   await new Promise((r) => setTimeout(r, 1200));
   const o = await mp.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth, rows: document.querySelectorAll(".ct-mvtable tbody tr:not(.niche)").length, previews: document.querySelectorAll(".ct-mvtable .mvp").length, first: document.querySelector(".ct-mvtable .niche th")?.textContent ?? "" }));
   if (o.sw > o.iw) { bad++; console.log(`  ✗ ${name}: sideways overflow ${o.sw} > ${o.iw}`); }
-  if (o.rows !== 11 || o.previews !== 11) { bad++; console.log(`  ✗ ${name}: ${o.rows} rows, ${o.previews} previews`); }
+  if (o.rows !== 22 || o.previews !== 22) { bad++; console.log(`  ✗ ${name}: ${o.rows} rows, ${o.previews} previews`); }
   if (!o.first.includes("ترشيحات")) { bad++; console.log(`  ✗ ${name}: recommendations are not first`); }
   await mp.screenshot({ path: join(out, `${name}.png`) });
   await mp.evaluate(() => [...document.querySelectorAll(".ct-mvtable .act button")][1].click());
