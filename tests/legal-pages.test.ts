@@ -12,6 +12,6 @@ describe("الصفحات القانونية (شرط بوابة الدفع)", () 
   it("the terms and the privacy policy speak of card payment only once it is open to everyone", () => {
     expect(read("src/app/terms/page.tsx")).toContain("CARD_PAYMENT_PUBLIC");
     expect(read("src/app/privacy/page.tsx")).toContain("CARD_PAYMENT_PUBLIC");
-    expect(CARD_PAYMENT_PUBLIC).toBe(false); // flip it with the gateway's approval, not before
+    expect(CARD_PAYMENT_PUBLIC).toBe(true); // opened 2026-11-04 once Moyasar activated the account (live key in Vercel)
   });
 });
