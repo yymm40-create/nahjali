@@ -3,6 +3,7 @@ import { findContentFont, type ContentFont } from "@config/content-fonts";
 import { findTemplate } from "@config/content-templates";
 import { findMotionCarouselStyle, MOTION_ROUTES, type MotionCarouselStyle, type MotionRoute } from "@config/content-motion-carousel";
 import { coinsOf, generatorById, GPT_IMAGE_2_ID } from "@config/jawad/generators";
+import { coinStr } from "@config/coins";
 import type { Question, Turn } from "./chats";
 
 /** The last step before a new carousel is made: the person picks who makes the slides (the owner's order: no default). */
@@ -41,18 +42,18 @@ export const MOTION_CAROUSEL_QUESTION: Question = { label: MOTION_CAROUSEL_LABEL
 export const ROUTE_LABEL = "طريقة صنع الحركة";
 export const ROUTE_QUESTION: Question = { label: ROUTE_LABEL, kind: "choice", options: MOTION_ROUTES.map((r) => r.label), multi: false };
 
-/** About what one slide's GPT Image 2 picture costs the person (riyals, rounded to a half): its default price, high quality, a short prompt. */
-export function slidePictureSar(): number {
+/** About what one slide's GPT Image 2 picture costs the person (halalas): its default price, high quality, a short prompt. */
+export function slidePictureHalalas(): number {
   const def = generatorById(GPT_IMAGE_2_ID);
   const per = def?.priceKeys.find((k) => k.key === "out:high:std")?.defaultCenti ?? 0;
   const kb = def?.priceKeys.find((k) => k.key === "prompt:1kb")?.defaultCenti ?? 0;
-  return Math.max(0.5, Math.ceil((coinsOf(per + 3 * kb, "image") / 100) * 2) / 2);
+  return coinsOf(per + 3 * kb, "image");
 }
 
-/** The note under the ways of making it: cheapest first, what each costs on top of «حيدرا ماكس»'s work. */
+/** The note under the ways of making it: cheapest first, what each costs on top of «حيدرا ماكس»'s work (prices as «¤N»: the coin's logo). */
 export const routeNote = (slides: number) => {
-  const sar = slidePictureSar();
-  return `⏸️ آخر خطوة قبل التصنيع: اختر طريقة صنع الحركة (من الأرخص للأغلى):\n${MOTION_ROUTES.map((r, i) => `${i + 1}) ${r.label}: ${r.what}${r.id === "code" ? "" : ` تقريبًا ${sar} ريال للصورة، يعني نحو ${Math.round(sar * slides * 10) / 10} ريال لـ ${slides} شرائح.`}`).join("\n")}`;
+  const one = slidePictureHalalas();
+  return `⏸️ آخر خطوة قبل التصنيع: اختر طريقة صنع الحركة (من الأرخص للأغلى):\n${MOTION_ROUTES.map((r, i) => `${i + 1}) ${r.label}: ${r.what}${r.id === "code" ? "" : ` الصورة تقريبًا ${coinStr(one)}، يعني نحو ${coinStr(one * slides)} لـ ${slides} شرائح.`}`).join("\n")}`;
 };
 
 /** The turns since the last carousel/** The turns since the last carousel: what the next carousel is decided by. */

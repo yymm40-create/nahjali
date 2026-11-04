@@ -408,7 +408,8 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
   // the third way paints every slide; so does a realistic style with no pictures of the person's: realistic things are never drawn in code
   const hasOwn = (p.refs?.length ?? 0) > 0;
   // a motion carousel paints only by the way the person picked (cheapest first): «حيدرا ماكس» alone draws everything in code
-  const route = p.motion?.route;
+  // (a realistic style with none of the person's pictures still gets its picture painted: realistic things are never drawn in code)
+  const route = p.motion?.route === "code" && car?.photoIdea && !hasOwn ? "picture" : p.motion?.route;
   const brief = route === "code" ? "" : route ? (s.picture ?? pictureFrom(s.prompt)) : (s.picture ?? (p.mix || (car?.photoIdea && !hasOwn) ? pictureFrom(s.prompt) : ""));
   const element = route === "elements";
   if (!art && brief) {

@@ -8,7 +8,7 @@ import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 import { readQuestions, type Turn } from "@/lib/content/chats";
 import { CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, FONT_AUTO_LINE, fontLine, fontStyleLine, stripMarks } from "@/lib/content/marks";
 import { answerLine } from "@/lib/content/marks";
-import { attachedPictures, carouselHold, CAROUSEL_LABEL, FONT_LABEL, MAKER_CODE, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE, pickedCarousel, pickedFont, pickedMaker, pickedPhotos } from "@/lib/content/maker";
+import { attachedPictures, carouselHold, CAROUSEL_LABEL, FONT_LABEL, KIND_LABEL, KIND_STILL, MAKER_CODE, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE, pickedCarousel, pickedFont, pickedMaker, pickedPhotos } from "@/lib/content/maker";
 import { slidePrompt } from "@/lib/content/produce";
 import { catalogBlock, chosenBlock, chosenIds } from "@/lib/content/persona";
 
@@ -146,11 +146,13 @@ describe("what stops a new carousel", () => {
     expect(carouselHold([user(CAROUSEL_HELP_LINE)])?.question.label).toBe(CAROUSEL_LABEL);
     expect(carouselHold([user(REAL)])?.question.label).toBe(PHOTOS_LABEL);
     expect(carouselHold([user(REAL), user(PHOTOS_MAKE)])?.question.label).toBe(FONT_LABEL);
-    expect(carouselHold([user(REAL), user(PHOTOS_MAKE), user(FONT)])?.question.label).toBe(MAKER_LABEL);
-    expect(carouselHold([user(REAL), user(PHOTOS_MAKE), user(FONT), user(MAKER_MIX)])).toBeNull();
+    expect(carouselHold([user(REAL), user(PHOTOS_MAKE), user(FONT)])?.question.label).toBe(KIND_LABEL);
+    expect(carouselHold([user(REAL), user(PHOTOS_MAKE), user(FONT), user(KIND_STILL)])?.question.label).toBe(MAKER_LABEL);
+    expect(carouselHold([user(REAL), user(PHOTOS_MAKE), user(FONT), user(KIND_STILL), user(MAKER_MIX)])).toBeNull();
     expect(carouselHold([user(FLAT)])?.question.label).toBe(FONT_LABEL);
-    expect(carouselHold([user(FLAT), user(FONT_AUTO_LINE)])?.question.label).toBe(MAKER_LABEL);
-    expect(carouselHold([user(FLAT), user(FONT_AUTO_LINE), user(MAKER_CODE)])).toBeNull();
+    expect(carouselHold([user(FLAT), user(FONT_AUTO_LINE)])?.question.label).toBe(KIND_LABEL);
+    expect(carouselHold([user(FLAT), user(FONT_AUTO_LINE), user(KIND_STILL)])?.question.label).toBe(MAKER_LABEL);
+    expect(carouselHold([user(FLAT), user(FONT_AUTO_LINE), user(KIND_STILL), user(MAKER_CODE)])).toBeNull();
   });
 
   it("offers the style's ready font first, and reads the pick", () => {
@@ -166,8 +168,8 @@ describe("what stops a new carousel", () => {
   });
 
   it("wants the pictures themselves when they chose to add them", () => {
-    expect(carouselHold([user(REAL), user(PHOTOS_MINE), user(FONT), user(MAKER_GPT)])?.note).toContain("أرفقها بزر 📎");
-    const withPics = [user(REAL), user(PHOTOS_MINE), user("هذي", picture), user(FONT), user(MAKER_GPT)];
+    expect(carouselHold([user(REAL), user(PHOTOS_MINE), user(FONT), user(KIND_STILL), user(MAKER_GPT)])?.note).toContain("أرفقها بزر 📎");
+    const withPics = [user(REAL), user(PHOTOS_MINE), user("هذي", picture), user(FONT), user(KIND_STILL), user(MAKER_GPT)];
     expect(carouselHold(withPics)).toBeNull();
     expect(attachedPictures(withPics).map((f) => f.id)).toEqual(["p1"]);
   });
