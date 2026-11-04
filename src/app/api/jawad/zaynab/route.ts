@@ -6,6 +6,7 @@ import { handle, shortBalance, UserError } from "@/lib/api";
 import { coinBalance } from "@/lib/coins";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireJawadApiUser } from "@/lib/jawad/server/access";
+import { withFixedPriceClaude } from "@/lib/film/claude-model";
 import { freeFirstEligible } from "@/lib/jawad/server/free-first";
 import { createJob, advanceJob, type JobRow } from "@/lib/jawad/server/jobs";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
@@ -42,7 +43,8 @@ export const POST = handle(async (req: Request) => {
     const { data } = await db.from("jawad_uploads").select("*").eq("user_id", user.id).in("id", uploads);
     const rows = uploads.map((id) => ((data ?? []) as UploadRow[]).find((r) => r.id === id));
     if (rows.some((r) => !r || r.kind !== "image" || r.status !== "ready")) throw new UserError("انتظر حتى تكتمل الصور، أو احذف الصورة اللي ما انرفعت.", 400);
-    const prompt = await jawadWritesZaynab(input, rows as UploadRow[]);
+    // the person's model (never a dearer one than the fixed price was set for), not always the default
+    const prompt = await withFixedPriceClaude(body.model, () => jawadWritesZaynab(input, rows as UploadRow[]));
     const quote = await zaynabQuote(input, uploads.length, prompt);
     return NextResponse.json({ quote: { coins: firstFree ? 0 : quote.coins, fullCoins: quote.coins }, free: owner, firstFree, prompt, seal: sealPrompt(user.id, prompt, input, uploads) });
   }

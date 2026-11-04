@@ -11,6 +11,7 @@ import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { habitStatus } from "@/lib/mahdi/client/derive";
 import type { DayTask } from "@/lib/mahdi/types";
+import AlertBell from "./AlertBell";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
 
@@ -150,6 +151,7 @@ export default function DayTasks() {
                     </span>
                   )}
                 </span>
+                {!task.doneAt && <AlertBell name={task.title} time={task.at} hint={t.alert.taskHint} onSave={(at) => call("PATCH", { id: task.id, at })} />}
                 <button type="button" className="m-icon-btn m-btn-ghost" aria-label={t.tasks.remove} onClick={() => void remove(task)}>
                   <Icon name="trash" size={16} />
                 </button>

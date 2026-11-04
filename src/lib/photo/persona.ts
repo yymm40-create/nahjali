@@ -36,5 +36,12 @@ export const fontIds = () => FONTS.map((f) => f.id);
 
 /** The whole system text: the persona, what the platform requires, how the tools are reached, the fonts, the project's record. */
 export function systemText(persona: string, parts: string[] = [], record = "") {
-  return [persona, PHOTO_PLATFORM_RULES, PHOTO_TOOLS, fontsBlock(), ...parts, record ? `سجل المشروع الحالي (كما حُفظ؛ حدّثه في "record" عند أي تغيير):\n${record}` : ""].filter(Boolean).join("\n\n");
+  return [persona, PHOTO_PLATFORM_RULES, PHOTO_TOOLS, fontsBlock(), ...parts, recordText(record)].filter(Boolean).join("\n\n");
+}
+
+const recordText = (record: string) => (record ? `سجل المشروع الحالي (كما حُفظ؛ حدّثه في "record" عند أي تغيير):\n${record}` : "");
+
+/** What changes from one message to the next (examples, the record): read with this turn, not in the system (cached). */
+export function turnText(parts: string[] = [], record = "") {
+  return [...parts, recordText(record)].filter(Boolean).join("\n\n");
 }

@@ -18,7 +18,7 @@ const UUID = /^[0-9a-f-]{36}$/i;
  */
 export const POST = handle(async (req: Request) => {
   const { user } = await requireDesignerUser();
-  const b = (await req.json().catch(() => ({}))) as { chatId?: unknown; retry?: unknown; png?: unknown; rounds?: unknown; scores?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { chatId?: unknown; retry?: unknown; png?: unknown; rounds?: unknown; scores?: unknown; program?: unknown; edited?: unknown };
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   if (!chatId) throw new UserError("محادثة غير صحيحة.", 400);
   try {

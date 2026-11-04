@@ -101,12 +101,14 @@ describe("the plan stage asks, the autopilot waits, and the output says so", () 
   it("measures in the plan step before anything is written, and keeps the measure with the output", () => {
     const outputs = read("src/lib/jawad/student/outputs.ts");
     const at = outputs.indexOf("BEFORE anything is written: does the material fill");
-    const block = outputs.slice(at, at + 900);
+    const block = outputs.slice(at, at + 1800);
     expect(block).toContain("capacityOf(o.kind, countWords(allText(c)) + countWords(researchText(c)), pages, pageSize(o))");
     expect(block).toContain('status: "plan_review"');
     expect(block).toContain("_capacity: capacity");
-    // the plan is saved with `content: null`: nothing has been written yet when the question comes
-    expect(block).toContain("content: null");
+    // the plan is saved with only the chapters it keeps (keep.ts: written from the same plan and inputs, none on a first
+    // plan): nothing new has been written yet when the question comes
+    expect(block).toContain("const content = keepWritten(c, o, o.content as Doc | null, plan)");
+    expect(block).toContain('status: "plan_review", content,');
   });
 
   it("asks in the plan review with a button that takes the honest number, changing it only once agreed", () => {

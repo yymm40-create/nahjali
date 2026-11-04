@@ -1,7 +1,9 @@
 // SERVER ONLY. Web Push: sending, and the dispatcher that decides who gets a reminder right now.
 import webpush from "web-push";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { alreadySent, buildTimeline, dayGoals, dueSlot, inQuietHours, minuteOfDayIn, reminderSlots, taskReminderDue, todayIn, toMinutes, addDays, type ReminderMode } from "../engine";
+import { alreadySent, buildTimeline, dayGoals, dueSlot, inQuietHours, minuteOfDayIn, reminderSlots, taskReminderDue, todayIn, toMinutes, addDays, REMINDER_WINDOW_MIN, type ReminderMode } from "../engine";
+import { occursOn, type PlanRepeat } from "../planner";
+import { PRIORITY_TITLE_PREFIX } from "./snapshot";
 import { t } from "../i18n";
 import { toItems } from "../client/derive";
 import { addChallenges, chunks, loadHabitData } from "./bulk";
@@ -83,7 +85,7 @@ export interface DispatchResult {
 /**
  * Runs every 15 minutes. For each user with reminders on: is a slot due now (in their time zone, outside quiet hours,
  * not already sent)? If so, and the day still has unfinished goals, send one notification to their devices.
- * A habit's own reminder time sends «حان وقت …» instead of the general text (never both at once).
+ * A habit's own reminder time («اجعله تنبيهًا») is sent by dispatchHabitAlerts, whatever this mode is.
  */
 export async function dispatchReminders(db: SupabaseClient, now: Date = new Date()): Promise<DispatchResult> {
   const result: DispatchResult = { checked: 0, due: 0, sent: 0, skippedComplete: 0 };
@@ -116,22 +118,7 @@ export async function dispatchReminders(db: SupabaseClient, now: Date = new Date
     return { r, tz, nowMin, quiet, general: general && !alreadySent(r.last_sent_at, general.ago, now) ? general : null };
   });
 
-  // Habits with their own reminder time, for users who want them
-  const habitsDue = new Map<string, { habitId: string; name: string; ago: number }[]>();
-  const wantHabits = candidates.filter((c) => c.r.habit_reminders).map((c) => c.r.user_id);
-  for (const ids of chunks(wantHabits)) {
-    const { data } = await db.from("mahdi_habits").select("id, user_id, name, reminder_time").in("user_id", ids).not("reminder_time", "is", null);
-    for (const h of data ?? []) {
-      const c = candidates.find((x) => x.r.user_id === h.user_id)!;
-      const slot = toMinutes(h.reminder_time);
-      if (slot === null || c.quiet(slot)) continue;
-      const due = dueSlot(c.nowMin, [slot]);
-      if (!due || alreadySent(c.r.last_sent_at, due.ago, now)) continue;
-      (habitsDue.get(h.user_id) ?? habitsDue.set(h.user_id, []).get(h.user_id)!).push({ habitId: h.id, name: h.name, ago: due.ago });
-    }
-  }
-
-  const due = candidates.filter((c) => c.general || habitsDue.has(c.r.user_id));
+  const due = candidates.filter((c) => c.general);
   result.due = due.length;
   if (!due.length) return result;
 
@@ -153,12 +140,9 @@ export async function dispatchReminders(db: SupabaseClient, now: Date = new Date
           result.skippedComplete++; // the day is complete (or has nothing due): no reminder
           return;
         }
-        const mine = (habitsDue.get(c.r.user_id) ?? []).filter((h) => open.some((i) => i.itemId === h.habitId));
-        let payload: PushPayload | null = null;
-        if (mine.length > 0) payload = { title: t.notify.title2, body: t.notify.habitBody(mine.map((h) => h.name)), url: "/mahdi", tag: "mahdi-habit" };
-        else if (c.general && open.length) payload = { title: t.notify.title2, body: tasksLeft ? `${t.notify.body} ${t.tasks.notifyOpen(tasksLeft)}` : t.notify.body, url: "/mahdi", tag: "mahdi-daily" };
-        else if (c.general) payload = { title: t.notify.title2, body: t.tasks.notifyOpen(tasksLeft), url: "/mahdi", tag: "mahdi-tasks" };
-        if (!payload) return; // only habit reminders were due and none of those habits is still open
+        const payload: PushPayload = open.length
+          ? { title: t.notify.title2, body: tasksLeft ? `${t.notify.body} ${t.tasks.notifyOpen(tasksLeft)}` : t.notify.body, url: "/mahdi", tag: "mahdi-daily" }
+          : { title: t.notify.title2, body: t.tasks.notifyOpen(tasksLeft), url: "/mahdi", tag: "mahdi-tasks" };
         const n = await pushToUser(db, subsOf.get(c.r.user_id)!, payload);
         if (n > 0) {
           result.sent++;
@@ -256,13 +240,152 @@ export async function dispatchTaskReminders(db: SupabaseClient, now: Date = new 
 
   for (const [userId, u] of byUser) {
     const payload: PushPayload = u.at.length
-      ? { title: t.tasks.title, body: t.tasks.notifyAt(u.at.map((x) => x.title)), url: "/mahdi", tag: "mahdi-task" }
-      : { title: t.tasks.title, body: t.tasks.notifyLate(u.late.map((x) => x.title)), url: "/mahdi", tag: "mahdi-task-late" };
+      ? { title: t.tasks.title, body: t.tasks.notifyAt(u.at.map((x) => plainTitle(x.title))), url: "/mahdi", tag: "mahdi-task" }
+      : { title: t.tasks.title, body: t.tasks.notifyLate(u.late.map((x) => plainTitle(x.title))), url: "/mahdi", tag: "mahdi-task-late" };
     const n = await pushToUser(db, subsOf.get(userId)!, payload);
     if (n > 0) result.sent++;
     // marked even when no device took it, so a broken device doesn't get the same reminder every 15 minutes
     if (u.at.length) await db.from("mahdi_day_tasks").update({ notified: 1 }).in("id", u.at.map((x) => x.id));
     if (u.late.length && !u.at.length) await db.from("mahdi_day_tasks").update({ notified: 2 }).in("id", u.late.map((x) => x.id));
+  }
+  return result;
+}
+
+/** A priority kept with the invisible marker (before SQL 0058) is named without it. */
+const plainTitle = (title: string) => (title.startsWith(PRIORITY_TITLE_PREFIX) ? title.slice(PRIORITY_TITLE_PREFIX.length) : title);
+
+const missingColumn = (e: unknown) => ["42703", "PGRST204"].includes((e as { code?: string } | null)?.code ?? "");
+
+/** What every alert dispatcher needs about its users: time zone, devices, quiet hours and the habit-reminder switch. */
+async function usersOf(db: SupabaseClient, users: string[]) {
+  const tzOf = new Map<string, string>();
+  const subsOf = new Map<string, SubRow[]>();
+  const settingsOf = new Map<string, { start: string; end: string; habits: boolean }>();
+  for (const ids of chunks(users)) {
+    const [pr, subs, st] = await Promise.all([
+      db.from("mahdi_profiles").select("user_id, time_zone").in("user_id", ids),
+      db.from("mahdi_push_subscriptions").select("id, user_id, endpoint, p256dh, auth, failures").in("user_id", ids),
+      db.from("mahdi_notification_settings").select("user_id, quiet_start, quiet_end, habit_reminders").in("user_id", ids),
+    ]);
+    for (const p of pr.data ?? []) tzOf.set(p.user_id, p.time_zone);
+    for (const s of (subs.data ?? []) as SubRow[]) (subsOf.get(s.user_id) ?? subsOf.set(s.user_id, []).get(s.user_id)!).push(s);
+    for (const q of st.data ?? []) settingsOf.set(q.user_id, { start: q.quiet_start, end: q.quiet_end, habits: q.habit_reminders !== false });
+  }
+  return { tzOf, subsOf, settingsOf };
+}
+
+export interface AlertDispatchResult {
+  checked: number;
+  sent: number;
+}
+
+interface HabitAlertRow {
+  id: string;
+  user_id: string;
+  name: string;
+  reminder_time: string;
+  reminder_sent_at?: string | null;
+}
+
+/**
+ * «اجعله تنبيهًا» on a habit: at its reminder time, «حان وقت …» on the person's phone, every day the habit is due and
+ * still open — whatever the general reminder mode is (the time was set on purpose). Not in quiet hours, and not when
+ * the person turned «تذكير العادات في أوقاتها» off. Sent once a day (reminder_sent_at, SQL 0102).
+ */
+export async function dispatchHabitAlerts(db: SupabaseClient, now: Date = new Date()): Promise<AlertDispatchResult> {
+  const result: AlertDispatchResult = { checked: 0, sent: 0 };
+  let sentCol = true;
+  let { data, error }: { data: unknown[] | null; error: unknown } = await db.from("mahdi_habits").select("id, user_id, name, reminder_time, reminder_sent_at").not("reminder_time", "is", null).limit(20000);
+  if (missingColumn(error)) {
+    // before SQL 0102: the window is one run of the scheduler long, so a slot is met once
+    sentCol = false;
+    ({ data, error } = await db.from("mahdi_habits").select("id, user_id, name, reminder_time").not("reminder_time", "is", null).limit(20000));
+  }
+  if (error) throw error;
+  const rows = (data ?? []) as HabitAlertRow[];
+  result.checked = rows.length;
+  if (!rows.length) return result;
+
+  const { tzOf, subsOf, settingsOf } = await usersOf(db, [...new Set(rows.map((r) => r.user_id))]);
+  const dueOf = new Map<string, HabitAlertRow[]>();
+  for (const h of rows) {
+    const tz = tzOf.get(h.user_id);
+    const st = settingsOf.get(h.user_id);
+    if (!tz || !subsOf.has(h.user_id) || st?.habits === false) continue;
+    const slot = toMinutes(h.reminder_time);
+    if (slot === null || (st && inQuietHours(slot, st.start, st.end))) continue;
+    const due = dueSlot(minuteOfDayIn(tz, now), [slot], sentCol ? REMINDER_WINDOW_MIN : 15);
+    if (!due || (sentCol && alreadySent(h.reminder_sent_at ?? null, due.ago, now))) continue;
+    (dueOf.get(h.user_id) ?? dueOf.set(h.user_id, []).get(h.user_id)!).push(h);
+  }
+  if (!dueOf.size) return result;
+
+  const earliest = addDays(todayIn("Etc/GMT+12", now), -2);
+  const users = [...dueOf.keys()];
+  const habitData = await loadHabitData(db, users, earliest);
+  for (const batch of chunks(users, 10)) {
+    await Promise.all(
+      batch.map(async (userId) => {
+        const d = habitData.get(userId);
+        if (!d) return;
+        const today = todayIn(tzOf.get(userId)!, now);
+        const tl = buildTimeline(toItems(d.habits, d.logs), today, today, { asOf: today, weekStart: 6 });
+        const open = new Set(dayGoals(tl, today).filter((i) => i.progress < 1).map((i) => i.itemId));
+        const due = dueOf.get(userId)!;
+        // due today and not done yet; a habit not due today (or already done) sends nothing
+        const mine = due.filter((h) => open.has(h.id));
+        if (sentCol) await db.from("mahdi_habits").update({ reminder_sent_at: now.toISOString() }).in("id", due.map((h) => h.id));
+        if (!mine.length) return;
+        const n = await pushToUser(db, subsOf.get(userId)!, { title: t.notify.title2, body: t.notify.habitBody(mine.map((h) => h.name)), url: "/mahdi", tag: "mahdi-habit" });
+        if (n > 0) result.sent++;
+      }),
+    );
+  }
+  return result;
+}
+
+interface PlanAlertRow {
+  id: string;
+  user_id: string;
+  title: string;
+  day: string;
+  start_time: string | null;
+  repeat: PlanRepeat;
+  reminded_on: string | null;
+}
+
+/**
+ * «اجعله تنبيهًا» on a planner event: at its start time, on each day it falls on (once, weekly or monthly), outside
+ * quiet hours. Sent once per day (reminded_on). Nothing before SQL 0102.
+ */
+export async function dispatchPlanAlerts(db: SupabaseClient, now: Date = new Date()): Promise<AlertDispatchResult> {
+  const result: AlertDispatchResult = { checked: 0, sent: 0 };
+  const { data, error } = await db.from("mahdi_plan_items").select("id, user_id, title, day, start_time, repeat, reminded_on").eq("remind", true).not("start_time", "is", null).limit(20000);
+  if (error) return result; // the columns aren't there yet
+  const rows = (data ?? []) as PlanAlertRow[];
+  result.checked = rows.length;
+  if (!rows.length) return result;
+
+  const { tzOf, subsOf, settingsOf } = await usersOf(db, [...new Set(rows.map((r) => r.user_id))]);
+  const byUser = new Map<string, { rows: PlanAlertRow[]; today: string }>();
+  for (const r of rows) {
+    const tz = tzOf.get(r.user_id);
+    if (!tz || !subsOf.has(r.user_id)) continue;
+    const today = todayIn(tz, now);
+    if (r.reminded_on === today || !occursOn({ day: r.day, repeat: r.repeat }, today)) continue;
+    const slot = toMinutes(r.start_time);
+    const st = settingsOf.get(r.user_id);
+    if (slot === null || (st && inQuietHours(slot, st.start, st.end))) continue;
+    if (!dueSlot(minuteOfDayIn(tz, now), [slot])) continue;
+    const u = byUser.get(r.user_id) ?? byUser.set(r.user_id, { rows: [], today }).get(r.user_id)!;
+    u.rows.push(r);
+  }
+
+  for (const [userId, u] of byUser) {
+    const n = await pushToUser(db, subsOf.get(userId)!, { title: t.planner.title, body: t.alert.planBody(u.rows.map((r) => r.title)), url: "/mahdi/progress/calendar", tag: "mahdi-plan" });
+    if (n > 0) result.sent++;
+    // marked even when no device took it, so a broken device doesn't get the same alert every 15 minutes
+    await db.from("mahdi_plan_items").update({ reminded_on: u.today }).in("id", u.rows.map((r) => r.id));
   }
   return result;
 }

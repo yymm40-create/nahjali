@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { CONTENT, type CarouselAspect } from "@config/content";
 import { findCarouselStyle } from "@config/content-carousel-styles";
 import { findContentFont } from "@config/content-fonts";
+import { findMotionCarouselStyle } from "@config/content-motion-carousel";
 
 const db = () => createAdminClient();
 
@@ -29,6 +30,8 @@ export interface Slide {
   flag?: string;
   /** drawn again by itself after the check found a mistake, and then sound */
   fixed?: boolean;
+  /** a motion carousel's slide: its MP4 (a content_files id; `fileId` is its still) */
+  video?: string;
 }
 
 /** A slide that was not made, with what is needed to try it again. */
@@ -61,6 +64,16 @@ export interface SlidesBlock {
   carouselId?: string;
   /** the font of the list of 50 the carousel is written in */
   fontId?: string;
+  /** a motion carousel: every slide is a short video (its plan, kept for a slide made again) */
+  motion?: MotionPlan;
+}
+
+/** A motion carousel being made: its motion style (or "own" with the person's words), how its pictures are made, each slide's length. */
+export interface MotionPlan {
+  styleId: string;
+  own?: string;
+  route: "code" | "picture" | "elements";
+  seconds: number;
 }
 
 /** One picture or video «محمد باقر» asked جواد for (outside a carousel), and where it stands. */
@@ -98,7 +111,7 @@ export interface MediaBlock {
 /** A question of a batch, answered by pressing (or writing). */
 export interface Question {
   label: string;
-  kind: "choice" | "templates" | "styles" | "motion" | "moods" | "palettes" | "carousels" | "fonts";
+  kind: "choice" | "templates" | "styles" | "motion" | "moods" | "palettes" | "carousels" | "fonts" | "motioncarousels";
   /** the answers of "choice"; with "carousels", the styles he recommends (their ids); with "fonts", the fonts he recommends */
   options: string[];
   multi: boolean;
@@ -145,6 +158,8 @@ export interface PendingProduce {
   carouselId?: string;
   /** the font of the list of 50 the carousel is written in */
   fontId?: string;
+  /** a motion carousel: «حيدرا ماكس» makes every slide a short video with its sound */
+  motion?: MotionPlan;
   /** made in this production so far */
   made: Slide[];
   failed: SlideFailure[];
@@ -183,7 +198,18 @@ const readSlide = (x: Record<string, unknown>): Slide => ({
   text: str(x.text, 2000),
   ...(typeof x.flag === "string" && x.flag ? { flag: x.flag.slice(0, 400) } : {}),
   ...(x.fixed === true ? { fixed: true } : {}),
+  ...(typeof x.video === "string" && x.video ? { video: x.video } : {}),
 });
+
+/** A motion carousel's plan from storage (null: a still carousel). */
+export function readMotion(v: unknown): MotionPlan | null {
+  if (!v || typeof v !== "object") return null;
+  const m = v as Record<string, unknown>;
+  const styleId = m.styleId === "own" ? "own" : findMotionCarouselStyle(String(m.styleId ?? ""))?.id;
+  if (!styleId) return null;
+  const route = m.route === "picture" || m.route === "elements" ? m.route : "code";
+  return { styleId, ...(typeof m.own === "string" && m.own.trim() ? { own: m.own.slice(0, 2000) } : {}), route, seconds: Math.max(3, Math.min(8, num(m.seconds) || 5)) };
+}
 const readFailure = (x: Record<string, unknown>): SlideFailure => ({ n: num(x.n), reason: str(x.reason, 300), ...(typeof x.detail === "string" && x.detail ? { detail: x.detail.slice(0, 400) } : {}), text: str(x.text, 2000), prompt: str(x.prompt, 4000) });
 
 /** Media items from the model or from storage, checked. */
@@ -220,9 +246,9 @@ export function readMedia(v: unknown): MediaItem[] {
 export function readQuestions(v: unknown): Question[] | undefined {
   const out = objs(v)
     .map((q): Question => {
-      const kind = q.kind === "templates" || q.kind === "styles" || q.kind === "motion" || q.kind === "moods" || q.kind === "palettes" || q.kind === "carousels" || q.kind === "fonts" ? q.kind : "choice";
+      const kind = q.kind === "templates" || q.kind === "styles" || q.kind === "motion" || q.kind === "moods" || q.kind === "palettes" || q.kind === "carousels" || q.kind === "fonts" || q.kind === "motioncarousels" ? q.kind : "choice";
       const given = (Array.isArray(q.options) ? q.options : []).filter((o): o is string => typeof o === "string" && o.trim().length > 0).map((o) => o.trim());
-      const options = kind === "choice" ? given.map((o) => o.slice(0, 140)).slice(0, 8) : kind === "carousels" ? given.filter((o) => findCarouselStyle(o)).slice(0, 5) : kind === "fonts" ? given.filter((o) => findContentFont(o)).slice(0, 5) : [];
+      const options = kind === "choice" ? given.map((o) => o.slice(0, 140)).slice(0, 8) : kind === "carousels" ? given.filter((o) => findCarouselStyle(o)).slice(0, 5) : kind === "fonts" ? given.filter((o) => findContentFont(o)).slice(0, 5) : kind === "motioncarousels" ? given.filter((o) => findMotionCarouselStyle(o)).slice(0, 5) : [];
       return { label: str(q.label, 120).trim(), kind, options, multi: q.multi === true && kind === "choice" };
     })
     .filter((q) => q.label && (q.kind !== "choice" || q.options.length > 0))
@@ -263,6 +289,7 @@ export function cleanHistory(raw: unknown): Turn[] {
         ...(s.mix === true ? { mix: true } : {}),
         ...(typeof s.carouselId === "string" && findCarouselStyle(s.carouselId) ? { carouselId: s.carouselId } : {}),
         ...(typeof s.fontId === "string" && findContentFont(s.fontId) ? { fontId: s.fontId } : {}),
+        ...(readMotion(s.motion) ? { motion: readMotion(s.motion)! } : {}),
         templateId: str(s.templateId, 60),
         ...(typeof s.report === "string" && s.report ? { report: s.report.slice(0, 4000) } : {}),
       };
@@ -300,6 +327,7 @@ export function readPending(v: unknown): PendingProduce | null {
     ...(p.mix === true ? { mix: true } : {}),
     ...(typeof p.carouselId === "string" && findCarouselStyle(p.carouselId) ? { carouselId: p.carouselId } : {}),
     ...(typeof p.fontId === "string" && findContentFont(p.fontId) ? { fontId: p.fontId } : {}),
+    ...(readMotion(p.motion) ? { motion: readMotion(p.motion)! } : {}),
     ...(p.arts && typeof p.arts === "object" && !Array.isArray(p.arts) ? { arts: Object.fromEntries(Object.entries(p.arts as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> } : {}),
     made: objs(p.made).filter((x) => typeof x.fileId === "string").map(readSlide),
     failed: objs(p.failed).map(readFailure),

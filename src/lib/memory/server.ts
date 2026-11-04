@@ -6,6 +6,7 @@
 import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson } from "@/lib/film/anthropic";
+import { withClaude } from "@/lib/film/claude-model";
 import { MEMORY_OFF_HEADER } from "./context";
 
 const db = () => createAdminClient();
@@ -78,13 +79,15 @@ export async function learn(userId: string, said: string, reply: string, notes: 
   const s = said.trim();
   if (!s) return;
   try {
-    const r = await callClaudeJson<{ changed: boolean; notes: string }>({
+    // a short notes update after a turn: the lightest mind does it (it ran on the person's model — Opus by default — after
+    // every message of every robot, paid by the platform)
+    const r = await withClaude("claude-haiku-5-5", () => callClaudeJson<{ changed: boolean; notes: string }>({
       system: SYSTEM,
       turns: [{ role: "user", content: `الذاكرة الحالية:\n${notes || "(فاضية)"}\n\n────\n\nما قاله الشخص الآن:\n${s.slice(0, 3000)}\n\n────\n\nرد الروبوت (للسياق فقط):\n${reply.slice(0, 1500)}` }],
       schema: SCHEMA,
       maxTokens: 2000,
       effort: "low",
-    });
+    }));
     if (r.data.changed && r.data.notes.trim() && r.data.notes.trim() !== notes.trim()) await saveMemory(userId, { notes: r.data.notes.trim() });
   } catch (e) {
     console.error("memory learn", e instanceof Error ? e.message : e);

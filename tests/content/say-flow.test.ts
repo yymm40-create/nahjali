@@ -1,17 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Chat, Turn } from "@/lib/content/chats";
-import { CAROUSEL_LABEL, FONT_LABEL, MAKER_CODE, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE } from "@/lib/content/maker";
+import { CAROUSEL_LABEL, FONT_LABEL, KIND_LABEL, KIND_MOTION, KIND_STILL, MAKER_CODE, MOTION_CAROUSEL_LABEL, ROUTE_LABEL, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE } from "@/lib/content/maker";
 
 // One message to «محمد باقر» end to end, with Claude, the database and the editor replaced by stand-ins: what he is
 // given (the catalogues, what the person picked, the state of an earlier carousel) and what the site does with his
 // answer (the buttons, the carousel to draw, drawing slides again, the hand-over to حيدرا ماكس).
-const claude = vi.hoisted(() => ({ answer: null as unknown, calls: [] as { system: string; turns: { role: string; content: unknown }[] }[] }));
+// `system` here is what he reads in all: the fixed system and this turn's note (examples, picks, the record)
+const claude = vi.hoisted(() => ({ answer: null as unknown, calls: [] as { system: string; fixed: string; turns: { role: string; content: unknown }[] }[] }));
 const db = vi.hoisted(() => ({ chat: null as unknown, editorProjects: [] as unknown[], editorChats: [] as unknown[], assets: [] as unknown[] }));
 
 vi.mock("@/lib/film/anthropic", async (orig) => ({
   ...(await orig<typeof import("@/lib/film/anthropic")>()),
-  callClaudeJson: vi.fn(async (o: { system: string; turns: { role: string; content: unknown }[] }) => {
-    claude.calls.push({ system: o.system, turns: o.turns });
+  callClaudeJson: vi.fn(async (o: { system: string; turnNote?: string; turns: { role: string; content: unknown }[] }) => {
+    claude.calls.push({ system: `${o.system}\n\n${o.turnNote ?? ""}`, fixed: o.system, turns: o.turns });
     return { data: claude.answer, raw: "", usage: { input_tokens: 1000, output_tokens: 500 } };
   }),
 }));
@@ -62,7 +63,8 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 import { say } from "@/lib/content/chat";
 import { findStyle } from "@config/film-styles";
-import { answerLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, FONT_AUTO_LINE, fontLine, styleLine, templateLine } from "@/lib/content/marks";
+import { answerLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, FONT_AUTO_LINE, fontLine, MOTION_CAROUSEL_HELP_LINE, motionCarouselLine, motionCarouselOwnLine, styleLine, templateLine } from "@/lib/content/marks";
+import { MOTION_ROUTES } from "@config/content-motion-carousel";
 
 const empty = { on: false, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: [] };
 const noHandoff = { on: false, title: "", shape: "9:16", package: "" };
@@ -72,7 +74,9 @@ const answer = (o: Record<string, unknown>) => {
 const slides = (prompt = "clean design") => [{ n: 1, text: "العنوان", prompt: `${prompt} "العنوان"` }, { n: 2, text: "الخطوة", prompt: `${prompt} "الخطوة"` }];
 const chat = () => db.chat as Chat;
 // a look with no realistic pictures, so the only step left is who makes it
-const FONT = fontLine({ id: "cairo", name: "القاهرة" });
+// the font, then «ثابت» (a still carousel)
+const STILL = answerLine(KIND_LABEL, [KIND_STILL]);
+const FONT = `${fontLine({ id: "cairo", name: "القاهرة" })}\n${STILL}`;
 // a style and its font, as pressed before who makes it
 const FLAT = `${carouselLine({ id: "white-text", name: "الشريحة البيضاء" })}\n${FONT}`;
 const picked = (maker: string) => `${FLAT}\n${answerLine(MAKER_LABEL, [maker])}`;
@@ -115,6 +119,8 @@ describe("what he is given", () => {
     expect(earlier).toContain("لم تُصنع 2 (المزوّد مشغول)");
     expect(earlier).toContain("🔎 تقرير الفحص");
     expect(claude.calls[0].system).toContain("REC");
+    // the record rides with the turn: the system itself is the same on every message (so it and the history are cached)
+    expect(claude.calls[0].fixed).not.toContain("REC");
   });
 });
 
@@ -203,7 +209,7 @@ describe("his answer", () => {
     expect(claude.calls[0].system).toContain('kind="fonts"');
     // the font is left to him: the one he names in "font_id" is kept
     answer({ produce: { on: true, mode: "all", font_id: "lemonada", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
-    await say("u", "chat-1", `${FONT_AUTO_LINE}\n${answerLine(MAKER_LABEL, [MAKER_GPT])}`, []);
+    await say("u", "chat-1", `${FONT_AUTO_LINE}\n${STILL}\n${answerLine(MAKER_LABEL, [MAKER_GPT])}`, []);
     expect(chat().pending).toMatchObject({ carouselId: "soft-3d", fontId: "lemonada" });
   });
 
@@ -220,10 +226,41 @@ describe("his answer", () => {
 
   it("something not in the table is a pick in the person's own words", async () => {
     answer({ produce: { on: true, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
-    const r = await say("u", null, `${carouselOwnLine("ستايل خشب محروق")}\n${FONT_AUTO_LINE}\n${answerLine(MAKER_LABEL, [MAKER_GPT])}`, []);
+    const r = await say("u", null, `${carouselOwnLine("ستايل خشب محروق")}\n${FONT_AUTO_LINE}\n${STILL}\n${answerLine(MAKER_LABEL, [MAKER_GPT])}`, []);
     expect(claude.calls[0].system).toContain("يريد شكلًا غير الموجود");
     expect(r.pending).toEqual({ total: 2, mode: "all", todo: [1, 2] });
     expect(chat().pending!.carouselId).toBeUndefined();
+  });
+
+  it("a motion carousel: still or moving, then the motion style from the table of ten, then the way of making it, cheapest first", async () => {
+    const order = () => answer({ produce: { on: true, mode: "all", refs: [], aspect: "2:3", template_id: "", style_id: "", slides: slides() } });
+    const LOOK = `${carouselLine({ id: "white-text", name: "الشريحة البيضاء" })}\n${fontLine({ id: "cairo", name: "القاهرة" })}`;
+    order();
+    const kind = await say("u", null, LOOK, []);
+    expect(kind.pending).toBeNull();
+    expect(kind.questions!.at(-1)).toMatchObject({ label: KIND_LABEL, options: [KIND_STILL, KIND_MOTION] });
+    order();
+    const style = await say("u", "chat-1", answerLine(KIND_LABEL, [KIND_MOTION]), []);
+    expect(style.pending).toBeNull();
+    expect(style.questions!.at(-1)).toMatchObject({ label: MOTION_CAROUSEL_LABEL, kind: "motioncarousels" });
+    // help is not a pick
+    order();
+    expect((await say("u", "chat-1", MOTION_CAROUSEL_HELP_LINE, [])).questions!.at(-1)).toMatchObject({ kind: "motioncarousels" });
+    order();
+    const route = await say("u", "chat-1", motionCarouselLine({ id: "kinetic-word", name: "الكلمة المتحركة" }), []);
+    expect(route.pending).toBeNull();
+    expect(route.questions!.at(-1)).toMatchObject({ label: ROUTE_LABEL, options: MOTION_ROUTES.map((r) => r.label) });
+    expect(route.text).toContain("الأرخص");
+    expect(route.text).toContain("¤");
+    order();
+    expect((await say("u", "chat-1", MOTION_ROUTES[0].label, [])).pending).toEqual({ total: 2, mode: "all", todo: [1, 2] });
+    expect(chat().pending).toMatchObject({ maker: "code", carouselId: "white-text", motion: { styleId: "kinetic-word", route: "code", seconds: 4 } });
+    expect(chat().messages.at(-1)!.slides).toMatchObject({ motion: { styleId: "kinetic-word" } });
+    // built from zero with him: the person's words go with the plan
+    db.chat = null;
+    order();
+    await say("u", null, `${LOOK}\n${answerLine(KIND_LABEL, [KIND_MOTION])}\n${motionCarouselOwnLine("الكلام ينكتب بالطباشير")}\n${answerLine(ROUTE_LABEL, [MOTION_ROUTES[2].label])}`, []);
+    expect(chat().pending!.motion).toMatchObject({ styleId: "own", own: "الكلام ينكتب بالطباشير", route: "elements" });
   });
 
   it("a realistic style asks: their own pictures, or made from zero, with the idea of what to add", async () => {

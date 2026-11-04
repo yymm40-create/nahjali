@@ -7,6 +7,8 @@ import { CO_OWNER_EMAILS, OWNER_EMAILS, isAdmin } from "@config/site";
 import AccessList from "./AccessList";
 import SecretCode from "./SecretCode";
 import Codes from "./Codes";
+import RedCoins from "./RedCoins";
+import { atCostEmails } from "@/lib/at-cost";
 
 export const metadata = { title: "السماح | لوحة التحكم" };
 export const dynamic = "force-dynamic";
@@ -16,7 +18,7 @@ export default async function AccessPage() {
   const user = await requireUser("/admin/access");
   if (!isAdmin(user.email)) notFound();
   const db = createAdminClient();
-  const [{ error }, rows, secret, grants, ownCodes, ownUses, ownGifts] = await Promise.all([
+  const [{ error }, rows, secret, grants, ownCodes, ownUses, ownGifts, red] = await Promise.all([
     db.from("site_access").select("email", { head: true, count: "exact" }),
     accessList(),
     db.from("site_secret").select("code,code_id,enabled").eq("id", 1).maybeSingle(),
@@ -25,6 +27,8 @@ export default async function AccessPage() {
     db.from("site_code_uses").select("code_id,email,at").order("at", { ascending: false }).limit(2000),
     // what each code's gift put in wallets (migration 0083: without it the list is empty, nothing breaks)
     db.from("site_code_uses").select("code_id,gifted_halalas").limit(5000),
+    // «🔴 النقود الحمراء»: the platform's-own-price list (jawad_settings)
+    atCostEmails(true).catch(() => [] as string[]),
   ]);
   const gifted: Record<string, number> = {};
   for (const r of ownGifts.data ?? []) gifted[r.code_id as string] = (gifted[r.code_id as string] ?? 0) + Number(r.gifted_halalas ?? 0);
@@ -43,6 +47,7 @@ export default async function AccessPage() {
           جدول السماح ما انضاف للحين، فالموقع مقفل على الكل إلا أصحابه. شغّل الملف <span dir="ltr">supabase/migrations/0035_site_access_and_notes.sql</span> في SQL Editor في Supabase.
         </p>
       )}
+      <RedCoins emails={red} />
       {ownCodes.error ? (
         <p className="error-box">
           جدول الأكواد ما انضاف للحين. شغّل الملف <span dir="ltr">supabase/migrations/0041_access_codes.sql</span> في SQL Editor في Supabase.

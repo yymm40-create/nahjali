@@ -13,6 +13,7 @@ import EditOptions from "./EditOptions";
 import type { Settings, SettingValue } from "@config/jawad/types";
 import Riyal from "@/components/Riyal";
 import Coined from "@/components/Coined";
+import { useClaudeModel } from "@/components/robots/claude-model";
 
 interface Understanding {
   understanding: string;
@@ -53,6 +54,8 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
   const out: OutputView | undefined = job.outputs[outIdx];
   const videoSec = (out?.durationMs ?? Number(job.settings.duration) * 1000) / 1000;
   const [mode, setMode] = useState<EditMode | null>(null);
+  // the person's Claude model: جواد reads and writes the edit with it (the server never goes dearer than the price)
+  const [claude] = useClaudeModel();
   // the options chosen again for this edit (resolution, sound, a whole clip's seconds…): counted in the price, sent to جواد
   const [chosen, setChosen] = useState<Settings>({});
   const [errorNote, setErrorNote] = useState("");
@@ -74,7 +77,7 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
   // the seconds of the video itself around the cut, sent as continuity references
   const continuity = cut ? continuityRanges(cut, videoSec) : undefined;
   const notes = `ما هو الخطأ:\n${errorNote.trim()}\n\nالتصحيح المطلوب:\n${correction.trim()}`;
-  const body = { jobId: job.id, outputId: out?.id, mode, notes, ranges, generatorId: genId, settings: chosen, ...(continuity ? { continuity } : {}) };
+  const body = { jobId: job.id, outputId: out?.id, mode, notes, ranges, generatorId: genId, settings: chosen, model: claude.id, ...(continuity ? { continuity } : {}) };
   const quoteKey = JSON.stringify([out?.id, mode, genId, chosen, ranges.map((r) => [r.from, r.to])]);
 
   // The price (again whenever the kind of edit or the marked times change)
@@ -150,7 +153,7 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
     const response = await fetch("/api/jawad/edit/understand", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jobId: job.id, filmProjectId: filmProjectId || undefined, generation: `الناتج ${outIdx + 1}`, mode, error: errorNote, correction, settings: { generatorId: genId, ...chosen } }),
+      body: JSON.stringify({ jobId: job.id, filmProjectId: filmProjectId || undefined, generation: `الناتج ${outIdx + 1}`, mode, error: errorNote, correction, settings: { generatorId: genId, ...chosen }, model: claude.id }),
     }).catch(() => null);
     const result = response ? await response.json().catch(() => ({})) : {};
     setBusy(null);

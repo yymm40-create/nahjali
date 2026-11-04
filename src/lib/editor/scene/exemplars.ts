@@ -1,6 +1,8 @@
-// «مختبر الموشن» — reference scenes written to the owner's bar, shown to حيدرا ماكس as examples of the craft (never to be
-// copied as they are: each piece is new). Each one is a complete scene program on the kit. They are run in the tests
-// on a recording canvas (no throw, deterministic, cues valid).
+// «مختبر الموشن» — reference scenes written to the owner's bar. Each one is a complete scene program on the kit, run in the
+// tests on a recording canvas (no throw, deterministic, cues valid). The lab's write is NOT shown these programs any more
+// (the owner: «قاعد يكرر في الموشنات اللي يسويها»: whole programs were copied as layouts — the dust word, the one shape,
+// the dark ground with a warm accent): it reads EXEMPLARS_TEXT, the techniques they prove in words plus one compact
+// snippet of kit usage with placeholder content. The full programs stay as the kit's own proof and the agent's reference.
 
 export interface Exemplar {
   id: string;
@@ -155,3 +157,36 @@ export const EXEMPLARS: Exemplar[] = [
   { id: "shape", name: "شكل واحد", shows: "one shape morphing through states with K.springTo (no cuts), content swaps with blur, a drawn-on check, a counter and bars staggering in, a cursor on an arc pressing, a soft contact shadow, a loop back to frame 1", code: ONE_SHAPE.trim() },
   { id: "depth", name: "رحلة في العمق", shows: "a 2.5D camera through 4 planes with depth of field, metaballs in the brand gradient, kinetic words on the beat (heavy number vs thin filler), a glass card with a counter, near dust parallax, a dive-through transition into a flash that becomes the end card (a landing title and a drawn line held to the last frame)", code: DEPTH_FLIGHT.trim() },
 ];
+
+
+/**
+ * One compact program that shows HOW the kit is used (params, timing, springs, depth, type, finish, cues, sound) — with
+ * placeholder content and placeholder colours on purpose, so there is no layout, idea or palette in it to reuse.
+ */
+export const KIT_SNIPPET = String.raw`
+// placeholders only: the words, the colours, the shapes and the structure come from the plan
+scene({
+  title: "…", duration: 4, bpm: 100, blur: 0.5,
+  cues: [{ t: 0.3, sfx: "transition-whoosh-fast" }, { t: 1.1, sfx: "hit-bass-hit", vol: 0.7 }, { t: 2.6, sfx: "ui-pop-bright", vol: 0.5 }],
+  params: { line: { label: "النص", type: "text", value: "…" }, ground: { label: "الخلفية", type: "color", value: "#808080" }, accent: { label: "التمييز", type: "color", value: "#ff00ff" } },
+  draw: function (K, t, ctx) {
+    var W = K.W, H = K.H, E = K.ease, line = K.p("line", "…");
+    ctx.fillStyle = K.p("ground", "#808080"); ctx.fillRect(0, 0, W, H);
+    var cam = K.camera({ z: K.lerp(0, 120, E.inOutSine(K.seg(t, 0, 4))) });            // a slow push across the hold
+    var w = K.springTo(t, 0.2, [[1.0, 0.6], [2.4, 0.35]], { stiffness: 210, damping: 26 }); // retargets: still a function of t
+    K.inSpace(ctx, cam, 300, function (c) { c.fillStyle = K.p("accent", "#ff00ff"); K.roundRect(c, W * (0.5 - w / 2), H * 0.3, W * w, H * 0.08, H * 0.04); c.fill(); });
+    var a = K.envelope(t, 0.9, 3.6, 0.7, 0.3), size = K.fit(ctx, line, W * 0.8, W * 0.12, 800, K.fonts.head);
+    if (a > 0) K.text(ctx, line, W / 2, H * 0.5 + (1 - E.outExpo(a)) * size * 0.4, { size: size, weight: 800, family: K.fonts.head, color: "#ffffff", alpha: a, blur: (1 - a) * 10 });
+    K.vignette(ctx, { amount: 0.2 });
+  },
+  sound: function (K, S) { S.whoosh(0.3, { gain: 0.4 }); S.hit(1.1, { gain: 0.5 }); S.pop(2.6, { gain: 0.3 }); }
+});`.trim();
+
+/**
+ * What the lab's write reads in place of the full programs: the craft the reference scenes prove, in words, and the
+ * compact kit snippet — with the rule that none of their layouts, ideas, palettes or words is reused.
+ */
+export const EXEMPLARS_TEXT = `REFERENCE TECHNIQUES (a library — what the kit has been proven to do well, at the bar's level of craft). Do NOT reuse their layouts, ideas, palettes, words or structures: they are not the piece, and the piece must not look like them. Use a technique only where the plan's own idea calls for it.
+${EXEMPLARS.map((e) => `- ${e.shows}.`).join("\n")}
+How the kit is used (placeholder content — the machine's grammar only, never a design to start from):
+${KIT_SNIPPET}`;

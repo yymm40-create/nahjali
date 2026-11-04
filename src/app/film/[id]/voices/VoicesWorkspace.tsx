@@ -7,6 +7,8 @@ import { DICTION_VALUES, type Diction } from "@config/jawad/diction";
 import type { VoiceLine } from "@/lib/film/voices";
 import EmotionPicker from "../../EmotionPicker";
 import VoiceDesigner from "../../VoiceDesigner";
+import { prepareLines, PREPARE_GROUP } from "../../prepare-lines";
+import { useClaudeModel } from "@/components/robots/claude-model";
 
 interface Choice {
   value: string;
@@ -44,6 +46,8 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [feel, setFeel] = useState<Record<string, string>>({});
+  // the person's Claude model: «النطق الدقيق» runs on it (its real usage is what the check costs)
+  const [claude] = useClaudeModel();
   // «طريقة كتابة النطق» for the Arabic lines: precise (IPA), spelled out, or as written (kept on this device)
   const [diction, setDiction] = useState<Diction>("precise");
   useEffect(() => {
@@ -99,14 +103,20 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
   }
   async function speak(keys: string[]) {
     setError("");
-    for (const key of keys) {
-      setBusy(key);
-      try {
-        await postJson(url, { action: "speak", key, idempotencyKey: uid(), emotion: feel[key] ?? "", diction });
-        await load();
-      } catch (e) {
-        setError((e as Error).message);
-        break;
+    // many lines: their pronunciation prepared together first (one Claude call per group, not one per line)
+    groups: for (let g = 0; g < keys.length; g += PREPARE_GROUP) {
+      const group = keys.slice(g, g + PREPARE_GROUP);
+      setBusy(group[0]);
+      const prepared = await prepareLines(url, group, { diction, model: claude.id });
+      for (const key of group) {
+        setBusy(key);
+        try {
+          await postJson(url, { action: "speak", key, idempotencyKey: uid(), emotion: feel[key] ?? "", diction, model: claude.id, ...(prepared[key] ? { prepared: prepared[key] } : {}) });
+          await load();
+        } catch (e) {
+          setError((e as Error).message);
+          break groups;
+        }
       }
     }
     setBusy(null);

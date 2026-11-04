@@ -1,12 +1,12 @@
 // «صانع المحتوى» — what a press in the questions becomes as a message: the answers as bullets, a pick in a gallery
-// carrying a mark ([قالب:id] / [ستايل:id] / [موشن:id] / [مزاج:id] / [ألوان:id] / [كاروسيل:id] / [خط:id]) that the server reads and the page hides. Pure (server and browser).
+// carrying a mark ([قالب:id] / [ستايل:id] / [موشن:id] / [مزاج:id] / [ألوان:id] / [كاروسيل:id] / [خط:id] / [حركة:id]) that the server reads and the page hides. Pure (server and browser).
 
 export interface Pick {
   id: string;
   name: string;
 }
 
-const MARK = /\s*\[(?:قالب|ستايل|موشن|مزاج|ألوان|كاروسيل|خط):[a-z0-9-]+\]/g;
+const MARK = /\s*\[(?:قالب|ستايل|موشن|مزاج|ألوان|كاروسيل|خط|حركة):[a-z0-9-]+\]/g;
 
 /** The text as the person reads it (the marks are for the server). */
 export const stripMarks = (text: string) => text.replace(MARK, "");
@@ -43,6 +43,15 @@ export const fontStyleLine = (name: string) => `• الخط: خط الستاي�
 
 /** The person lets «محمد باقر» pick the font. */
 export const FONT_AUTO_LINE = "• الخط: اختر لي الأنسب للستايل والموضوع [خط:auto]";
+
+/** A pick in the table of motion-carousel styles as a line of a message. */
+export const motionCarouselLine = (p: Pick) => `• ستايل الحركة: «${p.name}» [حركة:${p.id}]`;
+
+/** The person does not know which motion style to pick: «محمد باقر» helps them choose. */
+export const MOTION_CAROUSEL_HELP_LINE = "• ستايل الحركة: ما أعرف أختار، ساعدني [حركة:help]";
+
+/** The person builds the motion style from zero with «محمد باقر», in their own words. */
+export const motionCarouselOwnLine = (what: string) => `• ستايل الحركة: أبنيه من الصفر معك: ${what.trim()} [حركة:own]`;
 
 /** An answer of the buttons: a line per question. */
 export const answerLine = (label: string, answers: string[]) => `• ${label}: ${answers.join("، ")}`;

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ZAYNAB_ASPECTS, ZAYNAB_MAX_PHOTOS, ZAYNAB_STYLE_IDS, ZAYNAB_VIEWS, ZAYNAB_TIMES, ZAYNAB_WEATHER, type ZaynabInput } from "@config/jawad/zaynab";
 import { FREE_FIRST_ENDS_AT, FREE_FIRST_HOURS } from "@config/jawad/free-first";
 import Riyal from "@/components/Riyal";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import { stageLabel, type JobView } from "@/lib/jawad/labels";
 import { uploadImage } from "../studio/upload";
 import type { UploadView } from "../studio/types";
@@ -28,6 +29,8 @@ async function api<T>(body?: unknown): Promise<T> {
 export default function ZaynabStudio({ userId }: { userId: string }) {
   const [input, setInput] = useState(INITIAL);
   const [people, setPeople] = useState<Person[]>([]);
+  // the person's Claude model: «جواد» writes the picture's prompt with it (never dearer than the fixed price)
+  const [claude] = useClaudeModel();
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [quote, setQuote] = useState<{ value: Quote; free: boolean; snapshot: string; written: Written } | null>(null);
@@ -79,7 +82,7 @@ export default function ZaynabStudio({ userId }: { userId: string }) {
     } catch (e) { setError((e as Error).message); }
     finally { lock.current = false; setBusy(""); }
   }
-  const body = () => ({ input: { ...input, labels: people.map(p => p.label) }, uploads: people.map(p => p.upload.id) });
+  const body = () => ({ input: { ...input, labels: people.map(p => p.label) }, uploads: people.map(p => p.upload.id), model: claude.id });
   async function submit() {
     if (lock.current) return;
     if (!people.length) { setError("أضف صورة واحدة على الأقل."); return; }

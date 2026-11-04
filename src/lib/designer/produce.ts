@@ -13,6 +13,7 @@ import { BAKED_TEXT_RULE, NO_TEXT_RULE, type DesignerTextMode } from "@config/de
 import { getChat, saveChat, type Chat, type PendingDesign } from "./chats";
 import { addFile, addFileFromOutput, attachmentsOf, fileLinks, uploadLinks } from "./files";
 import { readLayers, type Design } from "./layers";
+import { editOf, photoKeys, readProgram, type DesignEdit } from "./program";
 import { COVER_RULES_TEXT } from "@/lib/editor/cover-skill-text";
 
 /** GPT Image 2 for the artwork: the high tier (the design is exported at this size), high quality. */
@@ -48,7 +49,9 @@ export async function retry(userId: string, chat: Chat): Promise<void> {
   if (at < 0 || !d) throw new UserError("ما فيه تصميم نعيد رسمه.", 409);
   const prompt = await lastPrompt(chat, at);
   if (!prompt) throw new UserError("ما لقينا توجيه الرسم لإعادته.", 409);
-  const pending: PendingDesign = { id: d.id, at, kind: prompt.kind, aspect: d.aspect, textMode: "baked", artwork: prompt.artwork, refs: prompt.refs, layers: prompt.layers, keep: null, maker: "code", ...(prompt.place?.length ? { place: prompt.place } : {}), ...(d.art ? { art: d.art } : prompt.picture ? { picture: prompt.picture } : {}) };
+  // a change to a design drawn before stays a change (a patch on that design's program) when it is drawn again
+  const base = chat.pending?.at === at ? chat.pending.base : undefined;
+  const pending: PendingDesign = { id: d.id, at, kind: prompt.kind, aspect: d.aspect, textMode: "baked", artwork: prompt.artwork, refs: prompt.refs, layers: prompt.layers, keep: null, maker: "code", ...(prompt.place?.length ? { place: prompt.place } : {}), ...(d.art ? { art: d.art } : prompt.picture ? { picture: prompt.picture } : {}), ...(base ? { base } : {}) };
   const messages = [...chat.messages];
   messages[at] = { ...messages[at], design: { ...d, state: "drawing", error: undefined, detail: undefined, flag: undefined } };
   await saveChat(userId, chat.id, { messages, pending });
@@ -109,18 +112,38 @@ export async function codeBrief(userId: string, chatId: string, o: { email?: str
     }
   }
   const links = await uploadLinks(userId, images.map((a) => a.id));
-  // the photos to put in the design go into the scene as they are; the other pictures are references for the look
+  // the photos to put in the design go into the scene as they are, always in the same order (photo1… — a change patches
+  // a program that names them by number); the other pictures are references for the look
   const artUrl = art ? ((await fileLinks(userId, chatId)).get(art) ?? null) : null;
-  const photos = [...(artUrl ? [artUrl] : []), ...[...links].filter(([id]) => place.has(id)).map(([, url]) => url)].slice(0, 20);
+  const keys = photoKeys({ art: artUrl ? art : null, refs: images.map((a) => a.id), place: p.place }).filter((k) => k === art || links.has(k));
+  const photos = keys.map((k) => (k === art ? artUrl! : links.get(k)!));
   const urls = [...links].filter(([id]) => !place.has(id)).map(([, url]) => url);
   const prompt = artworkPrompt({ prompt: p.artwork, refs: urls.length, textMode: "baked", layers: p.layers });
   // a YouTube thumbnail (a latmiya's too) follows the owner's cover skill: its sizes that read on a phone, word for word
   const cover = p.kind === "thumbnail" || p.kind === "latmiya" ? `\n\nTHE OWNER'S COVER SKILL — its rules file, word for word (this is a YouTube thumbnail: follow its ▶️ part):\n${COVER_RULES_TEXT}` : "";
-  return { prompt: `${artUrl ? `${prompt}\n\n${ART_NOTE}` : prompt}${cover}`, aspect: p.aspect, refs: urls.slice(0, 4), photos, picture: Boolean(artUrl) };
+  const brief = { prompt: `${artUrl ? `${prompt}\n\n${ART_NOTE}` : prompt}${cover}`, aspect: p.aspect, refs: urls.slice(0, 4), photos, picture: Boolean(artUrl) };
+  // a change to a design drawn before: its program, to patch
+  const edit = p.base ? await editFor(userId, chat, p, keys) : null;
+  return edit ? { ...brief, edit } : brief;
+}
+
+/**
+ * A change to a design drawn before: that design's program (kept in its artwork's record) to patch, with the brief it
+ * was drawn from and the person's words; null when it has no program kept or draws another frame (drawn from zero).
+ */
+async function editFor(userId: string, chat: Chat, p: PendingDesign, keys: string[]): Promise<DesignEdit | null> {
+  const { createAdminClient } = await import("@/lib/supabase/admin");
+  const { data } = await createAdminClient().from("designer_files").select("meta").eq("id", p.base!).eq("user_id", userId).maybeSingle();
+  const meta = (data?.meta ?? {}) as Record<string, unknown>;
+  if (!meta.program) return null;
+  // the brief as it was drawn (its exact writing included), and what the person said to change it
+  const brief = typeof meta.prompt === "string" ? artworkPrompt({ prompt: meta.prompt, refs: 0, textMode: "baked", layers: readLayers(meta.textPlan) }) : "";
+  const said = chat.messages.slice(0, p.at).findLast((m) => m.role === "user")?.text ?? "";
+  return editOf({ program: meta.program, aspect: p.aspect, brief, said, photos: keys });
 }
 
 /** The PNG the page drew from «حيدرا ماكس»'s program becomes the pending design's artwork. */
-export async function produceFromCode(userId: string, chatId: string, b: { png?: unknown; rounds?: unknown; scores?: unknown }): Promise<Produced> {
+export async function produceFromCode(userId: string, chatId: string, b: { png?: unknown; rounds?: unknown; scores?: unknown; program?: unknown; edited?: unknown }): Promise<Produced> {
   const chat = await getChat(userId, chatId);
   if (!chat) throw new Error("chat not found");
   const p = chat.pending;
@@ -134,7 +157,9 @@ export async function produceFromCode(userId: string, chatId: string, b: { png?:
   const sharp = (await import("sharp")).default;
   const meta = await sharp(bytes).metadata().catch(() => null);
   if (meta?.format !== "png" || !meta.width || !meta.height) throw new UserError("صورة التصميم مو صالحة.", 400);
-  const file = await addFile({ userId, chatId, bytes, name: `artwork-${p.id}`, role: "artwork", width: meta.width, height: meta.height, meta: { prompt: p.artwork, aspect: p.aspect, kind: p.kind, textMode: "baked", textPlan: p.layers, refs: p.refs, ...(p.place?.length ? { place: p.place } : {}), ...(p.picture ? { picture: p.picture } : {}), ...(p.art ? { art: p.art } : {}), maker: "code", claudeCode: { rounds: Math.round(Number(b.rounds) || 0), scores: b.scores ?? null } } });
+  // the program it was drawn from is kept with it (when it drew exactly this picture), so a change patches it later
+  const program = readProgram(b.program, [meta.width, meta.height]);
+  const file = await addFile({ userId, chatId, bytes, name: `artwork-${p.id}`, role: "artwork", width: meta.width, height: meta.height, meta: { prompt: p.artwork, aspect: p.aspect, kind: p.kind, textMode: "baked", textPlan: p.layers, refs: p.refs, ...(p.place?.length ? { place: p.place } : {}), ...(p.picture ? { picture: p.picture } : {}), ...(p.art ? { art: p.art } : {}), maker: "code", claudeCode: { rounds: Math.round(Number(b.rounds) || 0), scores: b.scores ?? null, ...(b.edited === true ? { edited: true } : {}) }, ...(program ? { program: { ...program, photos: photoKeys(p) } } : {}) } });
   const design: Design = { ...base, artwork: file.id, width: meta.width, height: meta.height, textMode: "baked", layers: [], state: "ready", ...(p.art ? { art: p.art } : {}) };
   const messages = [...chat.messages];
   messages[at] = { ...messages[at], design };

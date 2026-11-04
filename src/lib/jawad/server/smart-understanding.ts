@@ -2,7 +2,6 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost } from "@/lib/film/anthropic";
 import { sajjadBrief } from "@/lib/film/sajjad";
-import { managedAgentConfigured, managedAgentTurn, managedJson } from "@/lib/managed-agent";
 import { isUuid } from "./uploads";
 
 const db = () => createAdminClient();
@@ -36,6 +35,8 @@ export interface SmartUnderstandingBody {
   error?: unknown;
   correction?: unknown;
   settings?: unknown;
+  /** the Claude model the person chose (config/claude-models.ts) */
+  model?: unknown;
 }
 
 export async function smartEditProjects(userId: string) {
@@ -68,26 +69,12 @@ export async function smartEditUnderstanding(user: { id: string; email?: string 
   const correction = str(body.correction, 5000);
   if (!error || !correction) throw new UserError("اكتب الخطأ والتصحيح المطلوب كل واحد في خانته.", 400);
   const film = filmProjectId ? await sajjadBrief({ filmProjectId }) : null;
-  const prompt = `أنت جواد حاضر داخل نافذة «التعديل الذكي» في حيدرا ماكس. لا تبدأ التوليد. افهم الطلب فقط ثم أعد ملخصًا عربيًا بسيطًا ودقيقًا كي يؤكده المستخدم أو يعدله. لا تخترع ما لا يظهر في البيانات.\n\nالتوليد الأصلي:\n- المولد: ${source.generator_id}\n- البرومبت: ${str(source.prompt, 9000)}\n- الإعدادات الأصلية: ${JSON.stringify(sourceInputs.settings ?? {}).slice(0, 4000)}\n- الجيل المختار: ${str(body.generation, 120) || "الحالي"}\n- نوع المعالجة: ${str(body.mode, 80) || "غير محدد"}\n- الإعدادات الجديدة: ${JSON.stringify(body.settings ?? {}).slice(0, 4000)}\n\nقسم المستخدم الأول — ما هو الخطأ:\n${error}\n\nقسم المستخدم الثاني — ما هو التصحيح المطلوب:\n${correction}${film ? `\n\nبيانات مشروع سجاد المرتبط (اقرأها مباشرة وحافظ على استمراريتها):\n${film}` : "\n\nلا يوجد مشروع سجاد مرتبط؛ لا تفترض قصة أو شخصيات خارج المقطع."}\n\nأعد JSON فقط مطابقًا لهذا المخطط:\n${JSON.stringify(SCHEMA)}`;
+  const prompt = `التوليد الأصلي:\n- المولد: ${source.generator_id}\n- البرومبت: ${str(source.prompt, 9000)}\n- الإعدادات الأصلية: ${JSON.stringify(sourceInputs.settings ?? {}).slice(0, 4000)}\n- الجيل المختار: ${str(body.generation, 120) || "الحالي"}\n- نوع المعالجة: ${str(body.mode, 80) || "غير محدد"}\n- الإعدادات الجديدة: ${JSON.stringify(body.settings ?? {}).slice(0, 4000)}\n\nقسم المستخدم الأول — ما هو الخطأ:\n${error}\n\nقسم المستخدم الثاني — ما هو التصحيح المطلوب:\n${correction}${film ? `\n\nبيانات مشروع سجاد المرتبط (اقرأها مباشرة وحافظ على استمراريتها):\n${film}` : "\n\nلا يوجد مشروع سجاد مرتبط؛ لا تفترض قصة أو شخصيات خارج المقطع."}`;
 
-  if (managedAgentConfigured()) {
-    try {
-      const managed = await managedAgentTurn({
-        userId: user.id,
-        contextType: "smart_edit",
-        contextKey: editorProjectId ?? filmProjectId ?? jobId,
-        title: `جواد · تعديل ذكي · ${filmProjectId ? "مشروع سجاد" : jobId.slice(0, 8)}`,
-        content: [{ type: "text", text: prompt }],
-      });
-      const answer = managedJson<SmartUnderstanding>(managed.text);
-      return { ...answer, willDo: Array.isArray(answer.willDo) ? answer.willDo.map(String).slice(0, 6) : [], usd: managed.usd };
-    } catch (managedError) {
-      console.error("managed smart edit fallback", String(managedError).slice(0, 300));
-    }
-  }
-
+  // one plain call (the reply's shape is enforced by the schema): the Managed Agent path added this whole prompt to a
+  // session that kept every earlier one, was priced as Opus whatever the person chose, and on a failure paid twice
   const fallback = await callClaudeJson<SmartUnderstanding>({
-    system: "أنت جواد في التعديل الذكي. افهم الخطأ والتصحيح، ولا تولّد قبل تأكيد المستخدم.",
+    system: "أنت جواد حاضر داخل نافذة «التعديل الذكي» في حيدرا ماكس. لا تبدأ التوليد. افهم الخطأ والتصحيح فقط ثم أعد ملخصًا عربيًا بسيطًا ودقيقًا كي يؤكده المستخدم أو يعدله. لا تخترع ما لا يظهر في البيانات.",
     turns: [{ role: "user", content: prompt }],
     schema: SCHEMA,
     maxTokens: 2500,

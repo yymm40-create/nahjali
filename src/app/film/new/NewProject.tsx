@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { postJson } from "@/lib/fetch";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import { FILM_KINDS, type FilmKind } from "@config/film";
 import ProjectFields, { type FieldValues } from "../ProjectFields";
 import { useFilmBase } from "../FilmBase";
@@ -22,6 +23,8 @@ export default function NewProject() {
   const [kind, setKind] = useState<FilmKind | "">("");
   const [research, setResearch] = useState<"yes" | "no" | "">("");
   const [busy, setBusy] = useState(false);
+  // the person's Claude model: «سجاد» prepares the journey with it, not always the default
+  const [claude] = useClaudeModel();
   const [error, setError] = useState("");
   const [intake, setIntake] = useState<JourneyIntake | null>(null);
   const draftId = useRef(crypto.randomUUID());
@@ -51,7 +54,7 @@ export default function NewProject() {
     setBusy(true);
     setError("");
     try {
-      const result = await postJson<{ intake: JourneyIntake }>("/api/film/intake", { draftId: draftId.current, kind, title: values.title, story: values.story, fixedFacts: values.fixedFacts, targetDurationSec: values.targetDurationSec, answers, previous: intake });
+      const result = await postJson<{ intake: JourneyIntake }>("/api/film/intake", { draftId: draftId.current, kind, title: values.title, story: values.story, fixedFacts: values.fixedFacts, targetDurationSec: values.targetDurationSec, answers, previous: intake, model: claude.id });
       setIntake(result.intake);
     } catch (e) {
       setError((e as Error).message);

@@ -12,6 +12,7 @@ import { BarRow, Delta, Insights, ProgressTabs, Tile } from "@/components/mahdi/
 import { useMahdi } from "@/components/mahdi/Provider";
 import { periodGoals } from "@/lib/mahdi/engine";
 import ReviewNote from "@/components/mahdi/ReviewNote";
+import PriorityHistory from "@/components/mahdi/PriorityHistory";
 
 /** One month, top to bottom: the score, weeks, projects, habits, goals, extra work and the previous month. */
 export default function MonthReport({ month }: { month?: string }) {
@@ -64,6 +65,10 @@ export default function MonthReport({ month }: { month?: string }) {
           </Link>
         )}
       </nav>
+
+      {/* the person's own note on the month: at the top, where it is seen */}
+      <ReviewNote kind="month" start={ms} />
+      <PriorityHistory from={ms} to={endOfMonth(ms)} title={t.priorityHistory.month} />
 
       {s.required === 0 ? (
         <p className="m-card p-6 text-center m-muted">{t.reports.noData}</p>
@@ -148,8 +153,6 @@ export default function MonthReport({ month }: { month?: string }) {
           </div>
         </>
       )}
-
-      <ReviewNote kind="month" start={ms} />
     </div>
   );
 }

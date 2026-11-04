@@ -53,7 +53,7 @@ describe("reading the owner's settings", () => {
 
   it("fills what is missing with his numbers and clamps nonsense", () => {
     const s = readSettings({ prices: { comboA: -5, liveB: "abc", recordedB: 1e9 }, hoursA: 0, hoursB: 0, launchAt: "not a date", videoUrl: "http://x.com/a.mp4", groupLink: "javascript:alert(1)", bank: { iban: "SA03 8000 0000" } });
-    expect(s.prices).toEqual({ comboA: 1, liveB: 49, recordedB: 100000, comboB: 100, liveC: 80, recordedC: 150 });
+    expect(s.prices).toEqual({ comboA: 1, liveB: 49, recordedB: 100000, comboB: 100, liveC: 80, recordedC: 150, comboC: 0 });
     expect(s.hoursA).toBe(1);
     expect(s.hoursB).toBeGreaterThan(s.hoursA);
     expect(s.launchAt).toBeNull();
@@ -187,5 +187,13 @@ describe("the clock course («دورة صانع المحتوى»): the owner's t
     expect(readSettings({ ladderCourseId: "x" }).ladderCourseId).toBe("");
     const only = offersAt({ ...L, prices: { ...L.prices, liveB: 0 } }, T0 + 30 * H, 150, 230, ID);
     expect(only.offers.map((o) => o.product)).toEqual(["combo"]);
+  });
+
+  it("after the first days the owner can sell the whole course (live + recorded) too, struck at live + recorded", () => {
+    const C = (prices: Partial<CourseSettings["prices"]>) => offersAt({ ...L, prices: { ...L.prices, ...prices } }, T0 + 60 * H, 150, 230, ID).offers.map((o) => [o.product, o.price, o.was]);
+    expect(C({})).toEqual([["recorded", 150, 150], ["live", 80, 80]]);
+    expect(C({ comboC: 80 })).toEqual([["combo", 80, 230], ["recorded", 150, 150], ["live", 80, 80]]);
+    expect(C({ comboC: 80, liveC: 0, recordedC: 0 })).toEqual([["combo", 80, 230]]);
+    expect(readSettings({ prices: { comboC: "80" } }).prices.comboC).toBe(80);
   });
 });

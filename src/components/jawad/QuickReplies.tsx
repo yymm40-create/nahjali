@@ -5,6 +5,7 @@
 // `${cls}-opts`, `${cls}-opt`, `${cls}-opt-write`, `${cls}-sw`.
 
 import { splitColors } from "@/lib/chat-options";
+import Coined from "@/components/Coined";
 
 export function Swatches({ text, cls }: { text: string; cls: string }) {
   return (
@@ -16,7 +17,8 @@ export function Swatches({ text, cls }: { text: string; cls: string }) {
             {p.text}
           </span>
         ) : (
-          <span key={i}>{p.text}</span>
+          // a price written as «¤N» shows as the coin's logo and the amount
+          <span key={i}>{p.text.includes("¤") ? <Coined text={p.text} /> : p.text}</span>
         ),
       )}
     </>

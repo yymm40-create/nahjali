@@ -8,6 +8,7 @@
 // · «🤖 حيدرا ماكس يضبط»: Claude sees the frame as filmed, the matte and the result, and corrects the settings, round by
 //   round (key-check.ts) — the pictures made here with the same maths the GPU draws.
 
+import { useClaudeModel } from "@/components/robots/claude-model";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Command } from "@/lib/editor/commands";
 import { detectKey, keyPixels, keyParams, rgbToHex, sampleAt, screenness } from "@/lib/editor/key-math";
@@ -23,6 +24,8 @@ export const keyAsk = (clipId: string, op: KeyOp) => window.dispatchEvent(new Cu
 const MAX_ROUNDS = 3;
 
 export default function KeyStudio({ player, canvas, tl, projectId, run, flash }: { player: Player | null; canvas: HTMLCanvasElement | null; tl: Timeline; projectId: string; run: (c: Command | Command[], o?: { label?: string }) => unknown; flash: (m: string, bad?: boolean) => void }) {
+  // the person's chosen mind checks the key (it ran on Opus whatever they chose)
+  const [claude] = useClaudeModel();
   const tlRef = useRef(tl);
   useEffect(() => {
     tlRef.current = tl;
@@ -92,7 +95,7 @@ export default function KeyStudio({ player, canvas, tl, projectId, run, flash }:
           release();
           if (!shot) return flash("شغّل المقطع لين يبان في المعاينة، وبعدين جرّب.", true);
           const { shots, stats } = pictures(shot.data, key);
-          const r = await postJson<{ ok: boolean; verdict: string; key: Partial<Keyer> }>(`/api/jawad/editor/projects/${projectId}`, { action: "key_check", clipId, round, key, shots, stats });
+          const r = await postJson<{ ok: boolean; verdict: string; key: Partial<Keyer> }>(`/api/jawad/editor/projects/${projectId}`, { action: "key_check", clipId, round, key, shots, stats, model: claude.id });
           if (r.ok || !Object.keys(r.key).length) return flash(`🤖 ${r.verdict || "الكي تمام."}`);
           setKey(clipId, r.key, `حيدرا ماكس يضبط الكي (${round})`);
           if (round === MAX_ROUNDS) flash(`🤖 ${r.verdict}`);

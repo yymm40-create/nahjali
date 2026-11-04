@@ -32,7 +32,6 @@ import { familyOf, loadFont, loadFontsOf } from "./fontload";
 import { MOTION_KINDS, type MotionKind } from "@/lib/editor/motion-elements";
 import { makeMusicAsset, separateAsset, stemQuality } from "./make";
 import { type LabSource } from "./MotionLab";
-import MotionLabTabs from "./MotionLabTabs";
 import { sourceOf, type FootageSource } from "./lab-footage";
 import type { Cue } from "@/lib/editor/scene/contract";
 import { placeStems } from "@/lib/editor/make";
@@ -107,14 +106,15 @@ const THEMES = {
 type ThemeId = keyof typeof THEMES;
 const RAIL_NAV = {
   // «كاب كت»: the menus as tabs at the top of the left column, their contents under them
-  tabs: "cut-tabs hidden lg:grid",
+  // one thin row that scrolls sideways (the owner, 3 November 2026: the menus took the column's room)
+  tabs: "cut-tabs jw-scroll hidden lg:flex",
   side: "jw-glass jw-scroll my-2 hidden w-[4.25rem] shrink-0 flex-col gap-0.5 overflow-y-auto rounded-2xl p-1 lg:flex",
   clouds: "jw-scroll mx-2 mt-1 hidden gap-2 overflow-x-auto px-1 pb-2 pt-1 lg:flex",
   pages: "jw-glass jw-scroll mx-2 mb-2 hidden gap-px overflow-x-auto p-0.5 lg:flex",
   // (the phone keeps its own tool bar)
 } as const;
 const RAIL_ITEM = {
-  tabs: "flex-col justify-center gap-0.5 rounded-lg px-0.5 py-1.5 text-[10.5px] leading-tight",
+  tabs: "gap-1 rounded-full px-2.5 py-1 text-[11.5px] leading-none",
   side: "flex-col gap-0.5 rounded-xl px-0.5 py-1 text-[10px] leading-tight",
   clouds: "min-w-[4.75rem] flex-col justify-center gap-0.5 rounded-full px-3 py-2 text-xs font-bold",
   pages: "gap-1.5 rounded-sm px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide",
@@ -181,7 +181,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const importInput = useRef<HTMLInputElement>(null);
   const [captioning, setCaptioning] = useState(false);
   // Claude: open beside the work from the start on a computer; on a phone it opens over it when asked
-  const [assisting, setAssisting] = useState(false);
+  // (opened by itself on a conversation the address names: «?lab=»)
+  const [assisting, setAssisting] = useState(() => Boolean(labChat && !project.purged));
   const [chat, setChat] = useState(false);
   // the left side's section (a computer): the library, a clip's settings, the ready styles, the project
   const [rail, setRail] = useState<"media" | "inspector" | "styles" | "project" | "haidara">("media");
@@ -273,22 +274,14 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
   const [layoutOpen, setLayoutOpen] = useState(false);
   // «🎬 مختبر الموشن»: open, with a brief (from حيدرا ماكس's chat or empty)
-  const [lab, setLab] = useState<{ brief: string; seconds?: number; clipId?: string | null; chatId?: string | null; source?: { assetId: string; source: LabSource; params?: Record<string, string>; auto?: boolean } | null } | null>(() => (labChat && !project.purged ? { brief: "", chatId: labChat } : null));
-  // the lab's uploads: a picture attached in its conversation (library only), and its finished film (with its scene)
+  // «🎬 مختبر الموشن» runs inside حيدرا ماكس's conversations now (one window): the editor only asks his window to open
+  // one of them — a kept conversation («?lab=») or a film of the timeline to work on again (sent once per `n`)
+  const [haidaraOpen, setHaidaraOpen] = useState<{ n: number; chatId?: string | null; source?: { assetId: string; source: LabSource; params?: Record<string, string>; auto?: boolean } } | null>(() => (labChat && !project.purged ? { n: 1, chatId: labChat } : null));
+  // the lab's uploads: a picture attached in its conversation (library only), and its finished film (with its scene;
+  // `placed` hears the film's file once it is on the timeline, `muted` the clips it muted under it with their volume)
   const labWaits = useRef(new Map<string, { ok: (a: EditorAsset) => void; no: (e: Error) => void; progress?: (p: number) => void }>());
-  const labFilms = useRef(new Map<string, { source: LabSource; replaceAssetId: string | null }>());
-  // the lab folded to its pill: kept here, so «مختبر الموشن» in the toolbar brings the same work back instead of
-  // looking like a dead button (the window stays mounted while it is folded, and the work carries on)
-  const [labMin, setLabMin] = useState(false);
-  // the clips the lab can build on (kept in a ref: the list is computed further down)
-  const footageRef = useRef<FootageSource[]>([]);
-  const openLab = (brief = "", seconds?: number, clipId?: string | null) => {
-    setLabMin(false);
-    // the lab is linked to the timeline: opened on a video clip the person has selected, it loads that clip by itself
-    // (the clips it can build on are the ones listed in `footageRef`)
-    const picked = clipId ?? (selected.length === 1 ? (footageRef.current.find((c) => c.clipId === selected[0])?.clipId ?? null) : null);
-    setLab((now) => (now && !brief && !clipId ? now : { brief, seconds, clipId: picked }));
-  };
+  const labFilms = useRef(new Map<string, { source?: LabSource; replaceAssetId: string | null; placed?: (id: string | null) => void; muted?: { clipId: string; volume: number }[] }>());
+  const placedMutes = useRef(new Map<string, { clipId: string; volume: number }[]>());
   // «🩺 تشخيص»: the owner's browser keeps a record of what goes wrong while the editor is open
   useEffect(() => {
     if (owner) startDiag();
@@ -611,16 +604,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     }
   };
   const openClaude = (on?: boolean) => {
-    // a computer: حيدرا ماكس is one of the menus at the top left (his conversation shows under them)
-    if (wideRef.current) {
-      const open = on ?? railRef.current !== "haidara";
-      if (open) {
-        setAssisting(true);
-        setChat(true);
-        setRail("haidara");
-      } else if (railRef.current === "haidara") setRail("media");
-      return;
-    }
+    // حيدرا ماكس's conversation is a window over the work on a computer too (the owner, 3 November 2026: in the left
+    // column it was squeezed); his tab in the menus opens and closes it
     setAssisting((v) => on ?? !v);
     setChat((v) => on ?? !v);
   };
@@ -944,11 +929,16 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         if (place?.group.startsWith("lab:")) {
           const f = labFilms.current.get(place.group.slice(4));
           labFilms.current.delete(place.group.slice(4));
-          if (f) void postJson(`/api/jawad/editor/projects/${project.id}`, { action: "lab_source_save", assetId: a.id, source: f.source }).then(() => addAssets([{ ...a, lab: true }])).catch(() => flash("نزل المقطع، بس ما انحفظ مشهده للتعديل بعدين.", true));
+          if (f?.source) void postJson(`/api/jawad/editor/projects/${project.id}`, { action: "lab_source_save", assetId: a.id, source: f.source }).then(() => addAssets([{ ...a, lab: true }])).catch(() => flash("نزل المقطع، بس ما انحفظ مشهده للتعديل بعدين.", true));
+          if (f?.muted?.length) placedMutes.current.set(a.id, f.muted);
           if (f?.replaceAssetId) {
             if (!run({ type: "swap_asset", from: f.replaceAssetId, to: a.id }, { label: "عدّلت قطعة الموشن" })) placeAsset(a, place);
+            f.placed?.(a.id);
             return;
           }
+          placeAsset(a, place);
+          f?.placed?.(a.id);
+          return;
         }
         // a saved project's file: kept until all are up, then its timeline comes back pointing at them
         const w = pkgWait.current;
@@ -967,6 +957,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     ),
     // a failed upload for the lab (a picture, or a video that has to be on the server): the lab is told, it does not wait for ever
     useCallback((place?: { group: string }, message?: string) => {
+      // the lab's film did not go up: the conversation is told it is not on the timeline
+      if (place?.group.startsWith("lab:")) {
+        labFilms.current.get(place.group.slice(4))?.placed?.(null);
+        labFilms.current.delete(place.group.slice(4));
+        return;
+      }
       if (!place?.group.startsWith("lib:")) return;
       const k = place.group.slice(4);
       labWaits.current.get(k)?.no(new Error(message || "تعذّر الرفع."));
@@ -1097,21 +1093,35 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       // no clock of its own: it ends when the file is up, or when the upload fails
       uploads.add([file], [{ at: 0, trackId: null, mode: "one", group: `lib:${key}`, first: true }]);
     });
-  /** «✏️ عدّل» on a film made in the lab: the lab opens on its scene (or renders it again with new values at once) */
+  /** «✏️ عدّل» on a film made in the lab: حيدرا ماكس's window opens a conversation on its scene (or renders it again with
+   * new values at once, in the background — his pill shows it) */
   const editLabPiece = (assetId: string, source: LabSource, params: Record<string, string>, auto: boolean) => {
-    setLabMin(auto);
-    setLab({ brief: "", source: { assetId, source, params, auto } });
+    setHaidaraOpen((o) => ({ n: (o?.n ?? 0) + 1, source: { assetId, source, params, auto } }));
+    if (!auto) openClaude(true);
   };
-  const placeFilm = async (film: File, cues: Cue[], music: { prompt: string; ms: number } | null, place?: { at: number; muteClipIds: string[] }, labOf?: { source: LabSource; replaceAssetId: string | null }) => {
+  /** «↩️ تراجع» on a piece حيدرا ماكس put on the timeline: off it (the clip it replaced back, the clips it muted heard again) */
+  const unplaceFilm = (assetId: string, replaced: string | null) => {
+    const now = tlRef.current;
+    const ids = now.tracks.flatMap((t) => t.clips.filter((c) => c.assetId === assetId).map((c) => c.id));
+    if (!ids.length) return false;
+    if (replaced && assets.some((a) => a.id === replaced)) return !!run({ type: "swap_asset", from: assetId, to: replaced }, { label: "رجّعت قطعة الموشن اللي قبل" });
+    const muted = (placedMutes.current.get(assetId) ?? []).filter((m) => findClip(now, m.clipId));
+    return !!run([{ type: "delete", clipIds: ids, ripple: false }, ...muted.map((m) => ({ type: "update_clip" as const, clipId: m.clipId, patch: { volume: m.volume } }))], { label: "شلت قطعة الموشن" });
+  };
+  const placeFilm = async (film: File, cues: Cue[], music: { prompt: string; ms: number } | null, place?: { at: number; muteClipIds: string[] }, labOf?: { source: LabSource; replaceAssetId: string | null }): Promise<string | null> => {
     const at = Math.round(place?.at ?? player?.ms ?? 0);
     const key = Math.random().toString(36).slice(2);
-    if (labOf) labFilms.current.set(key, labOf);
+    // the film's file once it is on the timeline (or null when its upload failed)
+    const muted = (place?.muteClipIds ?? []).flatMap((id) => {
+      const f = findClip(tlRef.current, id);
+      return f ? [{ clipId: id, volume: f.clip.volume }] : [];
+    });
+    const placed = new Promise<string | null>((ok) => labFilms.current.set(key, { source: labOf?.source, replaceAssetId: labOf?.replaceAssetId ?? null, placed: ok, muted }));
     // built on the person's own clip: the piece lands on its own track over it, and the clip under it is muted (its
     // voice is inside the piece already); a film opened again from the timeline takes the old one's place instead
     uploads.add([film], [{ at, trackId: place ? "new" : null, mode: "one", group: `lab:${key}`, first: true }]);
-    for (const id of place?.muteClipIds ?? []) if (findClip(tlRef.current, id)) run({ type: "update_clip", clipId: id, patch: { volume: 0 } }, { label: "مختبر الموشن على فيديوك" });
-    flash("🎬 نرفع المقطع وننزّله عند مؤشر الوقت…");
-    // the lab's tabs close their finished tab themselves (the lab stays for the others)
+    for (const m of muted) run({ type: "update_clip", clipId: m.clipId, patch: { volume: 0 } }, { label: "مختبر الموشن على فيديوك" });
+    flash(labOf?.replaceAssetId ? "🎬 نرفع النسخة الجديدة ونبدّلها في التايملاين…" : "🎬 نرفع المقطع وننزّله عند مؤشر الوقت…");
     if (cues.length) {
       try {
         const ids = [...new Set(cues.map((c) => c.sfx))];
@@ -1154,6 +1164,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         flash(e instanceof Error ? `الموسيقى: ${e.message}` : "ما قدرنا نصنع الموسيقى.", true);
       }
     }
+    return placed;
   };
   const removeAsset = async (a: EditorAsset) => {
     if (allTracks(tlRef.current).some((t) => t.clips.some((c) => c.assetId === a.id))) return flash("هذا الملف مستخدم في أحد التسلسلات؛ احذف مقاطعه أول.", true);
@@ -1626,9 +1637,6 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       ),
     [tl.tracks, assetMap],
   );
-  useEffect(() => {
-    footageRef.current = footageClips;
-  }, [footageClips]);
   const total = duration(tl);
   const exportRange = rangeIO.from == null && rangeIO.to == null ? null : { from: Math.max(0, rangeIO.from ?? 0), to: Math.min(total, rangeIO.to ?? total) };
   const one = selected.length === 1 ? findClip(tl, selected[0]) : null;
@@ -1650,7 +1658,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     <nav className={`${RAIL_NAV[variant]} ${variant === "side" ? "lg:order-last" : ""}`} aria-label="أقسام المحرر">
       {RAIL.filter((r) => !r.tab || !seen.kind || rail !== "inspector" || TABS_OF[seen.kind].includes(r.tab)).map((r, i) => {
             const label = r.id === "edit" && seen.kind && rail === "inspector" ? EDIT_LABEL[seen.kind] : r.label;
-            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.id === "haidara" ? rail === "haidara" : r.tab ? rail === "inspector" && tab === r.tab : false;
+            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.id === "haidara" ? assisting : r.tab ? rail === "inspector" && tab === r.tab : false;
             return (
               <button
                 key={r.id}
@@ -1659,7 +1667,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                 title={r.hint}
                 onClick={() => {
                   if (r.id === "captions") return setCaptioning(true);
-                  if (r.id === "haidara") return openClaude(true);
+                  if (r.id === "haidara") return openClaude();
                   if (r.tab) {
                     setTab(r.tab);
                     setRail("inspector");
@@ -1668,7 +1676,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                 }}
                 className={`jw-3d flex shrink-0 items-center ${RAIL_ITEM[variant]} ${on ? "jw-rail-on" : variant === "clouds" ? `jw-cloud-${i % 5} text-jw-ink` : "bg-jw-surface text-jw-muted hover:text-jw-ink"}`}
               >
-                <Icon name={r.icon} size={variant === "clouds" ? 22 : variant === "pages" ? 14 : 16} />
+                <Icon name={r.icon} size={variant === "clouds" ? 22 : variant === "pages" || variant === "tabs" ? 14 : 16} />
                 <span className="whitespace-nowrap">{label}</span>
               </button>
             );
@@ -2007,10 +2015,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           </MovableBubble>
         )}
 
-        {assisting && !wide && (
-          <aside className={`hd-pop ${chatBig ? "big" : ""}`} ref={sizeChat} aria-label="حيدرا ماكس" dir="rtl">
+        {/* always there (hidden while closed): a conversation at work — a motion piece rendering — goes on, and its pill
+            brings the window back */}
+        {(
+          <aside className={`hd-pop ${chatBig ? "big" : ""}`} ref={sizeChat} aria-label="حيدرا ماكس" dir="rtl" style={assisting ? undefined : { display: "none" }}>
             <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
-              <Guard name="حيدرا ماكس"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} onDock={wide ? () => setChatDock(true) : undefined} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => (setChatBig(false), openClaude(false))} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number, clipId?: string | null) => openLab(brief, secs, clipId)} /></Guard>
+              <Guard name="حيدرا ماكس"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} onDock={wide ? () => setChatDock(true) : undefined} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => (setChatBig(false), openClaude(false))} readOnly={readOnly} diag={owner ? diagApp : undefined} lab={{ width: tl.width, height: tl.height, assets, footageClips, onUpload: labUpload, onFilm: placeFilm, onUnplace: unplaceFilm }} open={haidaraOpen} hidden={!assisting} onShow={() => openClaude(true)} /></Guard>
             </div>
           </aside>
         )}
@@ -2078,11 +2088,6 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             its parts stay the bottom sheets they were (display: contents) */}
         <div className={`cut-left ${colorRoom || big ? "contents" : "contents lg:relative lg:my-2 lg:flex lg:min-h-0 lg:shrink-0 lg:flex-col lg:overflow-hidden lg:rounded-2xl jw-glass-lg"}`} style={wide && !colorRoom && !big ? { order: 3, width: layout.panelW } : undefined}>
           {wide && !big && !colorRoom && railNav("tabs")}
-          {wide && assisting && !big && !colorRoom && (
-            <div className={`hd-left min-h-0 flex-1 flex-col ${rail === "haidara" ? "flex" : "hidden"}`} aria-label="حيدرا ماكس" dir="rtl">
-              <Guard name="حيدرا ماكس"><AssistantPanel big={false} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number, clipId?: string | null) => openLab(brief, secs, clipId)} /></Guard>
-            </div>
-          )}
         <aside
           className={`${sheet === "library" ? "fixed inset-x-0 bottom-0 z-50 flex h-[72dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:relative lg:z-auto ${rail === "media" && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl ${rail === "media" ? floatCls("panel") : ""}`}
           style={placeStyle("panel", { width: layout.panelW })}
@@ -2202,9 +2207,6 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             <Icon name="magnet" size={16} /> كل المسارات
           </button>
         )}
-        <button type="button" className={`${toolBtn} flex ${lab ? "text-jw-accent" : ""} ${labMin ? "animate-pulse" : ""}`} onClick={() => openLab()} disabled={readOnly} title="مختبر الموشن: حيدرا ماكس يصمم الموشن ويكتبه بالكود، يراجعه كمخرج، وينزله في التايملاين">
-          🎬 <span className="hidden sm:inline">مختبر الموشن</span>
-        </button>
         <div className="flex items-center gap-0.5 rounded-lg border border-violet-500/40 p-0.5" role="group" aria-label="عناصر الموشن: تنضاف عند المؤشر">
           {(Object.entries(MOTION_KINDS) as [MotionKind, (typeof MOTION_KINDS)[MotionKind]][]).map(([k, v]) => (
             <button key={k} type="button" className="rounded-md px-1.5 py-1 text-[11px] text-jw-muted hover:bg-violet-500/15 hover:text-jw-ink disabled:opacity-40" onClick={() => addMotion(k)} disabled={readOnly} title={`+ ${v.label}: ${v.hint} (عند المؤشر، على مسار الموشن)`}>
@@ -2217,7 +2219,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       {false && assisting && chatDock && wide && (
         <aside className="hd-pop dock" ref={sizeChat} aria-label="حيدرا ماكس" dir="rtl">
           <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
-            <Guard name="حيدرا ماكس"><AssistantPanel big={false} docked onDock={() => setChatDock(false)} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number, clipId?: string | null) => openLab(brief, secs, clipId)} /></Guard>
+            <Guard name="حيدرا ماكس"><AssistantPanel big={false} docked onDock={() => setChatDock(false)} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} /></Guard>
           </div>
         </aside>
       )}
@@ -2241,7 +2243,6 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       {/* the phone's tool bar (CapCut's way): a row of tools; a section or a selected clip brings its own row */}
       <PhoneTools selected={oneKind} hasAudio={!!oneAsset?.hasAudio} total={total} readOnly={readOnly} on={phoneAct} />
 
-      {lab && !readOnly && <MotionLabTabs projectId={project.id} width={tl.width} height={tl.height} assets={assets} lab={lab} footageClips={footageClips} onUpload={labUpload} onFilm={placeFilm} onClose={() => (setLab(null), setLabMin(false))} minimized={labMin} onMinimize={setLabMin} />}
       {dropAsk && (
         <div className="fixed inset-0 z-[60] grid place-items-center bg-black/50 p-4" onClick={() => setDropAsk(null)}>
           <div role="dialog" aria-modal="true" aria-label="كيف أرتّب الملفات؟" className="w-full max-w-sm space-y-3 rounded-2xl border border-jw-line bg-jw-surface p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>

@@ -1,6 +1,9 @@
 import { findCarouselStyle, type CarouselStyle } from "@config/content-carousel-styles";
 import { findContentFont, type ContentFont } from "@config/content-fonts";
 import { findTemplate } from "@config/content-templates";
+import { findMotionCarouselStyle, MOTION_ROUTES, type MotionCarouselStyle, type MotionRoute } from "@config/content-motion-carousel";
+import { coinsOf, generatorById, GPT_IMAGE_2_ID } from "@config/jawad/generators";
+import { coinStr } from "@config/coins";
 import type { Question, Turn } from "./chats";
 
 /** The last step before a new carousel is made: the person picks who makes the slides (the owner's order: no default). */
@@ -25,7 +28,35 @@ export const PHOTOS_MINE = "أضيف صوري";
 export const PHOTOS_MAKE = "سوّوها لي من الصفر";
 export const PHOTOS_QUESTION: Question = { label: PHOTOS_LABEL, kind: "choice", options: [PHOTOS_MINE, PHOTOS_MAKE], multi: false };
 
-/** The turns since the last carousel: what the next carousel is decided by. */
+/** After the font: a still carousel, or a motion carousel (every slide a short video with its sound). */
+export const KIND_LABEL = "الكاروسيل ثابت أو متحرك؟";
+export const KIND_STILL = "ثابت (صور)";
+export const KIND_MOTION = "موشن كاروسيل (كل شريحة تتحرك بصوت)";
+export const KIND_QUESTION: Question = { label: KIND_LABEL, kind: "choice", options: [KIND_STILL, KIND_MOTION], multi: false };
+
+/** A motion carousel: its motion style, from the table of ten (or built from zero with him). */
+export const MOTION_CAROUSEL_LABEL = "اختر ستايل الحركة";
+export const MOTION_CAROUSEL_QUESTION: Question = { label: MOTION_CAROUSEL_LABEL, kind: "motioncarousels", options: [], multi: false };
+
+/** A motion carousel's last step: how its pictures are made, cheapest first (in place of who makes the slides). */
+export const ROUTE_LABEL = "طريقة صنع الحركة";
+export const ROUTE_QUESTION: Question = { label: ROUTE_LABEL, kind: "choice", options: MOTION_ROUTES.map((r) => r.label), multi: false };
+
+/** About what one slide's GPT Image 2 picture costs the person (halalas): its default price, high quality, a short prompt. */
+export function slidePictureHalalas(): number {
+  const def = generatorById(GPT_IMAGE_2_ID);
+  const per = def?.priceKeys.find((k) => k.key === "out:high:std")?.defaultCenti ?? 0;
+  const kb = def?.priceKeys.find((k) => k.key === "prompt:1kb")?.defaultCenti ?? 0;
+  return coinsOf(per + 3 * kb, "image");
+}
+
+/** The note under the ways of making it: cheapest first, what each costs on top of «حيدرا ماكس»'s work (prices as «¤N»: the coin's logo). */
+export const routeNote = (slides: number) => {
+  const one = slidePictureHalalas();
+  return `⏸️ آخر خطوة قبل التصنيع: اختر طريقة صنع الحركة (من الأرخص للأغلى):\n${MOTION_ROUTES.map((r, i) => `${i + 1}) ${r.label}: ${r.what}${r.id === "code" ? "" : ` الصورة تقريبًا ${coinStr(one)}، يعني نحو ${coinStr(one * slides)} لـ ${slides} شرائح.`}`).join("\n")}`;
+};
+
+/** The turns since the last carousel/** The turns since the last carousel: what the next carousel is decided by. */
 const sinceLastCarousel = (history: Turn[]) => history.slice(history.map((t) => !!t.slides).lastIndexOf(true) + 1);
 
 /** What a person pressed: the whole message, or its line «• label: answer» when it was one of a batch. A sentence in their own words is not a press. */
@@ -52,6 +83,38 @@ function lastPressed<T extends string>(history: Turn[], label: string, answers: 
 export function pickedMaker(history: Turn[]): "code" | "gpt" | "mix" | null {
   const hit = lastPressed(history, MAKER_LABEL, [MAKER_CODE, MAKER_GPT, MAKER_MIX]);
   return hit === MAKER_CODE ? "code" : hit === MAKER_GPT ? "gpt" : hit === MAKER_MIX ? "mix" : null;
+}
+
+/** Still or motion, as pressed since the last carousel (null: not asked yet). */
+export const pickedKind = (history: Turn[]): "still" | "motion" | null => {
+  const hit = lastPressed(history, KIND_LABEL, [KIND_STILL, KIND_MOTION]);
+  return hit === KIND_STILL ? "still" : hit === KIND_MOTION ? "motion" : null;
+};
+
+/** The way of making a motion carousel, as pressed (null: not picked yet). */
+export const pickedRoute = (history: Turn[]): MotionRoute | null => {
+  const hit = lastPressed(history, ROUTE_LABEL, MOTION_ROUTES.map((r) => r.label));
+  return MOTION_ROUTES.find((r) => r.label === hit)?.id ?? null;
+};
+
+const MOTION_MARK = /\[حركة:([a-z0-9-]+)\]/g;
+
+/** The motion style picked since the last carousel: one of the ten, "own" (built from zero, in the person's words), "help", or null. */
+export function pickedMotionStyle(history: Turn[]): { id: string; style: MotionCarouselStyle | null; own?: string } | null {
+  const turns = sinceLastCarousel(history);
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i].role !== "user") continue;
+    const id = [...turns[i].text.matchAll(MOTION_MARK)].map((m) => m[1]).at(-1);
+    if (!id) continue;
+    if (id === "help") return { id, style: null };
+    if (id === "own") {
+      const line = turns[i].text.split("\n").find((l) => l.includes("[حركة:own]")) ?? "";
+      return { id, style: null, own: line.replace(/^.*?من الصفر معك:\s*/, "").replace(/\s*\[حركة:own\]\s*$/, "").trim() };
+    }
+    const style = findMotionCarouselStyle(id);
+    if (style) return { id, style };
+  }
+  return null;
 }
 
 const STYLE_MARK = /\[كاروسيل:([a-z0-9-]+)\]/g;
@@ -116,9 +179,9 @@ export interface CarouselHold {
 
 /**
  * What still stops a new carousel from being made, in order: the style, then (a realistic style) the person's pictures,
- * then the font, then who makes it. Null when nothing does. The server decides this from what was pressed, not from what the model says.
+ * then the font, then still or motion, then (motion) its style and how it is made, or (still) who makes it. Null when nothing does. The server decides this from what was pressed, not from what the model says.
  */
-export function carouselHold(history: Turn[]): CarouselHold | null {
+export function carouselHold(history: Turn[], slides = 6): CarouselHold | null {
   const pick = pickedCarousel(history);
   if (!pick || pick.id === "help") return { question: CAROUSEL_QUESTION, note: "⏸️ قبل التصنيع: اختر ستايل الكاروسيل من الجدول، أو قل لي إن كنت تريد شيئًا غير الموجود." };
   if (pick.style?.photoIdea) {
@@ -131,6 +194,15 @@ export function carouselHold(history: Turn[]): CarouselHold | null {
   if (fromTable && !pickedFont(history)) {
     const ready = pick.style?.font ? findContentFont(pick.style.font) : undefined;
     return { question: FONT_QUESTION, note: ready ? `⏸️ اختر الخط: هذا الستايل معه خط جاهز «${ready.name}»، أو اختر غيره من القائمة.` : "⏸️ اختر الخط من القائمة، أو خلني أختاره لك." };
+  }
+  // still or motion (asked of carousels made from the table; an older conversation stays a still carousel)
+  const kind = fromTable ? pickedKind(history) : "still";
+  if (!kind) return { question: KIND_QUESTION, note: "⏸️ الكاروسيل ثابت (صور) أو موشن كاروسيل (كل شريحة فيديو قصير يتحرك فيه الكلام بصوت خفيف)؟" };
+  if (kind === "motion") {
+    const motion = pickedMotionStyle(history);
+    if (!motion || motion.id === "help") return { question: MOTION_CAROUSEL_QUESTION, note: "⏸️ اختر ستايل الحركة من الجدول (١٠ ستايلات جاهزة)، أو ابنِه معي من الصفر." };
+    if (!pickedRoute(history)) return { question: ROUTE_QUESTION, note: routeNote(slides) };
+    return null;
   }
   if (!pickedMaker(history)) return { question: MAKER_QUESTION, note: "⏸️ آخر خطوة قبل التصنيع: اختر من يصمم الشرائح، وبعدها أبدأ." };
   return null;

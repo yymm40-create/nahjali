@@ -22,6 +22,7 @@ export const OPERATION_STAGE: Record<string, TeamStage> = {
   director_video: "director",
   lipsync: "director",
   voice_line: "director",
+  voice_diction: "director",
 };
 
 export interface MemberRights {
@@ -88,7 +89,7 @@ export async function teamPayment(projectId: string, actorId: string, operation:
   if (!series) return null;
   const stage = OPERATION_STAGE[operation];
   if (stage) await assertTeamStage(data as Pick<FilmProject, "user_id" | "series_id">, actorId, stage);
-  // asking سجاد is not an attempt (attempts are what gets made)
-  const took = operation === "sajjad" ? false : await takeAttempt(series.id, series.ownerId, actorId);
+  // asking سجاد is not an attempt (attempts are what gets made), nor is preparing the lines' pronunciation (each line spoken is one)
+  const took = operation === "sajjad" || operation === "voice_diction" ? false : await takeAttempt(series.id, series.ownerId, actorId);
   return { ...series, took };
 }

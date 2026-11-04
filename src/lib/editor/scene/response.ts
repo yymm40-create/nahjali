@@ -8,7 +8,9 @@ import type { OnText } from "@/lib/film/anthropic";
  *   ~200 ms), `{}` to keep the line open, and last `{"r": result}` (or `{"r": {"error": …}}`) — so the page shows the
  *   program being written while it is written.
  */
-export function labResponse(run: (onText?: OnText) => Promise<unknown>, watch = false): Response {
+export function labResponse(run: (onText?: OnText, signal?: AbortSignal) => Promise<unknown>, watch = false): Response {
+  // the page gone («إلغاء», a closed tab): the step's Claude call is stopped too, not left writing (and billed) to no one
+  const gone = new AbortController();
   const encoder = new TextEncoder();
   let timer: ReturnType<typeof setInterval> | undefined;
   let flusher: ReturnType<typeof setInterval> | undefined;
@@ -34,7 +36,7 @@ export function labResponse(run: (onText?: OnText) => Promise<unknown>, watch = 
       timer = setInterval(() => write(watch ? "{}\n" : " \n"), 10_000);
       if (watch) flusher = setInterval(flush, 200);
       const onText: OnText | undefined = watch ? (piece) => void (pending += piece) : undefined;
-      void Promise.resolve().then(() => run(onText)).then(
+      void Promise.resolve().then(() => run(onText, gone.signal)).then(
         (result) => done(result),
         (error: unknown) => {
           console.error("motion lab response", error);
@@ -49,6 +51,7 @@ export function labResponse(run: (onText?: OnText) => Promise<unknown>, watch = 
     },
     cancel() {
       closed = true;
+      gone.abort();
       clearInterval(timer);
       clearInterval(flusher);
     },

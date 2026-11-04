@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { postJson } from "@/lib/fetch";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import type { JourneyIntake, JourneyKind } from "@/lib/film/intake";
 import JourneyIntakeCard from "./JourneyIntakeCard";
 import RobotFace from "@/components/RobotFace";
@@ -13,6 +14,8 @@ export default function JourneyUpgrade({ targetType, targetId, initialKind, titl
   const [kind, setKind] = useState<JourneyKind>(initialKind);
   const [intake, setIntake] = useState<JourneyIntake | null>(null);
   const [busy, setBusy] = useState(false);
+  // the person's Claude model: «سجاد» prepares the journey with it, not always the default
+  const [claude] = useClaudeModel();
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
   const draftId = useRef(`upgrade:${targetId}`);
@@ -21,7 +24,7 @@ export default function JourneyUpgrade({ targetType, targetId, initialKind, titl
     setBusy(true);
     setError("");
     try {
-      const result = await postJson<{ intake: JourneyIntake }>("/api/film/intake", { draftId: draftId.current, targetType, targetId, kind, title, story, fixedFacts, targetDurationSec, answers, previous: intake });
+      const result = await postJson<{ intake: JourneyIntake }>("/api/film/intake", { draftId: draftId.current, targetType, targetId, kind, title, story, fixedFacts, targetDurationSec, answers, previous: intake, model: claude.id });
       setIntake(result.intake);
     } catch (cause) {
       setError((cause as Error).message);

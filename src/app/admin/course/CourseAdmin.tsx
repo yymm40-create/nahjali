@@ -175,6 +175,7 @@ export default function CourseAdmin() {
           <Money label="اليوم الثاني: المباشرة" value={s.prices.liveB} onChange={(n) => set("prices", { ...s.prices, liveB: n })} hint="٠ = ما تنعرض" />
           <Money label="اليوم الثاني: الكاملة" value={s.prices.comboB} onChange={(n) => set("prices", { ...s.prices, comboB: n })} hint="مباشرة + مسجلة · ٠ = ما تنعرض" />
           <Money label="اليوم الثاني: المسجلة" value={s.prices.recordedB} onChange={(n) => set("prices", { ...s.prices, recordedB: n })} hint="٠ = ما تنعرض" />
+          <Money label="بعدها: الكاملة" value={s.prices.comboC} onChange={(n) => set("prices", { ...s.prices, comboC: n })} hint="مباشرة + مسجلة · ٠ = ما تنعرض" />
           <Money label="بعدها: المباشرة" value={s.prices.liveC} onChange={(n) => set("prices", { ...s.prices, liveC: n })} />
           <Money label="بعدها: المسجلة" value={s.prices.recordedC} onChange={(n) => set("prices", { ...s.prices, recordedC: n })} />
           <Money label="سعرها الأصلي: المباشرة" value={s.was.live} onChange={(n) => set("was", { ...s.was, live: n })} hint="يظهر مشطوبًا (الكاملة = المباشرة + المسجلة)" />

@@ -119,7 +119,9 @@ vi.mock("@/lib/film/anthropic", () => ({
   callClaudeJson: async (a: { turns: { content: { type: string; text?: string }[] }[] }) => {
     const parts = a.turns[0].content;
     s.calls.push({ text: parts.filter((p) => p.type === "text").map((p) => p.text).join("\n"), images: parts.filter((p) => p.type === "image64").length });
-    return { data: s.reply, raw: "", usage: { input_tokens: 1, output_tokens: 1 } };
+    // every lab call answers {result} in the branch its request names (LAB_SCHEMA)
+    const kind = /result\.kind = \\"(\w+)/.exec(JSON.stringify(a.turns))?.[1];
+    return { data: { result: { kind, ...(s.reply as object) } }, raw: "", usage: { input_tokens: 1, output_tokens: 1 } };
   },
   claudeCost: () => 0.01,
   claudeWhy: (_e: unknown, say: string) => say,

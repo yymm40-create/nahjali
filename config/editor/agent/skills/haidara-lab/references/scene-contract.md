@@ -3,10 +3,10 @@
 THE SCENE YOU WRITE — one JavaScript program (no HTML, no imports) that calls scene() once:
 
 scene({
-  title: "…",                     // the piece's name
+  title: "…",                     // the piece's name (every value in this outline is only an example of the shape)
   duration: 15,                   // seconds (the brief's length)
-  bpm: 120,                       // the tempo the beats sit on (cuts and hits land on its grid)
-  background: "#0b0b10",          // filled before every frame (optional)
+  bpm: 120,                       // the tempo the beats sit on (cuts and hits land on its grid) — the piece's own
+  background: "#0b0b10",          // filled before every frame (optional) — the plan's own ground
   blur: 0.5,                      // motion-blur shutter 0–1 (0.5 = 180°): averaged sub-frames on export; 0 for crisp UI
   three: false,                   // true → K.THREE (three.js 0.170.0) and K.addon("postprocessing/EffectComposer.js") are loaded; render into K.glCanvas and draw it onto ctx
   cues: [ { t: 0.0, sfx: "transition-whoosh-fast" }, { t: 1.2, sfx: "hit-bass-hit", vol: 0.8 } ], // sound on the frames that change

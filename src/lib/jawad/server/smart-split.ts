@@ -226,7 +226,8 @@ async function planVideo(v: VideoInputs, note: string, want: { music: boolean; s
   });
   if (parts.length < 5) throw new Error("frames unreadable");
   parts.push({ type: "text", text: note.trim() ? `The user's note:\n<<<\n${note.trim()}\n>>>` : "No note from the user." });
-  const r = await callClaudeJson<SoundPlan>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema: SCHEMA, maxTokens: 20_000, effort: "high", fallback: true });
+  // medium effort: a plan read off the frames, not a hard problem («high» thought at length over up to 60 pictures, all paid as output)
+  const r = await callClaudeJson<SoundPlan>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema: SCHEMA, maxTokens: 20_000, effort: "medium", fallback: true });
   return { plan: cleanPlan(r.data, sec, want), usage: r.usage };
 }
 

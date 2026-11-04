@@ -2,7 +2,7 @@ import { checkUpscale, startUpscale } from "@/lib/editor/upscale";
 import { labMatte } from "@/lib/editor/matte";
 import { readLabSource, saveLabSource } from "@/lib/editor/lab-source";
 import { NextResponse } from "next/server";
-import { handOff, loadChat } from "@/lib/editor/chat";
+import { handOff, inConversation, loadChat } from "@/lib/editor/chat";
 import { claudeCharged } from "@/lib/editor/pricing";
 import { addChatSpent } from "@/lib/chat-spend";
 import { approveFixesConfirm, approveFixesUrl, linkForFix } from "@/lib/editor/smart";
@@ -79,6 +79,8 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
   // a team series' edit: what is made in it is paid from its «نقود الفريق الذكي»
   const who = { id: user.id, email: user.email, owner, team: (await editorTeamSeries(p))?.id ?? null };
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  // حيدرا ماكس's conversation the page is in (`chat`: another one than the project's main one — its turns are the page's)
+  const pc = inConversation(p, b.chat);
   // the AI («حيدرا ماكس» and all it makes) is its own right on the dashboard's list
   if (AI_ACTIONS.has(String(b.action)) && !(await can(user.email, "editor_ai"))) throw new UserError("حيدرا ماكس (الذكاء الاصطناعي) مقفل لحسابك حاليًا.", 403);
   switch (b.action) {
@@ -151,10 +153,10 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await smartMask(p, who, b));
     case "diagnose":
       // the site's owner only (a free guest is «unlimited» too, but never sees the site's insides)
-      return NextResponse.json(await diagnose(p, { id: user.id, email: user.email, owner: isAdmin(user.email) }, b));
+      return NextResponse.json(await diagnose(pc, { id: user.id, email: user.email, owner: isAdmin(user.email) }, b));
     // حيدرا ماكس checks a colour change it made (pictures and scopes), and corrects it until it is right
     case "grade_check":
-      return NextResponse.json(await gradeCheck(p, who, b, new URL(req.url).origin));
+      return NextResponse.json(await gradeCheck(pc, who, b, new URL(req.url).origin));
     // «🤖 حيدرا ماكس يضبط الكي»: he looks at the frame, the matte and the result, and corrects the key's settings
     case "key_check":
       return NextResponse.json(await keyCheck(p, who, b));
@@ -166,7 +168,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     case "lab_matte":
       return NextResponse.json(await labMatte(p, who, b), noStore);
     // the lab's Claude steps read against the request's own clock (the platform ends it at maxDuration)
-    // the lab's conversations, kept on the server (migration 0087): list, open, save, rename, delete
+    // حيدرا ماكس's conversations (the motion lab runs inside them), kept on the server (migration 0087): list, open, save, rename, delete
     case "lab_chats":
       return NextResponse.json(await listLabChats(p, user.id), noStore);
     case "lab_chat_get":
@@ -185,19 +187,19 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await labPicture(p, who, b, new URL(req.url).origin));
     case "lab_plan":
       b.__at = Date.now();
-      return b.stream ? labResponse((onText) => labPlan(p, who, b, onText), b.watch === true) : NextResponse.json(await labPlan(p, who, b));
+      return b.stream ? labResponse((onText, signal) => labPlan(p, who, { ...b, __signal: signal }, onText), b.watch === true) : NextResponse.json(await labPlan(p, who, { ...b, __signal: req.signal }));
     case "lab_chat":
       b.__at = Date.now();
-      return b.stream ? labResponse((onText) => labChat(p, who, b, onText), b.watch === true) : NextResponse.json(await labChat(p, who, b));
+      return b.stream ? labResponse((onText, signal) => labChat(p, who, { ...b, __signal: signal }, onText), b.watch === true) : NextResponse.json(await labChat(p, who, { ...b, __signal: req.signal }));
     // «🌐 ابحث»: a real web search for حيدرا ماكس, brought by the page to the next step
     case "lab_search":
       return NextResponse.json(await labSearch(p, who, b));
     case "lab_write":
       b.__at = Date.now();
-      return b.stream ? labResponse((onText) => labWrite(p, who, b, onText), b.watch === true) : NextResponse.json(await labWrite(p, who, b));
+      return b.stream ? labResponse((onText, signal) => labWrite(p, who, { ...b, __signal: signal }, onText), b.watch === true) : NextResponse.json(await labWrite(p, who, { ...b, __signal: req.signal }));
     case "lab_review":
       b.__at = Date.now();
-      return b.stream ? labResponse(() => labReview(p, who, b)) : NextResponse.json(await labReview(p, who, b));
+      return b.stream ? labResponse((_, signal) => labReview(p, who, { ...b, __signal: signal })) : NextResponse.json(await labReview(p, who, { ...b, __signal: req.signal }));
     // «Claude Code»: حيدرا ماكس executes cuts, arrangement and colour as programs the browser runs (write · fix · review)
     case "code_edit_write":
       return NextResponse.json(await codeEditWrite(p, who, b));
@@ -208,7 +210,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     case "code_grade_review":
       return NextResponse.json(await codeGradeReview(p, who, b));
     case "assistant": {
-      const r = await claudeCharged(who, b.model, "محادثة حيدرا ماكس", () => assist(p, who, b, new URL(req.url).origin), (r) => r.usd, { said: String(b.message ?? ""), reply: (r) => r.reply });
+      const r = await claudeCharged(who, b.model, "محادثة حيدرا ماكس", () => assist(pc, who, b, new URL(req.url).origin), (r) => r.usd, { said: String(b.message ?? ""), reply: (r) => r.reply });
       const spent = await addChatSpent("editor_chats", "project_id", p.id, r.spentHalalas, r.worth);
       return NextResponse.json({ ...r, spent });
     }
@@ -222,7 +224,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     case "chat":
       return NextResponse.json(await loadChat(p), noStore);
     case "handoff":
-      return NextResponse.json(await handOff(p, who, b));
+      return NextResponse.json(await handOff(pc, who, b));
     case "history":
       return NextResponse.json({ history: await history(p.id) }, noStore);
   }

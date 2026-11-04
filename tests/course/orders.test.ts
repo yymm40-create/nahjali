@@ -107,6 +107,18 @@ describe("«ادفع الآن»", () => {
     expect(tables.learn_grants.map((g) => g.course_id)).toEqual([A, B]);
   });
 
+  it("on the clock course a discount code buys the whole course (live + recorded) at its price, even on the days the whole isn't sold", async () => {
+    const { startOrder } = await import("@/lib/course/orders");
+    settings = readSettings({ ...settings, ladderCourseId: A });
+    tables.learn_codes = [{ course_id: A, code: "MOTION", price_sar: 80 }];
+    const t = T0 + 60 * H; // the third day on: only live 80 and recorded 150 are on sale
+    const r = await startOrder(U, { courseId: A, code: "motion", product: "recorded", ...who }, t);
+    expect(r.order).toMatchObject({ product: "combo", amount: 80, was: 230, bonus: 0, code: "MOTION" });
+    // without the code the person gets what they picked, at today's price
+    const plain = await startOrder({ id: "u-9" }, { courseId: A, product: "recorded", ...who }, t);
+    expect(plain.order).toMatchObject({ product: "recorded", amount: 150 });
+  });
+
   it("a course's discount code gives its price; a wrong code, another course's code or none changes nothing", async () => {
     const { startOrder, codePrice } = await import("@/lib/course/orders");
     tables.learn_codes = [{ course_id: A, code: "JAWAD20", price_sar: 40 }, { course_id: B, code: "ONLYB", price_sar: 50 }];

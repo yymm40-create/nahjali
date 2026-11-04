@@ -49,6 +49,10 @@ export async function fitImages<M extends { content: unknown }>(messages: M[]): 
       jobs.push(
         fit(src.url).then((f) => {
           if (f) arr[i] = { ...f, ...(b.cache_control ? { cache_control: b.cache_control } : {}) };
+          // a link Claude can't open itself (not https: a desktop file haidara-media://…, a relative /api/… path) that the
+          // server couldn't fetch either: a line saying so, never the link — the API refused the WHOLE request for it
+          // («Only HTTPS URLs are supported»)
+          else if (!/^https:\/\//.test(src.url!)) arr[i] = { type: "text", text: "(صورة ما قدرت أفتحها هنا — الشخص أرفقها لكن رابطها ما ينفتح من الخادم.)", ...(b.cache_control ? { cache_control: b.cache_control } : {}) };
         }),
       );
     });

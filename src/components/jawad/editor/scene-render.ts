@@ -42,9 +42,9 @@ export function cutTimes(changes: number[], duration: number, fps = 30, most = 5
 }
 
 /** A sheet of the frames at exactly these times, tiled with the time under each. */
-export async function sheetAt(host: SceneHost, times: number[], cols = 6): Promise<string> {
+export async function sheetAt(host: SceneHost, times: number[], cols = 6, cell?: number): Promise<string> {
   const count = times.length;
-  const cellW = host.w >= host.h ? 320 : 180;
+  const cellW = cell ?? (host.w >= host.h ? 320 : 180);
   const cellH = Math.round((cellW * host.h) / host.w);
   const rows = Math.ceil(count / cols);
   const pad = 22;
@@ -136,21 +136,27 @@ export async function renderVideo(host: SceneHost, o: { duration: number; fps: n
   await output.start();
   const frames = Math.max(1, Math.round(o.duration * o.fps));
   const sub = Math.max(1, Math.round(o.sub ?? (o.blur > 0 ? 6 : 1)));
-  for (let i = 0; i < frames; i++) {
-    if (signal?.aborted) throw new DOMException("cancelled", "AbortError");
-    const t = i / o.fps;
-    const bm = await host.frame(t, { scale: 1, sub, shutter: o.blur });
-    // a transparent frame may leave empty pixels (alpha 0): cleared first, or the last frame's pixels would show through
-    if (o.transparent) ctx.clearRect(0, 0, w, h);
-    ctx.drawImage(bm, 0, 0, w, h);
-    bm.close();
-    await source.add(t, 1 / o.fps);
-    if (sound && o.audio && (t + 1 / o.fps >= soundAt + 1 || i === frames - 1)) {
-      const to = i === frames - 1 ? o.audio.duration : soundAt + 1;
-      if (to > soundAt) await sound.add(sliceOf(o.audio, soundAt, to));
-      soundAt = to;
+  try {
+    for (let i = 0; i < frames; i++) {
+      if (signal?.aborted) throw new DOMException("cancelled", "AbortError");
+      const t = i / o.fps;
+      const bm = await host.frame(t, { scale: 1, sub, shutter: o.blur });
+      // a transparent frame may leave empty pixels (alpha 0): cleared first, or the last frame's pixels would show through
+      if (o.transparent) ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(bm, 0, 0, w, h);
+      bm.close();
+      await source.add(t, 1 / o.fps);
+      if (sound && o.audio && (t + 1 / o.fps >= soundAt + 1 || i === frames - 1)) {
+        const to = i === frames - 1 ? o.audio.duration : soundAt + 1;
+        if (to > soundAt) await sound.add(sliceOf(o.audio, soundAt, to));
+        soundAt = to;
+      }
+      if (i % 5 === 0 || i === frames - 1) onProgress(i / frames, i, frames);
     }
-    if (i % 5 === 0 || i === frames - 1) onProgress(i / frames, i, frames);
+  } catch (e) {
+    // a cancelled or failed render lets its encoder go (browsers allow only a few at once)
+    await output.cancel().catch(() => undefined);
+    throw e;
   }
   source.close();
   sound?.close();

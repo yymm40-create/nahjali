@@ -46,6 +46,12 @@ export interface TextStyle {
   grad?: string | null;
   /** «عمق ثلاثي»: the words extruded as a 3D block, 0 (flat) … 1 (deep), its sides a darker shade */
   depth?: number;
+  /**
+   * «ميلان ثلاثي»: the words turned in 3D with a perspective, in degrees (−60…60): `tiltY` around the upright axis (one
+   * side nearer, the other further), `tiltX` around the level axis (the top leaning back). Absent/0 = flat.
+   */
+  tiltY?: number;
+  tiltX?: number;
 }
 
 /** A caption's spoken word: from `s` to `e` ms after the clip starts. */
@@ -130,8 +136,12 @@ export interface Backdrop {
   despill: number;
   /** the cast's colour ("#rrggbb"), or "" = found from the background on each frame */
   spillColor: string;
+  /** «ظل»: the person kept filled with one colour (a silhouette, like a poster), "" = their own picture */
+  fill?: string;
 }
 export const DEFAULT_BACKDROP: Backdrop = { mode: "blur", color: "#16a34a", blur: 40, feather: 0.3, shrink: 0, steady: 0.5, show: false, despill: 0, spillColor: "" };
+/** «ظل»: the colours offered for the silhouette and the paper behind it (the poster look) */
+export const SILHOUETTE = { fill: "#141010", paper: "#efe6d6" } as const;
 
 /** A backdrop as stored or sent, kept inside its bounds (older projects get the default edge settings). */
 export function readBackdrop(v: Record<string, unknown>, base: Backdrop = DEFAULT_BACKDROP): Backdrop {
@@ -146,6 +156,10 @@ export function readBackdrop(v: Record<string, unknown>, base: Backdrop = DEFAUL
     show: v.show === undefined ? base.show : v.show === true,
     despill: Math.round(n(v.despill, 0, 1, base.despill ?? 0) * 100) / 100,
     spillColor: v.spillColor === "" ? "" : typeof v.spillColor === "string" && /^#[0-9a-f]{6}$/i.test(v.spillColor) ? v.spillColor.toLowerCase() : (base.spillColor ?? ""),
+    ...((): { fill?: string } => {
+      const f = v.fill === undefined ? (base.fill ?? "") : v.fill;
+      return typeof f === "string" && /^#[0-9a-f]{6}$/i.test(f) ? { fill: f.toLowerCase() } : {};
+    })(),
   };
 }
 
@@ -844,6 +858,8 @@ function readText(v: unknown): TextStyle | null {
     ...(o.glow == null ? {} : { glow: color(o.glow, "#ffffff") }),
     ...(o.grad == null ? {} : { grad: color(o.grad, "#ffffff") }),
     ...(o.depth == null || !Number(o.depth) ? {} : { depth: num(o.depth, 0, 1, 0) }),
+    ...(o.tiltY == null || !Number(o.tiltY) ? {} : { tiltY: Math.round(num(o.tiltY, -60, 60, 0)) }),
+    ...(o.tiltX == null || !Number(o.tiltX) ? {} : { tiltX: Math.round(num(o.tiltX, -60, 60, 0)) }),
   };
 }
 

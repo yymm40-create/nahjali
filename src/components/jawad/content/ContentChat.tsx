@@ -13,22 +13,23 @@ import { useClaudeModel } from "@/components/robots/claude-model";
 import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
-import { answerLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, DELEGATE_LINE, FONT_AUTO_LINE, fontLine, fontStyleLine, moodLine, motionLine, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
+import { answerLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, DELEGATE_LINE, FONT_AUTO_LINE, fontLine, fontStyleLine, moodLine, MOTION_CAROUSEL_HELP_LINE, motionCarouselLine, motionCarouselOwnLine, motionLine, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
 import CarouselTable, { type CarouselItem } from "./CarouselTable";
 import FontTable, { type FontItem } from "./FontTable";
+import MotionCarouselTable from "./MotionCarouselTable";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { drawWithCode, smallJpeg } from "@/components/claude-code/draw";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
-interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean }
+interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean; video?: string; videoUrl?: string | null; videoDownload?: string | null }
 interface FailView { n: number; reason: string; detail?: string; text: string }
-interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code"; mix?: boolean }
+interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code"; mix?: boolean; motion?: unknown }
 interface MediaView {
   id: string; kind: "image" | "video"; name: string; aspect: string; refs?: string[]; state: "todo" | "running" | "done" | "failed";
   url?: string | null; download?: string | null; error?: string; detail?: string; transient?: boolean; tries?: number;
   desk?: { generator: string; coins: number; free: boolean };
 }
-interface Question { label: string; kind: "choice" | "templates" | "styles" | "motion" | "moods" | "palettes" | "carousels" | "fonts"; options: string[]; multi: boolean }
+interface Question { label: string; kind: "choice" | "templates" | "styles" | "motion" | "moods" | "palettes" | "carousels" | "fonts" | "motioncarousels"; options: string[]; multi: boolean }
 interface Msg {
   role: "user" | "assistant";
   text: string;
@@ -231,7 +232,7 @@ export function Questions({ questions, gal, styleId, disabled, onSend, onWrite }
   const [openOther, setOpenOther] = useState<Record<number, boolean>>({});
   // the table of carousel styles (or the list of fonts) opens by itself: it is the question
   const [gallery, setGallery] = useState<number | null>(() => {
-    const i = questions.findIndex((x) => x.kind === "carousels" || x.kind === "fonts");
+    const i = questions.findIndex((x) => x.kind === "carousels" || x.kind === "fonts" || x.kind === "motioncarousels");
     return i < 0 ? null : i;
   });
   const [lines, setLines] = useState<Record<number, string>>({});
@@ -305,6 +306,24 @@ export function Questions({ questions, gal, styleId, disabled, onSend, onWrite }
                 )
               )}
             </div>
+          ) : q.kind === "motioncarousels" ? (
+            <div className="ct-opts">
+              <button type="button" className="ct-opt" aria-pressed={gallery === qi} disabled={disabled} onClick={() => setGallery(gallery === qi ? null : qi)}>
+                🎬 {gallery === qi ? "أغلق جدول الحركة" : "افتح جدول ستايلات الحركة (١٠ ستايلات)"}
+              </button>
+              {chosenName(qi) && (
+                <span className="ct-chip ct-picked">✓ {chosenName(qi)} <button type="button" aria-label="ألغِ" onClick={() => setLines((s) => { const n = { ...s }; delete n[qi]; return n; })}>✕</button></span>
+              )}
+              {gallery === qi && (
+                <MotionCarouselTable
+                  recommended={q.options}
+                  disabled={disabled}
+                  onPick={(m) => pickCarousel(qi, motionCarouselLine({ id: m.id, name: m.name }))}
+                  onHelp={() => onSend([...answered, MOTION_CAROUSEL_HELP_LINE].join("\n"))}
+                  onOwn={(what) => pickCarousel(qi, motionCarouselOwnLine(what))}
+                />
+              )}
+            </div>
           ) : q.kind === "carousels" ? (
             <div className="ct-opts">
               <button type="button" className="ct-opt" aria-pressed={gallery === qi} disabled={disabled} onClick={() => setGallery(gallery === qi ? null : qi)}>
@@ -363,6 +382,15 @@ export function Questions({ questions, gal, styleId, disabled, onSend, onWrite }
   );
 }
 
+/** A rendered slide's MP4 put up as the person's upload (signed, then checked by the server); its upload id. */
+async function putVideo(blob: Blob, fileName: string): Promise<string> {
+  const signed = await postJson<{ id: string; signedUrl: string }>("/api/jawad/uploads", { kind: "video", mime: "video/mp4", bytes: blob.size, fileName });
+  await putWithProgress(signed.signedUrl, new File([blob], fileName, { type: "video/mp4" }), "video/mp4", () => {});
+  const conf = await postJson<{ upload: { id: string; status: string; error: string | null } }>("/api/jawad/uploads/confirm", { id: signed.id });
+  if (conf.upload?.status !== "ready") throw new Error(conf.upload?.error ?? "تعذّر رفع فيديو الشريحة.");
+  return conf.upload.id;
+}
+
 /** The carousel of an answer: tiles in order, the drawing ones as moving placeholders, each made one with its check. */
 export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; step?: string | null }) {
   const ns = [...new Set([...s.items.map((i) => i.n), ...s.todo])].sort((a, b) => a - b);
@@ -374,7 +402,12 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, step }: { s:
         <div className="ct-progress" role="status" aria-live="polite">
           <span className="ct-spin" aria-hidden />
           <div>
-            {s.maker === "code" && s.mix ? (
+            {s.motion ? (
+              <>
+                <b>🎬 حيدرا ماكس يصنع الموشن كاروسيل… ({done} من {s.total})</b>
+                <small>{step ? `${step} — ` : ""}يكتب كل شريحة مشهدًا متحركًا، ويشوف فريماتها ويصلّحها، ثم تطلع هنا فيديو MP4 بصوته (دقايق للشريحة). لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
+              </>
+            ) : s.maker === "code" && s.mix ? (
               <>
                 <b>🖼️ GPT Image 2 يرسم الصور وحيدرا ماكس يكتب عليها… ({done} من {s.total})</b>
                 <small>{step ? `${step} — ` : ""}جواد يولّد صورة كل شريحة بدون كتابة، وحيدرا ماكس يكتب عليها الكلام العربي بالكود ويراجعه. لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
@@ -400,14 +433,14 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, step }: { s:
           const drawing = s.todo.includes(n);
           return (
             <figure key={n} className={`ct-slide ${drawing ? "drawing" : ""} ${item?.flag ? "flag" : ""}`} style={{ aspectRatio: aspect }}>
-              {item?.url && <img src={item.url} alt={item.text} loading="lazy" />}
+              {item?.videoUrl ? <video src={item.videoUrl} poster={item.url ?? undefined} autoPlay muted loop playsInline controls preload="metadata" aria-label={item.text} /> : item?.url && <img src={item.url} alt={item.text} loading="lazy" />}
               <span className="n">{n}</span>
               {drawing && <span className="shimmer" aria-label={`الشريحة ${n} قيد الرسم`}><span className="ct-spin" /></span>}
               {item && !drawing && (
                 <>
                   {item.flag ? <span className="badge warn" title={item.flag}>⚠️</span> : item.fixed ? <span className="badge fixed" title="أُعيد رسمها بعد أن وُجد فيها خطأ">🔁✓</span> : <span className="badge ok" title="سليمة في الفحص الآلي">✓</span>}
                   <span className="tools">
-                    {item.download && <a href={item.download} download={`${item.name}.png`}>⬇️</a>}
+                    {item.videoDownload ? <a href={item.videoDownload} download={`${item.name}.mp4`} title="حمّل الفيديو">⬇️</a> : item.download && <a href={item.download} download={`${item.name}.png`}>⬇️</a>}
                     <button type="button" disabled={busy} onClick={() => onRetry([n])} title="أعد رسم هذه الشريحة">🔁</button>
                   </span>
                 </>
@@ -566,8 +599,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const runProduce = useCallback(async (id: string, retry?: number[] | "failed") => {
     setBusy("producing");
     let first = true;
-    type Step = { aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean } };
-    const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}), ...(r.code?.mix || old?.mix ? { mix: true } : {}) }));
+    type Step = { aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number }; sfx?: Record<string, string> } };
+    const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}), ...(r.code?.mix || old?.mix ? { mix: true } : {}), ...(r.code?.motion || old?.motion ? { motion: r.code?.motion ?? old?.motion } : {}) }));
     try {
       for (let guard = 0; guard < 80; guard++) {
         let r = await postJson<Step>("/api/content/produce", { chatId: id, ...(first && retry ? { retry } : {}) });
@@ -577,9 +610,16 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
           // «حيدرا ماكس»: the slide is drawn here in code (its painted picture placed in it), looked at and rewritten, then sent back
           const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
           if (r.code.photos?.length) setCodeStep(`🖼️ صورة الشريحة ${r.code.n} جاهزة من GPT Image 2 (بدون كتابة)`);
-          const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "content", onStep: (st) => setCodeStep(st.text) });
+          const motion = r.code.motion ? { n: r.code.n, ...r.code.motion, sfx: r.code.sfx } : null;
+          const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "content", motion, onStep: (st) => setCodeStep(st.text) });
+          // a motion slide: its MP4 goes up as the person's upload, and the server records it with the slide
+          let video: string | undefined;
+          if (drawn.video) {
+            setCodeStep(`⬆️ أرفع فيديو الشريحة ${r.code.n}…`);
+            video = await putVideo(drawn.video, `slide-${String(r.code.n).padStart(2, "0")}.mp4`);
+          }
           setCodeStep(null);
-          r = await postJson<Step>("/api/content/produce", { chatId: id, n: r.code.n, png: drawn.png, rounds: drawn.rounds, scores: drawn.scores });
+          r = await postJson<Step>("/api/content/produce", { chatId: id, n: r.code.n, png: drawn.png, rounds: drawn.rounds, scores: drawn.scores, ...(video ? { video } : {}) });
           show(r);
         }
         if (!r.running) break;
@@ -750,11 +790,13 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
 
   const downloadAll = (items: SlideView[]) => {
     items.forEach((s, i) => {
-      if (!s.download) return;
+      // a motion slide downloads as its video
+      const href = s.videoDownload ?? s.download;
+      if (!href) return;
       setTimeout(() => {
         const a = document.createElement("a");
-        a.href = s.download!;
-        a.download = `${s.name}.png`;
+        a.href = href;
+        a.download = `${s.name}.${s.videoDownload ? "mp4" : "png"}`;
         a.click();
       }, i * 400);
     });

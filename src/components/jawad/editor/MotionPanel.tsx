@@ -6,8 +6,10 @@
 // `update_clip` with a `motion` patch, so it is undone like any edit and drawn at once.
 
 import { useState } from "react";
-import { clipLength, formatTime, type Clip } from "@/lib/editor/model";
-import { AMBIENT_SHAPES, MOTION_ENTERS, MOTION_KINDS, MOTION_LIMITS, MOTION_THEMES, motionColors, type MotionColors, type MotionEl, type MotionEnter, type MotionItem, type MotionThemeId } from "@/lib/editor/motion-elements";
+import { clipLength, formatTime, type Clip, type Timeline } from "@/lib/editor/model";
+import { AMBIENT_SHAPES, MOTION_ENTERS, MOTION_KINDS, MOTION_LIMITS, MOTION_THEMES, motionColors, RIBBON_PARTS, type MotionColors, type MotionEl, type MotionEnter, type MotionItem, type MotionThemeId, type RibbonPart } from "@/lib/editor/motion-elements";
+import { readFaceTrack } from "./face-hud";
+import type { EditorAsset } from "./types";
 import FontPicker from "./FontPicker";
 import type { Run } from "./Inspector";
 import type { PlayerLike } from "./Timeline";
@@ -32,8 +34,23 @@ const PLACES: { label: string; x: number; y: number }[] = [
 ];
 const sec = (ms: number) => Math.round(ms / 100) / 10;
 
-export default function MotionPanel({ clip, motion: m, locked, run, player }: { clip: Clip; motion: MotionEl; locked: boolean; run: Run; player: PlayerLike | null }) {
+export default function MotionPanel({ clip, motion: m, locked, run, player, tl, assets, flash }: { clip: Clip; motion: MotionEl; locked: boolean; run: Run; player: PlayerLike | null; tl?: Timeline; assets?: Map<string, EditorAsset>; flash?: (text: string, bad?: boolean) => void }) {
   const [tab, setTab] = useState<Tab>("el");
+  const [reading, setReading] = useState(false);
+  // «تتبّع الوجه»: the face read off the video under the element (in the browser), then kept on the element
+  const readFace = async () => {
+    if (!tl || !assets) return;
+    setReading(true);
+    try {
+      const track = await readFaceTrack(tl, clip, assets);
+      set({ track }, "track");
+      flash?.(`لقينا الوجه في ${track.length} لحظة، والمربع يمشي معه.`);
+    } catch (e) {
+      flash?.(e instanceof Error ? e.message : "ما قدرنا نقرأ الوجه.", true);
+    } finally {
+      setReading(false);
+    }
+  };
   const set = (patch: Partial<MotionEl>, key: string) => run({ type: "update_clip", clipId: clip.id, patch: { motion: patch } }, { coalesce: `${clip.id}:motion:${key}` });
   const length = clipLength(clip);
   const kind = MOTION_KINDS[m.kind];
@@ -77,12 +94,49 @@ export default function MotionPanel({ clip, motion: m, locked, run, player }: { 
         </div>
       )}
 
+      {tab === "el" && m.kind === "facehud" && (
+        <div className="space-y-2 rounded-xl border border-jw-line p-2.5">
+          <p className="text-xs font-semibold">🎯 يمشي مع الوجه</p>
+          <p className="text-[11px] leading-5 text-jw-muted">
+            {m.track.length ? `ماشي مع الوجه (${m.track.length} لحظة من الفيديو اللي تحته).` : "للحين ثابت بمكانه. اضغط تحت ونقرأ الوجه من الفيديو اللي تحت هذا العنصر بنفس ثوانيه (على جهازك، مجانًا)."}
+          </p>
+          <button type="button" className="jw-btn jw-btn-primary w-full text-xs" disabled={locked || reading || !tl || !assets} onClick={() => void readFace()}>
+            {reading ? "نقرأ الوجه…" : m.track.length ? "اقرأ الوجه من جديد" : "اقرأ الوجه من الفيديو"}
+          </button>
+          {m.track.length > 0 && (
+            <button type="button" className="jw-btn jw-btn-quiet w-full text-xs" disabled={locked} onClick={() => set({ track: [] }, "track")}>
+              خلّه ثابت
+            </button>
+          )}
+          <p className="text-[11px] leading-5 text-jw-faint">لو قصّيت أو حرّكت الفيديو تحته، اقرأ الوجه من جديد.</p>
+        </div>
+      )}
+
+      {tab === "el" && m.kind === "ribbon" && (
+        <div className="space-y-2 rounded-xl border border-jw-line p-2.5">
+          <p className="text-xs font-semibold">🎀 الشريط</p>
+          <div className="grid grid-cols-3 gap-1">
+            {(Object.entries(RIBBON_PARTS) as [RibbonPart, string][]).map(([id, label]) => (
+              <button key={id} type="button" disabled={locked} aria-pressed={m.part === id} className={`jw-btn !min-h-8 text-[11px] ${m.part === id ? "jw-btn-primary" : "jw-btn-quiet"}`} onClick={() => set({ part: id }, "part")}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="jw-btn jw-btn-primary w-full text-xs" disabled={locked} onClick={() => run({ type: "wrap_ribbon", clipId: clip.id })}>
+            لفّه حول الشخص
+          </button>
+          <p className="text-[11px] leading-5 text-jw-faint">نقسم الشريط نصين: النص اللي ورا يروح تحت الشخص المقصوص من الفيديو، والنص اللي قدّام فوقه، فيبان كأنه يلف حوله. لونه من «البارز» في «الشكل».</p>
+        </div>
+      )}
+
       {tab === "el" && m.kind !== "ambient" && (
         <div className="space-y-3">
-          <label className="block space-y-1">
-            <span className="text-xs text-jw-muted">{m.kind === "phrase" ? "العبارة" : m.kind === "big" ? "الوصف تحت الرقم" : "العنوان"}</span>
-            <input className="jw-input w-full" dir="auto" maxLength={MOTION_LIMITS.title} value={m.title} disabled={locked} onChange={(e) => set({ title: e.target.value }, "title")} />
-          </label>
+          {m.kind !== "ribbon" && (
+            <label className="block space-y-1">
+              <span className="text-xs text-jw-muted">{m.kind === "phrase" ? "العبارة" : m.kind === "big" ? "الوصف تحت الرقم" : m.kind === "facehud" ? "الكلمة جنب الأرقام" : "العنوان"}</span>
+              <input className="jw-input w-full" dir="auto" maxLength={MOTION_LIMITS.title} value={m.title} disabled={locked} onChange={(e) => set({ title: e.target.value }, "title")} />
+            </label>
+          )}
           {m.kind === "title" && (
             <label className="block space-y-1">
               <span className="text-xs text-jw-muted">السطر اللي تحته</span>
@@ -149,6 +203,11 @@ export default function MotionPanel({ clip, motion: m, locked, run, player }: { 
             <Range label="عمودي" value={Math.round(m.y * 100)} min={0} max={100} disabled={locked} onChange={(v) => set({ y: v / 100 }, "y")} unit="%" />
             <Range label="الحجم" value={Math.round(m.size * 100)} min={50} max={200} disabled={locked} onChange={(v) => set({ size: v / 100 }, "size")} unit="%" />
           </div>
+          {m.kind !== "ribbon" && (
+            <button type="button" className="jw-btn jw-btn-quiet w-full text-xs" disabled={locked} onClick={() => run({ type: "behind_person", clipId: clip.id })} title="ننسخ الفيديو اللي تحته بنفس ثوانيه ونشيل خلفيته في مسار فوقه، فيصير الشخص قدّام العنصر">
+              🧍 حطّه ورا الشخص
+            </button>
+          )}
         </div>
       )}
 
