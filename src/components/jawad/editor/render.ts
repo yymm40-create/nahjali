@@ -524,7 +524,7 @@ function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Trans
       ctx.fillRect(-w / 2, -h / 2, w, h);
     }
     ctx.filter = filter || "none";
-    ctx.drawImage(cutout(f, f.mask, clip.bg.feather ?? 0.3, clip.bg.despill ?? 0, clip.bg.spillColor ?? ""), -w / 2, -h / 2, w, h);
+    ctx.drawImage(cutout(f, f.mask, clip.bg.feather ?? 0.3, clip.bg.despill ?? 0, clip.bg.spillColor ?? "", clip.bg.fill ?? ""), -w / 2, -h / 2, w, h);
   } else if (clip.fx.length || look.tfx.length) {
     // «المؤثرات»: the clip's own effects (and a transition's passing one), on its own time
     const plan = fxPlan(look.tfx.length ? [...clip.fx, ...look.tfx] : clip.fx, Math.max(0, ms - clip.start) / 1000, clipLength(clip) / 1000);
@@ -577,7 +577,7 @@ function softMask(mask: CanvasImageSource, feather: number, w: number, h: number
   return soft;
 }
 
-function cutout(f: Frame, mask: CanvasImageSource, feather = 0.3, despill = 0, spillColor = "") {
+function cutout(f: Frame, mask: CanvasImageSource, feather = 0.3, despill = 0, spillColor = "", fill = "") {
   scratch ??= document.createElement("canvas");
   const k = Math.min(1, 1280 / Math.max(f.width, f.height));
   const w = Math.max(1, Math.round(f.width * k));
@@ -607,6 +607,13 @@ function cutout(f: Frame, mask: CanvasImageSource, feather = 0.3, despill = 0, s
       despillPixels(img.data, cast, despill);
       c.putImageData(img, 0, 0);
     }
+  }
+  // «ظل»: the person kept, filled with one colour (a silhouette); the soft edge stays as the mask drew it
+  if (fill) {
+    c.globalCompositeOperation = "source-in";
+    c.fillStyle = fill;
+    c.fillRect(0, 0, w, h);
+    c.globalCompositeOperation = "source-over";
   }
   return scratch;
 }
@@ -701,9 +708,103 @@ const ARABIC = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFE
 const wordIn = (p: number, i: number, n: number) => Math.min(1, Math.max(0, p * (n + 1.5) - i));
 const popScale = (a: number) => 0.55 + 0.45 * (1 + 2.70158 * (a - 1) ** 3 + 1.70158 * (a - 1) ** 2);
 
+/**
+ * «ميلان ثلاثي»: the words drawn flat on a page of their own, then laid back onto the frame strip by strip with a
+ * perspective (the canvas has no 3D): turned around the upright axis (`tiltY`, one side nearer) and/or the level axis
+ * (`tiltX`, the top leaning back), about the text's own centre.
+ */
+let tiltPage: HTMLCanvasElement | null = null;
+let tiltPage2: HTMLCanvasElement | null = null;
+let tilting = false;
+const TILT_STRIP = 3;
+function drawTilted(ctx: CanvasRenderingContext2D, clip: Clip, t: Transform, look: Drawn, W: number, H: number, ms: number, tiltY: number, tiltX: number) {
+  const page = (c: HTMLCanvasElement | null) => {
+    const p = c ?? document.createElement("canvas");
+    if (p.width !== W || p.height !== H) {
+      p.width = W;
+      p.height = H;
+    }
+    const g = p.getContext("2d")!;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = "source-over";
+    g.clearRect(0, 0, W, H);
+    return { p, g };
+  };
+  const A = page(tiltPage);
+  tiltPage = A.p;
+  tilting = true;
+  try {
+    drawText(A.g, clip, t, look, W, H, ms);
+  } finally {
+    tilting = false;
+  }
+  // the text's block (with room for its depth, glow and a turn of the clip) is the only part laid back
+  const lay = textLayout(A.g, clip.text!, t.scale * look.scale, W, H);
+  const px = t.x * W + look.dx * W;
+  const py = t.y * H + look.dy * H;
+  const m = lay.size * 1.2;
+  const half = Math.max(lay.w, lay.h) * (t.rotate || look.rotate ? 0.75 : 0.5);
+  const bx0 = Math.max(0, Math.floor(px - (t.rotate || look.rotate ? half : lay.w / 2) - m));
+  const bx1 = Math.min(W, Math.ceil(px + (t.rotate || look.rotate ? half : lay.w / 2) + m));
+  const by0 = Math.max(0, Math.floor(py - (t.rotate || look.rotate ? half : lay.h / 2) - m));
+  const by1 = Math.min(H, Math.ceil(py + (t.rotate || look.rotate ? half : lay.h / 2) + m));
+  if (bx1 <= bx0 || by1 <= by0) return;
+  const P = 0.75 * Math.max(W, H);
+  const ry = (tiltY * Math.PI) / 180;
+  const rx = (tiltX * Math.PI) / 180;
+  // around the upright axis: each column moves in (or out) and shrinks (or grows) with its distance
+  const colX = (x: number) => {
+    const d = x - px;
+    const f = P / (P + d * Math.sin(ry));
+    return { x: px + d * Math.cos(ry) * f, f };
+  };
+  const rowY = (y: number) => {
+    const d = y - py;
+    const f = P / (P - d * Math.sin(rx));
+    return { y: py + d * Math.cos(rx) * f, f };
+  };
+  let src: HTMLCanvasElement = A.p;
+  let out: CanvasRenderingContext2D = ctx;
+  if (tiltY && tiltX) {
+    const B = page(tiltPage2);
+    tiltPage2 = B.p;
+    out = B.g;
+  }
+  if (tiltY) {
+    for (let x = bx0; x < bx1; x += TILT_STRIP) {
+      const sw = Math.min(TILT_STRIP, bx1 - x);
+      const a = colX(x);
+      const b = colX(x + sw);
+      const w = b.x - a.x;
+      if (w <= 0) continue;
+      const f = (a.f + b.f) / 2;
+      out.drawImage(src, x, by0, sw, by1 - by0, a.x, py + (by0 - py) * f, w + 0.6, (by1 - by0) * f);
+    }
+    if (!tiltX) return;
+    src = tiltPage2!;
+    out = ctx;
+  }
+  // around the level axis: each row moves up (or down) and narrows (or widens) with its distance
+  const wx0 = tiltY ? 0 : bx0;
+  const wx1 = tiltY ? W : bx1;
+  for (let y = by0; y < by1; y += TILT_STRIP) {
+    const sh = Math.min(TILT_STRIP, by1 - y);
+    const a = rowY(y);
+    const b = rowY(y + sh);
+    const h = b.y - a.y;
+    if (h <= 0) continue;
+    const f = (a.f + b.f) / 2;
+    out.drawImage(src, wx0, y, wx1 - wx0, sh, px + (wx0 - px) * f, a.y, (wx1 - wx0) * f, h + 0.6);
+  }
+}
+
 function drawText(ctx: CanvasRenderingContext2D, clip: Clip, t: Transform, look: Drawn, W: number, H: number, ms: number) {
   const s0 = clip.text!;
   if (!s0.body.trim()) return;
+  const tiltY = Math.max(-60, Math.min(60, Number(s0.tiltY) || 0));
+  const tiltX = Math.max(-60, Math.min(60, Number(s0.tiltX) || 0));
+  if ((tiltY || tiltX) && !tilting && typeof document !== "undefined") return drawTilted(ctx, clip, t, look, W, H, ms, tiltY, tiltX);
   // «مطّ»: the words stretched with the kashida, settling back; «عدّاد» rolls the numbers up; «فك الشفرة» decodes
   let body = look.kashida > 0 ? kashida(s0.body, Math.round(look.kashida * 5)) : s0.body;
   if (look.count != null) body = countText(body, look.count);
