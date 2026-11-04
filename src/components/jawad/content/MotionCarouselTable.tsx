@@ -1,11 +1,13 @@
 "use client";
 
-// «صانع المحتوى» — جدول ستايلات الحركة: the ten ready motion styles of a motion carousel, each with a small moving
+// «صانع المحتوى» — جدول ستايلات الحركة: the ready motion styles of a motion carousel, each with a small moving
 // preview (CSS only), what it fits, and the cheapest way that makes it; «ساعدني» leaves it to «محمد باقر», and
 // «ابنِه معي من الصفر» takes the person's own words.
 
 import { useState } from "react";
 import { MOTION_CAROUSEL_STYLES, routeById, type MotionCarouselStyle } from "@config/content-motion-carousel";
+
+const WORD: Record<string, string> = { counter: "٨٧٪", breaking: "عاجل", "text-behind": "جديد", quiz: "سؤال؟" };
 
 const COST = { code: "الأرخص: بالكود فقط", picture: "+ صورة GPT Image 2", elements: "+ عناصر مفرّغة" } as const;
 
@@ -14,7 +16,7 @@ function Preview({ s }: { s: MotionCarouselStyle }) {
     <span className={`mvp mvp-${s.id}`} aria-hidden>
       <i className="bg" />
       <i className="el" />
-      <b className="l1">{s.id === "counter" ? "٨٧٪" : "فكرتك"}</b>
+      <b className="l1">{WORD[s.id] ?? "فكرتك"}</b>
       <b className="l2">تتحرك هنا</b>
       <i className="mark" />
     </span>

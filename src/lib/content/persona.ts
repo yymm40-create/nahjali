@@ -142,7 +142,7 @@ export function chosenBlock(ids: Chosen): string {
   else if (fontId === "auto") out.push(`العميل ترك الخط لك: اختر من قائمة الخطوط الأنسب للستايل والموضوع${car?.font ? ` (للستايل خط جاهز: ${car.font})` : ""}، وضع معرّفه في "font_id"، واذكر له اسمه في ردّك.`);
   const mv = ids.move ? findMotionCarouselStyle(ids.move) : null;
   if (mv) out.push(`ستايل الحركة الذي اختاره العميل للموشن كاروسيل: ${mv.n}) ${mv.name} (${mv.id}) — ${mv.feel} كل شريحة نحو ${mv.seconds} ثوانٍ. الموقع يضيف طريقته لكل شريحة؛ اكتب في "prompt" ما يخص الشريحة (ما يدخل وبأي ترتيب، وما يبقى ثابتًا في آخرها). أرخص طريقة صنع تناسبه: ${routeById(mv.route)!.label}.`);
-  else if (ids.move === "help") out.push('العميل لا يعرف أي ستايل حركة يختار، فساعده: رشّح له ٣ من ستايلات الحركة العشرة تناسب موضوعه مع سبب من سطر لكل واحد، وأرخصها أولًا، واعرضها بسؤال kind="motioncarousels" و"options" فيها معرّفات الثلاثة.');
+  else if (ids.move === "help") out.push('العميل لا يعرف أي ستايل حركة يختار، فساعده: رشّح له ٣ من ستايلات الحركة الجاهزة تناسب موضوعه مع سبب من سطر لكل واحد، وأرخصها أولًا، واعرضها بسؤال kind="motioncarousels" و"options" فيها معرّفات الثلاثة.');
   else if (ids.move === "own") out.push("العميل يبني ستايل الحركة من الصفر معك بكلامه: افهم منه كيف يدخل الكلام، وماذا يتحرك، والصوت، والخلفية، واقترح عليه ما ينقصه، ثم اكتب ذلك في \"prompt\" كل شريحة. الموقع يسلّم وصفه لحيدرا ماكس مع كل شريحة.");
   const t = ids.template ? findTemplate(ids.template) : null;
   if (t) {

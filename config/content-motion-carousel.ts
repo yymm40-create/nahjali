@@ -1,7 +1,7 @@
 // «محمد باقر» والموشن كاروسيل — the carousel whose slides are short videos (the words enter with motion, a soft sound
 // with each entry, sometimes a moving background): what he knows (Instagram's own rules, when it beats a still carousel
 // or a reel, how each slide is built — from a web study and a look at about 100 motion-carousel posts on Instagram,
-// 4 November 2026), the ten ready motion styles the person picks from (or one built from zero with him), and the three
+// 4 November 2026), the ready motion styles the person picks from (ten, then eleven more from a second study the same day) (or one built from zero with him), and the three
 // ways of making it, cheapest first. «حيدرا ماكس» makes every slide in the person's browser: he writes the slide as a
 // moving scene in the motion lab's kit, looks at its frames, fixes it, and the page renders it to MP4 with its sound.
 // Pure (server and browser).
@@ -85,6 +85,72 @@ export const MOTION_CAROUSEL_STYLES: MotionCarouselStyle[] = [
     bestFor: "القصص، والأماكن، والمنتجات الفاخرة، والإعلانات",
     craft: "photo1 is the slide's full painted picture: a slow camera push (3–6% over the slide) with a gentle parallax drift, a soft light sweep or rising dust, the grade of the carousel's look. The words fade and rise over the calm area of the picture with a soft scrim behind them if needed. A low soft whoosh at the start, nothing else.",
   },
+  {
+    id: "chat", n: 11, name: "المحادثة", route: "code", seconds: 6,
+    feel: "الشريحة شكلها شات: رسالة تطلع، وبعدها نقاط «يكتب...»، وبعدها الرد، وفي الأخير «تمت القراءة».",
+    bestFor: "القصص، وأسئلة العملاء، و«واحد سألني...»، والحوار بين شخصين",
+    craft: "The slide is a chat window (a header with a round avatar, a name and «متصل» that turns to «يكتب...» while the dots bounce). Messages arrive one after another as bubbles that grow from their corner with a small overshoot (0.45 s): the question on one side in a light bubble, the answers on the other in the brand gradient, each answer preceded by 0.6–0.8 s of three bouncing dots. A read receipt at the end. Short messages (one line each, 2–4 per slide). A soft pop on each bubble, tiny ticks while typing.",
+  },
+  {
+    id: "quiz", n: 12, name: "سؤال وجواب", route: "code", seconds: 6,
+    feel: "سؤال وتحته ٣ خيارات، وشريط وقت يخلص، وبعدها الجواب الصح ينوّر والغلط يبهت. يخلي الناس يعلّقون بجوابهم.",
+    bestFor: "المسابقات، والمعلومة اللي تفاجئ، والتعليم، وزيادة التعليقات",
+    craft: "A question on top, then three option cards (letters أ ب ج) spring in one after another. A thin timer bar empties over about 2 s with a tick each half second. Then the right option fills with the brand gradient, scales up a touch and draws a check mark, while the wrong ones fade to 35% with a short shake. A last line invites the answer in the comments before swiping. Ticks for the timer, a soft rising chord on the reveal. The right answer must be the one the text gives.",
+  },
+  {
+    id: "breaking", n: 13, name: "خبر عاجل", route: "code", seconds: 5,
+    feel: "شريط «عاجل» يدخل مع لمعة، والعنوان يطلع كلمة كلمة، وتحته شريط أخبار يمشي. شكل نشرة الأخبار.",
+    bestFor: "الأخبار اليومية، والتحديثات، والإعلان عن شي جديد",
+    craft: "A news-studio slide: dark background with slow diagonal lines and a red glow; a red «عاجل» bar slides in from the right with a quick white flash, a blinking «مباشر» dot; the headline stamps in word by word (0.16 s apart) in two short lines that fit inside the frame; a white ticker bar along the bottom scrolls continuously to the right (Arabic reads into it) with more short headlines. Two short alert beeps, a whoosh, a tick per word, a soft air bed under the ticker.",
+  },
+  {
+    id: "phone", n: 14, name: "شاشة الجوال", route: "code", seconds: 6,
+    feel: "جوال في نص الشريحة، وإصبع يضغط زر داخله، والشاشة تنقلب للنتيجة وتنزل لتحت. شرح تطبيق بدون تصوير شاشة.",
+    bestFor: "شرح التطبيقات والأدوات والمواقع، وخطوات «كيف تسويها»",
+    craft: "A phone mockup rises into the middle (rounded dark frame, the screen clipped inside). The screen shows a simple app drawn in code (a top bar with the tool's name, a few cards, one big button with the slide's action). A soft fingertip glides in and taps the button (it sinks a little, a ripple spreads), the screen slides sideways to the result, which plays its own small motion, then the finger flicks and the screen scrolls a little. Only the words given appear on the screen. A pop on the tap, a whoosh on the slide, an airy swipe on the scroll.",
+  },
+  {
+    id: "map-route", n: 15, name: "الخريطة والطريق", route: "code", seconds: 6,
+    feel: "خريطة مرسومة، وطريق ينرسم من محطة لمحطة، ودبوس ينزل عند كل وحدة واسمها جنبه.",
+    bestFor: "الرحلات، والأماكن والفروع، وخطوات من البداية للنهاية، وقصة البراند",
+    craft: "A soft drawn map (blocks, streets, a river, in the carousel's colours, never a copy of a real map app). A smooth route (Catmull-Rom through a few points) draws itself as a dashed gradient line with a glowing dot at its head; when it reaches a stop a pin drops with a little bounce and its label card (the stop's name) fades in beside it. 2–4 stops per slide, labels kept clear of the title. A pop on each pin, a soft air sound while the route travels.",
+  },
+  {
+    id: "panorama", n: 16, name: "المشهد الممتد", route: "code", seconds: 6,
+    feel: "مشهد واحد عريض بكامل تفاصيله (سماء، تلال، طيارة ورق) مقسوم على الشرائح، يتحرك كله مع بعض، وشي يطير من شريحة للي بعدها. لما يسحب يحس إنه عالم واحد طويل.",
+    bestFor: "القصة الطويلة، وإطلاق منتج، والإعلانات اللي تبي إبهار",
+    craft: "The whole carousel is ONE wide moving world (slides side by side), not a line: a full background (sky, light, layered hills or a city) that drifts in parallax across every slide, and a traveller (a paper plane, a ball, a character) that flies through all of them with a trail. Each slide is one window of that world: write each slide as its own window, offset by its place (slide n shows x from (n-1)·W to n·W of the world, slide 1 on the LEFT end, because Instagram's next slide comes from the right), so the scenery, the trail and the traveller meet exactly at every edge. Each window carries its own short words. A long soft air bed and a whoosh as the traveller passes. A real AI video split the same way is possible later, but it is far more expensive.",
+  },
+  {
+    id: "text-behind", n: 17, name: "الكلام ورا الشي", route: "elements", seconds: 5,
+    feel: "كلمة كبيرة تطلع من ورا العنصر المفرّغ كأنها مدفونة في المشهد، والخلفية تتحرك. يعطي الشريحة عمق.",
+    bestFor: "إطلاق منتج، والعناوين القوية، والمنتجات والشخصيات",
+    craft: "Three layers in this order: a living background (soft colour blobs drifting), then ONE giant word (300–400 px, white or the brand colour) rising from below, then the cut-out element (photo1, transparent PNG) IN FRONT of the word so it covers part of it, floating gently with a soft shadow; a small readable line in front of everything. The word must still read with the element over it (the element covers its middle or lower part, not its first letters). A rising tone, a whoosh and a soft hit when the word lands.",
+  },
+  {
+    id: "crumpled", n: 18, name: "الورقة المكرمشة", route: "code", seconds: 6,
+    feel: "كورة ورق مكرمشة تنفتح شوي شوي لين تصير ورقة، وبعدها تنكتب عليها رسالة بخط القلم.",
+    bestFor: "الرسائل الشخصية، والاعتراف، والنصيحة، و«وقّف السكرول»",
+    craft: "A sheet of paper starts as a crumpled ball (a mesh of triangles pulled toward the middle, each facet shaded differently) and unfolds over about 2.4 s to a flat sheet with faint creases and notebook lines. Then the message is written right to left like a pen (a clip reveal) in a pen colour, one short line after another, and finally underlined by hand. The paper never covers the chrome. Paper-crinkle bursts while it opens, soft pen scratches while it writes.",
+  },
+  {
+    id: "blur-warning", n: 19, name: "الشاشة المغطاة", route: "code", seconds: 6,
+    feel: "الشريحة مغطاة بضباب مثل تحذير «محتوى حساس»: «هالشريحة فيها سر... متأكد تبي تشوف؟»، وبعدين الإصبع يضغط والضباب ينشال.",
+    bestFor: "الكشف عن سر أو عرض، والمعلومة المفاجئة، وجذب الفضول",
+    craft: "The slide's real content is drawn underneath, heavily blurred (40–50 px). Over it a dark glass cover with a crossed-out eye, the warning line, a sub line that swaps to «متأكد تبي تشوف؟», and a «شوف الشريحة» button. A fingertip comes in and taps the button (ripple), then the blur clears and the cover fades over about 1 s and the revealed line pops slightly. A parody of the app's own warning screen, drawn in the carousel's look, never a copy of it. A low tone at the start, ticks on the lines, a pop on the tap, a whoosh and a bright chime on the reveal.",
+  },
+  {
+    id: "error-window", n: 20, name: "نافذة الخطأ", route: "code", seconds: 6,
+    feel: "نوافذ خطأ من كمبيوتر قديم تطلع فوق بعض، والماوس يضغط «إصلاح»، فتنسكر كلها وتطلع نافذة «تم».",
+    bestFor: "الأخطاء الشائعة، والمشكلة والحل، والمحتوى التقني المرح",
+    craft: "A retro desktop (flat colour, a faint dot grid). Old-computer windows (bevelled grey, a navy title bar with three square buttons, a red «!» icon, one short error line, one bevelled button) pop up one after another, stacked with an offset. An arrow cursor glides to the last window's «إصلاح» button and clicks (the button bevel inverts), the windows close in reverse, and one last window with the brand gradient title and a check mark says the fix. Retro error beeps on each window, clicks, a short rising chime at the end.",
+  },
+  {
+    id: "carousel-3d", n: 21, name: "البطاقات الثلاثية", route: "code", seconds: 6,
+    feel: "بطاقات تلف في الفضاء مثل الدولاب ثلاثي الأبعاد، وتوقف على البطاقة المهمة قدامه.",
+    bestFor: "عرض القائمة كاملة، والخدمات، والمنتجات، وأقسام الكورس",
+    craft: "Five or six cards stand on a ring in 3D space (fake perspective in 2D: x = sin(angle)·R, depth = cos(angle), scale and brightness by depth, width squashed by |cos| so they turn, drawn back to front, a soft floor shadow). The ring turns one to one and a half times with an ease-in-out and settles with the slide's main card facing the viewer; only the facing cards show their words (a big faint number and one word). A line under it invites the swipe. Airy whooshes as cards pass the front, a soft hit when it stops.",
+  },
 ];
 
 export const findMotionCarouselStyle = (id: string | null | undefined) => MOTION_CAROUSEL_STYLES.find((s) => s.id === id) ?? null;
@@ -137,9 +203,10 @@ export const MOTION_CAROUSEL_GUIDE = `الموشن كاروسيل (كاروسي�
 - «امسك واسحب بسرعة»: الشرائح متتالية كأنها دفتر رسوم متحرك (فليب بوك)، فإذا سحبها بسرعة تحرّكت الصورة. تفاعل عالٍ.
 - قبل وبعد في الشريحة نفسها: الشكل العادي يتحوّل أمامه للشكل المتقن.
 - تايبوغرافي يتكشّف: الكلمة المهمة تُكتب أو تُرسم أمامه، أو تُخط بخط يدوي.
+- من بحث ثانٍ (٤ نوفمبر ٢٠٢٦، مقالات ترندات ٢٠٢٦ وبوستات إنستقرام): المشهد الممتد المتحرك على كل الشرائح (من أنجحها: عشرات الآلاف من الإعجابات)؛ الكلام ورا العنصر فوق خلفية متحركة؛ رحلة على خريطة؛ الشاشة المغطاة بتحذير ثم الكشف؛ الورقة المكرمشة اللي تنفتح؛ نوافذ الخطأ القديمة؛ البطاقات اللي تلف ثلاثي الأبعاد؛ ومعها شكل الشات، والسؤال والجواب، والخبر العاجل، وشاشة الجوال.
 - الملاحظة من البحث: البوستات التي قالت «الذكاء الاصطناعي حرّك كل شريحة» دون أن تريه نتيجة لافتة لم تنتشر. الأداة ليست الهوك؛ النتيجة هي الهوك.
 
-ستايلات الحركة العشرة الجاهزة (جدول kind="motioncarousels"؛ يختار منها العميل، أو يبنيها معك من الصفر بوصفه، أو يطلب مساعدتك):
+ستايلات الحركة الجاهزة (جدول kind="motioncarousels"؛ يختار منها العميل، أو يبنيها معك من الصفر بوصفه، أو يطلب مساعدتك):
 ${MOTION_CAROUSEL_STYLES.map((s) => `- ${s.id} — ${s.n}) ${s.name}: ${s.feel} يناسب: ${s.bestFor}. أرخص طريقة تناسبه: ${routeById(s.route)!.label}.`).join("\n")}
 
 طرق الصنع، من الأرخص للأغلى (قدّم الأرخص أولًا دائمًا، وبيّن بوضوح ما فيه تكلفة إضافية):
