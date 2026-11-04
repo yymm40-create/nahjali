@@ -5,42 +5,30 @@
 // filled from the habits, it shows ticked here — or anything new, simply ticked. Kept with the day's tasks (priority).
 
 import { useMemo, useState } from "react";
-import { dayGoals, versionAt } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { habitStatus } from "@/lib/mahdi/client/derive";
 import type { DayTask, Habit } from "@/lib/mahdi/types";
 import AlertBell from "./AlertBell";
 import Icon from "./Icon";
+import { YesterdayPriorities } from "./PriorityHistory";
+import { usePriorityDone } from "./usePriorityDone";
 import { useMahdi } from "./Provider";
 
 export default function DayPriorities() {
-  const { state, store, timeline, toast } = useMahdi();
+  const { state, store, toast } = useMahdi();
   const { snap, today } = state;
   const items = useMemo(() => snap.tasks.filter((x) => x.date === today && x.priority).sort((a, b) => a.sortOrder - b.sortOrder), [snap.tasks, today]);
   const habits = useMemo(() => snap.habits.filter((h) => habitStatus(h, today) !== "paused"), [snap.habits, today]);
   const [title, setTitle] = useState("");
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
+  // ticked, or (for a habit) filled from the habits — the same check as the past days' statistics
+  const { isDone, habitOf, want: wantOn } = usePriorityDone();
 
   if (!snap.tasksReady) return null;
 
-  /** What fills a habit today (a tick, or its day target), or null when it can't be told. */
-  const want = (h: Habit) => {
-    const v = versionAt({ ...h, logs: {} }, today);
-    const inst = dayGoals(timeline, today).find((i) => i.itemId === h.id && i.kind === "day");
-    return v?.measure === "check" ? 1 : inst ? inst.target : null;
-  };
-  const habitOf = (x: DayTask) => (x.habitId ? snap.habits.find((h) => h.id === x.habitId) ?? null : null);
-  /** Ticked here, or (for a habit) filled from the habits. */
-  const isDone = (x: DayTask) => {
-    if (x.doneAt) return true;
-    const h = habitOf(x);
-    if (!h) return false;
-    const w = want(h);
-    return w !== null && (state.logs[h.id]?.[today] ?? 0) >= w;
-  };
-
+  const want = (h: Habit) => wantOn(h, today);
   const save = (next: DayTask[]) => store.setSnapPart({ tasks: next });
   const call = async (method: "POST" | "PATCH" | "DELETE", json: Record<string, unknown>) => {
     const r = await mahdiFetch<{ tasks: DayTask[] }>("/api/mahdi/tasks", { method, json });
@@ -186,6 +174,9 @@ export default function DayPriorities() {
           </>
         )}
       </form>
+
+      {/* yesterday's priorities are kept: how many were done, and the way to the past days */}
+      <YesterdayPriorities />
     </section>
   );
 }

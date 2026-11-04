@@ -248,6 +248,10 @@ export function api(url: string, method: string): unknown {
       return u.searchParams.get("count") ? { unread: 3 } : { items: [] };
     case "/api/mahdi/feedback":
       return { prompt: false };
+    case "/api/mahdi/tasks":
+      // past «أولويات اليوم»: 2–3 a day, most done (one tied to «دعاء العهد»)
+      if (u.searchParams.get("priorities") === "1") return { ready: true, priorities: pastPriorities(u.searchParams.get("from")!, u.searchParams.get("to")!) };
+      return { tasks: snapshot.tasks };
     case "/api/mahdi/notes":
       return { note: notes[u.searchParams.get("kind") ?? ""] ?? "", ready: true };
     case "/api/mahdi/sync":
@@ -290,4 +294,19 @@ export function api(url: string, method: string): unknown {
       return { items: [] };
   }
   return null;
+}
+
+const PAST = ["صلة الرحم", "تحضير درس الأخلاق", "قراءة دعاء كميل", "مراجعة الحفظ", "زيارة المريض", "ترتيب المكتبة", "الاتصال بأبو حسن", "إنهاء تقرير العمل"];
+/** Deterministic past priorities for each day of from..to (today's come from the snapshot). */
+function pastPriorities(from: string, to: string) {
+  const out: Snapshot["tasks"] = [];
+  for (let d = from, k = 0; d <= to; d = new Date(Date.parse(`${d}T00:00:00Z`) + 86400000).toISOString().slice(0, 10), k++) {
+    if (d === TODAY) { out.push(...snapshot.tasks.filter((x) => x.priority)); continue; }
+    const n = 2 + (k % 2);
+    for (let i = 0; i < n; i++) {
+      const done = (k * 3 + i) % 5 !== 1;
+      out.push({ id: `pp-${d}-${i}`, date: d, title: i === 0 && k % 3 === 0 ? "دعاء العهد" : PAST[(k * 2 + i) % PAST.length], at: null, habitId: i === 0 && k % 3 === 0 ? "h-ahd" : null, sortOrder: i, doneAt: done ? `${d}T12:00:00Z` : null, priority: true });
+    }
+  }
+  return out;
 }

@@ -1230,6 +1230,26 @@ export const ar = {
     notReady: "«أولويات اليوم» تحتاج تجهيز قاعدة البيانات (ملف SQL رقم 0058).",
   },
 
+  // past days' «أولويات اليوم»: kept, with what was done (PriorityHistory)
+  priorityHistory: {
+    title: "أولوياتي في الأيام السابقة",
+    week: "أولويات هالأسبوع",
+    month: "أولويات هالشهر",
+    day: "أولويات هاليوم",
+    last7Hint: "الأولويات ما تختفي: كل يوم ينحفظ بما خلّصت منه وما ما خلّصته.",
+    done: (n: number, of: number) => `خلّصت ${n} من ${of} أولوية`,
+    notDone: (n: number) => (n === 0 ? "ما فاتك شي 🌟" : `ما خلّصت ${n}`),
+    fullDays: (n: number, of: number) => `${n} من ${of} أيام خلّصت فيها كل أولوياتك`,
+    none: "ما كان فيه أولويات في هالأيام.",
+    noneDay: "ما كان فيه أولويات في هاليوم.",
+    doneList: "خلّصتها",
+    leftList: "ما خلّصتها",
+    openDay: "افتح اليوم",
+    error: "ما قدرنا نجيب الأولويات، جرّب بعد شوي.",
+    yesterday: (day: string, n: number, of: number) => `${day}: خلّصت ${n} من ${of} أولوياتك`,
+    seeDays: "الأيام السابقة",
+  },
+
   tasks: {
     title: "مهام اليوم",
     hint: "أشياء تسويها اليوم بس، مو عادة ولا جدول ثابت.",

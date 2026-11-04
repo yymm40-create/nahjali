@@ -87,6 +87,11 @@ const SHOTS = [
   ["challenges", "challenges", "/mahdi/challenges"],
   ["progress", "progress", "/mahdi/progress", true],
   ["week", "week", "/mahdi/progress/week"],
+  ["priorities", "progress", "/mahdi/progress", false, async (page) => {
+    // the past days' priorities in «حاسبوا أنفسكم», the newest day opened
+    await page.locator("#priorities button[aria-expanded]").first().click();
+    await page.locator("#priorities").evaluate((e) => e.scrollIntoView({ block: "start" }));
+  }],
   ["menu", "home", "/mahdi", false, async (page) => { 
     // the inbox count inside the drawer is position:absolute in mahdi.css (its Tailwind «static» loses to it), so it
     // floats to the drawer's corner; drawn in its row here, as intended
