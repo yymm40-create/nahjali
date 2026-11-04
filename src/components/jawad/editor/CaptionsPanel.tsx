@@ -38,7 +38,7 @@ export default function CaptionsPanel({ dock, open, onClose, projectId, tl, asse
   const auto = async () => {
     setError(null);
     try {
-      const { items, words } = await spokenCaptions(projectId, tl, chosen, lang, setBusy);
+      const { items, words } = await spokenCaptions(projectId, tl, chosen, lang, setBusy, style === "pop2" ? 2 : undefined);
       run({ type: "add_captions", items, style }, { label: `كابشن تلقائي (${items.length} جملة)` });
       flash(`كتبنا ${words} كلمة في ${items.length} جملة. تقدر تعدّل أي جملة بالضغط عليها.`);
       onClose();

@@ -36,6 +36,7 @@ import {
   type Transform,
   NEW_KEY,
   SILHOUETTE,
+  PERSON_EDGES,
 } from "@/lib/editor/model";
 import type { ClipPatch, Command } from "@/lib/editor/commands";
 import Icon from "../Icon";
@@ -691,6 +692,14 @@ export default function Inspector({
                 {clip.bg.fill && <input type="color" disabled={locked} value={clip.bg.fill} onChange={(e) => set({ bg: { fill: e.target.value } }, "bg:fill")} className="h-6 w-8 rounded border border-jw-line bg-transparent" aria-label="لون الظل" />}
               </label>
               {clip.bg.fill && <p className="text-[11px] leading-5 text-jw-faint">مع «لون بدلها» بلون فاتح (مثل الورق) يصير شكل البوستر: الشخص ظل أسود والكتابة وراه.</p>}
+              <p className="pt-1 text-xs font-semibold">✨ حافة الشخص</p>
+              <div className="flex flex-wrap gap-1.5">
+                {([["", "بدون"], ...Object.entries(PERSON_EDGES)] as [string, string][]).map(([id, label]) => (
+                  <button key={id || "none"} type="button" disabled={locked} aria-pressed={(clip.bg!.edge ?? "") === id} onClick={() => set({ bg: { edge: id } as never }, "bg:edge")} className={`rounded-full border px-2.5 py-1 text-[11px] ${(clip.bg!.edge ?? "") === id ? "border-jw-accent bg-jw-accent/15" : "border-jw-line"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           {clip.bg?.mode === "remove" && (
