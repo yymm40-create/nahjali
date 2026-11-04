@@ -15,6 +15,7 @@ import KhatmaCard from "./khatma/KhatmaCard";
 import GrowCard from "./GrowCard";
 import ReadingCard from "./ReadingCard";
 import DayPriorities from "./DayPriorities";
+import PriorityHistory from "./PriorityHistory";
 import DayTasks from "./DayTasks";
 import DayBars from "./DayBars";
 import HabitForm from "./HabitForm";
@@ -122,6 +123,8 @@ export default function DayView({ date: requested, home = false }: { date?: ISOD
       {home && <GrowCard />}
       {home && <BookletCard />}
       {isToday && <DayPriorities />}
+      {/* a past day keeps its priorities: what was done and what was not */}
+      {!isToday && date < today && <PriorityHistory from={date} to={date} title={t.priorityHistory.day} />}
       {isToday && <DayTasks />}
 
       {projects.length === 0 ? (

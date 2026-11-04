@@ -9,6 +9,7 @@ import { weekInsights } from "@/lib/mahdi/client/insights";
 import Icon from "@/components/mahdi/Icon";
 import EmergencySummary from "@/components/mahdi/EmergencySummary";
 import ReviewNote from "@/components/mahdi/ReviewNote";
+import PriorityHistory from "@/components/mahdi/PriorityHistory";
 import { WeekNoteWhen } from "@/components/mahdi/WeekNote";
 import { BarRow, Delta, Insights, ProgressTabs, Tile } from "@/components/mahdi/Stats";
 import { useMahdi } from "@/components/mahdi/Provider";
@@ -58,6 +59,9 @@ export default function WeekReport({ start }: { start?: string }) {
         <ReviewNote kind="week" start={ws} />
         <WeekNoteWhen />
       </div>
+
+      {/* the week's priorities: what was done and what was not, day by day */}
+      <PriorityHistory from={ws} to={addDays(ws, 6)} title={t.priorityHistory.week} />
 
       {s.required === 0 ? (
         <p className="m-card p-6 text-center m-muted">{t.reports.noData}</p>

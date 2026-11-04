@@ -11,6 +11,7 @@ import { BarRow, Insights, ProgressTabs, Tile } from "@/components/mahdi/Stats";
 import { FeedbackCard } from "@/components/mahdi/Feedback";
 import { useMahdi } from "@/components/mahdi/Provider";
 import ReviewNote from "@/components/mahdi/ReviewNote";
+import PriorityHistory from "@/components/mahdi/PriorityHistory";
 import { WeekNoteWhen } from "@/components/mahdi/WeekNote";
 
 /** Overview of all projects: this week, streaks, trends, projects and habits. */
@@ -44,6 +45,11 @@ export default function ProgressPage() {
           <ReviewNote kind="week" start={ws} />
           <WeekNoteWhen />
         </div>
+      </div>
+
+      {/* «أولوياتي»: the last 7 days' priorities, what was done and what was not */}
+      <div id="priorities" className="scroll-mt-24">
+        <PriorityHistory from={addDays(today, -7)} to={addDays(today, -1)} hint={t.priorityHistory.last7Hint} />
       </div>
 
       {!hasData ? (
