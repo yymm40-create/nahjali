@@ -2103,6 +2103,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             thumbs={thumbs}
             uploads={uploads.items}
             onPick={(f) => uploads.add(f)}
+            onLink={(l) => void uploads.addLink(l)}
             onDismiss={uploads.dismiss}
             onAdd={addToTimeline}
             onImported={(list) => {

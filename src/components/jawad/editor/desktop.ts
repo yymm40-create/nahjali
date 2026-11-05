@@ -9,7 +9,24 @@ export interface DesktopBridge {
   version: string;
   /** A file from the computer kept where it is: its id in the program, or null (not a file on the disk). */
   keepLocal: (file: File) => Promise<{ id: string; url: string } | null>;
+  /** «⬇️ من رابط» (1.2.3 and later): a YouTube / TikTok… video downloaded on the computer (yt-dlp) and kept like its files. */
+  fromLink?: (link: string, onProgress?: (m: LinkProgress) => void) => Promise<LinkFile | { error: string }>;
 }
+
+export interface LinkProgress {
+  stage: "tools" | "download" | "merge";
+  p?: number;
+  note?: string;
+}
+export interface LinkFile {
+  id: string;
+  url: string;
+  name: string;
+  bytes: number;
+}
+
+/** The program can download a video from a link (an older one cannot: it is told to update). */
+export const desktopLinks = () => typeof desktop()?.fromLink === "function";
 
 export const desktop = (): DesktopBridge | null => {
   if (typeof window === "undefined") return null;

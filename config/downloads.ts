@@ -15,7 +15,7 @@ export const DOWNLOADS = {
 };
 
 /** The desktop program's newest version: an older one shows «نسخة جديدة» inside it (AppUpdate). */
-export const DESKTOP_LATEST = "1.2.2";
+export const DESKTOP_LATEST = "1.2.3";
 /** The phone app's newest version, as its user agent says it («NahjAliApp/1.1», mobile/capacitor.config.json): an
  *  older one shows «نسخة جديدة» inside it (AppUpdate). */
 export const MOBILE_LATEST = "1.1";

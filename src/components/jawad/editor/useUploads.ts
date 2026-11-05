@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { postJson } from "@/lib/fetch";
 import { putWithProgress } from "../studio/upload";
-import { probe, shortName } from "./media";
+import { probe, probeUrl, shortName } from "./media";
 import { sendInParts, UploadGone, type PartsUpload } from "./parts";
 import type { EditorAsset } from "./types";
-import { desktop } from "./desktop";
+import { desktop, type LinkFile } from "./desktop";
 
 /** Where a dropped file goes once it is uploaded (none: the usual place). */
 export interface Placement {
@@ -59,7 +59,7 @@ function writeResume(key: string, v: (PartsUpload & { mime: string }) | null) {
  */
 export function useUploads(projectId: string, onDone: (a: EditorAsset, place?: Placement) => void, onFail?: (place: Placement | undefined, message: string) => void, onProgress?: (place: Placement | undefined, p: number) => void) {
   const [items, setItems] = useState<UploadItem[]>([]);
-  const queue = useRef<{ key: string; file: File; place?: Placement }[]>([]);
+  const queue = useRef<({ key: string; file: File; local?: undefined; place?: Placement } | { key: string; file?: undefined; local: LinkFile; place?: Placement })[]>([]);
   const busy = useRef(false);
   const done = useRef(onDone);
   const failed = useRef(onFail);
@@ -77,8 +77,30 @@ export function useUploads(projectId: string, onDone: (a: EditorAsset, place?: P
     busy.current = true;
     try {
       for (let job = queue.current.shift(); job; job = queue.current.shift()) {
-        const { key, file, place } = job;
+        const { key, place } = job;
         try {
+          // a video the desktop program downloaded from a link: already on the computer, only added to the project
+          if (job.local) {
+            const l = job.local;
+            const m = await probeUrl(l.url, l.name);
+            const r = await postJson<{ asset: EditorAsset }>(`/api/jawad/editor/projects/${projectId}`, {
+              action: "add_local",
+              localId: l.id,
+              kind: m.kind,
+              container: m.container,
+              bytes: l.bytes,
+              name: shortName(l.name),
+              durationMs: m.durationMs,
+              width: m.width,
+              height: m.height,
+              hasAudio: m.hasAudio,
+            });
+            done.current(r.asset, place);
+            if (m.playable) setItems((xs) => xs.filter((x) => x.key !== key));
+            else patch(key, { progress: 1, note: "متصفحك قد لا يعرض هذا الملف أثناء المونتاج (ترميز غير مدعوم)." });
+            continue;
+          }
+          const file = job.file;
           const m = await probe(file);
           if (!m.playable) patch(key, { note: "متصفحك قد لا يعرض هذا الملف أثناء المونتاج (ترميز غير مدعوم)؛ جرّب Chrome." });
           // the desktop program: the file stays on the computer (nothing uploaded)
@@ -164,7 +186,28 @@ export function useUploads(projectId: string, onDone: (a: EditorAsset, place?: P
     [next],
   );
 
+  // «⬇️ من رابط» in the desktop program: the video is downloaded on the computer (its progress shown here), then added
+  // like a file of the computer
+  const addLink = useCallback(
+    async (link: string, place?: Placement) => {
+      const fromLink = desktop()?.fromLink;
+      if (!fromLink) return;
+      const key = `link-${Math.random().toString(36).slice(2, 9)}`;
+      setItems((xs) => [...xs, { key, name: link, progress: 0, error: null, note: null }]);
+      const r = await fromLink(link, (m) => patch(key, { progress: m.p ?? 0, ...(m.note ? { name: m.note } : {}) })).catch((e: unknown) => ({ error: e instanceof Error ? e.message : "ما قدرنا ننزّل الفيديو." }));
+      if ("error" in r) {
+        patch(key, { error: r.error, name: link });
+        failed.current?.(place, r.error);
+        return;
+      }
+      patch(key, { name: r.name, progress: 1 });
+      queue.current.push({ key, local: r, place });
+      void next();
+    },
+    [next],
+  );
+
   const dismiss = useCallback((key: string) => setItems((xs) => xs.filter((x) => x.key !== key)), []);
 
-  return { items, add, dismiss, busy: items.some((x) => !x.error && !x.note) };
+  return { items, add, addLink, dismiss, busy: items.some((x) => !x.error && !x.note) };
 }
