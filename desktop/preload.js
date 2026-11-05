@@ -22,4 +22,17 @@ contextBridge.exposeInMainWorld("haidaraDesktop", {
     const id = await ipcRenderer.invoke("media:keep", where);
     return id ? { id, url: `haidara-media://file/${id}` } : null;
   },
+  /** «⬇️ من رابط»: a YouTube (or TikTok, X…) video downloaded on this computer and kept like its files. `onProgress`
+   *  gets { stage, p, note }; resolves to { id, url, name, bytes } or { error }. */
+  async fromLink(link, onProgress) {
+    const listen = (_e, m) => {
+      if (m && m.link === link && typeof onProgress === "function") onProgress({ stage: m.stage, p: m.p, note: m.note });
+    };
+    ipcRenderer.on("youtube:progress", listen);
+    try {
+      return await ipcRenderer.invoke("youtube:get", String(link ?? ""));
+    } finally {
+      ipcRenderer.removeListener("youtube:progress", listen);
+    }
+  },
 });
