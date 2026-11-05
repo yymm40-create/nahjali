@@ -48,7 +48,7 @@ export const ANSWER_SCHEMA = {
         required: ["label", "kind", "options", "multi"],
         properties: {
           label: { type: "string", description: "نص السؤال القصير" },
-          kind: { type: "string", enum: ["choice", "carousels", "fonts", "templates", "styles", "motion", "moods", "palettes"], description: "choice: خيارات نصية؛ carousels: جدول ستايلات الكاروسيل بالنيش، وهو أول سؤال في أي كاروسيل؛ fonts: قائمة الخطوط العربية (٥٠ خطًا)، بعد الستايل؛ templates: معرض قوالب الكاروسيل؛ styles: خريطة الستايلات (١٠٠ ستايل في ١٤ عائلة)؛ motion: معرض مهارات الموشن عند حيدرا ماكس؛ moods: معرض مشاعر الموشن؛ palettes: معرض الألوان (١٠٠ لوحة رباعية من Color Hunt)" },
+          kind: { type: "string", enum: ["choice", "carousels", "fonts", "templates", "styles", "motion", "moods", "palettes"], description: "choice: خيارات نصية؛ carousels: جدول ستايلات الكاروسيل حسب المجال، وهو أول سؤال في أي كاروسيل؛ fonts: قائمة الخطوط العربية (٥٠ خطًا)، بعد الستايل؛ templates: معرض قوالب الكاروسيل؛ styles: خريطة الستايلات (١٠٠ ستايل في ١٤ عائلة)؛ motion: معرض مهارات الموشن عند حيدرا ماكس؛ moods: معرض مشاعر الموشن؛ palettes: معرض الألوان (١٠٠ لوحة رباعية من Color Hunt)" },
           options: { type: "array", items: { type: "string" }, description: "إجابات قصيرة (٢–٧) لـ choice؛ ولـ carousels معرّفات الستايلات التي ترشحها (حتى ٥) أو فارغة؛ ولـ fonts معرّفات الخطوط التي ترشحها (حتى ٥) أو فارغة؛ وفارغة لبقية المعارض" },
           multi: { type: "boolean", description: "يجوز اختيار أكثر من إجابة" },
         },
@@ -248,7 +248,7 @@ export async function say(userId: string, chatId: string | null, message: string
     const slides = a.produce.slides
       .filter((s) => s && typeof s.prompt === "string" && s.prompt.trim())
       .slice(0, CONTENT.maxSlides)
-      .map((s, i) => ({ n: Number(s.n) || i + 1, text: String(s.text ?? "").slice(0, 2000), prompt: s.prompt.trim().slice(0, 4000), ...(typeof s.picture === "string" && s.picture.trim() ? { picture: s.picture.trim().slice(0, 3000) } : {}) }))
+      .map((s, i) => ({ n: Number(s.n) || i + 1, text: String(s.text ?? "").replace(/\s*<br\s*\/?>\s*/gi, "\n").slice(0, 2000), prompt: s.prompt.trim().slice(0, 4000), ...(typeof s.picture === "string" && s.picture.trim() ? { picture: s.picture.trim().slice(0, 3000) } : {}) }))
       .sort((x, y) => x.n - y.n);
     const templateId = a.produce.template_id && findTemplate(a.produce.template_id) ? a.produce.template_id : "";
     const styleId = a.produce.style_id && findStyle(a.produce.style_id) ? a.produce.style_id : "";

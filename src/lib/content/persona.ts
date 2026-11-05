@@ -58,9 +58,9 @@ export function turnText(parts: string[] = [], record = "") {
 export function catalogBlock(): string {
   const tpl = CAROUSEL_TEMPLATES.map((t) => `- ${t.id} — ${t.name} (${t.group}) — ${t.description} يناسب: ${t.bestFor}. بنيات: ${t.structures.map(structureName).join("، ")}. حتى ${t.words} كلمة في الشريحة.`).join("\n");
   const sty = FILM_STYLES.map((x) => `- ${x.id} — ${x.name} (${x.group} · ${x.school}) — ${x.feel}`).join("\n");
-  const car = CAROUSEL_STYLES.map((s) => `- ${s.id} — ${s.n}) ${s.name} (${s.niche})${s.winner ? " ★الأقوى في نيشه" : ""}${s.photoIdea ? " [صور واقعية]" : ""}${s.font ? ` [خطه الجاهز: ${s.font}]` : ""} — ${s.description} يناسب: ${s.bestFor}.`).join("\n");
+  const car = CAROUSEL_STYLES.map((s) => `- ${s.id} — ${s.n}) ${s.name} (${s.niche})${s.winner ? " ★الأقوى في مجاله" : ""}${s.photoIdea ? " [صور واقعية]" : ""}${s.font ? ` [خطه الجاهز: ${s.font}]` : ""} — ${s.description} يناسب: ${s.bestFor}.`).join("\n");
   const fonts = CONTENT_FONTS.map((f) => `- ${f.id} — ${f.name} (${f.group})${f.top ? " ★" : ""} — ${f.feel} يناسب: ${f.bestFor}.`).join("\n");
-  return `جدول ستايلات الكاروسيل (${CAROUSEL_STYLES.length} ستايلًا مصنفة بالنيش، بصورتين لكل واحد: غلاف وشريحة؛ جدول kind="carousels"؛ هو طريقة اختيار شكل الكاروسيل):\n${car}\n\nقائمة الخطوط العربية (${CONTENT_FONTS.length} خطًا في ${FONT_GROUPS.length} أنواع؛ قائمة kind="fonts"؛ تُسأل بعد الستايل: الموقع يعرضها بنفسه، وإذا رشّحت خطوطًا فضع معرّفاتها في "options"):\n${fonts}\n\n${CAROUSEL_GPT_CRAFT}\n\nقوالب الكاروسيل التي يعرضها الموقع للعميل (معرض kind="templates"؛ يختار واحدًا أو لا يختار):\n${tpl}\n\nخريطة الستايلات (${FILM_STYLES.length} ستايلًا في ١٤ عائلة، كل واحد تحت شركته أو مدرسته) لرسوم الصور (معرض kind="styles"؛ يطبّق الموقع نص الستايل حرفيًا على الرسوم والشخصيات والمشاهد المرسومة فقط، لا على تخطيط الكتابة):\n${sty}`;
+  return `جدول ستايلات الكاروسيل (${CAROUSEL_STYLES.length} ستايلًا مصنفة حسب المجال، بصورتين لكل واحد: غلاف وشريحة؛ جدول kind="carousels"؛ هو طريقة اختيار شكل الكاروسيل):\n${car}\n\nقائمة الخطوط العربية (${CONTENT_FONTS.length} خطًا في ${FONT_GROUPS.length} أنواع؛ قائمة kind="fonts"؛ تُسأل بعد الستايل: الموقع يعرضها بنفسه، وإذا رشّحت خطوطًا فضع معرّفاتها في "options"):\n${fonts}\n\n${CAROUSEL_GPT_CRAFT}\n\nقوالب الكاروسيل التي يعرضها الموقع للعميل (معرض kind="templates"؛ يختار واحدًا أو لا يختار):\n${tpl}\n\nخريطة الستايلات (${FILM_STYLES.length} ستايلًا في ١٤ عائلة، كل واحد تحت شركته أو مدرسته) لرسوم الصور (معرض kind="styles"؛ يطبّق الموقع نص الستايل حرفيًا على الرسوم والشخصيات والمشاهد المرسومة فقط، لا على تخطيط الكتابة):\n${sty}`;
 }
 
 /**
@@ -141,7 +141,7 @@ export function chosenBlock(ids: Chosen): string {
   const car = ids.carousel ? findCarouselStyle(ids.carousel) : null;
   if (car) {
     out.push(
-      `ستايل الكاروسيل الذي اختاره العميل: ${car.n}) ${car.name} (${car.id}) من نيش «${car.niche}». ${car.description}\nضع معرّفه في "carousel_id". ألوانه وخطه وهوامشه محسومة فيه: لا تسأل عنها، ولا تعرض معرض الألوان ولا القوالب إلا إذا طلب العميل تغيير شيء بنفسه. حتى ${car.words} كلمة في الشريحة.\nوصف الستايل كما يضيفه الموقع حرفيًا إلى كل شريحة (للعلم، لا تنسخه في "prompt"؛ اكتب فيه ما يخص الشريحة فقط):\n${carouselStyleBlock(car)}${
+      `ستايل الكاروسيل الذي اختاره العميل: ${car.n}) ${car.name} (${car.id}) من مجال «${car.niche}». ${car.description}\nضع معرّفه في "carousel_id". ألوانه وخطه وهوامشه محسومة فيه: لا تسأل عنها، ولا تعرض معرض الألوان ولا القوالب إلا إذا طلب العميل تغيير شيء بنفسه. حتى ${car.words} كلمة في الشريحة.\nوصف الستايل كما يضيفه الموقع حرفيًا إلى كل شريحة (للعلم، لا تنسخه في "prompt"؛ اكتب فيه ما يخص الشريحة فقط):\n${carouselStyleBlock(car)}${
         car.photoIdea
           ? `\nهذا الستايل فيه صور واقعية، فاسأله في ردّك التالي سؤالًا kind="choice" نصّه «هذا الستايل فيه صور واقعية: تضيف صورك أو نسويها لك؟» بخيارين حرفيًا: «أضيف صوري» و«سوّوها لي من الصفر»، وأعطه الفكرة لما يضيفه: ${car.photoIdea} وإذا اختار صوره فاطلب منه إرفاقها بزر 📎 وضع معرّفاتها في "refs"، وقل له أي صورة تذهب لأي شريحة (مثلًا: في الغلاف بوستر بصورتك هكذا).`
           : ""

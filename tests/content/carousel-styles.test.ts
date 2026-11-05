@@ -174,12 +174,21 @@ describe("what stops a new carousel", () => {
     expect(attachedPictures(withPics).map((f) => f.id)).toEqual(["p1"]);
   });
 
-  it("reads a press alone or as a line of a batch, never a sentence", () => {
+  it("reads a press alone or as a line of a batch, and an answer written word for word in a sentence", () => {
     expect(pickedMaker([user(MAKER_MIX)])).toBe("mix");
     expect(pickedMaker([user(answerLine(MAKER_LABEL, [MAKER_GPT]))])).toBe("gpt");
     expect(pickedMaker([user("أبي حيدرا ماكس")])).toBeNull();
     expect(pickedPhotos([user(answerLine(PHOTOS_LABEL, [PHOTOS_MINE]))])).toBe("mine");
     expect(pickedPhotos([user("بضيف صوري")])).toBeNull();
+  });
+
+  // 5 Nov 2026: the answer was typed with an edit, and «أنتج الآن» asked about the pictures again
+  it("does not ask again what was answered in the person's own sentence", () => {
+    const typed = "سوّوها لي من الصفر. والنصوص معتمدة، بس الشريحة ٢ خلّها أقصر";
+    expect(pickedPhotos([user(typed)])).toBe("make");
+    expect(pickedPhotos([user("سووها لي من الصفر")])).toBe("make");
+    expect(pickedPhotos([user("ما أبي سوّوها لي من الصفر، بضيف صوري")])).toBeNull();
+    expect(carouselHold([user(REAL), user(typed), user(FONT), user(KIND_STILL), user(MAKER_MIX)])).toBeNull();
   });
 
   it("starts again after a carousel", () => {

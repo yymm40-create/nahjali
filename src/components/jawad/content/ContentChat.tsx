@@ -6,7 +6,7 @@
 // a way to draw it again), and the edit rooms he opens in «حيدرة كت». The look is content.css.
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import MicButton from "@/components/robots/MicButton";
 import { useClaudeModel } from "@/components/robots/claude-model";
@@ -19,7 +19,7 @@ import CarouselTable, { type CarouselItem } from "./CarouselTable";
 import FontTable, { type FontItem } from "./FontTable";
 import MotionCarouselTable from "./MotionCarouselTable";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
-import { drawWithCode, smallJpeg } from "@/components/claude-code/draw";
+import { drawWithCode, pngBody, smallJpeg } from "@/components/claude-code/draw";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean; video?: string; videoUrl?: string | null; videoDownload?: string | null }
@@ -67,6 +67,8 @@ const KIND_IC = { image: "🖼️", video: "🎞️", audio: "🎧", doc: "📄"
 function Rich({ text }: { text: string }) {
   const inline = (s: string) =>
     s.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((p, i) => (/^\*\*[^*]+\*\*$/.test(p) ? <b key={i}>{p.slice(2, -2)}</b> : /^`[^`]+`$/.test(p) ? <code key={i}>{p.slice(1, -1)}</code> : <Swatches key={i} text={p} cls="ct" />));
+  // a line break the model writes inside a table cell («<br>») is a break, never shown as code
+  const cell = (s: string) => s.split(/<br\s*\/?>/i).map((p, i) => <Fragment key={i}>{i > 0 && <br />}{inline(p.trim())}</Fragment>);
   const out: React.ReactNode[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
   let table: string[][] | null = null;
@@ -80,8 +82,8 @@ function Rich({ text }: { text: string }) {
       const [head, ...rows] = table;
       out.push(
         <table key={out.length}>
-          <thead><tr>{head.map((c, i) => <th key={i}>{inline(c)}</th>)}</tr></thead>
-          <tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j}>{inline(c)}</td>)}</tr>)}</tbody>
+          <thead><tr>{head.map((c, i) => <th key={i}>{cell(c)}</th>)}</tr></thead>
+          <tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j}>{cell(c)}</td>)}</tr>)}</tbody>
         </table>,
       );
       table = null;
@@ -324,7 +326,7 @@ export function Questions({ questions, gal, styleId, disabled, onSend, onWrite }
           ) : q.kind === "carousels" ? (
             <div className="ct-opts">
               <button type="button" className="ct-opt" aria-pressed={gallery === qi} disabled={disabled} onClick={() => setGallery(gallery === qi ? null : qi)}>
-                📋 {gallery === qi ? "أغلق جدول الستايلات" : "افتح جدول الستايلات (١٠٣ ستايل بالنيش)"}
+                📋 {gallery === qi ? "أغلق جدول الستايلات" : "افتح جدول الستايلات (١٠٣ ستايل حسب المجال)"}
               </button>
               {chosenName(qi) && (
                 <span className="ct-chip ct-picked">✓ {chosenName(qi)} <button type="button" aria-label="ألغِ" onClick={() => setLines((s) => { const n = { ...s }; delete n[qi]; return n; })}>✕</button></span>
@@ -631,7 +633,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
             video = await putVideo(drawn.video, `slide-${String(r.code.n).padStart(2, "0")}.mp4`);
           }
           setCodeStep(null);
-          r = await postJson<Step>("/api/content/produce", { chatId: id, n: r.code.n, png: drawn.png, rounds: drawn.rounds, scores: drawn.scores, ...(video ? { video } : {}) });
+          r = await postJson<Step>("/api/content/produce", { chatId: id, n: r.code.n, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(video ? { video } : {}) });
           show(r);
         }
         if (!r.running) break;

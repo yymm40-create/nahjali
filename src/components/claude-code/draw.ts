@@ -8,6 +8,7 @@ import { SceneHost, SceneError, sceneFont, type SceneInfo } from "@/components/j
 import { canExport, probe, renderVideo, sheetAt } from "@/components/jawad/editor/scene-render";
 import { mixSoundtrack } from "@/components/jawad/editor/lab-sound";
 import { readCues } from "@/lib/editor/scene/contract";
+import { putWithProgress } from "@/components/jawad/studio/upload";
 
 const URL = "/api/jawad/claude-code";
 
@@ -327,5 +328,25 @@ export async function smallJpeg(url: string): Promise<string | null> {
   }
 }
 
+/** Base64 a request may carry: Vercel refuses bodies over 4.5 MB, and a photo-real slide's PNG passes that. */
+const INLINE_PNG = 3_000_000;
+
+/**
+ * The drawn PNG for a request body: inline when small, else put up first as the person's upload and sent by its id
+ * (the server reads it once and drops it; see drawnPng).
+ */
+export async function pngBody(png: string): Promise<{ png: string } | { pngUpload: string }> {
+  if (png.length <= INLINE_PNG) return { png };
+  const blob = new Blob([Uint8Array.from(atob(png), (c) => c.charCodeAt(0))], { type: "image/png" });
+  const signed = await postJson<{ id: string; signedUrl: string }>("/api/jawad/uploads", { kind: "image", mime: "image/png", bytes: blob.size, fileName: "drawn.png" });
+  await putWithProgress(signed.signedUrl, new File([blob], "drawn.png", { type: "image/png" }), "image/png", () => {});
+  const conf = await postJson<{ upload: { status: string; error: string | null } }>("/api/jawad/uploads/confirm", { id: signed.id });
+  if (conf.upload?.status !== "ready") throw new Error(conf.upload?.error ?? "تعذّر رفع الصورة.");
+  return { pngUpload: signed.id };
+}
+
 /** Keeps the picture as a work of «أعمالي». */
-export const savePicture = <T>(body: { idempotencyKey: string; png: string; prompt: string; aspect: string; sectionId: string; styleId?: string; model: string; rounds: number; scores: Record<string, number> }) => postJson<T>(URL, { action: "save", ...body });
+export const savePicture = <T>(body: { idempotencyKey: string; png: string; prompt: string; aspect: string; sectionId: string; styleId?: string; model: string; rounds: number; scores: Record<string, number> }) => {
+  const { png, ...rest } = body;
+  return pngBody(png).then((pic) => postJson<T>(URL, { action: "save", ...rest, ...pic }));
+};
