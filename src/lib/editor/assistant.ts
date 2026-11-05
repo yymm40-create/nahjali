@@ -4,6 +4,7 @@
 // The page applies them as one change (one undo).
 
 import { UserError } from "@/lib/api";
+import { listenToLinks } from "@/lib/link-listen";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isLeader, callClaudeJson, callClaudeSearch, claudeCost, claudeWhy, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { asksAboutBackdrop, checkCommands, context, withoutBackdropEdits, type Spoken } from "./assistant-core";
@@ -393,7 +394,15 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     }
   }
 
-  let usd = mem.usd;
+  // a YouTube / TikTok link in the message (or earlier in this conversation): heard by ElevenLabs before the answer,
+  // its words ride with this turn (lib/link-listen)
+  const listened = await listenToLinks(message, history.filter((t) => t.role === "user" && typeof t.content === "string").map((t) => t.content as string));
+  if (listened.block) {
+    const last = merged[merged.length - 1];
+    last.content = [...(typeof last.content === "string" ? [{ type: "text", text: last.content } as ClaudePart] : last.content), { type: "text", text: listened.block }];
+  }
+
+  let usd = mem.usd + listened.usd;
   const ask = async (msgs: ClaudeTurn[]) => {
     const r = await callClaudeJson<Answer>({ system: aboutMotion ? SYSTEM_MOTION : SYSTEM, turns: msgs, schema: SCHEMA, maxTokens: 16000, effort: "medium", fallback: true, leader: isLeader(who.email), timeoutMs: 420_000 });
     usd += claudeCost(r.usage);
