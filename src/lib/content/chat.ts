@@ -29,6 +29,7 @@ import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
 import { attachedPictures, CAROUSEL_QUESTION, carouselHold, pickedCarousel, pickedFont, pickedKind, pickedMaker, pickedMotionStyle, pickedPhotos, pickedRoute } from "./maker";
 import { lastSlidesAt } from "./produce";
+import { listenToLinks } from "@/lib/link-listen";
 import { randomUUID } from "crypto";
 
 const db = () => createAdminClient();
@@ -231,11 +232,15 @@ export async function say(userId: string, chatId: string | null, message: string
     ...(isMahdiAsk(`${history.filter((t) => t.role === "user").map((t) => t.text).join(" ")} ${before?.record ?? ""}`) ? [MAHDI_BRIEF] : []),
     !findCarouselStyle(ids.carousel ?? "") && (ids.template || /كاروسيل|شرائح|carousel/i.test(ask + (before?.record ?? ""))) ? templateExamplesBrief(nearestTemplateExamples(ask, ids.template && ids.template !== "none" ? ids.template : null, 2)) : "",
   ].filter(Boolean);
+  // a YouTube / TikTok link in this message (or earlier in the talk): heard by ElevenLabs before he answers, so he
+  // works from what is said in it (lib/link-listen)
+  const listened = await listenToLinks(said, turns.filter((t) => t.role === "user").slice(0, -1).map((t) => t.text), { budgetMs: 120_000 });
+  if (listened.block) parts.unshift(listened.block);
   const system = systemText(persona.text, [catalogBlock()]);
   const turnNote = turnText(parts, before?.record ?? "");
   const r = await callClaudeJson<Answer>({ system, turnNote, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email) });
   const a = r.data;
-  let usd = claudeCost(r.usage) + mem.usd;
+  let usd = claudeCost(r.usage) + mem.usd + listened.usd;
   const questions = readQuestions(a.questions);
   const reply: Turn = { role: "assistant", text: withNote(a.reply.trim() || "…", mem.fresh), ...(questions ? { questions } : {}) };
   const messages = [...history, reply];
