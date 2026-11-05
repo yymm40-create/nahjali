@@ -60,8 +60,9 @@ export const ESTIMATED_COST_USD: Record<QualityKey, number> = {
 export const isQuality = (q: unknown): q is QualityKey => typeof q === "string" && q in QUALITY_TIERS;
 
 /**
- * The bank-transfer way of paying on «اشحن رصيدك» (the bank data, «تم التحويل», the owner's confirm). Off since 4 November 2026 (the owner:
- * «شل طريقة التحويل»): the card through Moyasar is open to everyone; set to true to bring the transfer back.
+ * The bank-transfer way of paying on «اشحن رصيدك» and on the course page (the bank data, «تم التحويل», the owner's confirm). Off since 4 November
+ * 2026 (the owner: «شل طريقة التحويل»; and on 5 November: payment everywhere by the new way): the card through Moyasar is open to
+ * everyone; set to true to bring the transfer back (the course page's routes /api/course/order and /transferred answer only then).
  */
 export const BANK_TRANSFER_ENABLED = false;
 

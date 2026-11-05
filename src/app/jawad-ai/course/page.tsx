@@ -33,7 +33,7 @@ export default async function CoursesPage() {
         <div className="cr-in">
           <span className="cr-kicker cr-reveal">الدورات · {two(sale.length)}</span>
           <h1 className="cr-reveal" style={{ ["--i" as string]: 1 }}>تعلّم تصنع بالذكاء الاصطناعي <em>خطوة بخطوة</em></h1>
-          <p className="cr-sub cr-reveal" style={{ ["--i" as string]: 2 }}>دورات مسجلة تشوفها متى ما تبي. اختر الدورة، ادفع بتحويل بنكي، وتنفتح لك في «دوراتي» بعد التأكيد.</p>
+          <p className="cr-sub cr-reveal" style={{ ["--i" as string]: 2 }}>دورات مسجلة تشوفها متى ما تبي. اختر الدورة، وادفع بالبطاقة أو مدى أو Apple Pay، وتنفتح لك في «دوراتي» أول ما يتم الدفع.</p>
           {user && owned.size > 0 && <Link href={LEARN.base} className="cr-btn cr-reveal" style={{ ["--i" as string]: 3 }}>📚 افتح دوراتي ({owned.size})</Link>}
         </div>
       </header>

@@ -5,6 +5,7 @@ import { myCourse } from "@/lib/course/orders";
 import { loadSettings, publicView } from "@/lib/course/settings";
 import { jawadSession } from "@/lib/jawad/server/access";
 import { loadTree } from "@/lib/learn/server";
+import { moyasarEnabled } from "@/lib/credits/moyasar";
 import { DEFAULT_SETTINGS, isLadder, isProduct, type Product } from "@config/course";
 import { JAWAD } from "@config/jawad/brand";
 import "../course.css";
@@ -26,8 +27,8 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 }
 
 /** One course's own sales page (/jawad-ai/course/<id>): its name, its price, its buyers. Another course has another page; an old one stays on sale while it is shown and priced. */
-export default async function CourseSalePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ buy?: string }> }) {
-  const [{ id }, { buy }] = await Promise.all([params, searchParams]);
+export default async function CourseSalePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ buy?: string; paid?: string; unpaid?: string; cancelled?: string }> }) {
+  const [{ id }, { buy, paid: paidBack, unpaid, cancelled }] = await Promise.all([params, searchParams]);
   const course = await forSale(id);
   if (!course || !course.priceSar) notFound();
   const [{ user }, s] = await Promise.all([jawadSession(), loadSettings()]);
@@ -41,9 +42,10 @@ export default async function CourseSalePage({ params, searchParams }: { params:
   const products: Product[] = [...new Set(own.filter((o) => o.status === "confirmed").flatMap((o): Product[] => (o.product === "combo" ? ["combo", "live", "recorded"] : [o.product])))];
   const groupLink = ladder && paid.some((o) => o.product === "live" || o.product === "combo") ? s.groupLink : "";
   const unlocked: Unlocked | null = paid.length ? { confirmed, products: ladder ? products : confirmed ? ["recorded"] : [], groupLink, recordedLink: "" } : null;
-  const pub = publicView(s);
+  // paying is by card through Moyasar (the bank way is off): it is open whenever Moyasar is set up
+  const pub = { ...publicView(s), payable: moyasarEnabled() };
   const view = ladder
     ? { ...pub, risks: s.ladderRisks.length ? s.ladderRisks : pub.risks }
     : { ...pub, headline: course.title, subhead: course.summary || DEFAULT_SETTINGS.subhead, problem: "", days: [], terms: "" };
-  return <CourseLanding s={view} courseId={course.id} title={course.title} price={course.priceSar} was={course.wasSar ?? course.priceSar} serverNow={nowMs()} user={user?.email ? { email: user.email } : null} orders={orders} unlocked={unlocked} buy={isProduct(buy) ? buy : null} loginHref={`${JAWAD.base}/login`} />;
+  return <CourseLanding s={view} courseId={course.id} title={course.title} price={course.priceSar} was={course.wasSar ?? course.priceSar} serverNow={nowMs()} user={user?.email ? { email: user.email } : null} orders={orders} unlocked={unlocked} buy={isProduct(buy) ? buy : null} loginHref={`${JAWAD.base}/login`} back={paidBack ? "paid" : unpaid ? "unpaid" : cancelled ? "cancelled" : null} />;
 }

@@ -5,9 +5,10 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { grantCoins } from "@/lib/coins";
-import { COURSE, cleanPhone, codedOffer, isLadder, isProduct, offerFor, offersAt, type Bank, type Product, type CourseSettings } from "@config/course";
+import { COURSE, PRODUCT_LABEL, cleanPhone, codedOffer, isLadder, isProduct, offerFor, offersAt, type Bank, type Product, type CourseSettings } from "@config/course";
 import { loadSettings } from "./settings";
-import { notifyTransfer } from "./telegram";
+import * as moyasar from "@/lib/credits/moyasar";
+import { notifyPaid, notifyTransfer } from "./telegram";
 
 const db = () => createAdminClient();
 
@@ -88,7 +89,7 @@ export interface Started {
 }
 
 /** «ادفع الآن»: the order for ONE course at its own price (kept for a few hours), and the bank data to transfer to. */
-export async function startOrder(user: { id: string; email?: string | null }, b: { courseId: unknown; name: unknown; phone: unknown; code?: unknown; product?: unknown }, now = Date.now()): Promise<Started> {
+export async function startOrder(user: { id: string; email?: string | null }, b: { courseId: unknown; name: unknown; phone: unknown; code?: unknown; product?: unknown }, now = Date.now(), needBank = true): Promise<Started> {
   const s = await loadSettings();
   const courseId = typeof b.courseId === "string" ? b.courseId : "";
   const { data: course } = /^[0-9a-f-]{36}$/i.test(courseId) ? await db().from("learn_courses").select("*").eq("id", courseId).maybeSingle() : { data: null };
@@ -109,7 +110,7 @@ export async function startOrder(user: { id: string; email?: string | null }, b:
   if (name.length < 2 || name.length > 80) throw new UserError("اكتب اسمك الثلاثي (يساعدنا نطابق التحويل).", 400);
   const phone = cleanPhone(b.phone);
   if (!phone) throw new UserError("رقم الجوال غير صحيح؛ اكتبه مع المفتاح أو بصيغة 05xxxxxxxx.", 400);
-  if (!s.bank.iban && !s.bank.account) throw new UserError("بيانات التحويل ما انضافت للحين؛ تواصل معنا وبنرسلها لك.", 503);
+  if (needBank && !s.bank.iban && !s.bank.account) throw new UserError("بيانات التحويل ما انضافت للحين؛ تواصل معنا وبنرسلها لك.", 503);
 
   const { data: rows, error } = await db().from("course_orders").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(50);
   wrap(error);
@@ -132,6 +133,68 @@ export async function startOrder(user: { id: string; email?: string | null }, b:
   const { data, error: e3 } = await db().from("course_orders").insert({ user_id: user.id, course_id: courseId, ...base, phase }).select("*").single();
   wrap(e3);
   return { order: view(data!), bank: s.bank };
+}
+
+/** The Moyasar invoices of an order are kept in `note` as «moyasar:id,id» (a buyer who pressed pay twice may pay the first page). */
+export const cardInvoiceIds = (note: string): string[] => (/^moyasar:(.+)$/.exec(note)?.[1] ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+export const addCardInvoice = (note: string, id: string): string => `moyasar:${[...cardInvoiceIds(note).filter((x) => x !== id), id].slice(-5).join(",")}`;
+
+/**
+ * «ادفع بالبطاقة» (Moyasar): the same order as the transfer one (the price kept for a few hours), plus an invoice on Moyasar's hosted
+ * page (card, mada, Apple Pay). The buyer is sent to `url`; coming back (or Moyasar's callback) settles it, see settleCardOrder.
+ */
+export async function startCardOrder(user: { id: string; email?: string | null }, b: { courseId: unknown; name: unknown; phone: unknown; code?: unknown; product?: unknown }, origin: string, debug = false): Promise<{ order: Order; url: string }> {
+  if (!moyasar.moyasarEnabled()) throw new UserError("الدفع بالبطاقة غير متاح الحين؛ تواصل معنا.", 503);
+  const { order } = await startOrder(user, b, Date.now(), false);
+  const named = await titled(order);
+  try {
+    const inv = await moyasar.createInvoice({
+      amount: order.amount,
+      description: `${named.courseTitle || COURSE.name} — ${PRODUCT_LABEL[order.product]}`,
+      callbackUrl: `${origin}/api/course/moyasar/webhook?order=${order.id}`,
+      successUrl: `${origin}/api/course/moyasar/return?order=${order.id}`,
+      backUrl: `${origin}${COURSE.base}/${order.courseId}?cancelled=1`,
+    });
+    await db().from("course_orders").update({ note: addCardInvoice(order.note, inv.id), updated_at: new Date().toISOString() }).eq("id", order.id).eq("status", "started");
+    return { order, url: inv.url };
+  } catch (e) {
+    console.error("moyasar course invoice", order.id, e);
+    // the owners see Moyasar's own answer, to fix the key; buyers never do
+    throw new UserError(`تعذّر فتح صفحة الدفع. جرّب مرة ثانية.${debug ? ` [للمالك: ${String(e).slice(0, 400)}]` : ""}`, 502);
+  }
+}
+
+/**
+ * The buyer is back from Moyasar (or Moyasar called): the invoices are READ from Moyasar, and only a paid one made for this order, in
+ * riyals, for the order's price unlocks it (once, however many times this runs): the owner is told, and the course opens by itself.
+ */
+export async function settleCardOrder(orderId: string): Promise<{ order: Order; paid: boolean } | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) return null;
+  const o = await getOrder(orderId);
+  if (!o) return null;
+  if (o.status === "confirmed") return { order: o, paid: true };
+  let paid = false;
+  for (const id of cardInvoiceIds(o.note)) {
+    try {
+      if (moyasar.invoicePaid(await moyasar.getInvoice(id), id, o.amount)) {
+        paid = true;
+        break;
+      }
+    } catch (e) {
+      console.error("moyasar course getInvoice", o.id, e);
+    }
+  }
+  if (!paid) return { order: o, paid: false };
+  const { order, already } = await confirmOrder(o.id, "ميسّر (بطاقة)");
+  // the owner's phone: a failure to message must never fail the buyer
+  if (!already) {
+    try {
+      await notifyPaid(order, await loadSettings());
+    } catch (e) {
+      console.error("course notify paid", e);
+    }
+  }
+  return { order, paid: order.status === "confirmed" };
 }
 
 /** «تم التحويل»: the owner is told (his phone buzzes). */
