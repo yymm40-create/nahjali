@@ -187,9 +187,15 @@ export type DirectorAction =
   | { action: "upload_voice_confirm"; genId: string; path: string }
   | { action: "remove_voice_upload"; genId: string };
 
-/** The client's choices on the generation page (each wins over the director's plan). */
-type VideoChoice = { resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number; model?: VideoModel; useVoices?: boolean; voiceSource?: "make" | "upload"; arabicInPrompt?: boolean };
-const readChoice = (c: VideoChoice) => ({
+/**
+ * The client's choices on the generation page (each wins over the director's plan). The video model comes as
+ * «videoModel»: every request also carries «model» = the chosen Claude (see the route), which used to overwrite it, so
+ * Wan 3.0 or «Seedance وجه واقعي» picked on the page was made with the director's Seedance 2.5. «model» is still read
+ * when it names a video model (an older page).
+ */
+type VideoChoice = { resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number; videoModel?: VideoModel; model?: string; useVoices?: boolean; voiceSource?: "make" | "upload"; arabicInPrompt?: boolean };
+const videoModelOf = (c: VideoChoice): VideoModel | undefined => [c.videoModel, c.model].find((m): m is VideoModel => typeof m === "string" && m in VIDEO_MODELS);
+export const readChoice = (c: VideoChoice) => ({
   // «الأصوات قبل الفيديو»: the generation's spoken lines go with the request as reference audio — made here, or the
   // person's own recording («من جهازي»)
   useVoices: c.useVoices === true,
@@ -199,7 +205,7 @@ const readChoice = (c: VideoChoice) => ({
   resolution: VIDEO_OPEN_RESOLUTIONS.includes(c.resolution) ? c.resolution : DEFAULT_VIDEO_RESOLUTION,
   ratio: c.ratio === "9:16" || c.ratio === "16:9" ? c.ratio : undefined,
   seconds: c.durationSec ? clampVideoSeconds(Number(c.durationSec)) : undefined,
-  model: c.model && c.model in VIDEO_MODELS ? c.model : undefined,
+  model: videoModelOf(c),
 });
 
 export async function directorAction(project: FilmProject, user: User, input: DirectorAction): Promise<{ jobId: string | null; studioJobId?: string; warning?: string; upload?: { path: string; token: string } }> {
