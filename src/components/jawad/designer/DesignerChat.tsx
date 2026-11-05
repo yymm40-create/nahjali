@@ -19,7 +19,7 @@ import { answerLine, DELEGATE_LINE } from "@/lib/content/marks";
 import { DESIGN_KINDS, DESIGN_SOURCES } from "@config/designer";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { loadFont, renderDesign, type DesignView, type FontDef } from "./LayerEditor";
-import { drawWithCode, smallJpeg, type DrawEdit } from "@/components/claude-code/draw";
+import { drawWithCode, pngBody, smallJpeg, type DrawEdit } from "@/components/claude-code/draw";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface Question { label: string; kind: "choice" | "source" | "directions" | "fonts"; options: string[]; multi: boolean }
@@ -217,7 +217,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
         const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
         const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "designer", edit: r.code.edit ?? null, onStep: (s) => (step(s.text), s.preview && setCodePreview(s.preview)) });
         step("أحفظ التصميم…");
-        const saved = await postJson<{ design: DesignView }>("/api/designer/produce", { chatId: id, png: drawn.png, rounds: drawn.rounds, scores: drawn.scores, ...(drawn.program ? { program: drawn.program } : {}), ...(drawn.edited ? { edited: true } : {}) });
+        const saved = await postJson<{ design: DesignView }>("/api/designer/produce", { chatId: id, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(drawn.program ? { program: drawn.program } : {}), ...(drawn.edited ? { edited: true } : {}) });
         putDesign(() => saved.design);
       } else if (r.design) putDesign(() => r.design!);
     } catch (e) {

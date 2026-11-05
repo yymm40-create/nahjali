@@ -59,7 +59,7 @@ export const routeNote = (slides: number) => {
 /** The turns since the last carousel/** The turns since the last carousel: what the next carousel is decided by. */
 const sinceLastCarousel = (history: Turn[]) => history.slice(history.map((t) => !!t.slides).lastIndexOf(true) + 1);
 
-/** What a person pressed: the whole message, or its line «• label: answer» when it was one of a batch. A sentence in their own words is not a press. */
+/** What a person pressed: the whole message, or its line «• label: answer» when it was one of a batch. */
 function pressed(t: Turn, label: string): string[] {
   const out = [t.text.trim()];
   const prefix = `• ${label}: `;
@@ -67,13 +67,38 @@ function pressed(t: Turn, label: string): string[] {
   return out;
 }
 
-/** The latest of `answers` the person pressed for `label`, since the last carousel. */
+/** Arabic as typed: no harakat or tatweel, one alef, ى/ي and ة/ه alike, spaces squeezed. */
+const plain = (s: string) =>
+  s
+    .replace(/[\u064B-\u0652\u0670\u0640]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** A «no» just before the words («ما أبي…», «لا …», «بدون …»): the answer is refused, not given. */
+const REFUSED = /(?:^|\s)(?:ما|لا|مو|مب|مش|بدون|غير|ولا)(?:\s+\S+)?\s*$/;
+
+/**
+ * The person wrote the answer in their own sentence (5 Nov 2026: «سوّوها لي من الصفر، والنصوص معتمدة…» was asked
+ * again after «أنتج الآن»): the answer's words, as typed, inside the message and not refused just before them.
+ */
+function typedIt(text: string, answer: string): boolean {
+  const s = plain(text);
+  const a = plain(answer);
+  if (a.length < 4) return false;
+  for (let at = s.indexOf(a); at >= 0; at = s.indexOf(a, at + 1)) if (!REFUSED.test(s.slice(Math.max(0, at - 14), at))) return true;
+  return false;
+}
+
+/** The latest of `answers` the person pressed (or wrote in their own words) for `label`, since the last carousel. */
 function lastPressed<T extends string>(history: Turn[], label: string, answers: readonly T[]): T | null {
   const turns = sinceLastCarousel(history);
   for (let i = turns.length - 1; i >= 0; i--) {
     if (turns[i].role !== "user") continue;
     const said = pressed(turns[i], label);
-    const hit = answers.find((a) => said.includes(a));
+    const hit = answers.find((a) => said.includes(a)) ?? answers.find((a) => typedIt(turns[i].text, a));
     if (hit) return hit;
   }
   return null;
