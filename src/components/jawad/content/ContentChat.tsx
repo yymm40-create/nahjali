@@ -1,7 +1,7 @@
 "use client";
 
 // «صانع المحتوى» — the desk and the conversation with «محمد باقر»: chats on the side, cards to start from, his
-// questions as buttons (the table of 103 carousel styles, the list of 50 fonts, and the galleries), the messages with the
+// questions as buttons (the table of 104 carousel styles, the list of 50 fonts, and the galleries), the messages with the
 // person's attachments, the carousel's slides appearing as they are drawn (each downloadable, each with its check and
 // a way to draw it again), and the edit rooms he opens in «حيدرة كت». The look is content.css.
 
@@ -308,7 +308,7 @@ export function Questions({ questions, gal, styleId, disabled, onSend, onWrite }
           ) : q.kind === "motioncarousels" ? (
             <div className="ct-opts">
               <button type="button" className="ct-opt" aria-pressed={gallery === qi} disabled={disabled} onClick={() => setGallery(gallery === qi ? null : qi)}>
-                🎬 {gallery === qi ? "أغلق جدول الحركة" : "افتح جدول ستايلات الحركة (١٠ ستايلات)"}
+                🎬 {gallery === qi ? "أغلق جدول الحركة" : "افتح جدول ستايلات الحركة (٢٢ ستايل)"}
               </button>
               {chosenName(qi) && (
                 <span className="ct-chip ct-picked">✓ {chosenName(qi)} <button type="button" aria-label="ألغِ" onClick={() => setLines((s) => { const n = { ...s }; delete n[qi]; return n; })}>✕</button></span>
@@ -326,7 +326,7 @@ export function Questions({ questions, gal, styleId, disabled, onSend, onWrite }
           ) : q.kind === "carousels" ? (
             <div className="ct-opts">
               <button type="button" className="ct-opt" aria-pressed={gallery === qi} disabled={disabled} onClick={() => setGallery(gallery === qi ? null : qi)}>
-                📋 {gallery === qi ? "أغلق جدول الستايلات" : "افتح جدول الستايلات (١٠٣ ستايل حسب المجال)"}
+                📋 {gallery === qi ? "أغلق جدول الستايلات" : "افتح جدول الستايلات (١٠٤ ستايل حسب المجال)"}
               </button>
               {chosenName(qi) && (
                 <span className="ct-chip ct-picked">✓ {chosenName(qi)} <button type="button" aria-label="ألغِ" onClick={() => setLines((s) => { const n = { ...s }; delete n[qi]; return n; })}>✕</button></span>
@@ -609,8 +609,14 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       return copy;
     });
 
+  // one drawing loop per conversation: opening it again (the address, then the list) must not start a second one,
+  // or both draw the same slide and the second is refused («هذي الشريحة مو بانتظار الرسم», 5 Nov 2026)
+  const looping = useRef(new Set<string>());
+
   /** The produce step: the server draws a few slides a call; this asks again while it says `running`. */
   const runProduce = useCallback(async (id: string, retry?: number[] | "failed") => {
+    if (looping.current.has(`p:${id}`)) return;
+    looping.current.add(`p:${id}`);
     setBusy("producing");
     let first = true;
     type Step = { aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number }; sfx?: Record<string, string> } };
@@ -643,12 +649,15 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       putSlides((old) => ({ aspect: old?.aspect ?? "", items: old?.items ?? [], todo: [], failed: old?.failed ?? [], running: false, total: old?.total ?? 0, report: old?.report }));
       setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر إنتاج الشرائح.", error: true }]);
     } finally {
+      looping.current.delete(`p:${id}`);
       setBusy("");
     }
   }, []);
 
   /** The media step: جواد takes what «محمد باقر» handed him; this asks again while he works (a video takes minutes). */
   const runMedia = useCallback(async (id: string, retry?: string[] | "failed") => {
+    if (looping.current.has(`m:${id}`)) return;
+    looping.current.add(`m:${id}`);
     setBusy("producing");
     let first = true;
     const put = (items: MediaView[]) =>
@@ -670,6 +679,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     } catch (e) {
       setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر التوليد.", error: true }]);
     } finally {
+      looping.current.delete(`m:${id}`);
       setBusy("");
     }
   }, []);

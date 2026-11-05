@@ -7,7 +7,7 @@
 // Where they come from: the owner's Instagram research of 1 November 2026 (likes read on the posts, since a carousel's views
 // are not public, so the "winner" of a niche is the strongest thing seen, not a measurement) plus 2026 carousel guides.
 // The samples in /public/content/carousel-styles were painted with GPT Image 2 from these same descriptions.
-// Styles 101-120 (the owner's order, same day): a childlike 3D look, the shape of what a 7 to 9 year old loves; no winner marked, nothing measured.
+// Styles 101-120 (the owner's order, same day): a childlike 3D look (104: the modern Pixar story the owner sent on 5 November 2026), the shape of what a 7 to 9 year old loves; no winner marked, nothing measured.
 // What those 100 slides taught is written down in CAROUSEL_GPT_CRAFT and CAROUSEL_CODE_CRAFT.
 
 export const CAROUSEL_NICHES = ["تعليمي وشرح", "تسويق وبزنس", "علم نفس وتطوير ذات", "اقتباسات وتحفيز", "كوميدي وترفيه", "سفر ولايف ستايل", "طعام ووصفات", "تقنية وذكاء اصطناعي", "منتجات وبراندات", "صحة ولياقة", "مال وأعمال شخصية", "تفاعلي", "3D طفولي"] as const;
@@ -1279,6 +1279,18 @@ export const CAROUSEL_STYLES: CarouselStyle[] = [
     body: "One clay object or character large with one short line.",
     closing: "A clay character waving with a request to share.",
     code: "The clay scene is painted by GPT Image 2 with empty backdrop for the words; Haidara writes the Arabic in code in a heavy rounded font with a soft shadow.",
+  },
+  // the owner's pick of 5 November 2026 (a storytelling carousel he sent from Instagram): a modern Pixar-like story, slide by slide
+  {
+    id: "modern-pixar", n: 104, niche: "3D طفولي", name: "بيكسار الحديث", words: 24, font: "readex-pro",
+    description: "حكاية على شرائح بستايل بيكسار حديث: شباب كرتون بهوديات عنابية وتعابير واضحة، وخلفية عنابية دافية بلمعات ذهبية وأغراض ثلاثية الأبعاد تطفو. فوق كل شريحة عنوان فصلها، وتحته الكلام بالأبيض والجملة المهمة بالذهبي.",
+    bestFor: "القصص والمواقف والعِبر، وشرح الأحداث خطوة بخطوة، والمحتوى الديني والتربوي للشباب",
+    look: "Modern 3D animated feature film look (Pixar-like, never a copy of a real film or character): young stylized cartoon boys and young men in deep maroon hoodies, big expressive eyes, clear emotions, soft skin, warm cinematic light with a golden rim and soft bloom. Deep wine-burgundy gradient background (#3A0D1A to #7A1E33), a warm glow behind the subject, a few floating glossy 3D props that fit the topic (a glowing lightbulb, a book, a phone, chat bubbles, a magnifier, golden stars) with sparkles. The top 45% stays calm and dark for the words; the characters fill the bottom half. Gold #FFC43D, text white.",
+    type: "A small rounded pill label at the top with the story's chapter («بداية الحكاية», «اللحظة الصادمة», «الخاتمة»); under it a big bold rounded white Arabic headline, its key phrase in gold; two or three short white lines, quotes in gold «»; a small «اسحب ←» at the bottom left.",
+    cover: "A golden quote line on top, the hook as a huge white headline with its key words in gold, one character holding the topic's object among glowing props.",
+    body: "The chapter label, a white headline with one golden phrase, two or three short lines, the characters acting out that moment.",
+    closing: "The label «الخاتمة», the lesson as a question, one golden line, a character reading or smiling, calm and warm.",
+    code: "GPT Image 2 paints each scene as photo1 (characters, props, background, no writing, the top calm), the same characters described the same way on every slide. Haidara writes all the Arabic in code on the calm top (pill, white headline with its golden phrase, short lines, «اسحب ←») with a soft dark shadow. Never draw the characters or props in code.",
   },
 ];
 
