@@ -368,3 +368,62 @@ describe("his answer", () => {
     expect(String((db.editorChats[0] as { handoff: string }).handoff)).not.toContain("لوحة القصة");
   });
 });
+
+describe("the four paths: the talk, and editing an old message", () => {
+  it("every message carries the short-talk rules and how to read edits; the path's steps come with its mark; the longer talk only on request", async () => {
+    answer({});
+    await say("u", null, "أبي موشن [مسار:motion-graphics]", []);
+    const sys = claude.calls[0].system;
+    for (const t of ["اختصر", "فهم التعديلات", "مسار «موشن جرافكس»", "kind=\"motion\""]) expect(sys).toContain(t);
+    expect(sys).not.toContain("وضع المحادثة المطوّلة");
+    await say("u", null, "أبي موشن [مسار:motion-graphics]", [], null, { verbose: true });
+    expect(claude.calls[1].system).toContain("وضع المحادثة المطوّلة");
+    // no path: still the short talk and the edit rules
+    await say("u", null, "اكتب لي عنوان", []);
+    expect(claude.calls[2].system).toContain("اختصر");
+    expect(claude.calls[2].system).not.toContain("مسار «");
+  });
+
+  it("the reel path is given the skills for a talking video; the motion carousel path gets the motion guide and no «ثابت أو متحرك»", async () => {
+    answer({});
+    await say("u", null, "ريلي [مسار:reel-graphics]", []);
+    expect(claude.calls[0].system).toContain("مهارات الموشن على المتكلم");
+    // the path decides: even a still answer pressed earlier does not make it a still carousel, and the next step is the motion style
+    answer({ produce: { ...empty, on: true, slides: slides() } });
+    await say("u", null, `فكرتي [مسار:motion-carousel]\n${FLAT}`, []);
+    const held = (chat().messages.at(-1) as Turn).questions ?? [];
+    expect(held.some((q) => q.label === KIND_LABEL)).toBe(false);
+    expect(held.some((q) => q.kind === "motioncarousels")).toBe(true);
+    expect(claude.calls.at(-1)!.system).toContain("الموشن كاروسيل");
+    // the still path goes to who makes the slides
+    answer({ produce: { ...empty, on: true, slides: slides() } });
+    await say("u", null, `فكرتي [مسار:carousel]\n${FLAT}`, []);
+    const still = (chat().messages.at(-1) as Turn).questions ?? [];
+    expect(still.map((q) => q.label)).toContain(MAKER_LABEL);
+  });
+
+  it("editing an old message goes on from it: what came after is dropped, with the pending carousel and the record", async () => {
+    db.chat = {
+      id: "chat-1", title: "t", record: "OLD RECORD", pending: { id: "p" }, usd: 0, spentHalalas: 5, updatedAt: "",
+      messages: [{ role: "user", text: "كاروسيل عن الادخار" }, { role: "assistant", text: "تمام" }, { role: "user", text: "١٠ شرائح" }, { role: "assistant", text: "أبشر" }],
+    };
+    answer({});
+    const r = await say("u", "chat-1", "٥ شرائح بس", [], null, { from: 2 });
+    expect(chat().messages.map((m) => m.text)).toEqual(["كاروسيل عن الادخار", "تمام", "٥ شرائح بس", "ردّي"]);
+    expect(chat().pending).toBeNull();
+    expect(claude.calls[0].system).not.toContain("OLD RECORD");
+    expect(claude.calls[0].turns).toHaveLength(3);
+    expect(r.spentHalalas).toBe(5);
+  });
+
+  it("an index that is not one of their messages is ignored: the talk simply goes on", async () => {
+    const messages = [{ role: "user", text: "أ" }, { role: "assistant", text: "ب" }];
+    for (const from of [1, 9, -1]) {
+      db.chat = { id: "chat-1", title: "t", record: "REC", pending: null, usd: 0, spentHalalas: 0, updatedAt: "", messages: structuredClone(messages) };
+      answer({});
+      await say("u", "chat-1", "ج", [], null, { from });
+      expect(chat().messages.map((m) => m.text)).toEqual(["أ", "ب", "ج", "ردّي"]);
+      expect(claude.calls.at(-1)!.system).toContain("REC");
+    }
+  });
+});

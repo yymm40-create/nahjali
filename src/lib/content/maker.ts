@@ -85,8 +85,20 @@ export function pickedMaker(history: Turn[]): "code" | "gpt" | "mix" | null {
   return hit === MAKER_CODE ? "code" : hit === MAKER_GPT ? "gpt" : hit === MAKER_MIX ? "mix" : null;
 }
 
-/** Still or motion, as pressed since the last carousel (null: not asked yet). */
+const PATH_MARK = /\[مسار:([a-z0-9-]+)\]/g;
+
+/** The path the person is on (the last mark in their messages): one of the four, or null. */
+export function pathOf(history: Turn[]): string | null {
+  let p: string | null = null;
+  for (const t of history) if (t.role === "user") for (const m of t.text.matchAll(PATH_MARK)) p = m[1];
+  return p;
+}
+
+/** Still or motion: fixed by the path («كاروسيل» is still, «موشن كاروسيل» is motion), else as pressed since the last carousel (null: not asked yet). */
 export const pickedKind = (history: Turn[]): "still" | "motion" | null => {
+  const path = pathOf(history);
+  if (path === "carousel") return "still";
+  if (path === "motion-carousel") return "motion";
   const hit = lastPressed(history, KIND_LABEL, [KIND_STILL, KIND_MOTION]);
   return hit === KIND_STILL ? "still" : hit === KIND_MOTION ? "motion" : null;
 };
