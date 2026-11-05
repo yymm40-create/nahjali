@@ -14,7 +14,7 @@ export const MAKER_MIX = "GPT Image 2 للصور + حيدرا ماكس للكت�
 
 export const MAKER_QUESTION = { label: MAKER_LABEL, kind: "choice" as const, options: [MAKER_CODE, MAKER_GPT, MAKER_MIX], multi: false };
 
-/** The first step of a carousel: the table of 103 styles, in place of questions about colours and margins. */
+/** The first step of a carousel: the table of 104 styles, in place of questions about colours and margins. */
 export const CAROUSEL_LABEL = "اختر ستايل الكاروسيل";
 export const CAROUSEL_QUESTION: Question = { label: CAROUSEL_LABEL, kind: "carousels", options: [], multi: false };
 
@@ -237,7 +237,7 @@ export function carouselHold(history: Turn[], slides = 6): CarouselHold | null {
   if (!kind) return { question: KIND_QUESTION, note: "⏸️ الكاروسيل ثابت (صور) أو موشن كاروسيل (كل شريحة فيديو قصير يتحرك فيه الكلام بصوت خفيف)؟" };
   if (kind === "motion") {
     const motion = pickedMotionStyle(history);
-    if (!motion || motion.id === "help") return { question: MOTION_CAROUSEL_QUESTION, note: "⏸️ اختر ستايل الحركة من الجدول (١٠ ستايلات جاهزة)، أو ابنِه معي من الصفر." };
+    if (!motion || motion.id === "help") return { question: MOTION_CAROUSEL_QUESTION, note: "⏸️ اختر ستايل الحركة من الجدول (٢٢ ستايل جاهز)، أو ابنِه معي من الصفر." };
     if (!pickedRoute(history)) return { question: ROUTE_QUESTION, note: routeNote(slides) };
     return null;
   }

@@ -19,11 +19,11 @@ import { pickedMotionStyle, routeNote, slidePictureHalalas } from "@/lib/content
 import { motionSize } from "@/lib/claude-code/picture-rubric";
 import { readMotionSlide } from "@/lib/claude-code/picture";
 
-describe("the twenty-one motion styles and the ways of making them", () => {
-  it("has twenty-one styles, numbered, each with its cheapest way and a length a slide can loop in", () => {
-    expect(MOTION_CAROUSEL_STYLES).toHaveLength(21);
-    expect(MOTION_CAROUSEL_STYLES.map((s) => s.n)).toEqual(Array.from({ length: 21 }, (_, i) => i + 1));
-    expect(new Set(MOTION_CAROUSEL_STYLES.map((s) => s.id)).size).toBe(21);
+describe("the twenty-two motion styles and the ways of making them", () => {
+  it("has twenty-two styles, numbered, each with its cheapest way and a length a slide can loop in", () => {
+    expect(MOTION_CAROUSEL_STYLES).toHaveLength(22);
+    expect(MOTION_CAROUSEL_STYLES.map((s) => s.n)).toEqual(Array.from({ length: 22 }, (_, i) => i + 1));
+    expect(new Set(MOTION_CAROUSEL_STYLES.map((s) => s.id)).size).toBe(22);
     for (const s of MOTION_CAROUSEL_STYLES) {
       expect(["code", "picture", "elements"]).toContain(s.route);
       expect(s.seconds).toBeGreaterThanOrEqual(3);
