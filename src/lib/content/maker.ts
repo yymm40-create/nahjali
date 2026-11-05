@@ -1,7 +1,7 @@
-import { findCarouselStyle, type CarouselStyle } from "@config/content-carousel-styles";
+import { CAROUSEL_STYLES, findCarouselStyle, type CarouselStyle } from "@config/content-carousel-styles";
 import { findContentFont, type ContentFont } from "@config/content-fonts";
 import { findTemplate } from "@config/content-templates";
-import { findMotionCarouselStyle, MOTION_ROUTES, type MotionCarouselStyle, type MotionRoute } from "@config/content-motion-carousel";
+import { findMotionCarouselStyle, MOTION_CAROUSEL_STYLES, MOTION_ROUTES, type MotionCarouselStyle, type MotionRoute } from "@config/content-motion-carousel";
 import { coinsOf, generatorById, GPT_IMAGE_2_ID } from "@config/jawad/generators";
 import { coinStr } from "@config/coins";
 import type { Question, Turn } from "./chats";
@@ -92,6 +92,15 @@ function typedIt(text: string, answer: string): boolean {
   return false;
 }
 
+/** The names a person wrote between quotes («…» or "…"), as typed: «بيكسار الحديث» names a style of the table. */
+const quoted = (text: string) => [...text.matchAll(/[«"“]([^»"”\n]{2,60})[»"”]/g)].map((m) => plain(m[1]));
+
+/** A style of `list` the person named in quotes in their own sentence (5 Nov 2026: «بستايل «بيكسار الحديث» وحركة «حكاية بيكسار»» was asked again from the tables). */
+function namedIn<T extends { name: string }>(text: string, list: readonly T[]): T | null {
+  const names = quoted(text);
+  return names.length ? (list.find((s) => names.includes(plain(s.name))) ?? null) : null;
+}
+
 /** The latest of `answers` the person pressed (or wrote in their own words) for `label`, since the last carousel. */
 function lastPressed<T extends string>(history: Turn[], label: string, answers: readonly T[]): T | null {
   const turns = sinceLastCarousel(history);
@@ -131,8 +140,22 @@ export const pickedKind = (history: Turn[]): "still" | "motion" | null => {
 /** The way of making a motion carousel, as pressed (null: not picked yet). */
 export const pickedRoute = (history: Turn[]): MotionRoute | null => {
   const hit = lastPressed(history, ROUTE_LABEL, MOTION_ROUTES.map((r) => r.label));
-  return MOTION_ROUTES.find((r) => r.label === hit)?.id ?? null;
+  return MOTION_ROUTES.find((r) => r.label === hit)?.id ?? typedRoute(history);
 };
+
+/** The way of making it, said in the person's own words («الصور بـ GPT Image 2», «عناصر مفرّغة», «بالكود فقط»). */
+function typedRoute(history: Turn[]): MotionRoute | null {
+  const turns = sinceLastCarousel(history);
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i].role !== "user") continue;
+    const s = plain(turns[i].text);
+    const gpt = /gpt\s*image|جي بي تي/i.test(s);
+    if (gpt && /مفرغ|عناصر|عنصر/.test(s)) return "elements";
+    if (gpt && /صور/.test(s)) return "picture";
+    if (/بالكود فقط|كود بس|بالكود بس/.test(s)) return "code";
+  }
+  return null;
+}
 
 const MOTION_MARK = /\[حركة:([a-z0-9-]+)\]/g;
 
@@ -142,7 +165,11 @@ export function pickedMotionStyle(history: Turn[]): { id: string; style: MotionC
   for (let i = turns.length - 1; i >= 0; i--) {
     if (turns[i].role !== "user") continue;
     const id = [...turns[i].text.matchAll(MOTION_MARK)].map((m) => m[1]).at(-1);
-    if (!id) continue;
+    if (!id) {
+      const named = namedIn(turns[i].text, MOTION_CAROUSEL_STYLES);
+      if (named) return { id: named.id, style: named };
+      continue;
+    }
     if (id === "help") return { id, style: null };
     if (id === "own") {
       const line = turns[i].text.split("\n").find((l) => l.includes("[حركة:own]")) ?? "";
@@ -172,6 +199,8 @@ export function pickedCarousel(history: Turn[]): { id: string; style: CarouselSt
     if (id && findCarouselStyle(id)) return { id, style: findCarouselStyle(id)! };
     const old = [...turns[i].text.matchAll(TEMPLATE_MARK)].map((m) => m[1]).at(-1);
     if (old && (old === "none" || findTemplate(old))) return { id: "own", style: null };
+    const named = namedIn(turns[i].text, CAROUSEL_STYLES);
+    if (named) return { id: named.id, style: named };
   }
   return null;
 }
