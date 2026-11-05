@@ -73,7 +73,7 @@ describe("the table of carousel styles", () => {
   const props = { items: rows, niches, onPick: noop, onHelp: noop, onOwn: noop };
   it("shows every style by niche with its two slides, what it is, and the ways out", () => {
     const html = renderToStaticMarkup(h(CarouselTable, props));
-    for (const t of ["تعليمي وشرح", "تسويق وبزنس", "1. الدفتر", "2. الشريحة البيضاء", "7. الإديتوريال", "/c/01-cover.webp", "/c/01-slide.webp", "صفحة دفتر", "يناسب: الشرح", "الأقوى في نيشه", "فيه صور واقعية", "اختر", "ما أعرف أختار، ساعدني", "أبي شيئًا غير الموجود"]) expect(html).toContain(t);
+    for (const t of ["تعليمي وشرح", "تسويق وبزنس", "1. الدفتر", "2. الشريحة البيضاء", "7. الإديتوريال", "/c/01-cover.webp", "/c/01-slide.webp", "صفحة دفتر", "يناسب: الشرح", "الأقوى في مجاله", "فيه صور واقعية", "اختر", "ما أعرف أختار، ساعدني", "أبي شيئًا غير الموجود"]) expect(html).toContain(t);
     expect(html).not.toContain("ترشيحات محمد باقر");
   });
   it("shows his recommendations first when he made some", () => {

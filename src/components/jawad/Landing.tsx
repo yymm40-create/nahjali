@@ -194,7 +194,7 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
             </details>
             <details>
               <summary>كيف أدفع؟</summary>
-              <p>تختار باقة الرصيد وتحوّل بتحويل بنكي، وتضغط «تم التحويل»، وينضاف رصيدك بعد ما نتأكد من وصول المبلغ.</p>
+              <p>تختار باقة الرصيد (أو المبلغ اللي تبيه)، وتدفع بالبطاقة أو مدى أو Apple Pay في صفحة دفع آمنة، وينضاف رصيدك فور تأكيد الدفع.</p>
             </details>
             <details>
               <summary>كم سعر الصورة أو الفيديو؟</summary>

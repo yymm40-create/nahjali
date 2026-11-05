@@ -9,6 +9,7 @@ import { CAROUSEL_TEMPLATES, designSystem, findTemplate, structureName } from "@
 import { CAROUSEL_GPT_CRAFT, CAROUSEL_STYLES, carouselStyleBlock, findCarouselStyle } from "@config/content-carousel-styles";
 import { CONTENT_FONTS, findContentFont, FONT_GROUPS } from "@config/content-fonts";
 import { findMotionCarouselStyle, routeById } from "@config/content-motion-carousel";
+import { findPath, PATH_EDIT_RULES, PATH_TALK_RULES, PATH_VERBOSE_RULES } from "@config/content-paths";
 import { FILM_STYLES, findStyle } from "@config/film-styles";
 import { findPalette, lightness } from "@config/content-palettes";
 import { MOODS, MOTION_STYLES, moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
@@ -57,9 +58,9 @@ export function turnText(parts: string[] = [], record = "") {
 export function catalogBlock(): string {
   const tpl = CAROUSEL_TEMPLATES.map((t) => `- ${t.id} — ${t.name} (${t.group}) — ${t.description} يناسب: ${t.bestFor}. بنيات: ${t.structures.map(structureName).join("، ")}. حتى ${t.words} كلمة في الشريحة.`).join("\n");
   const sty = FILM_STYLES.map((x) => `- ${x.id} — ${x.name} (${x.group} · ${x.school}) — ${x.feel}`).join("\n");
-  const car = CAROUSEL_STYLES.map((s) => `- ${s.id} — ${s.n}) ${s.name} (${s.niche})${s.winner ? " ★الأقوى في نيشه" : ""}${s.photoIdea ? " [صور واقعية]" : ""}${s.font ? ` [خطه الجاهز: ${s.font}]` : ""} — ${s.description} يناسب: ${s.bestFor}.`).join("\n");
+  const car = CAROUSEL_STYLES.map((s) => `- ${s.id} — ${s.n}) ${s.name} (${s.niche})${s.winner ? " ★الأقوى في مجاله" : ""}${s.photoIdea ? " [صور واقعية]" : ""}${s.font ? ` [خطه الجاهز: ${s.font}]` : ""} — ${s.description} يناسب: ${s.bestFor}.`).join("\n");
   const fonts = CONTENT_FONTS.map((f) => `- ${f.id} — ${f.name} (${f.group})${f.top ? " ★" : ""} — ${f.feel} يناسب: ${f.bestFor}.`).join("\n");
-  return `جدول ستايلات الكاروسيل (${CAROUSEL_STYLES.length} ستايلًا مصنفة بالنيش، بصورتين لكل واحد: غلاف وشريحة؛ جدول kind="carousels"؛ هو طريقة اختيار شكل الكاروسيل):\n${car}\n\nقائمة الخطوط العربية (${CONTENT_FONTS.length} خطًا في ${FONT_GROUPS.length} أنواع؛ قائمة kind="fonts"؛ تُسأل بعد الستايل: الموقع يعرضها بنفسه، وإذا رشّحت خطوطًا فضع معرّفاتها في "options"):\n${fonts}\n\n${CAROUSEL_GPT_CRAFT}\n\nقوالب الكاروسيل التي يعرضها الموقع للعميل (معرض kind="templates"؛ يختار واحدًا أو لا يختار):\n${tpl}\n\nخريطة الستايلات (${FILM_STYLES.length} ستايلًا في ١٤ عائلة، كل واحد تحت شركته أو مدرسته) لرسوم الصور (معرض kind="styles"؛ يطبّق الموقع نص الستايل حرفيًا على الرسوم والشخصيات والمشاهد المرسومة فقط، لا على تخطيط الكتابة):\n${sty}`;
+  return `جدول ستايلات الكاروسيل (${CAROUSEL_STYLES.length} ستايلًا مصنفة حسب المجال، بصورتين لكل واحد: غلاف وشريحة؛ جدول kind="carousels"؛ هو طريقة اختيار شكل الكاروسيل):\n${car}\n\nقائمة الخطوط العربية (${CONTENT_FONTS.length} خطًا في ${FONT_GROUPS.length} أنواع؛ قائمة kind="fonts"؛ تُسأل بعد الستايل: الموقع يعرضها بنفسه، وإذا رشّحت خطوطًا فضع معرّفاتها في "options"):\n${fonts}\n\n${CAROUSEL_GPT_CRAFT}\n\nقوالب الكاروسيل التي يعرضها الموقع للعميل (معرض kind="templates"؛ يختار واحدًا أو لا يختار):\n${tpl}\n\nخريطة الستايلات (${FILM_STYLES.length} ستايلًا في ١٤ عائلة، كل واحد تحت شركته أو مدرسته) لرسوم الصور (معرض kind="styles"؛ يطبّق الموقع نص الستايل حرفيًا على الرسوم والشخصيات والمشاهد المرسومة فقط، لا على تخطيط الكتابة):\n${sty}`;
 }
 
 /**
@@ -80,6 +81,7 @@ const PALETTE_MARK = /\[ألوان:([a-z0-9-]+)\]/g;
 const CAROUSEL_MARK = /\[كاروسيل:([a-z0-9-]+)\]/g;
 const FONT_MARK = /\[خط:([a-z0-9-]+)\]/g;
 const MOVE_MARK = /\[حركة:([a-z0-9-]+)\]/g;
+const PATH_MARK = /\[مسار:([a-z0-9-]+)\]/g;
 
 /** What the person picked in the galleries: the last mark of each kind in their messages ("none" = they chose neither). */
 export interface Chosen {
@@ -90,12 +92,14 @@ export interface Chosen {
   mood?: string | null;
   /** one of the 100 four-colour palettes ("none" = he chooses the colours) */
   palette?: string | null;
-  /** a style of the table of 103 ("help" = help me choose, "own" = something not in the table) */
+  /** a style of the table of 104 ("help" = help me choose, "own" = something not in the table) */
   carousel?: string | null;
   /** a font of the list of 50 ("style" = the style's ready font, "auto" = he picks) */
   font?: string | null;
   /** a motion-carousel style of the ten ("help" = help me choose, "own" = built from zero with him) */
   move?: string | null;
+  /** the path of the four the person opened: carousel, motion-carousel, motion-graphics, reel-graphics */
+  path?: string | null;
 }
 export function chosenIds(userTexts: string[]): Required<Chosen> {
   let template: string | null = null;
@@ -106,7 +110,9 @@ export function chosenIds(userTexts: string[]): Required<Chosen> {
   let carousel: string | null = null;
   let font: string | null = null;
   let move: string | null = null;
+  let path: string | null = null;
   for (const t of userTexts) {
+    for (const m of t.matchAll(PATH_MARK)) path = m[1];
     for (const m of t.matchAll(MOVE_MARK)) move = m[1];
     for (const m of t.matchAll(TEMPLATE_MARK)) template = m[1];
     for (const m of t.matchAll(STYLE_MARK)) style = m[1];
@@ -116,7 +122,17 @@ export function chosenIds(userTexts: string[]): Required<Chosen> {
     for (const m of t.matchAll(CAROUSEL_MARK)) carousel = m[1];
     for (const m of t.matchAll(FONT_MARK)) font = m[1];
   }
-  return { template, style, motion, mood, palette, carousel, font, move };
+  return { template, style, motion, mood, palette, carousel, font, move, path };
+}
+
+/**
+ * The talk's rules (short by default, longer when the person asks), how edits are read, and the steps of the path the person is on.
+ * «جرافكس على ريل» also gets the skills for a talking video (the catalogue of motion on the speaker).
+ */
+export function pathBlock(ids: Chosen, verbose: boolean): string {
+  const p = findPath(ids.path);
+  const talk = p?.id === "reel-graphics" ? `مهارات الموشن على المتكلم (للعرض كخيارات):\n${MOTION_STYLES.filter((x) => x.talk).map((x) => `- ${x.id} — ${x.ar} ${x.icon} — ${x.hint}.`).join("\n")}` : "";
+  return [PATH_TALK_RULES, verbose ? PATH_VERBOSE_RULES : "", p ? `${p.flow}${talk ? `\n\n${talk}` : ""}` : "", PATH_EDIT_RULES].filter(Boolean).join("\n\n");
 }
 
 /** The full details of what was picked (the design system to copy into every slide, the style's meaning). */
@@ -125,7 +141,7 @@ export function chosenBlock(ids: Chosen): string {
   const car = ids.carousel ? findCarouselStyle(ids.carousel) : null;
   if (car) {
     out.push(
-      `ستايل الكاروسيل الذي اختاره العميل: ${car.n}) ${car.name} (${car.id}) من نيش «${car.niche}». ${car.description}\nضع معرّفه في "carousel_id". ألوانه وخطه وهوامشه محسومة فيه: لا تسأل عنها، ولا تعرض معرض الألوان ولا القوالب إلا إذا طلب العميل تغيير شيء بنفسه. حتى ${car.words} كلمة في الشريحة.\nوصف الستايل كما يضيفه الموقع حرفيًا إلى كل شريحة (للعلم، لا تنسخه في "prompt"؛ اكتب فيه ما يخص الشريحة فقط):\n${carouselStyleBlock(car)}${
+      `ستايل الكاروسيل الذي اختاره العميل: ${car.n}) ${car.name} (${car.id}) من مجال «${car.niche}». ${car.description}\nضع معرّفه في "carousel_id". ألوانه وخطه وهوامشه محسومة فيه: لا تسأل عنها، ولا تعرض معرض الألوان ولا القوالب إلا إذا طلب العميل تغيير شيء بنفسه. حتى ${car.words} كلمة في الشريحة.\nوصف الستايل كما يضيفه الموقع حرفيًا إلى كل شريحة (للعلم، لا تنسخه في "prompt"؛ اكتب فيه ما يخص الشريحة فقط):\n${carouselStyleBlock(car)}${
         car.photoIdea
           ? `\nهذا الستايل فيه صور واقعية، فاسأله في ردّك التالي سؤالًا kind="choice" نصّه «هذا الستايل فيه صور واقعية: تضيف صورك أو نسويها لك؟» بخيارين حرفيًا: «أضيف صوري» و«سوّوها لي من الصفر»، وأعطه الفكرة لما يضيفه: ${car.photoIdea} وإذا اختار صوره فاطلب منه إرفاقها بزر 📎 وضع معرّفاتها في "refs"، وقل له أي صورة تذهب لأي شريحة (مثلًا: في الغلاف بوستر بصورتك هكذا).`
           : ""

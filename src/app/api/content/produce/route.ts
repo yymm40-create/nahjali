@@ -18,13 +18,13 @@ const UUID = /^[0-9a-f-]{36}$/i;
  */
 export const POST = handle(async (req: Request) => {
   const { user } = await requireContentUser();
-  const b = (await req.json().catch(() => ({}))) as { chatId?: unknown; retry?: unknown; n?: unknown; png?: unknown; rounds?: unknown; scores?: unknown; video?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { chatId?: unknown; retry?: unknown; n?: unknown; png?: unknown; pngUpload?: unknown; rounds?: unknown; scores?: unknown; video?: unknown };
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   if (!chatId) throw new UserError("محادثة غير صحيحة.", 400);
   const retry = b.retry === "failed" ? ("failed" as const) : Array.isArray(b.retry) ? b.retry.map(Number).filter((n) => Number.isInteger(n) && n > 0 && n <= 40).slice(0, 40) : undefined;
   try {
     // «Claude Code»: the page draws a slide itself and sends the picture back (otherwise the answer may carry the next slide's brief)
-    const r = typeof b.png === "string" ? await produceFromCode(user.id, chatId, b) : await produce(user.id, chatId, { retry, owner: isAdmin(user.email), email: user.email, origin: new URL(req.url).origin });
+    const r = typeof b.png === "string" || typeof b.pngUpload === "string" ? await produceFromCode(user.id, chatId, b) : await produce(user.id, chatId, { retry, owner: isAdmin(user.email), email: user.email, origin: new URL(req.url).origin });
     const [links, downloads] = await Promise.all([producedLinks(user.id, chatId), producedLinks(user.id, chatId, true)]);
     // a motion slide to make: the library's sound effects (their links), for the cues of his scene
     const sfx = r.code?.motion ? Object.fromEntries((await sfxLibrary().catch(() => ({ items: [] as { id: string; url: string | null }[] }))).items.filter((i) => i.url && CUE_SFX.includes(i.id)).map((i) => [i.id, i.url!])) : undefined;

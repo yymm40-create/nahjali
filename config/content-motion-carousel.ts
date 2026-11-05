@@ -1,7 +1,7 @@
 // «محمد باقر» والموشن كاروسيل — the carousel whose slides are short videos (the words enter with motion, a soft sound
 // with each entry, sometimes a moving background): what he knows (Instagram's own rules, when it beats a still carousel
 // or a reel, how each slide is built — from a web study and a look at about 100 motion-carousel posts on Instagram,
-// 4 November 2026), the ready motion styles the person picks from (ten, then eleven more from a second study the same day) (or one built from zero with him), and the three
+// 4 November 2026), the ready motion styles the person picks from (ten, then eleven more from a second study the same day, then «حكاية بيكسار» the owner picked on 5 November 2026) (or one built from zero with him), and the three
 // ways of making it, cheapest first. «حيدرا ماكس» makes every slide in the person's browser: he writes the slide as a
 // moving scene in the motion lab's kit, looks at its frames, fixes it, and the page renders it to MP4 with its sound.
 // Pure (server and browser).
@@ -150,6 +150,13 @@ export const MOTION_CAROUSEL_STYLES: MotionCarouselStyle[] = [
     feel: "بطاقات تلف في الفضاء مثل الدولاب ثلاثي الأبعاد، وتوقف على البطاقة المهمة قدامه.",
     bestFor: "عرض القائمة كاملة، والخدمات، والمنتجات، وأقسام الكورس",
     craft: "Five or six cards stand on a ring in 3D space (fake perspective in 2D: x = sin(angle)·R, depth = cos(angle), scale and brightness by depth, width squashed by |cos| so they turn, drawn back to front, a soft floor shadow). The ring turns one to one and a half times with an ease-in-out and settles with the slide's main card facing the viewer; only the facing cards show their words (a big faint number and one word). A line under it invites the swipe. Airy whooshes as cards pass the front, a soft hit when it stops.",
+  },
+  // the owner's pick of 5 November 2026: the modern Pixar story of carousel style 104, moving
+  {
+    id: "pixar-story", n: 22, name: "حكاية بيكسار", route: "picture", seconds: 6,
+    feel: "كل شريحة لقطة من فيلم أنيميشن حديث: الكاميرا تقرّب بهدوء، الأغراض الذهبية تطفو وتلمع، وعنوان الفصل يطلع وبعده الكلام سطر سطر والجملة المهمة تلمع بالذهبي.",
+    bestFor: "القصص والعِبر، والمواقف خطوة بخطوة، والمحتوى الديني والتربوي للشباب",
+    craft: "photo1 is the slide's full GPT Image 2 scene in the look of carousel style 104 «بيكسار الحديث» (young cartoon characters in maroon hoodies, a deep burgundy background with a warm golden glow and floating glossy 3D props, no writing, the top part calm). Move it like a shot of an animated film: a slow camera push-in (4–6% over the slide) with a slight drift; a soft golden glow that breathes behind the characters; 10–20 small golden sparkles drifting up and twinkling; a gentle light sweep once. The words over the calm top: the chapter pill pops in first (scale 0.8 → 1 with a small overshoot, 0.35 s), then the white headline rises word by word (0.12 s apart, blur-to-sharp), its golden key phrase lands last with one soft shimmer passing over it, then the short lines fade up one by one; «اسحب ←» nudges left twice at the end. Everything holds still and readable for the last 2 s; the first frame is already a readable cover on slide 1. A soft whoosh on the push, a light chime on the pill, a tiny sparkle with the golden phrase; no music.",
   },
 ];
 

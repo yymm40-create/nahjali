@@ -87,3 +87,10 @@ export async function notifyTransfer(o: Order, s: CourseSettings): Promise<boole
   await tgSend(ownerChat(), orderText(o), rows(o, s, false));
   return true;
 }
+
+/** Tells the owner a buyer PAID by card (it is confirmed already: the buyer is unlocked). The WhatsApp button carries the welcome. */
+export async function notifyPaid(o: Order, s: CourseSettings): Promise<boolean> {
+  if (!telegramFull()) return false;
+  await tgSend(ownerChat(), orderText(o, "💳 <b>دفع بالبطاقة — تأكّد تلقائيًا ✅</b>"), rows(o, s, true));
+  return true;
+}

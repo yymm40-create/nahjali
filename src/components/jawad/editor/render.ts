@@ -118,7 +118,7 @@ function lighter(id: string, f: Frame): Frame {
   g.drawImage(f.img, 0, 0, w, h);
   return { ...f, img: c, width: w, height: h };
 }
-import { animAt, clipEnd, clipLength, colorFilter, countText, decodeText, kashida, transformAt, transitionAt, wordAt, type AnimLook, type Clip, type TextStyle, type Timeline, type Track, type Transform, type ClipFx, type BlendMode } from "@/lib/editor/model";
+import { animAt, clipEnd, clipLength, colorFilter, countText, decodeText, kashida, transformAt, transitionAt, wordAt, type AnimLook, type Clip, type TextStyle, type Timeline, type Track, type Transform, type ClipFx, type BlendMode, type Backdrop } from "@/lib/editor/model";
 
 export interface Frame {
   img: CanvasImageSource;
@@ -524,7 +524,9 @@ function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Trans
       ctx.fillRect(-w / 2, -h / 2, w, h);
     }
     ctx.filter = filter || "none";
-    ctx.drawImage(cutout(f, f.mask, clip.bg.feather ?? 0.3, clip.bg.despill ?? 0, clip.bg.spillColor ?? "", clip.bg.fill ?? ""), -w / 2, -h / 2, w, h);
+    const person = cutout(f, f.mask, clip.bg.feather ?? 0.3, clip.bg.despill ?? 0, clip.bg.spillColor ?? "", clip.bg.fill ?? "");
+    if (clip.bg.edge) personEdge(ctx, person, clip.bg.edge, w, h, Math.max(0, ms - clip.start), base);
+    ctx.drawImage(person, -w / 2, -h / 2, w, h);
   } else if (clip.fx.length || look.tfx.length) {
     // «المؤثرات»: the clip's own effects (and a transition's passing one), on its own time
     const plan = fxPlan(look.tfx.length ? [...clip.fx, ...look.tfx] : clip.fx, Math.max(0, ms - clip.start) / 1000, clipLength(clip) / 1000);
@@ -616,6 +618,60 @@ function cutout(f: Frame, mask: CanvasImageSource, feather = 0.3, despill = 0, s
     c.globalCompositeOperation = "source-over";
   }
   return scratch;
+}
+
+let tint: HTMLCanvasElement | null = null;
+/** The cut-out filled with one colour (its soft edge kept), for «حافة الشخص». */
+function tinted(person: HTMLCanvasElement, colour: string) {
+  tint ??= document.createElement("canvas");
+  if (tint.width !== person.width || tint.height !== person.height) {
+    tint.width = person.width;
+    tint.height = person.height;
+  }
+  const c = tint.getContext("2d")!;
+  c.globalCompositeOperation = "source-over";
+  c.clearRect(0, 0, tint.width, tint.height);
+  c.drawImage(person, 0, 0);
+  c.globalCompositeOperation = "source-in";
+  c.fillStyle = colour;
+  c.fillRect(0, 0, tint.width, tint.height);
+  c.globalCompositeOperation = "source-over";
+  return tint;
+}
+
+/**
+ * «حافة الشخص», drawn under the cut-out: a thick white edge (a paper sticker), a soft light around them, or tinted
+ * copies spreading sideways and back on a slow beat (the echo).
+ */
+function personEdge(ctx: CanvasRenderingContext2D, person: HTMLCanvasElement, edge: NonNullable<Backdrop["edge"]>, w: number, h: number, local: number, base: number) {
+  const u = Math.min(w, h) / 1080;
+  if (edge === "sticker") {
+    const white = tinted(person, "#ffffff");
+    const r = 12 * u;
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      ctx.drawImage(white, -w / 2 + Math.cos(a) * r, -h / 2 + Math.sin(a) * r, w, h);
+    }
+  } else if (edge === "glow") {
+    const light = tinted(person, "#ffd79a");
+    ctx.save();
+    ctx.filter = `blur(${(26 * u).toFixed(1)}px)`;
+    ctx.globalAlpha = base * 0.85;
+    ctx.drawImage(light, -w / 2, -h / 2, w, h);
+    ctx.drawImage(light, -w / 2, -h / 2, w, h);
+    ctx.restore();
+  } else {
+    const spread = (40 + 70 * (0.5 + 0.5 * Math.sin((local / 1000) * Math.PI * 1.6))) * u;
+    const cols = ["#7c4dff", "#ff4f8b", "#ff8a3d"];
+    ctx.save();
+    for (let i = 3; i >= 1; i--) {
+      ctx.globalAlpha = base * (0.6 - i * 0.13);
+      const t = tinted(person, cols[i - 1]);
+      ctx.drawImage(t, -w / 2 - i * spread, -h / 2 + i * 4 * u, w, h);
+      ctx.drawImage(t, -w / 2 + i * spread, -h / 2 + i * 4 * u, w, h);
+    }
+    ctx.restore();
+  }
 }
 
 function hexRgb(hex: string): [number, number, number] {

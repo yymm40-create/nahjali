@@ -18,7 +18,7 @@ const UUID = /^[0-9a-f-]{36}$/i;
  */
 export const POST = handle(async (req: Request) => {
   const { user } = await requireDesignerUser();
-  const b = (await req.json().catch(() => ({}))) as { chatId?: unknown; retry?: unknown; png?: unknown; rounds?: unknown; scores?: unknown; program?: unknown; edited?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { chatId?: unknown; retry?: unknown; png?: unknown; pngUpload?: unknown; rounds?: unknown; scores?: unknown; program?: unknown; edited?: unknown };
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   if (!chatId) throw new UserError("محادثة غير صحيحة.", 400);
   try {
@@ -28,7 +28,7 @@ export const POST = handle(async (req: Request) => {
       await retry(user.id, chat);
     }
     // «حيدرا ماكس»: the page draws the design itself — first it gets the brief, then it sends the picture back
-    if (typeof b.png !== "string") {
+    if (typeof b.png !== "string" && typeof b.pngUpload !== "string") {
       const brief = await codeBrief(user.id, chatId, { email: user.email, origin: new URL(req.url).origin });
       if (!brief) throw new UserError("ما فيه تصميم ينتظر الرسم في هذي المحادثة.", 409);
       return NextResponse.json({ code: brief });

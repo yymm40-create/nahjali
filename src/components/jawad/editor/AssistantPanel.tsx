@@ -661,9 +661,9 @@ function Conversation({
             const all = captionSources(now, assets);
             const sources = q.clipId ? all.filter((x) => x.clip.id === q.clipId) : all;
             if (!sources.length) throw new Error("ما فيه مقاطع فيها كلام أكتبه.");
-            const items = q.poem?.trim() ? await poemCaptions(projectId, sources[0], q.poem, setBusy) : (await spokenCaptions(projectId, now, sources, q.lang ?? "ar", setBusy)).items;
+            const items = q.poem?.trim() ? await poemCaptions(projectId, sources[0], q.poem, setBusy) : (await spokenCaptions(projectId, now, sources, q.lang ?? "ar", setBusy, q.captionStyle === "pop2" ? 2 : undefined)).items;
             const before = new Set(now.tracks.map((t) => t.id));
-            const style = (["karaoke", "classic", "box", "neon", "poem"] as const).find((k) => k === q.captionStyle) ?? (q.poem?.trim() ? "poem" : "karaoke");
+            const style = (["karaoke", "pop2", "classic", "box", "neon", "poem"] as const).find((k) => k === q.captionStyle) ?? (q.poem?.trim() ? "poem" : "karaoke");
             const made = run({ type: "add_captions", items, style, name: q.poem?.trim() ? "الأبيات" : "كابشن" }, { label: `كابشن من حيدرا ماكس (${items.length})` }) as { timeline: Timeline } | null;
             const track = made?.timeline.tracks.find((t) => t.kind === "text" && !before.has(t.id));
             const more = track ? expandThen(q.then ?? [], track.id, track.clips.map((c) => c.id)) : [];

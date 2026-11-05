@@ -21,7 +21,9 @@ describe("«خلص رصيدك»: ادفع بمقدار العملية بس", () 
     expect(exactSar(0)).toBe(3);
     expect(exactSar(10_000_000)).toBe(1000);
     expect(exactPackOf("exact-3")).toMatchObject({ id: "exact-3", price: 3, credit: 3 });
-    expect(exactPackOf("exact-2")).toBeNull();
+    // the amount the buyer chooses goes down to 1 riyal (the automatic top-up still asks for 3 at least)
+    expect(exactPackOf("exact-1")).toMatchObject({ price: 1, credit: 1 });
+    expect(exactPackOf("exact-2")).toMatchObject({ price: 2, credit: 2 });
     expect(exactPackOf("exact-0")).toBeNull();
     expect(exactPackOf("exact-1001")).toBeNull();
     expect(exactPackOf("exact-2.5")).toBeNull();

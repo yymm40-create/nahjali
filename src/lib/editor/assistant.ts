@@ -71,7 +71,7 @@ const SCHEMA = {
         required: ["kind", "text", "style", "prompt", "at", "lengthMs", "clipId", "lang", "domain", "age", "makeKind", "aspect", "seconds", "voice", "withSound", "quality", "place", "name", "track", "layer", "captionStyle", "poem", "then"],
         properties: {
           kind: { type: "string", enum: ["hook_design", "music", "separate", "scene_cut", "make", "smart_mask", "captions", "voiceprint", "talk_motion", "motion_lab", "upscale", "code_edit", "code_grade", "watch"] },
-          captionStyle: { type: "string", enum: ["karaoke", "classic", "box", "neon", "poem", ""], description: "captions: the look to start from (karaoke = the word being said lights up). Else empty." },
+          captionStyle: { type: "string", enum: ["karaoke", "pop2", "classic", "box", "neon", "poem", ""], description: "captions: the look to start from (karaoke = the word being said lights up; pop2 «كلمتين كلمتين» = two big words a line, the spoken one yellow — the Hormozi look for business, advice and hype). Else empty." },
           poem: { type: "string", description: "captions: a poem's verses (one per line, exactly as the person gave them) to time on its recitation in clipId. Else empty." },
           then: { type: "array", items: { type: "string", description: "One editing command as a JSON object string." }, description: "captions: commands to run once the captions exist — \"$CAPTIONS\" is the new caption track's id, and a command whose clipId is \"$EACH\" runs on every caption. Else empty." },
           track: { type: "boolean", description: "smart_mask: follow the subject through the clip (a moving subject in a video). Else false." },
@@ -515,7 +515,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
         sfxRequests.push({ kind: "make", makeKind: "sfx", prompt: SFX[kind].prompt, seconds: SFX[kind].seconds, place: "audio", at: first, alsoAt: rest, volume: 0.35, name: SFX[kind].name, text: "", lang: "", domain: "", age: "", style: "", aspect: "", voice: "", withSound: false, quality: "", lengthMs: 0, clipId: "" });
       }
       const frames = planFrames(talk, tl.width, tl.height, talkEnd);
-      const framesAr = { "split-top": "نصين", "split-bottom": "نصين", shrink: "مربع", corner: "زاوية", punch: "زووم" } as const;
+      const framesAr = { "split-top": "نصين", "split-bottom": "نصين", shrink: "مربع", corner: "زاوية", punch: "زووم", card: "كرت" } as const;
       const frameNote = built.windows.length
         ? talk.layout === "mix" || talk.layout === "split" || talk.layout === "corner"
           ? `، بستايل «${frames.style.ar}» ${frames.style.icon} والإطار يتغير ${built.windows.length} مرات (${[...new Set(frames.modes.map((m) => framesAr[m]))].join("، ")})${talk.face ? " على وجهك" : ""}`

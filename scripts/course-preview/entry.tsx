@@ -1,4 +1,4 @@
-// Draws the course page with fake data (no server): ?phase=soon|A|B|C &sheet=form|bank|done &unlocked=1 &signed=1
+// Draws the course page with fake data (no server): ?phase=soon|A|B|C &sheet=form &unlocked=1 &signed=1 &back=unpaid|cancelled
 import { createRoot } from "react-dom/client";
 import CourseLanding from "@/components/jawad/course/CourseLanding";
 import { DEFAULT_SETTINGS } from "@config/course";
@@ -40,5 +40,6 @@ createRoot(document.getElementById("root")!).render(
     unlocked={q.get("unlocked") === "1" ? { confirmed: false, products: [], groupLink: "https://chat.whatsapp.com/x", recordedLink: "" } : null}
     buy={q.get("sheet") ? ((phase === "A" ? "combo" : "recorded") as never) : null}
     loginHref="/jawad-ai/login"
+    back={q.get("back") === "unpaid" ? "unpaid" : q.get("back") === "cancelled" ? "cancelled" : null}
   />,
 );

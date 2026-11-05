@@ -88,6 +88,20 @@ export function drawMotion(ctx: CanvasRenderingContext2D, m: MotionEl, W: number
     ctx.restore();
     return;
   }
+  if (m.kind === "doodle" || m.kind === "emojipop" || m.kind === "speedlines") {
+    const f = faceAt(m.track, b.local) ?? { x: m.x, y: m.y, w: (300 * u) / W, h: (340 * u) / H };
+    if (m.kind === "doodle") drawDoodle(ctx, m, c, W, H, u, b, f);
+    else if (m.kind === "emojipop") drawEmojiPop(ctx, m, W, H, u, b, f, p);
+    else drawSpeedLines(ctx, c, W, H, u, b, f);
+    ctx.restore();
+    return;
+  }
+  if (m.kind === "uicard") {
+    entrance(ctx, m, p, u, cx, cy);
+    drawUiCard(ctx, m, c, u, cx, cy, maxW, b);
+    ctx.restore();
+    return;
+  }
   ctx.direction = "rtl";
   ctx.textBaseline = "middle";
   entrance(ctx, m, p, u, cx, cy);
@@ -455,4 +469,126 @@ function drawBig(ctx: CanvasRenderingContext2D, m: MotionEl, c: C, u: number, cx
     ctx.font = font(600, tPx, b.family);
     ctx.fillText(m.title, cx, top + 30 * u + nPx * 1.1 + tPx * 0.7);
   }
+}
+
+type FaceNow = { x: number; y: number; w: number; h: number };
+
+/**
+ * «شخبطة حول الوجه»: a hand-drawn mark that draws itself on around the face (following it), in white with a soft
+ * shadow so it reads on any picture: a loose circle, an arrow coming in at the head, question marks, stars, a cross.
+ */
+function drawDoodle(ctx: CanvasRenderingContext2D, m: MotionEl, c: C, W: number, H: number, u: number, b: Box, f: FaceNow) {
+  const fx = f.x * W, fy = f.y * H, R = Math.max(f.w * W, f.h * H * 0.8) * 0.72;
+  const k = Math.min(1, b.local / 650);
+  ctx.strokeStyle = c.text;
+  ctx.fillStyle = c.text;
+  ctx.lineWidth = Math.max(3, 9 * u);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.shadowColor = "rgba(0,0,0,0.35)";
+  ctx.shadowBlur = 8 * u;
+  const pts = (n: number, at: (i: number) => [number, number]) => Array.from({ length: n }, (_, i) => at(i));
+  if (m.mark === "circle") partial(ctx, pts(64, (i) => { const a = -Math.PI / 2 + (i / 63) * Math.PI * 2.12; return [fx + Math.cos(a) * R * (1 + 0.04 * Math.sin(i * 1.3)), fy + Math.sin(a) * R * 1.18]; }), k);
+  else if (m.mark === "arrow") {
+    const tx = Math.min(W - 40 * u, fx + R * 1.05), ty = fy - R * 0.9;
+    partial(ctx, cubic([tx + 190 * u, ty - 200 * u], [tx + 150 * u, ty - 60 * u], [tx + 60 * u, ty - 30 * u], [tx, ty]), k * 1.4);
+    partial(ctx, [[tx + 12 * u, ty - 80 * u], [tx, ty], [tx + 80 * u, ty - 14 * u]], k * 1.4 - 0.6);
+  } else if (m.mark === "cross") {
+    const x = Math.min(W - 90 * u, fx + R * 1.1), y = fy - R * 0.5, s = 64 * u;
+    partial(ctx, [[x - s, y - s], [x + s, y + s]], k * 2);
+    partial(ctx, [[x + s, y - s], [x - s, y + s]], k * 2 - 1);
+  } else if (m.mark === "question") {
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.direction = "rtl";
+    for (const [i, ox, oy, sz] of [[0, -1.15, -0.85, 150], [1, 1.1, -1.05, 110]] as const) {
+      const q = enterAt(b.local - i * 160);
+      if (q <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha *= q;
+      ctx.font = font(900, sz * u, b.family);
+      ctx.fillText("؟", Math.min(W - 60 * u, Math.max(60 * u, fx + R * ox)), fy + R * oy + (1 - q) * 30 * u);
+      ctx.restore();
+    }
+  } else {
+    // stars: three, drawn one after another
+    [[-1.2, -0.9], [1.15, -1.0], [1.25, 0.3]].forEach(([ox, oy], i) => {
+      const x = Math.min(W - 50 * u, Math.max(50 * u, fx + R * ox)), y = fy + R * oy, r = 38 * u;
+      partial(ctx, pts(11, (j) => { const a = -Math.PI / 2 + (j / 10) * Math.PI * 2; const rr = j % 2 ? r * 0.45 : r; return [x + Math.cos(a) * rr, y + Math.sin(a) * rr]; }), Math.min(1, (b.local - i * 260) / 420));
+    });
+  }
+}
+
+/** «إيموجي جنب الراس»: the emoji on a soft white disc beside the head, floating a little (no bounce). */
+function drawEmojiPop(ctx: CanvasRenderingContext2D, m: MotionEl, W: number, H: number, u: number, b: Box, f: FaceNow, p: number) {
+  const side = f.x > 0.5 ? -1 : 1;
+  const r = 96 * u;
+  const x = Math.min(W - r - 20 * u, Math.max(r + 20 * u, (f.x + side * f.w * 0.78) * W));
+  const y = Math.max(r + 20 * u, (f.y - f.h * 0.62) * H) + Math.sin(b.local / 420) * 6 * u + (1 - p) * 30 * u;
+  ctx.shadowColor = "rgba(0,0,0,0.28)";
+  ctx.shadowBlur = 26 * u;
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `${Math.round(r * 1.15)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+  ctx.fillText((m.title || "⭐").slice(0, 8), x, y + r * 0.06);
+}
+
+/** «خطوط سرعة»: white strokes rushing out from around the face, redrawn every few frames (like anime action lines). */
+function drawSpeedLines(ctx: CanvasRenderingContext2D, c: C, W: number, H: number, u: number, b: Box, f: FaceNow) {
+  const fx = f.x * W, fy = f.y * H;
+  let seed = Math.floor(b.local / 90) * 7919 + 17;
+  const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  const r0 = Math.max(f.w * W, f.h * H) * 0.95;
+  ctx.strokeStyle = alphaHex(c.text, 0.7);
+  ctx.lineCap = "round";
+  for (let i = 0; i < 46; i++) {
+    const a = rnd() * Math.PI * 2, s = r0 * (1 + rnd() * 0.5), l = (220 + rnd() * 420) * u;
+    ctx.lineWidth = (2 + rnd() * 5) * u;
+    ctx.beginPath();
+    ctx.moveTo(fx + Math.cos(a) * s, fy + Math.sin(a) * s);
+    ctx.lineTo(fx + Math.cos(a) * (s + l), fy + Math.sin(a) * (s + l));
+    ctx.stroke();
+  }
+}
+
+/** «كرت تطبيق»: a card like a phone notification — a round badge, a small heading, the words under it. */
+function drawUiCard(ctx: CanvasRenderingContext2D, m: MotionEl, c: C, u: number, cx: number, cy: number, maxW: number, b: Box) {
+  const w = Math.min(maxW, 900 * u);
+  const head = 30 * u, body = 48 * u;
+  ctx.font = font(700, body, b.family);
+  const ls = lines(ctx, m.sub || m.title, w - 110 * u).slice(0, 3);
+  const h = 110 * u + ls.length * body * 1.35;
+  const x = cx - w / 2, y = cy - h / 2;
+  ctx.shadowColor = "rgba(0,0,0,0.3)";
+  ctx.shadowBlur = 40 * u;
+  ctx.shadowOffsetY = 12 * u;
+  ctx.fillStyle = alphaHex(c.panel, 0.94);
+  rounded(ctx, x, y, w, h, 34 * u);
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.fillStyle = c.accent;
+  ctx.beginPath();
+  ctx.arc(x + w - 64 * u, y + 62 * u, 30 * u, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.direction = "rtl";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "right";
+  ctx.fillStyle = c.accent;
+  ctx.font = font(700, head, b.family);
+  ctx.fillText((m.sub ? m.title : "") || "إشعار", x + w - 110 * u, y + 62 * u);
+  ctx.textAlign = "left";
+  ctx.direction = "ltr";
+  ctx.fillStyle = alphaHex(c.text, 0.5);
+  ctx.font = font(600, head * 0.85, b.family);
+  ctx.fillText("الآن", x + 34 * u, y + 62 * u);
+  ctx.direction = "rtl";
+  ctx.textAlign = "right";
+  ctx.fillStyle = c.text;
+  ctx.font = font(700, body, b.family);
+  ls.forEach((l, i) => ctx.fillText(l, x + w - 40 * u, y + 110 * u + (i + 0.5) * body * 1.35));
 }

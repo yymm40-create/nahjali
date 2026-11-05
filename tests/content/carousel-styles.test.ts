@@ -8,17 +8,17 @@ import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 import { readQuestions, type Turn } from "@/lib/content/chats";
 import { CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, FONT_AUTO_LINE, fontLine, fontStyleLine, stripMarks } from "@/lib/content/marks";
 import { answerLine } from "@/lib/content/marks";
-import { attachedPictures, carouselHold, CAROUSEL_LABEL, FONT_LABEL, KIND_LABEL, KIND_STILL, MAKER_CODE, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE, pickedCarousel, pickedFont, pickedMaker, pickedPhotos } from "@/lib/content/maker";
+import { attachedPictures, carouselHold, CAROUSEL_LABEL, FONT_LABEL, KIND_LABEL, KIND_STILL, MAKER_CODE, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE, pickedCarousel, pickedFont, pickedMaker, pickedMotionStyle, pickedPhotos, pickedRoute } from "@/lib/content/maker";
 import { slidePrompt } from "@/lib/content/produce";
 import { catalogBlock, chosenBlock, chosenIds } from "@/lib/content/persona";
 
-// The table of 103 carousel styles, picked from instead of being asked about colours and margins: the owner's order.
-describe("the 103 carousel styles", () => {
-  it("are 103, numbered in order, each with its own id and name, in every niche", () => {
-    expect(CAROUSEL_STYLES).toHaveLength(103);
-    expect(CAROUSEL_STYLES.map((s) => s.n)).toEqual(Array.from({ length: 103 }, (_, i) => i + 1));
-    expect(new Set(CAROUSEL_STYLES.map((s) => s.id)).size).toBe(103);
-    expect(new Set(CAROUSEL_STYLES.map((s) => s.name)).size).toBe(103);
+// The table of 104 carousel styles, picked from instead of being asked about colours and margins: the owner's order.
+describe("the 104 carousel styles", () => {
+  it("are 104, numbered in order, each with its own id and name, in every niche", () => {
+    expect(CAROUSEL_STYLES).toHaveLength(104);
+    expect(CAROUSEL_STYLES.map((s) => s.n)).toEqual(Array.from({ length: 104 }, (_, i) => i + 1));
+    expect(new Set(CAROUSEL_STYLES.map((s) => s.id)).size).toBe(104);
+    expect(new Set(CAROUSEL_STYLES.map((s) => s.name)).size).toBe(104);
     expect(new Set(CAROUSEL_STYLES.map((s) => s.niche))).toEqual(new Set(CAROUSEL_NICHES));
     expect(CAROUSEL_NICHES).toHaveLength(13);
     expect(findCarouselStyle("notebook")?.name).toBe("الدفتر");
@@ -174,12 +174,34 @@ describe("what stops a new carousel", () => {
     expect(attachedPictures(withPics).map((f) => f.id)).toEqual(["p1"]);
   });
 
-  it("reads a press alone or as a line of a batch, never a sentence", () => {
+  it("reads a press alone or as a line of a batch, and an answer written word for word in a sentence", () => {
     expect(pickedMaker([user(MAKER_MIX)])).toBe("mix");
     expect(pickedMaker([user(answerLine(MAKER_LABEL, [MAKER_GPT]))])).toBe("gpt");
     expect(pickedMaker([user("أبي حيدرا ماكس")])).toBeNull();
     expect(pickedPhotos([user(answerLine(PHOTOS_LABEL, [PHOTOS_MINE]))])).toBe("mine");
     expect(pickedPhotos([user("بضيف صوري")])).toBeNull();
+  });
+
+  // 5 Nov 2026: the style, the motion style and the way of making it were written in the request, and each was asked again
+  it("reads a style, a motion style and the way of making it named in the person's own request", () => {
+    const ask = "أبي موشن كاروسيل ٥ شرائح بستايل «بيكسار الحديث» وحركة «حكاية بيكسار». الصور بـ GPT Image 2، وبدون موسيقى، وآخر شريحة: اكتب «ابدأ» في التعليقات.";
+    expect(pickedCarousel([user(ask)])?.id).toBe("modern-pixar");
+    expect(pickedMotionStyle([user(ask)])?.id).toBe("pixar-story");
+    expect(pickedRoute([user(ask)])).toBe("picture");
+    expect(pickedRoute([user("سوّها بعناصر GPT Image 2 مفرّغة")])).toBe("elements");
+    expect(pickedRoute([user("حيدرا بالكود فقط")])).toBe("code");
+    expect(pickedCarousel([user("أبي كاروسيل عن الدفتر والقلم")])).toBeNull();
+    // a pick in the table later wins over the name written earlier
+    expect(pickedCarousel([user(ask), user(carouselLine({ id: "notebook", name: "الدفتر" }))])?.id).toBe("notebook");
+  });
+
+  // 5 Nov 2026: the answer was typed with an edit, and «أنتج الآن» asked about the pictures again
+  it("does not ask again what was answered in the person's own sentence", () => {
+    const typed = "سوّوها لي من الصفر. والنصوص معتمدة، بس الشريحة ٢ خلّها أقصر";
+    expect(pickedPhotos([user(typed)])).toBe("make");
+    expect(pickedPhotos([user("سووها لي من الصفر")])).toBe("make");
+    expect(pickedPhotos([user("ما أبي سوّوها لي من الصفر، بضيف صوري")])).toBeNull();
+    expect(carouselHold([user(REAL), user(typed), user(FONT), user(KIND_STILL), user(MAKER_MIX)])).toBeNull();
   });
 
   it("starts again after a carousel", () => {

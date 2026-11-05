@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SHARE } from "@config/share";
-import { countdown, DEFAULT_SETTINGS, embedOf, hasLifetimeAccess, isLadder, offerFor, offersAt, PRODUCT_ACCESS, readSettings, savingPct, cleanPhone, waLink, COURSE, type CourseSettings } from "@config/course";
+import { saleBarAt, countdown, DEFAULT_SETTINGS, embedOf, hasLifetimeAccess, isLadder, offerFor, offersAt, PRODUCT_ACCESS, readSettings, savingPct, cleanPhone, waLink, COURSE, type CourseSettings } from "@config/course";
 
 const H = 3_600_000;
 const T0 = Date.parse("2026-10-10T12:00:00Z");
@@ -195,5 +195,23 @@ describe("the clock course («دورة صانع المحتوى»): the owner's t
     expect(C({ comboC: 80 })).toEqual([["combo", 80, 230], ["recorded", 150, 150], ["live", 80, 80]]);
     expect(C({ comboC: 80, liveC: 0, recordedC: 0 })).toEqual([["combo", 80, 230]]);
     expect(readSettings({ prices: { comboC: "80" } }).prices.comboC).toBe(80);
+  });
+});
+
+describe("the bar over the site (saleBarAt)", () => {
+  const ID = "3b68eb1d-ca1b-4e71-a5f7-78013603b443";
+  const L: CourseSettings = { ...DEFAULT_SETTINGS, ladderCourseId: ID, launchAt: new Date(T0).toISOString(), hoursA: 12, hoursB: 13, prices: { ...DEFAULT_SETTINGS.prices, comboA: 49.99 } };
+
+  it("tells everyone the day-one price and when it ends, then goes by itself", () => {
+    const r = saleBarAt(L, T0 + H);
+    expect(r).toMatchObject({ courseId: ID, price: 49.99, endsAt: T0 + 12 * H });
+    expect(r!.was).toBeGreaterThan(49.99);
+    expect(saleBarAt(L, T0 + 12 * H)).toBeNull();
+    expect(saleBarAt(L, T0 + 40 * H)).toBeNull();
+  });
+
+  it("says nothing before the clock starts or when no course follows it", () => {
+    expect(saleBarAt(L, T0 - H)).toBeNull();
+    expect(saleBarAt({ ...L, ladderCourseId: "" }, T0 + H)).toBeNull();
   });
 });

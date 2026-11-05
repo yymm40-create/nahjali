@@ -1,6 +1,6 @@
 "use client";
 
-// «صانع المحتوى» — جدول ستايلات الكاروسيل: the 103 looks a person picks from, by niche, each with its two sample slides, what it
+// «صانع المحتوى» — جدول ستايلات الكاروسيل: the 104 looks a person picks from, by niche, each with its two sample slides, what it
 // is and what it suits. Instead of questions about colours and margins. Two ways out: help me choose, or something else.
 
 import { useEffect, useState } from "react";
@@ -31,7 +31,7 @@ function Row({ s, onPick, onOpen }: { s: CarouselItem; onPick: (s: CarouselItem)
       </td>
       <td className="what">
         <b>{s.n}. {s.name}</b>
-        {s.winner && <span className="tag gold">★ الأقوى في نيشه</span>}
+        {s.winner && <span className="tag gold">★ الأقوى في مجاله</span>}
         {s.realistic && <span className="tag">📷 فيه صور واقعية</span>}
         <p>{s.description}</p>
         <small>يناسب: {s.bestFor}</small>
@@ -75,7 +75,7 @@ export default function CarouselTable({ items, niches, recommended = [], disable
           <button type="submit" className="ct-send" disabled={disabled || !own.trim()}>أرسل</button>
         </form>
       )}
-      <div className="ct-ctable-chips" role="group" aria-label="صنّف حسب النيش">
+      <div className="ct-ctable-chips" role="group" aria-label="صنّف حسب المجال">
         {[ALL, ...niches].map((n) => (
           <button key={n} type="button" className="ct-opt" aria-pressed={niche === n} onClick={() => setNiche(n)}>
             {n} <small>{n === ALL ? items.length : items.filter((s) => s.niche === n).length}</small>

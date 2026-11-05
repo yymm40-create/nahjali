@@ -1,7 +1,7 @@
-import { findCarouselStyle, type CarouselStyle } from "@config/content-carousel-styles";
+import { CAROUSEL_STYLES, findCarouselStyle, type CarouselStyle } from "@config/content-carousel-styles";
 import { findContentFont, type ContentFont } from "@config/content-fonts";
 import { findTemplate } from "@config/content-templates";
-import { findMotionCarouselStyle, MOTION_ROUTES, type MotionCarouselStyle, type MotionRoute } from "@config/content-motion-carousel";
+import { findMotionCarouselStyle, MOTION_CAROUSEL_STYLES, MOTION_ROUTES, type MotionCarouselStyle, type MotionRoute } from "@config/content-motion-carousel";
 import { coinsOf, generatorById, GPT_IMAGE_2_ID } from "@config/jawad/generators";
 import { coinStr } from "@config/coins";
 import type { Question, Turn } from "./chats";
@@ -14,7 +14,7 @@ export const MAKER_MIX = "GPT Image 2 للصور + حيدرا ماكس للكت�
 
 export const MAKER_QUESTION = { label: MAKER_LABEL, kind: "choice" as const, options: [MAKER_CODE, MAKER_GPT, MAKER_MIX], multi: false };
 
-/** The first step of a carousel: the table of 103 styles, in place of questions about colours and margins. */
+/** The first step of a carousel: the table of 104 styles, in place of questions about colours and margins. */
 export const CAROUSEL_LABEL = "اختر ستايل الكاروسيل";
 export const CAROUSEL_QUESTION: Question = { label: CAROUSEL_LABEL, kind: "carousels", options: [], multi: false };
 
@@ -59,7 +59,7 @@ export const routeNote = (slides: number) => {
 /** The turns since the last carousel/** The turns since the last carousel: what the next carousel is decided by. */
 const sinceLastCarousel = (history: Turn[]) => history.slice(history.map((t) => !!t.slides).lastIndexOf(true) + 1);
 
-/** What a person pressed: the whole message, or its line «• label: answer» when it was one of a batch. A sentence in their own words is not a press. */
+/** What a person pressed: the whole message, or its line «• label: answer» when it was one of a batch. */
 function pressed(t: Turn, label: string): string[] {
   const out = [t.text.trim()];
   const prefix = `• ${label}: `;
@@ -67,13 +67,47 @@ function pressed(t: Turn, label: string): string[] {
   return out;
 }
 
-/** The latest of `answers` the person pressed for `label`, since the last carousel. */
+/** Arabic as typed: no harakat or tatweel, one alef, ى/ي and ة/ه alike, spaces squeezed. */
+const plain = (s: string) =>
+  s
+    .replace(/[\u064B-\u0652\u0670\u0640]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** A «no» just before the words («ما أبي…», «لا …», «بدون …»): the answer is refused, not given. */
+const REFUSED = /(?:^|\s)(?:ما|لا|مو|مب|مش|بدون|غير|ولا)(?:\s+\S+)?\s*$/;
+
+/**
+ * The person wrote the answer in their own sentence (5 Nov 2026: «سوّوها لي من الصفر، والنصوص معتمدة…» was asked
+ * again after «أنتج الآن»): the answer's words, as typed, inside the message and not refused just before them.
+ */
+function typedIt(text: string, answer: string): boolean {
+  const s = plain(text);
+  const a = plain(answer);
+  if (a.length < 4) return false;
+  for (let at = s.indexOf(a); at >= 0; at = s.indexOf(a, at + 1)) if (!REFUSED.test(s.slice(Math.max(0, at - 14), at))) return true;
+  return false;
+}
+
+/** The names a person wrote between quotes («…» or "…"), as typed: «بيكسار الحديث» names a style of the table. */
+const quoted = (text: string) => [...text.matchAll(/[«"“]([^»"”\n]{2,60})[»"”]/g)].map((m) => plain(m[1]));
+
+/** A style of `list` the person named in quotes in their own sentence (5 Nov 2026: «بستايل «بيكسار الحديث» وحركة «حكاية بيكسار»» was asked again from the tables). */
+function namedIn<T extends { name: string }>(text: string, list: readonly T[]): T | null {
+  const names = quoted(text);
+  return names.length ? (list.find((s) => names.includes(plain(s.name))) ?? null) : null;
+}
+
+/** The latest of `answers` the person pressed (or wrote in their own words) for `label`, since the last carousel. */
 function lastPressed<T extends string>(history: Turn[], label: string, answers: readonly T[]): T | null {
   const turns = sinceLastCarousel(history);
   for (let i = turns.length - 1; i >= 0; i--) {
     if (turns[i].role !== "user") continue;
     const said = pressed(turns[i], label);
-    const hit = answers.find((a) => said.includes(a));
+    const hit = answers.find((a) => said.includes(a)) ?? answers.find((a) => typedIt(turns[i].text, a));
     if (hit) return hit;
   }
   return null;
@@ -85,8 +119,20 @@ export function pickedMaker(history: Turn[]): "code" | "gpt" | "mix" | null {
   return hit === MAKER_CODE ? "code" : hit === MAKER_GPT ? "gpt" : hit === MAKER_MIX ? "mix" : null;
 }
 
-/** Still or motion, as pressed since the last carousel (null: not asked yet). */
+const PATH_MARK = /\[مسار:([a-z0-9-]+)\]/g;
+
+/** The path the person is on (the last mark in their messages): one of the four, or null. */
+export function pathOf(history: Turn[]): string | null {
+  let p: string | null = null;
+  for (const t of history) if (t.role === "user") for (const m of t.text.matchAll(PATH_MARK)) p = m[1];
+  return p;
+}
+
+/** Still or motion: fixed by the path («كاروسيل» is still, «موشن كاروسيل» is motion), else as pressed since the last carousel (null: not asked yet). */
 export const pickedKind = (history: Turn[]): "still" | "motion" | null => {
+  const path = pathOf(history);
+  if (path === "carousel") return "still";
+  if (path === "motion-carousel") return "motion";
   const hit = lastPressed(history, KIND_LABEL, [KIND_STILL, KIND_MOTION]);
   return hit === KIND_STILL ? "still" : hit === KIND_MOTION ? "motion" : null;
 };
@@ -94,8 +140,22 @@ export const pickedKind = (history: Turn[]): "still" | "motion" | null => {
 /** The way of making a motion carousel, as pressed (null: not picked yet). */
 export const pickedRoute = (history: Turn[]): MotionRoute | null => {
   const hit = lastPressed(history, ROUTE_LABEL, MOTION_ROUTES.map((r) => r.label));
-  return MOTION_ROUTES.find((r) => r.label === hit)?.id ?? null;
+  return MOTION_ROUTES.find((r) => r.label === hit)?.id ?? typedRoute(history);
 };
+
+/** The way of making it, said in the person's own words («الصور بـ GPT Image 2», «عناصر مفرّغة», «بالكود فقط»). */
+function typedRoute(history: Turn[]): MotionRoute | null {
+  const turns = sinceLastCarousel(history);
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i].role !== "user") continue;
+    const s = plain(turns[i].text);
+    const gpt = /gpt\s*image|جي بي تي/i.test(s);
+    if (gpt && /مفرغ|عناصر|عنصر/.test(s)) return "elements";
+    if (gpt && /صور/.test(s)) return "picture";
+    if (/بالكود فقط|كود بس|بالكود بس/.test(s)) return "code";
+  }
+  return null;
+}
 
 const MOTION_MARK = /\[حركة:([a-z0-9-]+)\]/g;
 
@@ -105,7 +165,11 @@ export function pickedMotionStyle(history: Turn[]): { id: string; style: MotionC
   for (let i = turns.length - 1; i >= 0; i--) {
     if (turns[i].role !== "user") continue;
     const id = [...turns[i].text.matchAll(MOTION_MARK)].map((m) => m[1]).at(-1);
-    if (!id) continue;
+    if (!id) {
+      const named = namedIn(turns[i].text, MOTION_CAROUSEL_STYLES);
+      if (named) return { id: named.id, style: named };
+      continue;
+    }
     if (id === "help") return { id, style: null };
     if (id === "own") {
       const line = turns[i].text.split("\n").find((l) => l.includes("[حركة:own]")) ?? "";
@@ -135,6 +199,8 @@ export function pickedCarousel(history: Turn[]): { id: string; style: CarouselSt
     if (id && findCarouselStyle(id)) return { id, style: findCarouselStyle(id)! };
     const old = [...turns[i].text.matchAll(TEMPLATE_MARK)].map((m) => m[1]).at(-1);
     if (old && (old === "none" || findTemplate(old))) return { id: "own", style: null };
+    const named = namedIn(turns[i].text, CAROUSEL_STYLES);
+    if (named) return { id: named.id, style: named };
   }
   return null;
 }
@@ -200,7 +266,7 @@ export function carouselHold(history: Turn[], slides = 6): CarouselHold | null {
   if (!kind) return { question: KIND_QUESTION, note: "⏸️ الكاروسيل ثابت (صور) أو موشن كاروسيل (كل شريحة فيديو قصير يتحرك فيه الكلام بصوت خفيف)؟" };
   if (kind === "motion") {
     const motion = pickedMotionStyle(history);
-    if (!motion || motion.id === "help") return { question: MOTION_CAROUSEL_QUESTION, note: "⏸️ اختر ستايل الحركة من الجدول (١٠ ستايلات جاهزة)، أو ابنِه معي من الصفر." };
+    if (!motion || motion.id === "help") return { question: MOTION_CAROUSEL_QUESTION, note: "⏸️ اختر ستايل الحركة من الجدول (٢٢ ستايل جاهز)، أو ابنِه معي من الصفر." };
     if (!pickedRoute(history)) return { question: ROUTE_QUESTION, note: routeNote(slides) };
     return null;
   }

@@ -260,3 +260,25 @@ export async function uploadFromOutput(userId: string, outputId: unknown) {
   if (error) throw error;
   return confirmUpload(userId, row.id);
 }
+
+/**
+ * A PNG the page drew (حيدرا ماكس): inline base64 when small, or put up first as the person's upload when big —
+ * Vercel refuses request bodies over 4.5 MB, and a photo-real slide's PNG passes that (the 413 of 5 Nov 2026).
+ * The upload is spent once read (its row and file go). null when neither came or it isn't the person's PNG.
+ */
+export async function drawnPng(userId: string, b: { png?: unknown; pngUpload?: unknown }, maxChars: number): Promise<Buffer | null> {
+  if (isUuid(b.pngUpload)) {
+    const { data } = await db().from("jawad_uploads").select("*").eq("id", b.pngUpload).eq("user_id", userId).eq("status", "ready").maybeSingle();
+    const row = data as UploadRow | null;
+    if (!row || row.kind !== "image" || row.mime !== "image/png") return null;
+    const dl = await storage.from(JAWAD_BUCKET).download(row.storage_path);
+    if (dl.error || !dl.data) return null;
+    const buf = Buffer.from(await dl.data.arrayBuffer());
+    await storage.from(JAWAD_BUCKET).remove([row.storage_path]);
+    await db().from("jawad_uploads").delete().eq("id", row.id);
+    return buf;
+  }
+  const data = typeof b.png === "string" ? b.png.replace(/^data:image\/png;base64,/, "") : "";
+  if (!data || data.length > maxChars || !/^[A-Za-z0-9+/]+=*$/.test(data)) return null;
+  return Buffer.from(data, "base64");
+}

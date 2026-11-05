@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import { clipLength, formatTime, type Clip, type Timeline } from "@/lib/editor/model";
-import { AMBIENT_SHAPES, MOTION_ENTERS, MOTION_KINDS, MOTION_LIMITS, MOTION_THEMES, motionColors, RIBBON_PARTS, type MotionColors, type MotionEl, type MotionEnter, type MotionItem, type MotionThemeId, type RibbonPart } from "@/lib/editor/motion-elements";
+import { AMBIENT_SHAPES, DOODLE_MARKS, MOTION_ENTERS, MOTION_KINDS, MOTION_LIMITS, MOTION_THEMES, motionColors, RIBBON_PARTS, type DoodleMark, type MotionColors, type MotionEl, type MotionEnter, type MotionItem, type MotionThemeId, type RibbonPart } from "@/lib/editor/motion-elements";
 import { readFaceTrack } from "./face-hud";
 import type { EditorAsset } from "./types";
 import FontPicker from "./FontPicker";
@@ -94,7 +94,20 @@ export default function MotionPanel({ clip, motion: m, locked, run, player, tl, 
         </div>
       )}
 
-      {tab === "el" && m.kind === "facehud" && (
+      {tab === "el" && m.kind === "doodle" && (
+        <div className="space-y-2 rounded-xl border border-jw-line p-2.5">
+          <p className="text-xs font-semibold">✏️ الشخبطة</p>
+          <div className="grid grid-cols-3 gap-1">
+            {(Object.entries(DOODLE_MARKS) as [DoodleMark, string][]).map(([id, label]) => (
+              <button key={id} type="button" disabled={locked} aria-pressed={m.mark === id} className={`jw-btn !min-h-8 text-[11px] ${m.mark === id ? "jw-btn-primary" : "jw-btn-quiet"}`} onClick={() => set({ mark: id }, "mark")}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tab === "el" && (m.kind === "facehud" || m.kind === "doodle" || m.kind === "emojipop" || m.kind === "speedlines") && (
         <div className="space-y-2 rounded-xl border border-jw-line p-2.5">
           <p className="text-xs font-semibold">🎯 يمشي مع الوجه</p>
           <p className="text-[11px] leading-5 text-jw-muted">

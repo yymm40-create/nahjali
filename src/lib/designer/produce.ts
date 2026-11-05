@@ -11,6 +11,7 @@ import { unlimitedFor } from "@/lib/access";
 import { deskImage, DeskError, type DeskWho } from "@/lib/content/jawad";
 import { BAKED_TEXT_RULE, NO_TEXT_RULE, type DesignerTextMode } from "@config/designer";
 import { getChat, saveChat, type Chat, type PendingDesign } from "./chats";
+import { drawnPng } from "@/lib/jawad/server/uploads";
 import { addFile, addFileFromOutput, attachmentsOf, fileLinks, uploadLinks } from "./files";
 import { readLayers, type Design } from "./layers";
 import { editOf, photoKeys, readProgram, type DesignEdit } from "./program";
@@ -143,7 +144,7 @@ async function editFor(userId: string, chat: Chat, p: PendingDesign, keys: strin
 }
 
 /** The PNG the page drew from «حيدرا ماكس»'s program becomes the pending design's artwork. */
-export async function produceFromCode(userId: string, chatId: string, b: { png?: unknown; rounds?: unknown; scores?: unknown; program?: unknown; edited?: unknown }): Promise<Produced> {
+export async function produceFromCode(userId: string, chatId: string, b: { png?: unknown; pngUpload?: unknown; rounds?: unknown; scores?: unknown; program?: unknown; edited?: unknown }): Promise<Produced> {
   const chat = await getChat(userId, chatId);
   if (!chat) throw new Error("chat not found");
   const p = chat.pending;
@@ -151,9 +152,8 @@ export async function produceFromCode(userId: string, chatId: string, b: { png?:
   const at = Math.min(p.at, chat.messages.length - 1);
   const base = chat.messages[at]?.design;
   if (!base) throw new UserError("ما لقينا التصميم في المحادثة.", 409);
-  const data = typeof b.png === "string" ? b.png.replace(/^data:image\/png;base64,/, "") : "";
-  if (!data || data.length > 16_000_000 || !/^[A-Za-z0-9+/]+=*$/.test(data)) throw new UserError("ما وصلت صورة التصميم.", 400);
-  const bytes = Buffer.from(data, "base64");
+  const bytes = await drawnPng(userId, b, 16_000_000);
+  if (!bytes) throw new UserError("ما وصلت صورة التصميم.", 400);
   const sharp = (await import("sharp")).default;
   const meta = await sharp(bytes).metadata().catch(() => null);
   if (meta?.format !== "png" || !meta.width || !meta.height) throw new UserError("صورة التصميم مو صالحة.", 400);

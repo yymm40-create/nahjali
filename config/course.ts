@@ -270,6 +270,17 @@ function ladderAt(s: Clock, now: number): Offers {
   return { phase: "C", offers: list(C), endsAt: null, next: "" };
 }
 
+/**
+ * The limited price every visitor is told about (the bar over the whole site): the clock course's day-one price while it runs, with
+ * the usual price struck and when it ends. Null when the clock is not on that phase, so the bar goes away by itself.
+ */
+export function saleBarAt(s: Clock, now: number): { courseId: string; price: number; was: number; endsAt: number } | null {
+  if (!s.ladderCourseId) return null;
+  const o = offersAt(s, now, 0, 0, s.ladderCourseId);
+  const first = o.offers[0];
+  return o.phase === "A" && o.endsAt && first ? { courseId: s.ladderCourseId, price: first.price, was: first.was, endsAt: o.endsAt } : null;
+}
+
 /** What is on sale at `now`: the clock course follows its phases; every other course sells its recorded course at its one price. */
 export function offersAt(s: Clock, now: number, price: number = COURSE.price, was: number = price, courseId?: string | null): Offers {
   if (isLadder(s, courseId)) return ladderAt(s, now);
