@@ -210,6 +210,148 @@ const gptImage2: GeneratorDef = {
   notes: ["كل طلب متزامن: يرجع بالصور مباشرة (base64) ونحفظها في تخزيننا."],
 };
 
+// ───────────────────────────── OpenAI · GPT Image 2.6 (Flare · Sunburst) ─────────────────────────────
+// Checked on 2026-11-06: OpenAI's model pages (gpt-image-2.6-flare, gpt-image-2.6-sunburst: Images API generations and
+// edits), the pricing page (the same token rates as gpt-image-2: text in $5 · image in $8 · image out $30 per million),
+// the Images API reference (model ids, `complexity` low/medium/high, up to 16 input images, prompt ≤ 32,000) and the
+// image generation guide (quality low…max, the same size rules, complexity defaults to high and has no fee). One
+// generator with the two models as a choice: same API, same options, same price. GIF and SVG output are not offered
+// (their cost is not documented). Hidden until the owner enables it.
+
+export const GPT_IMAGE_26_ID = "openai-gpt-image-2-6";
+const GPT_IMAGE_26_CHECKED = "2026-11-06";
+export const GPT_IMAGE_26_MODELS: Record<string, string> = { flare: "gpt-image-2.6-flare", sunburst: "gpt-image-2.6-sunburst" };
+/** The OpenAI model of a GPT Image 2.6 request (Sunburst when the choice is missing). */
+export const gptImage26Model = (variant: unknown) => GPT_IMAGE_26_MODELS[String(variant)] ?? GPT_IMAGE_26_MODELS.sunburst;
+export const GPT_IMAGE_26_QUALITIES = ["low", "medium", "high", "xhigh", "max"] as const;
+export type GptImage26Quality = (typeof GPT_IMAGE_26_QUALITIES)[number];
+const Q26_LABEL: Record<GptImage26Quality, string> = { low: "سريعة", medium: "متوازنة", high: "عالية", xhigh: "عالية جدًا", max: "القصوى" };
+
+/**
+ * Output tokens of one GPT Image 2.6 image (Flare and Sunburst alike): the formula of OpenAI's official calculator
+ * (image generation guide, «Calculating costs», model «GPT Image 2.6 (Sunburst and Flare)»): the 2.5 bases
+ * (low 16 · medium 24 · high 48 · xhigh 64 · max 96), then × 4.2 (low) and × 3.3 (medium), rounded.
+ * 1024×1024: low 823 · medium 1,449 · high 1,756 · xhigh 3,122 · max 7,024 tokens.
+ */
+export function gptImage26OutputTokens(w: number, h: number, quality: GptImage26Quality) {
+  const base = { low: 16, medium: 24, high: 48, xhigh: 64, max: 96 }[quality];
+  const s = base / (Math.max(w, h) / Math.min(w, h));
+  const l = Math.floor(s);
+  const u = s - l === 0.5 ? l + (l % 2) : Math.round(s);
+  const d = (w >= h ? base : u) * (w >= h ? u : base);
+  const p = Math.ceil((d * (2e6 + w * h)) / 4e6);
+  return Math.round(p * { low: 4.2, medium: 3.3, high: 1, xhigh: 1, max: 1 }[quality]);
+}
+const out26Usd = (w: number, h: number, q: GptImage26Quality) => (gptImage26OutputTokens(w, h, q) * GPT_IMAGE_2_PRICE.imageOut) / 1e6;
+const tierOut26Usd = (tier: "std" | "hi", q: GptImage26Quality) => Math.max(...Object.values(GPT_IMAGE_2_SIZES[tier]).map(([w, h]) => out26Usd(w, h, q)));
+const q26 = (v: unknown): GptImage26Quality => ((GPT_IMAGE_26_QUALITIES as readonly string[]).includes(String(v)) ? (v as GptImage26Quality) : "medium");
+
+const gptImage26: GeneratorDef = {
+  id: GPT_IMAGE_26_ID,
+  name: "GPT Image 2.6",
+  output: "image",
+  defaultSection: "images",
+  provider: { id: "openai", label: "OpenAI" },
+  model: { id: GPT_IMAGE_26_MODELS.sunburst, family: "gpt-image-2.6", version: "flare · sunburst" },
+  api: { name: "OpenAI Images API", endpoint: "POST /v1/images/generations · POST /v1/images/edits (gpt-image-2.6-flare · gpt-image-2.6-sunburst)", tracking: "sync", progress: "none", cancel: "none" },
+  modes: gptImage2Modes,
+  options: [
+    {
+      key: "variant", label: "النسخة", kind: "choice", ltr: true, default: "sunburst",
+      values: [
+        { value: "flare", label: "Flare", hint: "الأسرع" },
+        { value: "sunburst", label: "Sunburst", hint: "أدق وأثبت في التعديل" },
+      ],
+    },
+    gptImage2.options[0],
+    gptImage2.options[1],
+    {
+      key: "quality", label: "مستوى الجودة", kind: "choice", default: "medium",
+      values: GPT_IMAGE_26_QUALITIES.map((q) => ({ value: q, label: Q26_LABEL[q] })),
+    },
+    {
+      key: "complexity", label: "عمق التخطيط", kind: "choice", default: "high",
+      values: [
+        { value: "low", label: "خفيف", hint: "تعديل بسيط" },
+        { value: "medium", label: "متوسط" },
+        { value: "high", label: "عميق", hint: "نصوص كثيرة وتصميم معقد" },
+      ],
+    },
+    { key: "count", label: "عدد الصور", kind: "int", min: 1, max: 4, default: 1, unit: "صورة" },
+  ],
+  files: { image: IMAGE_FILE },
+  prompt: { label: "البرومبت", placeholder: "صف الصورة التي تريدها…", max: 32000, arabic: true },
+  refLabel: (_kind, n) => `Image ${n}`,
+  priceKeys: [
+    ...(["std", "hi"] as const).flatMap((tier) =>
+      GPT_IMAGE_26_QUALITIES.map((q) => ({
+        key: `out:${q}:${tier}`,
+        label: `صورة · ${Q26_LABEL[q]} · ${tier === "std" ? "قياسية" : "عالية الدقة"}`,
+        defaultCenti: centiFor(tierOut26Usd(tier, q)),
+        basis: `أغلى مقاس في الفئة بمعادلة حاسبة OpenAI الرسمية لـ GPT Image 2.6 × $${GPT_IMAGE_2_PRICE.imageOut}/مليون توكن (Flare وSunburst بنفس السعر)`,
+      })),
+    ),
+    { key: "prompt:1kb", label: "كل ١٠٠٠ بايت من البرومبت", defaultCenti: centiFor((1000 * GPT_IMAGE_2_PRICE.textIn) / 1e6), basis: "سقف: كل بايت ≤ توكن واحد × $5/مليون" },
+    { key: "ref:image", label: "كل صورة مرجعية", defaultCenti: centiFor((GPT_IMAGE_2_REF_TOKENS_CAP * GPT_IMAGE_2_PRICE.imageIn) / 1e6), basis: `سقف (غير متحقق لـ GPT Image 2.6): ${GPT_IMAGE_2_REF_TOKENS_CAP.toLocaleString("en")} توكن، أقصى ما وثّقته OpenAI لصورة مدخلة في gpt-image-1، × $${GPT_IMAGE_2_PRICE.imageIn}/مليون. التكلفة الفعلية تُسجَّل مع كل مهمة` },
+  ],
+  modeFor: (_style, refs) => (refs.length ? gptImage2Modes[1] : gptImage2Modes[0]),
+  rules(d) {
+    const notes = [d.settings.variant === "flare" ? "Flare: الأسرع، للتجربة والتكرار." : "Sunburst: أدق في التفاصيل وأثبت في تعديل الصور."];
+    if (d.settings.complexity !== "high") notes.push("عمق التخطيط الأخف أسرع، لكن النصوص الكثيرة والتصاميم المعقدة تحتاج «عميق».");
+    return { options: opt(gptImage26.options), issues: [], notes };
+  },
+  price(d, mode, table) {
+    const s = d.settings;
+    const tier = s.resolution === "hi" ? "hi" : "std";
+    const q = q26(s.quality);
+    const n = Number(s.count) || 1;
+    const per = table[`out:${q}:${tier}`];
+    const perKb = table["prompt:1kb"];
+    if (per == null || perKb == null) return { ok: false, reason: "سعر هذا الإعداد غير محدد بعد." };
+    const kb = Math.max(1, Math.ceil(utf8Bytes(d.prompt) / 1000));
+    const lines = [
+      { label: `${n} × صورة`, centi: n * per },
+      { label: "البرومبت", centi: kb * perKb },
+    ];
+    if (mode.id === "image_reference") {
+      const ref = table["ref:image"];
+      if (ref == null) return { ok: false, reason: "سعر الصور المرجعية لهذا المولد لم يُحدد بعد (تكلفتها غير موثّقة من OpenAI)." };
+      lines.push({ label: `${d.refs.length} × مرجع`, centi: d.refs.length * ref });
+    }
+    return total(lines, gptImage26.costUsd(d, mode));
+  },
+  costUsd(d) {
+    const s = d.settings;
+    const tier = s.resolution === "hi" ? "hi" : "std";
+    const size = GPT_IMAGE_2_SIZES[tier][String(s.aspect)] ?? GPT_IMAGE_2_SIZES.std["1:1"];
+    const refs = (d.refs.filter((r) => r.kind === "image").length * GPT_IMAGE_2_REF_TOKENS_CAP * GPT_IMAGE_2_PRICE.imageIn) / 1e6;
+    return (Number(s.count) || 1) * out26Usd(size[0], size[1], q26(s.quality)) + (utf8Bytes(d.prompt) * GPT_IMAGE_2_PRICE.textIn) / 1e6 + refs;
+  },
+  sources: [
+    { label: "OpenAI — GPT-Image-2.6 Flare (model page: Images API generations + edits, token prices)", url: "https://developers.openai.com/api/docs/models/gpt-image-2.6-flare", checked: GPT_IMAGE_26_CHECKED },
+    { label: "OpenAI — GPT-Image-2.6 Sunburst (model page: Images API generations + edits, token prices)", url: "https://developers.openai.com/api/docs/models/gpt-image-2.6-sunburst", checked: GPT_IMAGE_26_CHECKED },
+    { label: "OpenAI — Image generation guide (GPT Image 2.6, complexity, sizes, quality, calculator)", url: "https://developers.openai.com/api/docs/guides/image-generation", checked: GPT_IMAGE_26_CHECKED },
+    { label: "OpenAI — Images API reference (model ids, complexity, up to 16 input images)", url: "https://developers.openai.com/api/reference/resources/images/methods/edit", checked: GPT_IMAGE_26_CHECKED },
+    { label: "OpenAI — Pricing (gpt-image-2.6-flare · gpt-image-2.6-sunburst)", url: "https://developers.openai.com/api/docs/pricing", checked: GPT_IMAGE_26_CHECKED },
+  ],
+  verification: [
+    { item: "النموذجان", status: "verified", note: "gpt-image-2.6-flare وgpt-image-2.6-sunburst في Images API (generations وedits)؛ لا يعملان في Responses API." },
+    { item: "المقاسات والنِّسب", status: "verified", note: "نفس قواعد GPT Image 2.5: أضلاع من مضاعفات 16، نسبة بين 1:3 و3:1، أطول ضلع ≤ 3840، و655,360–8,294,400 بكسل؛ ما فوق 2560×1440 تجريبي فلم نعرضه." },
+    { item: "الجودة", status: "verified", note: "low · medium · high · xhigh · max (دليل الصور وحاسبته الرسمية لـ 2.6؛ مرجع API يذكر xhigh وmax لنسخ 2.5 بالاسم فقط). auto مستبعد لأنه يجعل السعر غير معروف." },
+    { item: "عمق التخطيط (complexity)", status: "verified", note: "low · medium · high، والافتراضي high، وبلا رسوم إضافية." },
+    { item: "عدد الصور", status: "verified", note: "n من 1 إلى 10؛ نعرض حتى 4." },
+    { item: "الصور المرجعية", status: "verified", note: "نقطة edits تقبل حتى 16 صورة؛ نقبل PNG وJPEG وWEBP حتى 20MB." },
+    { item: "سعر المخرجات", status: "verified", note: "$30 لكل مليون توكن، وعدد التوكنات بمعادلة الحاسبة الرسمية لـ GPT Image 2.6 (1024×1024: low ‏$0.025 · medium ‏$0.043 · high ‏$0.053 · xhigh ‏$0.094 · max ‏$0.211)." },
+    { item: "سعر الصور المرجعية", status: "unverified", note: "توكنات الصورة المدخلة غير موثّقة لـ 2.6؛ نسعّرها بسقف 7,100 توكن × $8/مليون، والتكلفة الفعلية تُسجَّل من usage." },
+    { item: "GIF وSVG", status: "unverified", note: "موثّقان في الدليل (output_format gif وsvg)، لكن GIF «يحتاج وصول المعاينة» وتكلفة إطاراته غير منشورة، وSVG يُحسب معه نموذج كاتب غير محدد السعر؛ غير معروضين." },
+    { item: "الخلفية الشفافة", status: "unverified", note: "المرجع يذكرها لنسخ 2.5 بالاسم وليس 2.6؛ غير معروضة." },
+    { item: "التعديل بالتأشير (markup)", status: "unverified", note: "موثّق لـ 2.6 لكن يحتاج طبقة PNG شفافة بنفس المقاس؛ غير معروض بعد." },
+    { item: "التقدم والإلغاء", status: "verified", note: "طلب متزامن بلا نسبة تقدم ولا إلغاء." },
+    { item: "طول البرومبت", status: "verified", note: "حتى 32,000 حرف (مرجع Images API)." },
+  ],
+  notes: ["كل طلب متزامن: يرجع بالصور مباشرة (base64) ونحفظها في تخزيننا."],
+};
+
 // ───────────────────────────── Nano Banana (fal.ai) · Seedream 5.0 Lite (ModelArk) ─────────────────────────────
 // Checked on 2026-10-10: fal's model pages and OpenAPI schemas (fal-ai/nano-banana, nano-banana-2, nano-banana-pro and
 // their /edit endpoints; prices from fal's model pages), and BytePlus's image generation API (POST /images/generations,
@@ -958,6 +1100,96 @@ const geminiOmni: GeneratorDef = {
   notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
 };
 
+// ───────────────────────────── Google · Gemini Omni Flash 1.2 (on fal.ai) ─────────────────────────────
+// Checked on 2026-11-06: fal's schemas of google/gemini-omni-flash/v1.2/{text,image,reference}-to-video — 3–15 s
+// (at most 10 with an end image), 360p · 720p · 1080p · 4K, 16:9 · 9:16, up to 10 reference pictures and 3 reference
+// videos of ≤ 15 s each. fal's pages: $0.0273 · $0.0819 · $0.1229 · $0.2457 a second, native sound included, the
+// references not billed (Google's own API quotes ~$0.07 a second at 720p; fal is our Omni provider). Google Cloud's
+// model page: gemini-omni-1.2-flash, the same limits, no audio input. Its own generator beside 1.1 (kept as it is).
+// Hidden until the owner enables it.
+
+export const OMNI12_ID = "gemini-omni-1-2";
+export const OMNI12_SECOND_USD: Record<string, number> = { "360p": 0.0273, "720p": 0.0819, "1080p": 0.1229, "4k": 0.2457 };
+const OMNI12_CHECKED = "2026-11-06";
+/** The length sent to Omni 1.2: 3–15 s, at most 10 between a first and a last frame. */
+export const omni12Sec = (d: { settings: Settings; refs?: { role: string }[] }) => {
+  const lastFrame = (d.refs ?? []).some((r) => r.role === "last_frame");
+  return Math.max(3, Math.min(lastFrame ? 10 : 15, Math.round(Number(d.settings.duration) || 8)));
+};
+
+const geminiOmni12: GeneratorDef = {
+  id: OMNI12_ID,
+  name: "Gemini Omni 1.2",
+  output: "video",
+  defaultSection: "video",
+  provider: { id: "fal", label: "Google Gemini Omni (fal.ai)" },
+  model: { id: "google/gemini-omni-flash/v1.2/text-to-video", family: "Gemini Omni Flash", version: "1.2" },
+  api: { name: "fal.ai queue", endpoint: "POST google/gemini-omni-flash/v1.2/text-to-video · image-to-video · reference-to-video", tracking: "async", progress: "none", cancel: "none" },
+  modes: omniModes,
+  options: [
+    geminiOmni.options[0],
+    geminiOmni.options[1],
+    { key: "duration", label: "المدة", kind: "int", min: 3, max: 15, default: 8, unit: "ثانية" },
+  ],
+  files: {
+    image: geminiOmni.files.image,
+    video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 100 * MB, minSide: 300, maxSide: 6000, minAspect: 0.4, maxAspect: 2.5, minMs: 1000, maxMs: 15000 },
+  },
+  prompt: geminiOmni.prompt,
+  priceKeys: [
+    ...["360p", "720p", "1080p", "4k"].map((r) => ({
+      key: `sec:${r}`,
+      label: `كل ثانية · ${OMNI_RES_LABEL[r]}`,
+      defaultCenti: centiFor(OMNI12_SECOND_USD[r]),
+      basis: `سعر fal المنشور: ${OMNI12_SECOND_USD[r]} للثانية (${r})، والصوت والمراجع بلا رسوم إضافية`,
+    })),
+    DIRECTOR_PRICE_LINE,
+  ],
+  modeFor: geminiOmni.modeFor,
+  rules(d, mode) {
+    const notes: string[] = ["الصوت مدمج وشغّال دايمًا (ما فيه زر لإيقافه): اكتب في البرومبت «no music» أو «no voice» لو ما تبيه.", "حتى ١٥ ثانية في مرة وحدة."];
+    const states: Partial<Record<string, Partial<OptionState>>> = {};
+    if (mode.refStyle === "frames") notes.push("في وضع الإطارات يتبع الفيديو صورتك: النسبة تُرسل مع الطلب.");
+    if (mode.id === "first_last_frame") {
+      states.duration = { max: 10 };
+      notes.push("بين إطار أول وأخير: المدة حتى ١٠ ثواني.");
+    }
+    if (mode.id === "omni_reference") notes.push("في المراجع، اكتب في البرومبت <IMAGE_REF_0> و<VIDEO_REF_0> بترتيب رفعها (تبدأ من صفر) لتحدد دور كل مرجع. حتى ١٠ صور و٣ فيديوهات، كل فيديو حتى ١٥ ثانية.");
+    return { options: opt(geminiOmni12.options, states), issues: [], notes };
+  },
+  price(d, mode, table) {
+    const res = String(d.settings.resolution);
+    const per = table[`sec:${res}`];
+    if (per == null) return { ok: false, reason: "سعر هذه الدقة غير محدد بعد." };
+    const sec = omni12Sec(d);
+    return total([{ label: `${sec} ث · ${OMNI_RES_LABEL[res] ?? res}`, centi: per * sec }], geminiOmni12.costUsd(d, mode));
+  },
+  costUsd(d) {
+    return omni12Sec(d) * (OMNI12_SECOND_USD[String(d.settings.resolution)] ?? OMNI12_SECOND_USD["720p"]);
+  },
+  refLabel: geminiOmni.refLabel,
+  sources: [
+    { label: "fal.ai — google/gemini-omni-flash/v1.2/text-to-video (schema, endpoints)", url: "https://fal.ai/models/google/gemini-omni-flash/v1.2/text-to-video/api", checked: OMNI12_CHECKED },
+    { label: "fal.ai — google/gemini-omni-flash/v1.2/text-to-video (price)", url: "https://fal.ai/models/google/gemini-omni-flash/v1.2/text-to-video", checked: OMNI12_CHECKED },
+    { label: "fal.ai — google/gemini-omni-flash/v1.2/image-to-video (schema)", url: "https://fal.ai/models/google/gemini-omni-flash/v1.2/image-to-video/api", checked: OMNI12_CHECKED },
+    { label: "fal.ai — google/gemini-omni-flash/v1.2/reference-to-video (schema)", url: "https://fal.ai/models/google/gemini-omni-flash/v1.2/reference-to-video/api", checked: OMNI12_CHECKED },
+    { label: "Google Cloud — Gemini Omni 1.2 Flash (model page: limits)", url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/omni-1-2-flash", checked: OMNI12_CHECKED },
+  ],
+  verification: [
+    { item: "الأوضاع", status: "verified", note: "نص · إطار أول (image_url) · أول وأخير (+ end_image_url) · مراجع (image_urls ≤ 10، reference_video_urls ≤ 3 كل واحد ≤ 15 ثانية)." },
+    { item: "الدقة", status: "verified", note: "360p · 720p · 1080p · 4K." },
+    { item: "النسب", status: "verified", note: "16:9 · 9:16 فقط." },
+    { item: "المدة", status: "verified", note: "3–15 ثانية (minimum 3 وmaximum 15 في مخطط fal)، وحتى 10 مع إطار أخير (fal وGoogle)." },
+    { item: "الصوت", status: "verified", note: "صوت مدمج متزامن بلا رسوم إضافية، وما فيه خيار لإيقافه؛ Google: الصوت المرجعي غير مدعوم." },
+    { item: "السعر", status: "verified", note: "$0.0273 · $0.0819 · $0.1229 · $0.2457 للثانية (360p · 720p · 1080p · 4K) من صفحات fal، والمراجع بلا رسوم؛ Google يذكر نحو $0.07 بـ720p عنده مباشرة." },
+    { item: "طول الفيديو المرجعي", status: "unverified", note: "مخطط fal يقبل حتى 15 ثانية لكل فيديو، وإعلان Google يذكر مقاطع حركة حتى 3 ثوانٍ؛ نقبل ما يقبله fal وتُجرَّب الأطول أولًا." },
+    { item: "تعديل مقطع جاهز", status: "unverified", note: "fal فيه نقطة v1.2/edit (فيديو ≤ 15 ثانية + تعليمات)؛ غير معروضة هنا بعد." },
+    { item: "الوجوه الحقيقية", status: "unverified", note: "التوثيق ما يذكر قيودًا على وجوه الأشخاص؛ تُجرَّب أولًا." },
+    { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
+  ],
+  notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
+};
+
 // ───────────────────────────── Seedance وجه واقعي (Seedance 2.5 with the person's own face) ─────────────────────────────
 // Through a partner whose API accepts a real face as a reference (keys: HIGGSFIELD_API). Its name is never shown to
 // users: the card says «Seedance». Prices per second are ceilings until the owner checks the partner's console.
@@ -1566,7 +1798,7 @@ const jawadVoice: GeneratorDef = {
   notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي.", "لا تُؤخذ بصمة صوت شخص إلا بإذنه."],
 };
 
-export const GENERATORS: GeneratorDef[] = [gptImage2, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, wan3, geminiOmni, miniTts, elevenV4, jawadVoice, elevenSfx, elevenMusic, smartSplit];
+export const GENERATORS: GeneratorDef[] = [gptImage2, gptImage26, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, wan3, geminiOmni, geminiOmni12, miniTts, elevenV4, jawadVoice, elevenSfx, elevenMusic, smartSplit];
 export const generatorById = (id: string) => GENERATORS.find((g) => g.id === id);
 
 /** The settings a generator starts with. */

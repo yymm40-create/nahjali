@@ -1,4 +1,4 @@
-// JAWAD AI — OpenAI adapters: GPT Image 2 (Images API) and GPT-4o mini TTS (speech). Server only.
+// JAWAD AI — OpenAI adapters: GPT Image 2 and GPT Image 2.6 (Images API) and GPT-4o mini TTS (speech). Server only.
 // Retries are OFF: a repeated request could be generated (and billed) twice; a failure is reported instead.
 import OpenAI, { APIConnectionError, APIConnectionTimeoutError, APIError, toFile } from "openai";
 import { GPT_IMAGE_2_SIZES } from "@config/jawad/generators";
@@ -7,7 +7,7 @@ import { ProviderError, rejectedMessage } from "./common";
 let client: OpenAI | null = null;
 const openai = () => (client ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 280_000 }));
 
-/** USD per 1M tokens for gpt-image-2 (pricing page): text in 5 · image in 8 · image out 30. */
+/** USD per 1M tokens for gpt-image-2 and gpt-image-2.6 (pricing page): text in 5 · image in 8 · image out 30. */
 const PRICE = { textIn: 5, imageIn: 8, imageOut: 30 };
 
 function wrap(e: unknown): never {
@@ -27,12 +27,17 @@ interface ImageUsage {
   input_tokens_details?: { text_tokens?: number; image_tokens?: number };
 }
 
+/** xhigh and max: GPT Image 2.6 only (the generator offers them to it alone). */
+export type ImageQuality = "low" | "medium" | "high" | "xhigh" | "max";
+
 export async function openaiImage(o: {
   model: string;
   prompt: string;
   aspect: string;
   resolution: "std" | "hi";
-  quality: "low" | "medium" | "high";
+  quality: ImageQuality;
+  /** GPT Image 2.6: how much the model plans before rendering (no fee; the model's default is high) */
+  complexity?: "low" | "medium" | "high";
   count: number;
   references: { bytes: Buffer; mime: string }[];
   user: string;
@@ -49,6 +54,8 @@ export async function openaiImage(o: {
     n: o.count,
     output_format: "png" as const,
     user: o.user,
+    // not in this SDK's types yet: sent as is (Images API reference, `complexity`)
+    ...(o.complexity ? ({ complexity: o.complexity } as object) : {}),
   };
   try {
     const opts = o.timeoutMs ? { timeout: o.timeoutMs } : undefined;
