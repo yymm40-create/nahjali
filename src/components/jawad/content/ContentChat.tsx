@@ -619,13 +619,14 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     looping.current.add(`p:${id}`);
     setBusy("producing");
     let first = true;
-    type Step = { aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number }; sfx?: Record<string, string> } };
+    type Step = { spent?: number; aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number }; sfx?: Record<string, string> } };
     const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}), ...(r.code?.mix || old?.mix ? { mix: true } : {}), ...(r.code?.motion || old?.motion ? { motion: r.code?.motion ?? old?.motion } : {}) }));
     try {
       for (let guard = 0; guard < 80; guard++) {
         let r = await postJson<Step>("/api/content/produce", { chatId: id, ...(first && retry ? { retry } : {}) });
         first = false;
         show(r);
+        if (typeof r.spent === "number") setSpent(r.spent);
         if (r.code) {
           // «حيدرا ماكس»: the slide is drawn here in code (its painted picture placed in it), looked at and rewritten, then sent back
           const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
@@ -641,6 +642,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
           setCodeStep(null);
           r = await postJson<Step>("/api/content/produce", { chatId: id, n: r.code.n, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(video ? { video } : {}) });
           show(r);
+          if (typeof r.spent === "number") setSpent(r.spent);
         }
         if (!r.running) break;
       }
@@ -670,9 +672,10 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       });
     try {
       for (let guard = 0; guard < 120; guard++) {
-        const r = await postJson<{ items: MediaView[]; running: boolean }>("/api/content/generate", { chatId: id, ...(first && retry ? { retry } : {}) });
+        const r = await postJson<{ items: MediaView[]; running: boolean; spent?: number }>("/api/content/generate", { chatId: id, ...(first && retry ? { retry } : {}) });
         first = false;
         put(r.items);
+        if (typeof r.spent === "number") setSpent(r.spent);
         if (!r.running) break;
         await new Promise((res) => setTimeout(res, r.items.some((x) => x.kind === "video" && x.state === "running") ? 8000 : 1500));
       }
