@@ -391,7 +391,7 @@ async function putVideo(blob: Blob, fileName: string): Promise<string> {
 }
 
 /** The carousel of an answer: tiles in order, the drawing ones as moving placeholders, each made one with its check. */
-export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; step?: string | null }) {
+export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; step?: string | null }) {
   const ns = [...new Set([...s.items.map((i) => i.n), ...s.todo])].sort((a, b) => a - b);
   const done = s.items.filter((i) => !s.todo.includes(i.n)).length;
   const aspect = s.aspect.replace(":", " / ") || "1 / 1";
@@ -429,7 +429,8 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, step }: { s:
       <div className="ct-slides">
         {ns.map((n) => {
           const item = s.items.find((i) => i.n === n);
-          const drawing = s.todo.includes(n);
+          // waiting slides spin only while they are being drawn; stopped (a wallet ran out…) they wait for «كمّل الرسم»
+          const drawing = s.todo.includes(n) && s.running;
           return (
             <figure key={n} className={`ct-slide ${drawing ? "drawing" : ""} ${item?.flag ? "flag" : ""}`} style={{ aspectRatio: aspect }}>
               {item?.videoUrl ? <video src={item.videoUrl} poster={item.url ?? undefined} autoPlay muted loop playsInline controls preload="metadata" aria-label={item.text} /> : item?.url && <img src={item.url} alt={item.text} loading="lazy" />}
@@ -468,6 +469,13 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, step }: { s:
           {s.failed.length > 1 && <button type="button" className="ct-mini" disabled={busy} onClick={() => onRetry("failed")}>أعد محاولة كل الفاشلة</button>}
         </div>
       )}
+      {!s.running && s.todo.length > 0 && onResume && (
+        <div className="ct-failed">
+          <b>⏸️ وقف الرسم عند {s.todo.length === 1 ? `الشريحة ${s.todo[0]}` : `${s.todo.length} شرائح باقية (${s.todo.join("، ")})`}.</b>
+          <small> نكمّلها بنفس التصميم والشخصيات اللي انرسمت، بدون ما تشرح من جديد.</small>
+          <button type="button" className="ct-mini" disabled={busy} onClick={onResume}>▶️ كمّل الرسم</button>
+        </div>
+      )}
       {s.report && <pre className="ct-report">{s.report}</pre>}
       {!s.running && s.items.length > 0 && (
         <div className="ct-actions">
@@ -479,10 +487,17 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, step }: { s:
 }
 
 /** The pictures and videos «محمد باقر» handed to جواد: who took each request, what it costs, its state, and the result. */
-export function MediaBox({ items, busy, owner, onRetry }: { items: MediaView[]; busy: boolean; owner: boolean; onRetry: (ids: string[] | "failed") => void }) {
+export function MediaBox({ items, busy, owner, onRetry, onResume }: { items: MediaView[]; busy: boolean; owner: boolean; onRetry: (ids: string[] | "failed") => void; onResume?: () => void }) {
   const ST = { todo: "بانتظار جواد", running: "جواد يولّده الحين…", done: "جاهز", failed: "تعذّر" } as const;
   return (
     <div className="ct-media">
+      {!busy && onResume && items.some((x) => x.state === "todo") && (
+        <div className="ct-failed">
+          <b>⏸️ وقف التوليد قبل ما يخلص.</b>
+          <small> نكمّل نفس الطلبات كما هي، بدون ما تشرح من جديد.</small>
+          <button type="button" className="ct-mini" onClick={onResume}>▶️ كمّل التوليد</button>
+        </div>
+      )}
       {items.map((x) => (
         <figure key={x.id} className={`ct-mediacard ${x.state}`}>
           <figcaption>
@@ -512,6 +527,9 @@ export function MediaBox({ items, busy, owner, onRetry }: { items: MediaView[]; 
     </div>
   );
 }
+
+/** After a drawing or a generation stopped (a wallet ran out, the network…): how to go on without losing the work. */
+const STOPPED = "\n\nاللي انرسم محفوظ، والباقي ينتظر. بعد ما ينحل السبب (مثلًا يشحن صاحب الرصيد) اضغط «▶️ كمّل» تحت، أو اكتب «كمّل»: يكمل بنفس التصميم والشخصيات بدون ما تشرح من جديد.";
 
 // the conversation that was open, and what was being typed in it, are kept on this device: leaving the page (to top up
 // a wallet that ran out, a reload, a phone closing the tab) brings the person back to the same conversation with
@@ -648,8 +666,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       }
     } catch (e) {
       setCodeStep(null);
-      putSlides((old) => ({ aspect: old?.aspect ?? "", items: old?.items ?? [], todo: [], failed: old?.failed ?? [], running: false, total: old?.total ?? 0, report: old?.report }));
-      setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر إنتاج الشرائح.", error: true }]);
+      putSlides((old) => ({ ...(old ?? { aspect: "", items: [], failed: [], total: 0 }), todo: old?.todo ?? [], running: false } as SlidesView));
+      setMsgs((m) => [...m, { role: "assistant", text: `${e instanceof Error ? e.message : "تعذّر إنتاج الشرائح."}${STOPPED}`, error: true }]);
     } finally {
       looping.current.delete(`p:${id}`);
       setBusy("");
@@ -680,7 +698,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
         await new Promise((res) => setTimeout(res, r.items.some((x) => x.kind === "video" && x.state === "running") ? 8000 : 1500));
       }
     } catch (e) {
-      setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر التوليد.", error: true }]);
+      setMsgs((m) => [...m, { role: "assistant", text: `${e instanceof Error ? e.message : "تعذّر التوليد."}${STOPPED}`, error: true }]);
     } finally {
       looping.current.delete(`m:${id}`);
       setBusy("");
@@ -971,10 +989,11 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                       owner={!!owner}
                       onRetry={(ns) => chatId && void runProduce(chatId, ns)}
                       onDownloadAll={() => downloadAll(m.slides!.items)}
+                      onResume={() => chatId && void runProduce(chatId)}
                       step={codeStep}
                     />
                   )}
-                  {m.media && <MediaBox items={m.media.items} busy={!!busy} owner={!!owner} onRetry={(ids) => chatId && void runMedia(chatId, ids)} />}
+                  {m.media && <MediaBox items={m.media.items} busy={!!busy} owner={!!owner} onRetry={(ids) => chatId && void runMedia(chatId, ids)} onResume={() => chatId && void runMedia(chatId)} />}
                   {m.editor && (
                     <div className="ct-actions">
                       <Link className="ct-mini" href={`/jawad-ai/editor/${m.editor.id}${m.editor.lab ? `?lab=${m.editor.lab}` : ""}`}>{m.editor.lab ? `🎬 افتح «${m.editor.title}» في مختبر الموشن` : `🎬 افتح غرفة المونتاج «${m.editor.title}» مع حيدرا ماكس`}</Link>

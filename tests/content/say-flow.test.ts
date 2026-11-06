@@ -427,3 +427,41 @@ describe("the four paths: the talk, and editing an old message", () => {
     }
   });
 });
+
+// «يلخبط ويغير في الشخصية»: a carousel whose drawing stopped half way (the team's wallet ran out, then its owner topped
+// it up) is continued as it was — «كمّل» draws the rest with no new plan, and any other message keeps it waiting
+describe("a carousel that stopped half way", () => {
+  const stopped = (): Chat => ({
+    id: "chat-1", title: "t", record: "", usd: 0, spentHalalas: 0, updatedAt: "",
+    pending: { id: "p1", aspect: "1:1", slides: [{ n: 1, text: "a", prompt: "p1" }, { n: 2, text: "b", prompt: "p2" }, { n: 3, text: "c", prompt: "p3" }], at: 1, styleId: "", templateId: "", mode: "all", made: [{ n: 1, fileId: "f1", name: "slide-01", text: "a" }], failed: [], carry: [] } as unknown as Chat["pending"],
+    messages: [
+      { role: "user", text: "أبي كاروسيل" },
+      { role: "assistant", text: "تمام", slides: { aspect: "1:1", items: [{ n: 1, fileId: "f1", name: "slide-01", text: "a" }], todo: [2, 3], failed: [], running: false, total: 3, styleId: "", templateId: "" } },
+    ],
+  });
+
+  it("«كمّل» goes on drawing the slides left, without asking Claude for a new plan", async () => {
+    db.chat = stopped();
+    const r = await say("u", "chat-1", "كمّل", []);
+    expect(claude.calls).toHaveLength(0);
+    expect(r.pending).toEqual({ total: 3, mode: "fix", todo: [2, 3] });
+    expect(chat().pending).not.toBeNull();
+    expect(chat().messages.at(-1)?.text).toContain("بنفس التصميم");
+  });
+
+  it("another message keeps the carousel waiting and tells him not to plan it again", async () => {
+    db.chat = stopped();
+    answer({});
+    const r = await say("u", "chat-1", "وش رأيك بالألوان؟", []);
+    expect(claude.calls[0].system).toContain("كاروسيل ما خلص رسمه");
+    expect(chat().pending).not.toBeNull();
+    expect(r.pending).toEqual({ total: 3, mode: "fix", todo: [2, 3] });
+  });
+
+  it("a new carousel he orders replaces it", async () => {
+    db.chat = stopped();
+    answer({ produce: { on: true, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
+    const r = await say("u", "chat-1", picked(MAKER_GPT), []);
+    expect(r.pending?.mode).toBe("all");
+  });
+});
