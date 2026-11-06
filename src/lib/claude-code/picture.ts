@@ -188,7 +188,7 @@ Return the COMPLETE program and the two fonts it uses.`,
   ];
   const r = await ask<{ code: string; fonts: { head: string; body: string }; notes: string }>(user, b.model, motion ? (previous ? "حيدرا ماكس · تصليح الشريحة المتحركة" : "حيدرا ماكس · شريحة متحركة") : previous ? "حيدرا ماكس · تصليح الصورة" : "حيدرا ماكس · رسم الصورة", parts, WRITE_SCHEMA, 64_000, "high", motion ? MOTION_SYSTEM : SYSTEM);
   const chk = checkScene(r.data.code);
-  return { code: chk.code, problems: chk.problems, fonts: pin ? { head: pin, body: pin } : { head: font(r.data.fonts?.head, LAB_FONTS[0]), body: font(r.data.fonts?.body, LAB_FONTS[0]) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, worth: r.worth, model: r.model };
+  return { code: chk.code, problems: chk.problems, fonts: pin ? { head: pin, body: pin } : { head: font(r.data.fonts?.head, LAB_FONTS[0]), body: font(r.data.fonts?.body, LAB_FONTS[0]) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, model: r.model };
 }
 
 /**
@@ -222,7 +222,7 @@ Answer with "edits" on THE PROGRAM (exact search/replace) and code = ""; the COM
   // medium thought: the change is named and the answer is a patch
   const r = await ask<{ code: string; edits?: unknown; fonts: { head: string; body: string }; notes: string }>(user, b.model, "حيدرا ماكس · تعديل الصورة", parts, EDIT_SCHEMA, 64_000, "medium");
   const out = patchProgram(previous, r.data);
-  const base = { fonts: { head: font(r.data.fonts?.head, fonts.head), body: font(r.data.fonts?.body, fonts.body) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, worth: r.worth, model: r.model };
+  const base = { fonts: { head: font(r.data.fonts?.head, fonts.head), body: font(r.data.fonts?.body, fonts.body) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, model: r.model };
   if ("patchFailed" in out) return { ...base, code: "", problems: [], patchFailed: out.patchFailed };
   const chk = checkScene(out.code);
   return { ...base, code: chk.code, problems: chk.problems };
@@ -262,5 +262,5 @@ ${code}`,
   const pass = Object.values(scores).every((v) => v >= CODE_PASS);
   const fixed = pass ? null : patch ? patchProgram(code, r.data) : typeof r.data.code === "string" && r.data.code.trim() ? { code: r.data.code } : null;
   const revised = fixed && "code" in fixed ? checkScene(fixed.code) : null;
-  return { review: { scores, pass, verdict: text(r.data.verdict, 600) }, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, worth: r.worth, model: r.model };
+  return { review: { scores, pass, verdict: text(r.data.verdict, 600) }, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };
 }

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { requireContentUser } from "@/lib/content/access";
 import { producedLinks } from "@/lib/content/files";
-import { contentSpent } from "@/lib/content/chats";
+import { contentSpent } from "@/lib/content/spent";
 import { produce, produceFromCode } from "@/lib/content/produce";
 import { isAdmin } from "@config/site";
 import { sfxLibrary } from "@/lib/editor/sfx-library";

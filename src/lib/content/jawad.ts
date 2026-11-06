@@ -6,7 +6,6 @@
 // lets his requests in (src/lib/jawad/server/jobs.ts, via: "content"); «قنبر» draws a game's pictures through the same desk
 // (src/lib/games/build.ts), behind the door of «صانع الألعاب» he already passed. Server only.
 
-import { addContentSpent } from "./chats";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { storage } from "@/lib/storage";
@@ -49,8 +48,6 @@ export interface DeskWho {
   /** everyone the dashboard lets in makes for free (see requireJawadApiUser) */
   owner: boolean;
   origin: string;
-  /** the «صانع المحتوى» conversation it is for: a picture that is made counts in its «أُخذ منك في هذي المحادثة» */
-  chatId?: string;
 }
 
 export interface DeskReceipt {
@@ -196,9 +193,7 @@ export async function deskImage(who: DeskWho, req: DeskRequest): Promise<{ out: 
   if (done.status !== "succeeded") throw new DeskError("لم يكتمل التوليد في الوقت المتوقع.", `status ${done.status}`, true);
   const out = await outputOf(job.id);
   if (!out) throw new DeskError("اكتمل التوليد لكن ما وصلت النتيجة.", "no output row", true);
-  const receipt = receiptOf(def, done);
-  if (who.chatId) await addContentSpent(who.id, who.chatId, receipt.coins);
-  return { out, bytes: await deskBytes(out.path), receipt };
+  return { out, bytes: await deskBytes(out.path), receipt: receiptOf(def, done) };
 }
 
 /** A video: جواد takes the request and starts it; it takes minutes, so the answer is the receipt (see deskCheck). */

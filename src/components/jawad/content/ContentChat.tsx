@@ -632,7 +632,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
           const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
           if (r.code.photos?.length) setCodeStep(`🖼️ صورة الشريحة ${r.code.n} جاهزة من GPT Image 2 (بدون كتابة)`);
           const motion = r.code.motion ? { n: r.code.n, ...r.code.motion, sfx: r.code.sfx } : null;
-          const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "content", chatId: id, motion, onStep: (st) => setCodeStep(st.text) });
+          const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "content", motion, onStep: (st) => setCodeStep(st.text) });
           // a motion slide: its MP4 goes up as the person's upload, and the server records it with the slide
           let video: string | undefined;
           if (drawn.video) {

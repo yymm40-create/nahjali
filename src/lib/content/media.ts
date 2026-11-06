@@ -8,7 +8,7 @@ import { NO_TEXT_RULE } from "@config/designer";
 import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";
 import { unlimitedFor } from "@/lib/access";
-import { addContentSpent, getChat, saveChat, type MediaItem, type Turn } from "./chats";
+import { getChat, saveChat, type MediaItem, type Turn } from "./chats";
 import { addProducedFromOutput, attachmentsOf, deleteProduced } from "./files";
 import { deskCheck, deskImage, deskVideo, DeskError, type DeskReceipt, type DeskWho } from "./jawad";
 
@@ -93,8 +93,6 @@ async function followVideo(c: { userId: string; chatId: string; owner: boolean }
     const file = await addProducedFromOutput({ userId: c.userId, chatId: c.chatId, out: st.out, name: item.name || "video", meta: { media: item.id, prompt: item.prompt, jobId: item.jobId } });
     item.fileId = file.id;
     item.state = "done";
-    // made: what it took counts in the conversation's «أُخذ منك» (a failed one is given back, so it never counts)
-    if (item.desk?.coins) await addContentSpent(c.userId, c.chatId, item.desk.coins);
   } catch (e) {
     fail(item, e, c.owner);
   }
@@ -125,7 +123,7 @@ export async function stepMedia(userId: string, chatId: string, o: { retry?: str
       }
     }
   }
-  const c = { userId, chatId, owner: !!o.owner, who: { id: userId, email: o.email, owner: await unlimitedFor(o.email), origin: o.origin ?? "", chatId } as DeskWho };
+  const c = { userId, chatId, owner: !!o.owner, who: { id: userId, email: o.email, owner: await unlimitedFor(o.email), origin: o.origin ?? "" } as DeskWho };
   let usd = 0;
 
   // the videos جواد is making

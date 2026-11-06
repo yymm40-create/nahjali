@@ -85,7 +85,7 @@ async function photoBitmap(url: string, side: number): Promise<ImageBitmap | nul
   }
 }
 
-type DrawOptions = { prompt: string; aspect: string; style: string; references: string[]; photos?: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" | "content"; edit?: DrawEdit | null; motion?: DrawMotion | null; /** «صانع المحتوى»: its conversation, so what each call takes counts in it */ chatId?: string };
+type DrawOptions = { prompt: string; aspect: string; style: string; references: string[]; photos?: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" | "content"; edit?: DrawEdit | null; motion?: DrawMotion | null };
 
 /**
  * Draws the picture by program, with up to CODE_ROUNDS looks and rewrites. `photos` are the person's pictures to PUT IN
@@ -131,7 +131,7 @@ async function prepare(o: DrawOptions) {
   const assets = loaded.map((p, i) => ({ id: `photo${i + 1}`, bitmap: p.bm }));
   const photos = loaded.map((p) => p.small);
   const motion = o.motion ? { n: o.motion.n, motion: { seconds: o.motion.seconds, style: o.motion.style, first: o.motion.first, total: o.motion.total } } : {};
-  const call = <T>(body: Record<string, unknown>) => postJson<T>(URL, { model: o.model, prompt: o.prompt, aspect: o.aspect, style: o.style, references: o.references, photos, from: o.from ?? "studio", ...(o.chatId ? { chatId: o.chatId } : {}), ...motion, ...body }, o.signal);
+  const call = <T>(body: Record<string, unknown>) => postJson<T>(URL, { model: o.model, prompt: o.prompt, aspect: o.aspect, style: o.style, references: o.references, photos, from: o.from ?? "studio", ...motion, ...body }, o.signal);
   return { assets, call };
 }
 
