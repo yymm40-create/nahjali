@@ -109,7 +109,7 @@ export const ANSWER_SCHEMA = {
               resolution: { type: "string", enum: ["std", "hi", "480p", "720p", "1080p"], description: "للصورة std أو hi؛ للفيديو 480p أو 720p أو 1080p" },
               seconds: { type: "integer", description: "للفيديو فقط: من 4 إلى 15؛ للصورة اكتب 0" },
               with_sound: { type: "boolean", description: "للفيديو: بصوت مولَّد" },
-              refs: { type: "array", items: { type: "string" }, description: "معرّفات (id) ملفات العميل المرفقة المراد استخدامها كمراجع بصرية، أو فارغة" },
+              refs: { type: "array", items: { type: "string" }, description: "معرّفات (id) ملفات العميل المرفقة المراد استخدامها كمراجع بصرية، أو معرّفات الصور اللي ولّدها جواد قبل في هذي المحادثة (تظهر [id …] جنب الصورة الجاهزة) — ضعها دائمًا لما الطلب يكمّل نفس الشخصية أو المشهد عشان تبقى نفسها؛ أو فارغة" },
             },
           },
         },
@@ -171,7 +171,7 @@ function assistantNote(t: Turn): string {
   }
   if (t.media) {
     const ST = { todo: "بانتظار جواد", running: "جواد يولّدها", done: "جاهزة", failed: "فشلت" } as const;
-    parts.push(`[طلبات سلّمتها لجواد (هو من يولّد، وتظهر أيضًا في «أعمالي»): ${t.media.items.map((x, i) => `${i + 1}) ${x.kind === "video" ? "فيديو" : "صورة"} «${x.name}» — ${ST[x.state]}${x.error ? ` (${x.error})` : ""}${x.desk ? ` — ${x.desk.generator}${x.desk.free ? "" : ` ${x.desk.coins} عملة`}` : ""}`).join("؛ ")}]`);
+    parts.push(`[طلبات سلّمتها لجواد (هو من يولّد، وتظهر أيضًا في «أعمالي»): ${t.media.items.map((x, i) => `${i + 1}) ${x.kind === "video" ? "فيديو" : "صورة"} «${x.name}» — ${ST[x.state]}${x.error ? ` (${x.error})` : ""}${x.desk ? ` — ${x.desk.generator}${x.desk.free ? "" : ` ${x.desk.coins} عملة`}` : ""}${x.state === "done" && x.fileId ? ` [id ${x.fileId}]` : ""}`).join("؛ ")}]`);
   }
   if (t.editor) parts.push(`[فتح الموقع غرفة مونتاج «${t.editor.title}» في حيدرة كت وسلّمها الحزمة]`);
   return parts.length ? `${t.text}\n\n${parts.join("\n")}` : t.text;
@@ -193,6 +193,12 @@ function toClaudeTurn(t: Turn, links: Map<string, string>): ClaudeTurn {
   }
   return { role: t.role, content: parts };
 }
+
+/** «كمّل» and its kin, alone: the person wants what stopped to go on, nothing new. */
+export const isContinue = (t: string) => /^(يلا\s+)?(كمل|كمّل|كملي|كمّلي|اكمل|أكمل|تابع|استمر|كمل الرسم|كمّل الرسم|كمل التوليد|كمّل التوليد|continue|go on)[\s.!؟?]*$/i.test(t.trim());
+
+/** The pictures جواد made in this conversation (their file ids): references for the next picture of the same character. */
+export const madePictures = (turns: Turn[]) => turns.flatMap((t) => (t.media?.items ?? []).filter((x) => x.kind === "image" && x.state === "done" && x.fileId).map((x) => x.fileId!));
 
 /** The person says something in a conversation (a new one when `chatId` is null). */
 export async function say(userId: string, chatId: string | null, message: string, attachmentIds: unknown, email: string | null = null, opts: { verbose?: boolean; from?: number } = {}): Promise<Reply> {
@@ -238,7 +244,17 @@ export async function say(userId: string, chatId: string | null, message: string
   if (listened.block) parts.unshift(listened.block);
   const system = systemText(persona.text, [catalogBlock()]);
   const turnNote = turnText(parts, before?.record ?? "");
-  const r = await callClaudeJson<Answer>({ system, turnNote, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email) });
+  // a carousel that stopped half way (a wallet ran out, a closed page): «كمّل» goes on drawing it as it was — no new
+  // answer, no new plan (a new plan drew the characters again, different, and the person had to explain it all again)
+  const unfinished = before?.pending && cut < 0 ? before.pending : null;
+  const left = unfinished ? unfinished.slides.map((x) => x.n).filter((n) => !unfinished.made.some((m) => m.n === n) && !unfinished.failed.some((f) => f.n === n)) : [];
+  if (unfinished && left.length && !files.length && isContinue(said)) {
+    const reply: Turn = { role: "assistant", text: `تمام، أكمل رسم ${left.length === 1 ? `الشريحة ${left[0]}` : `الشرائح الباقية (${left.join("، ")})`} من نفس المكان، بنفس التصميم والشخصيات اللي انرسمت.` };
+    const id = await saveChat(userId, chatId, { messages: [...history, reply] });
+    return { chatId: id, text: reply.text, questions: null, usd: 0, pending: { total: unfinished.slides.length, mode: "fix", todo: left }, editor: null, media: null, spentHalalas: full?.spentHalalas ?? 0 };
+  }
+  const waitingNote = !unfinished || !left.length ? "" : (`[كاروسيل ما خلص رسمه: الشرائح ${left.join("، ")} تنتظر بنفس التصميم والشخصيات اللي انرسمت، والموقع يكملها بنفسه بعد ردّك. لا تعيد تخطيط الكاروسيل ولا تغيّر شخصياته أو تصميمه أو نصوصه، ولا تطلب produce جديد، إلا إذا طلب العميل تغييرًا صريحًا.]`);
+  const r = await callClaudeJson<Answer>({ system, turnNote: waitingNote ? `${waitingNote}\n\n${turnNote}` : turnNote, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email) });
   const a = r.data;
   let usd = claudeCost(r.usage) + mem.usd + listened.usd;
   const questions = readQuestions(a.questions);
@@ -306,7 +322,8 @@ export async function say(userId: string, chatId: string | null, message: string
   // pictures and videos for جواد: the requests are kept with the answer; the page asks for the media step right after
   let media: MediaItem[] | null = null;
   if (a.generate?.on && Array.isArray(a.generate.items) && a.generate.items.length) {
-    const mine = new Set(history.flatMap((t) => (t.files ?? []).map((f) => f.id)));
+    // their attachments, and the pictures جواد already made in this conversation (the same character stays the same)
+    const mine = new Set([...history.flatMap((t) => (t.files ?? []).map((f) => f.id)), ...madePictures(history)]);
     const items = readMedia(
       a.generate.items.slice(0, 6).map((x) => ({
         id: randomUUID().slice(0, 8),
@@ -343,9 +360,12 @@ export async function say(userId: string, chatId: string | null, message: string
     }
   }
 
-  const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : cut >= 0 ? "" : undefined, pending, addUsd: usd });
+  // a reply that orders no new carousel keeps the one still being drawn (and the page goes on drawing it)
+  const keep = !pending && unfinished && left.length ? unfinished : null;
+  const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : cut >= 0 ? "" : undefined, pending: keep ? undefined : pending, addUsd: usd });
   usd = Math.round(usd * 10000) / 10000;
-  return { chatId: id, text: reply.text, questions: reply.questions ?? null, usd, pending: pending ? { total: pending.slides.length, mode: pending.mode, todo: pending.slides.map((x) => x.n) } : null, editor, media, spentHalalas: full?.spentHalalas ?? 0 };
+  const goOn = pending ? { total: pending.slides.length, mode: pending.mode, todo: pending.slides.map((x) => x.n) } : keep ? { total: keep.slides.length, mode: "fix" as const, todo: left } : null;
+  return { chatId: id, text: reply.text, questions: reply.questions ?? null, usd, pending: goOn, editor, media, spentHalalas: full?.spentHalalas ?? 0 };
 }
 
 /**
