@@ -3,6 +3,7 @@
 // the project's record). Server only.
 
 import { HUSSEINI_MOURNING_FEED } from "@config/husseini-mourning";
+import { PSYCH_TRICKS_RULES } from "@config/content-psych";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BAQIR_PERSONA, CONTENT_KV, CONTENT_PLATFORM_RULES, CONTENT_TOOLS } from "@config/content";
 import { CAROUSEL_TEMPLATES, designSystem, findTemplate, structureName } from "@config/content-templates";
@@ -44,7 +45,7 @@ export async function resetPersona() {
  * extra blocks (the catalogues, what the person chose, the closest examples) and the project's record.
  */
 export function systemText(persona: string, parts: string[] = [], record = "") {
-  return [persona, CONTENT_PLATFORM_RULES, CONTENT_TOOLS, HUSSEINI_MOURNING_FEED, ...parts, recordText(record)].filter(Boolean).join("\n\n");
+  return [persona, CONTENT_PLATFORM_RULES, CONTENT_TOOLS, PSYCH_TRICKS_RULES, HUSSEINI_MOURNING_FEED, ...parts, recordText(record)].filter(Boolean).join("\n\n");
 }
 
 const recordText = (record: string) => (record ? `سجل المشروع الحالي (كما حفظته آخر مرة؛ حدّثه في "record" عند أي تغيير):\n${record}` : "");
