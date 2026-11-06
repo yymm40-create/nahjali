@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { requireContentUser } from "@/lib/content/access";
 import { producedLinks } from "@/lib/content/files";
+import { contentSpent } from "@/lib/content/chats";
 import { produce, produceFromCode } from "@/lib/content/produce";
 import { isAdmin } from "@config/site";
 import { sfxLibrary } from "@/lib/editor/sfx-library";
@@ -25,11 +26,13 @@ export const POST = handle(async (req: Request) => {
   try {
     // «Claude Code»: the page draws a slide itself and sends the picture back (otherwise the answer may carry the next slide's brief)
     const r = typeof b.png === "string" || typeof b.pngUpload === "string" ? await produceFromCode(user.id, chatId, b) : await produce(user.id, chatId, { retry, owner: isAdmin(user.email), email: user.email, origin: new URL(req.url).origin });
-    const [links, downloads] = await Promise.all([producedLinks(user.id, chatId), producedLinks(user.id, chatId, true)]);
+    const [links, downloads, spent] = await Promise.all([producedLinks(user.id, chatId), producedLinks(user.id, chatId, true), contentSpent(user.id, chatId)]);
     // a motion slide to make: the library's sound effects (their links), for the cues of his scene
     const sfx = r.code?.motion ? Object.fromEntries((await sfxLibrary().catch(() => ({ items: [] as { id: string; url: string | null }[] }))).items.filter((i) => i.url && CUE_SFX.includes(i.id)).map((i) => [i.id, i.url!])) : undefined;
     return NextResponse.json({
       ...r,
+      // «أُخذ منك في هذي المحادثة»: the whole conversation now (باقر's replies, the pictures, «حيدرا ماكس»'s code)
+      ...(spent !== null ? { spent } : {}),
       ...(r.code && sfx ? { code: { ...r.code, sfx } } : {}),
       slides: r.slides.map((s) => ({ ...s, url: links.get(s.fileId) ?? null, download: downloads.get(s.fileId) ?? null, ...(s.video ? { videoUrl: links.get(s.video) ?? null, videoDownload: downloads.get(s.video) ?? null } : {}) })),
       failed: r.failed.map(({ n, reason, detail, text }) => ({ n, reason, detail, text })),

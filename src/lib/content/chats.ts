@@ -9,6 +9,34 @@ import { findMotionCarouselStyle } from "@config/content-motion-carousel";
 
 const db = () => createAdminClient();
 
+// «أُخذ منك في هذي المحادثة»: one queue per conversation in this server, so two pictures finishing together both count
+const spendQueue = new Map<string, Promise<unknown>>();
+
+/**
+ * Adds what one operation of this conversation took from the wallet (or, for a free account, what it would have cost)
+ * to its running total: «محمد باقر»'s replies, GPT Image 2's pictures and videos, and «حيدرا ماكس»'s code and reviews.
+ * Returns the new total (null when the conversation isn't this person's).
+ */
+export function addContentSpent(userId: string, chatId: string, halalas: number): Promise<number | null> {
+  const add = Math.max(0, Math.round(halalas) || 0);
+  const run = async () => {
+    const { data } = await db().from("content_chats").select("spent_halalas").eq("id", chatId).eq("user_id", userId).maybeSingle();
+    if (!data) return null;
+    const next = Math.max(0, Number(data.spent_halalas ?? 0)) + add;
+    if (add > 0) await db().from("content_chats").update({ spent_halalas: next }).eq("id", chatId).eq("user_id", userId).then(() => {}, () => {});
+    return next;
+  };
+  const tail = (spendQueue.get(chatId) ?? Promise.resolve()).then(run, run).catch(() => null);
+  spendQueue.set(chatId, tail);
+  void tail.then(() => {
+    if (spendQueue.get(chatId) === tail) spendQueue.delete(chatId);
+  });
+  return tail;
+}
+
+/** The conversation's running total now (halalas; null when it isn't this person's). */
+export const contentSpent = (userId: string, chatId: string) => addContentSpent(userId, chatId, 0);
+
 const ASPECTS = ["1:1", "2:3", "9:16", "16:9"];
 const aspectOf = (v: unknown): CarouselAspect => (ASPECTS.includes(String(v)) ? String(v) : "1:1") as CarouselAspect;
 

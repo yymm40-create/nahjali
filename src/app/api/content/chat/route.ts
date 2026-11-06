@@ -4,7 +4,7 @@ import { claudeTrouble } from "@/lib/film/anthropic";
 import { requireContentUser } from "@/lib/content/access";
 import { say } from "@/lib/content/chat";
 import { robotTurn } from "@/lib/claude-run";
-import { addChatSpent } from "@/lib/chat-spend";
+import { addContentSpent } from "@/lib/content/chats";
 import { CONTENT } from "@config/content";
 import { isAdmin } from "@config/site";
 
@@ -25,7 +25,7 @@ export const POST = handle(async (req: Request) => {
   try {
     const r = await robotTurn(user, b.model, "محادثة محمد باقر", () => say(user.id, chatId, message, attachments, user.email, { verbose: b.verbose === true, from: typeof b.from === "number" ? b.from : undefined }), { said: message, reply: (r) => r.text });
     // exactly what this conversation has taken from the wallet now, this reply's real charge included (never an estimate)
-    const spent = await addChatSpent("content_chats", "id", r.chatId, r.spentHalalas, r.worth);
+    const spent = (await addContentSpent(user.id, r.chatId, r.worth)) ?? r.spentHalalas + r.worth;
     return NextResponse.json({ ...r, spent });
   } catch (e) {
     if (e instanceof UserError) throw e;

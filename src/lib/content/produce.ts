@@ -281,7 +281,7 @@ export async function produce(userId: string, chatId: string, o: { retry?: numbe
   const messages = [...chat.messages];
   const at = Math.min(p.at, messages.length - 1);
   const base = new Map((messages[at]?.slides?.items ?? []).map((s) => [s.n, s]));
-  const who: DeskWho = { id: userId, email: o.email, owner: await unlimitedFor(o.email), origin: o.origin ?? "" };
+  const who: DeskWho = { id: userId, email: o.email, owner: await unlimitedFor(o.email), origin: o.origin ?? "", chatId };
   const c = { userId, chatId, owner: !!o.owner, who, t0, total: p.mode === "all" ? p.slides.length : Math.max(base.size, ...p.slides.map((s) => s.n)) };
   const finish = (results: SlideResult[]) => settle({ userId, chatId, chat: chat!, p, messages, at, base }, results);
   const done = new Set([...p.made.map((s) => s.n), ...p.failed.map((f) => f.n)]);

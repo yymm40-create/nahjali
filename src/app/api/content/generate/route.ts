@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { requireContentUser } from "@/lib/content/access";
 import { producedLinks } from "@/lib/content/files";
+import { contentSpent } from "@/lib/content/chats";
 import { stepMedia } from "@/lib/content/media";
 import { isAdmin } from "@config/site";
 
@@ -24,8 +25,8 @@ export const POST = handle(async (req: Request) => {
   const owner = isAdmin(user.email);
   try {
     const r = await stepMedia(user.id, chatId, { retry, owner, email: user.email, origin: new URL(req.url).origin });
-    const [links, downloads] = await Promise.all([producedLinks(user.id, chatId), producedLinks(user.id, chatId, true)]);
-    return NextResponse.json({ ...r, items: r.items.map((x) => ({ ...x, url: x.fileId ? links.get(x.fileId) ?? null : null, download: x.fileId ? downloads.get(x.fileId) ?? null : null })) });
+    const [links, downloads, spent] = await Promise.all([producedLinks(user.id, chatId), producedLinks(user.id, chatId, true), contentSpent(user.id, chatId)]);
+    return NextResponse.json({ ...r, ...(spent !== null ? { spent } : {}), items: r.items.map((x) => ({ ...x, url: x.fileId ? links.get(x.fileId) ?? null : null, download: x.fileId ? downloads.get(x.fileId) ?? null : null })) });
   } catch (e) {
     if (e instanceof UserError) throw e;
     if (e instanceof Error && e.message === "chat not found") throw new UserError("ما لقينا هذي المحادثة.", 404);
