@@ -74,10 +74,10 @@ async function call<T>(url: string, init?: RequestInit): Promise<{ ok: boolean; 
 }
 const postJson = <T,>(url: string, data: unknown) => call<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
 
-/** What designing or copying a voice costs this person (the owner pays nothing). */
+/** What designing or copying a voice costs — the customer's price, shown to the owner too (who is not charged it). */
 const JAWAD_VOICE_ID = "jawad-voice";
-const voiceCoins = (table: Record<string, number | null>, owner: boolean, jawadTable?: Record<string, number | null>) => {
-  const c = (t: Record<string, number | null>, k: string) => (owner ? 0 : t[k] == null ? null : coinsOf(t[k]!));
+const voiceCoins = (table: Record<string, number | null>, jawadTable?: Record<string, number | null>) => {
+  const c = (t: Record<string, number | null>, k: string) => (t[k] == null ? null : coinsOf(t[k]!));
   return { design: c(table, VOICE_DESIGN_KEY), clone: c(table, VOICE_CLONE_KEY), ...(jawadTable ? { cloneJawad: c(jawadTable, "voice:clone") } : {}) };
 };
 
@@ -1026,7 +1026,7 @@ export default function Studio({ section, studioSections, generators, directorGe
               ev={ev}
               values={ev.settings}
               onChange={setSetting}
-              voiceCoins={def?.provider.id === "jawad" ? voiceCoins({}, owner, prices[def.id] ?? {}) : def && def.priceKeys.some((k) => k.key === VOICE_DESIGN_KEY) ? voiceCoins(prices[def.id] ?? {}, owner, prices[JAWAD_VOICE_ID]) : undefined}
+              voiceCoins={def?.provider.id === "jawad" ? voiceCoins({}, prices[def.id] ?? {}) : def && def.priceKeys.some((k) => k.key === VOICE_DESIGN_KEY) ? voiceCoins(prices[def.id] ?? {}, prices[JAWAD_VOICE_ID]) : undefined}
               voiceProvider={def?.provider.id === "jawad" ? "jawad" : "elevenlabs"}
             />
           </div>
@@ -1053,7 +1053,8 @@ export default function Studio({ section, studioSections, generators, directorGe
                 {generateLabel}
                 {price != null && (
                   <span className="ms-1 flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--jw-on-accent)_15%,transparent)] px-2 py-0.5 text-sm">
-                    <Riyal halalas={price} was={owner ? null : ev?.price.ok ? ev.price.was : null} size={15} free={owner} />
+                    {/* the owner sees the very price a customer sees (and the note below: nothing is taken from him) */}
+                    <Riyal halalas={price} was={ev?.price.ok ? ev.price.was : null} size={15} />
                   </span>
                 )}
               </button>
