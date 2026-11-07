@@ -28,6 +28,12 @@ export const moodLine = (p: Pick) => (p.id === "none" ? "• المزاج: اخ�
 /** A colour pick (one of the 100 four-colour palettes) as a line of a message (id "none" = he chooses the colours). */
 export const paletteLine = (p: Pick) => (p.id === "none" ? "• الألوان: اختر لي الأنسب للموضوع [ألوان:none]" : `• الألوان: «${p.name}» [ألوان:${p.id}]`);
 
+/** The colour step after the carousel style: the style's own colours by default, or a palette of the 100. */
+export const PALETTE_LABEL = "ألوان الكاروسيل";
+
+/** The person keeps the colours that come with the chosen style (the default). */
+export const PALETTE_STYLE_LINE = "• الألوان: «ألوان الستايل نفسها» [ألوان:style]";
+
 /** A pick in the table of carousel styles as a line of a message. */
 export const carouselLine = (p: Pick) => `• ستايل الكاروسيل: «${p.name}» [كاروسيل:${p.id}]`;
 

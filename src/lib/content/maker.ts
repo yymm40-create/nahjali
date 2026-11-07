@@ -4,7 +4,9 @@ import { findTemplate } from "@config/content-templates";
 import { findMotionCarouselStyle, MOTION_CAROUSEL_STYLES, MOTION_ROUTES, type MotionCarouselStyle, type MotionRoute } from "@config/content-motion-carousel";
 import { coinsOf, generatorById, GPT_IMAGE_2_ID } from "@config/jawad/generators";
 import { coinStr } from "@config/coins";
+import { findPalette, type ContentPalette } from "@config/content-palettes";
 import type { Question, Turn } from "./chats";
+import { PALETTE_LABEL } from "./marks";
 
 /** The last step before a new carousel is made: the person picks who makes the slides (the owner's order: no default). */
 export const MAKER_LABEL = "من يصمم الشرائح؟";
@@ -17,6 +19,9 @@ export const MAKER_QUESTION = { label: MAKER_LABEL, kind: "choice" as const, opt
 /** The first step of a carousel: the table of 104 styles, in place of questions about colours and margins. */
 export const CAROUSEL_LABEL = "اختر ستايل الكاروسيل";
 export const CAROUSEL_QUESTION: Question = { label: CAROUSEL_LABEL, kind: "carousels", options: [], multi: false };
+
+/** After the style: its colours (the style's own by default, or one of the 100 palettes to change them). */
+export const PALETTE_QUESTION: Question = { label: PALETTE_LABEL, kind: "palettes", options: [], multi: false };
 
 /** After the style: the font, from the list of 50 (a style with a ready font offers it first). */
 export const FONT_LABEL = "اختر الخط";
@@ -229,6 +234,25 @@ export function pickedFont(history: Turn[]): { id: string; font: ContentFont | n
   return null;
 }
 
+const PALETTE_MARK = /\[ألوان:([a-z0-9-]+)\]/g;
+
+/**
+ * The colours picked for the carousel about to be made: "style" (the style's own, the default), a palette of the 100,
+ * "none" («محمد باقر» picks), or null when not picked yet.
+ */
+export function pickedPalette(history: Turn[]): { id: string; palette: ContentPalette | null } | null {
+  const turns = sinceLastCarousel(history);
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i].role !== "user") continue;
+    const id = [...turns[i].text.matchAll(PALETTE_MARK)].map((m) => m[1]).at(-1);
+    if (!id) continue;
+    if (id === "style" || id === "none") return { id, palette: null };
+    const p = findPalette(id);
+    if (p) return { id, palette: p };
+  }
+  return null;
+}
+
 /** Whether the person chose to add their own pictures, or to have them made from zero (null: not asked yet). */
 export const pickedPhotos = (history: Turn[]): "mine" | "make" | null => {
   const hit = lastPressed(history, PHOTOS_LABEL, [PHOTOS_MINE, PHOTOS_MAKE]);
@@ -245,7 +269,7 @@ export interface CarouselHold {
 
 /**
  * What still stops a new carousel from being made, in order: the style, then (a realistic style) the person's pictures,
- * then the font, then still or motion, then (motion) its style and how it is made, or (still) who makes it. Null when nothing does. The server decides this from what was pressed, not from what the model says.
+ * then the colours (the style's own by default, or a palette), then the font, then still or motion, then (motion) its style and how it is made, or (still) who makes it. Null when nothing does. The server decides this from what was pressed, not from what the model says.
  */
 export function carouselHold(history: Turn[], slides = 6): CarouselHold | null {
   const pick = pickedCarousel(history);
@@ -257,6 +281,9 @@ export function carouselHold(history: Turn[], slides = 6): CarouselHold | null {
   }
   // a conversation that began with the older template gallery is not stopped for a font either
   const fromTable = sinceLastCarousel(history).some((x) => x.role === "user" && /\[كاروسيل:[a-z0-9-]+\]/.test(x.text));
+  if (fromTable && !pickedPalette(history)) {
+    return { question: PALETTE_QUESTION, note: `⏸️ الألوان: تبي ألوان الستايل${pick.style ? ` «${pick.style.name}»` : ""} نفسها، أو تغيّرها من معرض الألوان (١٠٠ لوحة)؟` };
+  }
   if (fromTable && !pickedFont(history)) {
     const ready = pick.style?.font ? findContentFont(pick.style.font) : undefined;
     return { question: FONT_QUESTION, note: ready ? `⏸️ اختر الخط: هذا الستايل معه خط جاهز «${ready.name}»، أو اختر غيره من القائمة.` : "⏸️ اختر الخط من القائمة، أو خلني أختاره لك." };

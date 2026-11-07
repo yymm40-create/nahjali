@@ -6,9 +6,9 @@ import { CAROUSEL_CODE_CRAFT, CAROUSEL_GPT_CRAFT, CAROUSEL_NICHES, CAROUSEL_STYL
 import { CONTENT_PLATFORM_RULES, CONTENT_TOOLS } from "@config/content";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 import { readQuestions, type Turn } from "@/lib/content/chats";
-import { CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, FONT_AUTO_LINE, fontLine, fontStyleLine, stripMarks } from "@/lib/content/marks";
+import { CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, FONT_AUTO_LINE, fontLine, fontStyleLine, PALETTE_LABEL, PALETTE_STYLE_LINE, paletteLine, stripMarks } from "@/lib/content/marks";
 import { answerLine } from "@/lib/content/marks";
-import { attachedPictures, carouselHold, CAROUSEL_LABEL, FONT_LABEL, KIND_LABEL, KIND_STILL, MAKER_CODE, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE, pickedCarousel, pickedFont, pickedMaker, pickedMotionStyle, pickedPhotos, pickedRoute } from "@/lib/content/maker";
+import { attachedPictures, carouselHold, CAROUSEL_LABEL, FONT_LABEL, KIND_LABEL, KIND_STILL, MAKER_CODE, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE, pickedCarousel, pickedFont, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "@/lib/content/maker";
 import { slidePrompt } from "@/lib/content/produce";
 import { catalogBlock, chosenBlock, chosenIds } from "@/lib/content/persona";
 
@@ -81,6 +81,11 @@ describe("the 104 carousel styles", () => {
     expect(p).toContain(NO_REALISTIC_WOMEN);
     expect(p).toContain('cover "العنوان"');
     expect(slidePrompt({ n: 1, total: 5, prompt: "p", styleId: "", withRef: false })).toContain(NO_REALISTIC_WOMEN);
+    // a palette picked after the style replaces only its colours, on every slide; none picked: the style's own
+    const pal = slidePrompt({ n: 2, total: 5, prompt: "p", styleId: "", carouselId: "notebook", paletteId: "ch-0107360d1c4222396ffcf1d0", withRef: true });
+    expect(pal).toContain("CLIENT COLOURS (these replace the carousel style's colours");
+    expect(pal).toContain("#010736 · #0D1C42 · #22396F · #FCF1D0");
+    expect(slidePrompt({ n: 2, total: 5, prompt: "p", styleId: "", carouselId: "notebook", withRef: true })).not.toContain("CLIENT COLOURS");
   });
 });
 
@@ -139,32 +144,48 @@ describe("what stops a new carousel", () => {
   const REAL = carouselLine({ id: "notebook", name: "الدفتر" });
   const FLAT = carouselLine({ id: "white-text", name: "ب" });
 
-  const FONT = fontLine({ id: "cairo", name: "القاهرة" });
+  const FONT_ONLY = fontLine({ id: "cairo", name: "القاهرة" });
+  const FONT = `${PALETTE_STYLE_LINE}\n${FONT_ONLY}`;
+  const COLOURS = user(PALETTE_STYLE_LINE);
 
-  it("goes in order: the style, then the pictures, then the font, then who makes it", () => {
+  it("goes in order: the style, then the pictures, then the colours, then the font, then who makes it", () => {
     expect(carouselHold([user("أنتج")])?.question.label).toBe(CAROUSEL_LABEL);
     expect(carouselHold([user(CAROUSEL_HELP_LINE)])?.question.label).toBe(CAROUSEL_LABEL);
     expect(carouselHold([user(REAL)])?.question.label).toBe(PHOTOS_LABEL);
-    expect(carouselHold([user(REAL), user(PHOTOS_MAKE)])?.question.label).toBe(FONT_LABEL);
+    expect(carouselHold([user(REAL), user(PHOTOS_MAKE)])?.question.label).toBe(PALETTE_LABEL);
+    expect(carouselHold([user(REAL), user(PHOTOS_MAKE), COLOURS])?.question.label).toBe(FONT_LABEL);
     expect(carouselHold([user(REAL), user(PHOTOS_MAKE), user(FONT)])?.question.label).toBe(KIND_LABEL);
     expect(carouselHold([user(REAL), user(PHOTOS_MAKE), user(FONT), user(KIND_STILL)])?.question.label).toBe(MAKER_LABEL);
     expect(carouselHold([user(REAL), user(PHOTOS_MAKE), user(FONT), user(KIND_STILL), user(MAKER_MIX)])).toBeNull();
-    expect(carouselHold([user(FLAT)])?.question.label).toBe(FONT_LABEL);
-    expect(carouselHold([user(FLAT), user(FONT_AUTO_LINE)])?.question.label).toBe(KIND_LABEL);
-    expect(carouselHold([user(FLAT), user(FONT_AUTO_LINE), user(KIND_STILL)])?.question.label).toBe(MAKER_LABEL);
-    expect(carouselHold([user(FLAT), user(FONT_AUTO_LINE), user(KIND_STILL), user(MAKER_CODE)])).toBeNull();
+    expect(carouselHold([user(FLAT)])?.question.label).toBe(PALETTE_LABEL);
+    expect(carouselHold([user(FLAT), COLOURS])?.question.label).toBe(FONT_LABEL);
+    expect(carouselHold([user(FLAT), COLOURS, user(FONT_AUTO_LINE)])?.question.label).toBe(KIND_LABEL);
+    expect(carouselHold([user(FLAT), COLOURS, user(FONT_AUTO_LINE), user(KIND_STILL)])?.question.label).toBe(MAKER_LABEL);
+    expect(carouselHold([user(FLAT), COLOURS, user(FONT_AUTO_LINE), user(KIND_STILL), user(MAKER_CODE)])).toBeNull();
+  });
+
+  // 7 Nov 2026: the colours are asked after the style again; the style's own colours are the default, a palette changes them
+  it("asks the colours after the style: the style's own, or a palette of the 100", () => {
+    expect(carouselHold([user(FLAT)])?.note).toContain("ألوان الستايل");
+    expect(carouselHold([user(FLAT)])?.question.kind).toBe("palettes");
+    expect(pickedPalette([user(FLAT), COLOURS])).toEqual({ id: "style", palette: null });
+    const pal = paletteLine({ id: "ch-0107360d1c4222396ffcf1d0", name: "كحلي ملكي وكريمي" });
+    expect(pickedPalette([user(FLAT), user(pal)])?.palette?.colors).toEqual(["#010736", "#0D1C42", "#22396F", "#FCF1D0"]);
+    expect(pickedPalette([user(FLAT), user(paletteLine({ id: "none", name: "" }))])?.id).toBe("none");
+    expect(pickedPalette([user(FLAT), user("أبي ألوان كحلية")])).toBeNull();
+    expect(stripMarks(PALETTE_STYLE_LINE)).toBe("• الألوان: «ألوان الستايل نفسها»");
   });
 
   it("offers the style's ready font first, and reads the pick", () => {
     const soft = carouselLine({ id: "soft-3d", name: "ثري دي ناعم" });
-    expect(carouselHold([user(soft)])?.note).toContain("بالو بهايجان");
+    expect(carouselHold([user(soft), COLOURS])?.note).toContain("بالو بهايجان");
     expect(pickedFont([user(soft), user(fontStyleLine("بالو بهايجان"))])).toEqual({ id: "baloo-bhaijaan-2", font: findContentFont("baloo-bhaijaan-2") });
     expect(pickedFont([user(FLAT), user(fontStyleLine("x"))])?.id).toBe("alexandria");
     // a style with no ready font: "the style's font" is left to him
     expect(pickedFont([user(carouselLine({ id: "screenshot-steps", name: "ل" })), user(fontStyleLine("x"))])).toEqual({ id: "auto", font: null });
     expect(pickedFont([user(FLAT), user(FONT)])?.font?.name).toBe("القاهرة");
     expect(pickedFont([user(FLAT), user("أبي خط القاهرة")])).toBeNull();
-    expect(stripMarks(FONT)).toBe("• الخط: «القاهرة»");
+    expect(stripMarks(FONT_ONLY)).toBe("• الخط: «القاهرة»");
   });
 
   it("wants the pictures themselves when they chose to add them", () => {
