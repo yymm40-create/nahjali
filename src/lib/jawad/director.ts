@@ -3,33 +3,47 @@
 
 import { findMentions, looksLikeRef, sameName } from "./mentions";
 
-/** Characters allowed in each language, not counting the spoken lines (owner's rule). */
-export const DIRECTOR_LIMITS = { en: 1000, zh: 500 } as const;
+// No length limit: the prompt is as long as the story needs (owner's order, 7 November 2026 — the old 1000 EN + 500 ZH
+// guide cut the dialogue and the direction out of developed prompts, the film maker's director has no such limit).
 
 const ARABIC = /\p{Script=Arabic}/u;
-/** Spoken lines are written inside double quotes ("…", “…”, 「…」); they don't count toward the limits. */
-const SPOKEN = /"[^"\n]*"|“[^”\n]*”|「[^」\n]*」/gu;
+/** The lines the person quoted in their own prompt ("…", “…”, 「…」, «…»). */
+const QUOTED = /"[^"\n]*"|“[^”\n]*”|「[^」\n]*」|«[^»\n]*»/gu;
+/** Arabic diacritics and the tatweel: a line is the same line with or without them. */
+const ARABIC_MARKS = /[ؐ-ًؚ-ٰٟۖ-ۭـ]/g;
 const SKILL_LABEL = /<<<\s*(image|video|audio)_\d+\s*>>>/i;
-
-/** Length without the spoken lines, in characters (code points). */
-export const unspokenLength = (text: string) => [...text.replace(SPOKEN, "")].length;
 
 export interface DirectorOutput {
   en: string;
   zh: string;
 }
 
-/** What breaks the website's rules in an answer (empty = fine). Each message is written for the model to fix. */
-export function directorProblems(out: DirectorOutput, names: readonly string[]): string[] {
+/** A line without its diacritics, spaces and punctuation, so two spellings of the same words compare equal. */
+const squash = (t: string) => t.replace(ARABIC_MARKS, "").replace(/[\s\p{P}]+/gu, "").toLowerCase();
+
+/** The spoken lines the person wrote inside quotes in their prompt (each without its quotes). */
+export const quotedLines = (prompt: string) => (prompt.match(QUOTED) ?? []).map((q) => q.slice(1, -1).trim()).filter(Boolean);
+
+/**
+ * The person's quoted lines that are not in the developed prompt (diacritics, spacing and punctuation aside): the
+ * director must never cut the dialogue (the film maker's rule — «Do not silently shorten dialogue»).
+ */
+export function missingLines(original: string, out: DirectorOutput): string[] {
+  const kept = squash(out.en);
+  return quotedLines(original).filter((l) => !kept.includes(squash(l)));
+}
+
+/**
+ * What breaks the website's rules in an answer (empty = fine). Each message is written for the model to fix.
+ * `arabic`: spoken Arabic stays in Arabic script (the film maker's rule); otherwise it is transliterated in Latin
+ * letters, for a generator that can't read Arabic (Seedance 2.0).
+ */
+export function directorProblems(out: DirectorOutput, names: readonly string[], opts: { arabic?: boolean } = {}): string[] {
   const p: string[] = [];
   const en = typeof out.en === "string" ? out.en.trim() : "";
   const zh = typeof out.zh === "string" ? out.zh.trim() : "";
   if (!en || !zh) p.push("Both \"en\" and \"zh\" must contain the complete prompt.");
-  if (ARABIC.test(en + zh)) p.push("Arabic script found. Write every spoken Arabic line in Latin letters (a faithful transliteration of the same words) and remove all Arabic script.");
-  const enLen = unspokenLength(en);
-  if (enLen > DIRECTOR_LIMITS.en) p.push(`"en" has ${enLen} characters without the quoted spoken lines; the maximum is ${DIRECTOR_LIMITS.en}. Shorten it (trim in the skill's order).`);
-  const zhLen = unspokenLength(zh);
-  if (zhLen > DIRECTOR_LIMITS.zh) p.push(`"zh" has ${zhLen} characters without the quoted spoken lines; the maximum is ${DIRECTOR_LIMITS.zh}. Shorten it (trim in the skill's order).`);
+  if (!opts.arabic && ARABIC.test(en + zh)) p.push("Arabic script found. Write every spoken Arabic line in Latin letters (a faithful transliteration of the same words) and remove all Arabic script.");
   if (SKILL_LABEL.test(en + zh)) p.push("Use the references' @names only, never <<<image_n>>>/<<<video_n>>>/<<<audio_n>>> labels.");
   const unknown = [...new Set(findMentions(`${en}\n${zh}`).filter((m) => looksLikeRef(m.name) && !names.some((n) => sameName(n, m.name))).map((m) => `@${m.name}`))];
   if (unknown.length) p.push(`${unknown.join(", ")} ${unknown.length > 1 ? "are" : "is"} not one of the given references. Use only these @names: ${names.length ? names.map((n) => `@${n}`).join(", ") : "(none — don't mention references)"}.`);

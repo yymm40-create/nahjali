@@ -22,7 +22,8 @@ describe("Gemini Omni 1.2 · تعديل فيديو (fal v1.2/edit)", () => {
   it("is priced per second of the clip sent, by resolution", () => {
     const r = run(g, { resolution: "720p" }, [media("v", "video", 10_000)]);
     expect(r.price.ok && r.price.usdCeiling).toBeCloseTo(10 * 0.0819);
-    expect(run(g, { resolution: "4k" }, [media("v", "video", 15_000)]).price.ok && run(g, { resolution: "4k" }, [media("v", "video", 15_000)]).price.usdCeiling).toBeCloseTo(15 * 0.2457);
+    const k4 = run(g, { resolution: "4k" }, [media("v", "video", 15_000)]).price;
+    expect(k4.ok && k4.usdCeiling).toBeCloseTo(15 * 0.2457);
     expect(run(g, { resolution: "720p" }).price.ok).toBe(false);
     expect(omni12EditSec([{ kind: "video", durationMs: 14_900 }])).toBe(15);
     expect(omni12EditSec([{ kind: "video", durationMs: 7_020 }])).toBe(7);

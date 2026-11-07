@@ -8,6 +8,7 @@
 //            stale work, and finds tasks whose creation answer was lost (instead of sending a second one).
 //   end ─► jawad_finish_job: exactly once; success keeps the charge, failure or cancellation refunds it.
 
+import { reportFinalFailure } from "@/lib/platform-fault";
 import { findStyle } from "@config/film-styles";
 import { withStyle } from "@config/jawad/style-prompt";
 import { costOfLines } from "@config/coins";
@@ -162,6 +163,8 @@ export function explainFailure(detail: string | undefined, fallback: string | un
 }
 
 export async function finishJob(job: Pick<JobRow, "id" | "generator_id">, status: "succeeded" | "failed" | "cancelled", o: { message?: string; detail?: string; costUsd?: number | null; units?: Record<string, unknown> } = {}) {
+  // failed because of the platform's own account at the provider (or a content refusal / busy provider): see lib/platform-fault
+  if (status === "failed") reportFinalFailure(o.detail, o.message);
   const { data, error } = await db().rpc("jawad_finish_job", {
     p_job: job.id,
     p_status: status,

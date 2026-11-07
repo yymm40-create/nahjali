@@ -1,5 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
-import { directorProblems, salvageDirector } from "@/lib/jawad/director";
+import { directorProblems, missingLines, salvageDirector } from "@/lib/jawad/director";
+
+describe("«طوّر»: no length limit, and the person's dialogue is never cut", () => {
+  it("accepts a very long prompt", () => {
+    expect(directorProblems({ en: "word ".repeat(3000), zh: "字".repeat(3000) }, [])).toEqual([]);
+  });
+  it("keeps spoken Arabic in Arabic script when asked (the film maker's rule), transliterates otherwise", () => {
+    const out = { en: 'Audio: "مَرْحَبًا يا صَدِيقي"', zh: '音频："مَرْحَبًا يا صَدِيقي"' };
+    expect(directorProblems(out, [], { arabic: true })).toEqual([]);
+    expect(directorProblems(out, []).some((p) => /Arabic script/.test(p))).toBe(true);
+  });
+  it("finds a quoted line that went missing, ignoring diacritics, spacing and punctuation", () => {
+    const original = 'الرجل يقول "مرحبا يا صديقي" ثم «كيف حالك؟» ويمشي';
+    expect(missingLines(original, { en: 'Audio: "مَرْحَبًا يَا صَدِيقِي" ... "كَيْفَ حَالُكَ"', zh: "" })).toEqual([]);
+    expect(missingLines(original, { en: 'Audio: "مَرْحَبًا يَا صَدِيقِي"', zh: "" })).toEqual(["كيف حالك؟"]);
+    expect(missingLines("a man walks", { en: "x", zh: "" })).toEqual([]);
+  });
+});
 
 describe("«المخرج الخارق»: an answer still off after the retries is repaired, not refused", () => {
   it("turns the skill's labels into the references' names and drops @ from unknown ones", () => {

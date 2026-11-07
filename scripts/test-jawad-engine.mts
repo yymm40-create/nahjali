@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { DIRECTOR_PRICE_KEY, GENERATORS, generatorById, gptImage2OutputTokens, defaultSettings, GPT_IMAGE_2_SIZES, centiFor, coinsOf } from "../config/jawad/generators";
 import { evaluate, priceTable, priceVersion, promptAdvice } from "../src/lib/jawad/engine";
 import { cleanRefName, defaultRefName, findMentions, promptForModel, renameMentions } from "../src/lib/jawad/mentions";
-import { directorProblems, directorPrompt, unspokenLength } from "../src/lib/jawad/director";
+import { directorProblems, directorPrompt } from "../src/lib/jawad/director";
 import type { RefMeta } from "../config/jawad/types";
 
 let passed = 0;
@@ -245,16 +245,17 @@ test("«المخرج الخارق»: 30 coins by default in video making only", 
   for (const id of ["openai-gpt-image-2", "openai-gpt-4o-mini-tts"]) assert.equal(priceTable(g(id), {})[DIRECTOR_PRICE_KEY], undefined);
 });
 
-test("«المخرج الخارق» answers: EN ≤ 1000 / ZH ≤ 500 without the spoken lines, no Arabic script, only the given @names", () => {
+test("«المخرج الخارق» answers: no length limit, Arabic script only where allowed, only the given @names", () => {
   const spoken = '"Marhaban ya sadiqi, kayfa haluk? ' + "na ".repeat(200) + '"';
   const ok = { en: "Style & Mood: dusk. Dynamic Description: @horse gallops for 8 seconds. Audio: " + spoken, zh: "风格与氛围：黄昏。动态描述：@horse 奔跑八秒。音频：" + spoken };
-  assert.ok(unspokenLength(ok.en) < 120 && ok.en.length > 600, "spoken lines don't count");
   assert.deepEqual(directorProblems(ok, ["horse"]), []);
   assert.equal(directorPrompt(ok), `${ok.en}\n\n${ok.zh}`);
   const arabic = directorProblems({ ...ok, en: ok.en + ' "مرحبا"' }, ["horse"]);
   assert.ok(arabic.some((p) => p.includes("Arabic script")));
-  assert.ok(directorProblems({ ...ok, en: "a".repeat(1001) }, ["horse"]).some((p) => p.includes("1001")));
-  assert.ok(directorProblems({ ...ok, zh: "马".repeat(501) }, ["horse"]).some((p) => p.includes("501")));
+  // the film maker's rule: spoken Arabic stays Arabic (Seedance 2.5, Wan…)
+  assert.deepEqual(directorProblems({ ...ok, en: ok.en + ' "مَرْحَبًا"' }, ["horse"], { arabic: true }), []);
+  // no length limit at all (it used to be EN 1000 / ZH 500)
+  assert.deepEqual(directorProblems({ en: ok.en + "a".repeat(5000), zh: ok.zh + "马".repeat(3000) }, ["horse"]), []);
   assert.ok(directorProblems({ ...ok, en: ok.en + " with @image3" }, ["horse"]).some((p) => p.includes("@image3")));
   assert.ok(directorProblems({ ...ok, en: "<<<image_1>>> runs" }, ["horse"]).some((p) => p.includes("@names only")));
   assert.ok(directorProblems({ en: "", zh: "x" }, []).length > 0);

@@ -1,5 +1,6 @@
 // Claude Opus 5.5 for the film branch's three assistants. Server only: the key never reaches the browser.
 
+import { reportFailure, reportFinalFailure } from "@/lib/platform-fault";
 import { isAdmin } from "@config/site";
 import { PLATFORM_BRIEF } from "@config/jawad/brief";
 import { currentMemory, memoryBlock } from "@/lib/memory/context";
@@ -101,7 +102,15 @@ export const nap = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * robots used to hand back was almost always one of these. `retry-after` is honoured when the API sends it; a reply
  * the API really refuses (a bad request, no credit, a key) is raised at once, because trying again changes nothing.
  */
-export async function claudeFetch(url: string, init: RequestInit, tries = CLAUDE_TRIES, timeoutMs = CLAUDE_TIMEOUT_MS): Promise<{ res: Response; body: Record<string, unknown> }> {
+export async function claudeFetch(...a: Parameters<typeof claudeFetchTries>): ReturnType<typeof claudeFetchTries> {
+  // failed for good (its retries spent): a robot's turn around it may be ours to pay (lib/platform-fault)
+  return claudeFetchTries(...a).catch((e) => {
+    reportFinalFailure(e instanceof Error ? e.message : String(e));
+    throw e;
+  });
+}
+
+async function claudeFetchTries(url: string, init: RequestInit, tries = CLAUDE_TRIES, timeoutMs = CLAUDE_TIMEOUT_MS): Promise<{ res: Response; body: Record<string, unknown> }> {
   let last: unknown;
   for (let i = 0; i < tries; i++) {
     if (i) await nap(CLAUDE_WAITS[Math.min(i - 1, CLAUDE_WAITS.length - 1)]);
@@ -111,6 +120,7 @@ export async function claudeFetch(url: string, init: RequestInit, tries = CLAUDE
       if (res.ok) return { res, body };
       const why = (body.error as { message?: string } | undefined)?.message ?? "request failed";
       last = new Error(`Claude ${res.status}: ${why}`);
+      reportFailure(String((last as Error).message));
       if (!AGAIN.has(res.status) || i === tries - 1) throw last;
       const after = Number(res.headers?.get?.("retry-after") ?? "");
       if (Number.isFinite(after) && after > 0) await nap(Math.min(after * 1000, 8000));
@@ -134,7 +144,15 @@ type StreamBody = Record<string, unknown> & { stop_reason?: string; content?: { 
  * long one (a director's shot map, every sheet's prompt) is never cut by a clock on the whole answer — only a line
  * that goes quiet for CLAUDE_IDLE_MS is dropped and tried again. Returns the message as the non-streamed API would.
  */
-export async function claudeStream(url: string, init: RequestInit & { body: string }, tries = CLAUDE_TRIES, idleMs = CLAUDE_IDLE_MS, resume?: ResumeOpts, onText?: OnText): Promise<StreamBody> {
+export async function claudeStream(...a: Parameters<typeof claudeStreamTries>): Promise<StreamBody> {
+  // failed for good (its retries spent): a robot's turn around it may be ours to pay (lib/platform-fault)
+  return claudeStreamTries(...a).catch((e) => {
+    reportFinalFailure(e instanceof Error ? e.message : String(e));
+    throw e;
+  });
+}
+
+async function claudeStreamTries(url: string, init: RequestInit & { body: string }, tries = CLAUDE_TRIES, idleMs = CLAUDE_IDLE_MS, resume?: ResumeOpts, onText?: OnText): Promise<StreamBody> {
   let last: unknown;
   const payload = JSON.stringify({ ...(JSON.parse(init.body) as Record<string, unknown>), stream: true });
   for (let i = 0; i < tries; i++) {
@@ -154,6 +172,7 @@ export async function claudeStream(url: string, init: RequestInit & { body: stri
         const body = ((await res.json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
         const why = (body.error as { message?: string } | undefined)?.message ?? "request failed";
         last = new Error(`Claude ${res.status}: ${why}`);
+        reportFailure(String((last as Error).message));
         if (!AGAIN.has(res.status) || i === tries - 1) throw last;
         const after = Number(res.headers?.get?.("retry-after") ?? "");
         if (Number.isFinite(after) && after > 0) await nap(Math.min(after * 1000, 8000));
@@ -392,7 +411,10 @@ export async function callClaudeJson<T>({
   schemaFallback?: object;
 }): Promise<{ data: T; raw: string; usage: ClaudeUsage; partial?: boolean }> {
   const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
+  if (!key) {
+    reportFailure("ANTHROPIC_API_KEY is not set");
+    throw new Error("ANTHROPIC_API_KEY is not set");
+  }
   const asked = currentClaude();
 
   // pictures by link are fetched and made to fit Claude's limits (a large cut-out logo was refused)
@@ -527,7 +549,10 @@ export async function callClaudeJson<T>({
  */
 export async function callClaudeSearch({ system, prompt, maxUses = 4, maxTokens = 4000 }: { system: string; prompt: string; maxUses?: number; maxTokens?: number }): Promise<{ text: string; sources: string[]; usd: number }> {
   const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
+  if (!key) {
+    reportFailure("ANTHROPIC_API_KEY is not set");
+    throw new Error("ANTHROPIC_API_KEY is not set");
+  }
   const messages: { role: "user" | "assistant"; content: unknown }[] = [{ role: "user", content: prompt }];
   const asked = currentClaude();
   let usd = 0;
