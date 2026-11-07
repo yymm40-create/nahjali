@@ -505,7 +505,7 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
     // «المكتبة»: a character or place made from a description is kept under its name (the picture stays in the works
     // either way, and can be added to the library by hand if this fails)
     if (job.inputs.library) await keepMadeItem(job).catch((e) => event(job.id, "library_keep_failed", { error: String(e instanceof Error ? e.message : e).slice(0, 300) }));
-    await finishJob(job, "succeeded", { costUsd: res.costUsd, units: res.usage ? { ...res.usage } : undefined });
+    await finishJob(job, "succeeded", { costUsd: res.costUsd, units: res.usage ? { ...res.usage, ...(res.authorUsage ? { svgAuthor: res.authorUsage } : {}) } : undefined });
     return;
   }
 

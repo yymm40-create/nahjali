@@ -1,7 +1,7 @@
 // JAWAD AI — OpenAI adapters: GPT Image 2 and GPT Image 2.6 (Images API) and GPT-4o mini TTS (speech). Server only.
 // Retries are OFF: a repeated request could be generated (and billed) twice; a failure is reported instead.
 import OpenAI, { APIConnectionError, APIConnectionTimeoutError, APIError, toFile } from "openai";
-import { GPT_IMAGE_2_SIZES, GPT_IMAGE_26_GIF_SIZES } from "@config/jawad/generators";
+import { GPT_IMAGE_2_SIZES, GPT_IMAGE_26_GIF_SIZES, SVG_AUTHOR_MODEL, SVG_AUTHOR_PRICE } from "@config/jawad/generators";
 import { ProviderError, rejectedMessage } from "./common";
 
 let client: OpenAI | null = null;
@@ -50,7 +50,7 @@ export async function openaiImage(o: {
   format?: "png" | "gif" | "svg";
   frames?: number;
   frameMs?: number;
-}): Promise<{ images: Buffer[]; costUsd: number | null; usage: ImageUsage | null; size: [number, number] }> {
+}): Promise<{ images: Buffer[]; costUsd: number | null; usage: ImageUsage | null; size: [number, number]; authorUsage?: { input: number; output: number } | null }> {
   const format = o.format ?? "png";
   const size = format === "gif" ? GPT_IMAGE_26_GIF_SIZES[o.aspect] : GPT_IMAGE_2_SIZES[format === "svg" ? "std" : o.resolution][o.aspect];
   if (!size) throw new ProviderError("rejected", "مقاس غير مدعوم.", `no size for ${format}/${o.resolution}/${o.aspect}`);
@@ -67,6 +67,8 @@ export async function openaiImage(o: {
     // «Animated GIF output»: frame_count, frame_duration_ms)
     ...(o.complexity ? ({ complexity: o.complexity } as object) : {}),
     ...(format === "gif" ? ({ frame_count: o.frames ?? 9, frame_duration_ms: o.frameMs ?? 200 } as object) : {}),
+    // SVG: the model that writes the drawing (required on this account: «SVG generation requires 'svg.model'»)
+    ...(format === "svg" ? ({ svg: { model: SVG_AUTHOR_MODEL } } as object) : {}),
   };
   try {
     const opts = o.timeoutMs ? { timeout: o.timeoutMs } : undefined;
@@ -84,8 +86,9 @@ export async function openaiImage(o: {
     const u = (res as { usage?: ImageUsage }).usage ?? null;
     const text = u?.input_tokens_details?.text_tokens ?? 0;
     const image = u?.input_tokens_details?.image_tokens ?? Math.max(0, (u?.input_tokens ?? 0) - text);
-    const costUsd = u ? (text * PRICE.textIn + image * PRICE.imageIn + (u.output_tokens ?? 0) * PRICE.imageOut) / 1e6 : null;
-    return { images: format === "svg" ? images.map(cleanSvg) : images, costUsd, usage: u, size };
+    const author = format === "svg" ? svgAuthorUsage(res) : null;
+    const costUsd = u ? (text * PRICE.textIn + image * PRICE.imageIn + (u.output_tokens ?? 0) * PRICE.imageOut) / 1e6 + (author ? (author.input * SVG_AUTHOR_PRICE.input + author.output * SVG_AUTHOR_PRICE.output) / 1e6 : 0) : null;
+    return { images: format === "svg" ? images.map(cleanSvg) : images, costUsd, usage: u, size, authorUsage: author };
   } catch (e) {
     wrap(e);
   }
@@ -95,6 +98,25 @@ export async function openaiImage(o: {
  * An SVG kept as drawing only: OpenAI's SVG has no scripts or external files (image generation guide), and this makes
  * sure of it before it is stored (no <script>/<foreignObject>, no on…= handlers, no javascript: links).
  */
+/**
+ * The SVG author's own token use: the reference says it comes back «separate from image rendering usage» but does not
+ * name the field, so any object in the response whose key mentions svg and that counts input/output tokens is read.
+ */
+function svgAuthorUsage(res: unknown): { input: number; output: number } | null {
+  const seen: { input: number; output: number }[] = [];
+  const walk = (v: unknown, key: string, depth: number) => {
+    if (!v || typeof v !== "object" || depth > 3 || key === "data") return;
+    const o = v as Record<string, unknown>;
+    if (/svg/i.test(key) && (typeof o.input_tokens === "number" || typeof o.output_tokens === "number")) {
+      seen.push({ input: Number(o.input_tokens) || 0, output: Number(o.output_tokens) || 0 });
+      return;
+    }
+    for (const [k, x] of Object.entries(o)) walk(x, /svg/i.test(key) ? `${key}.${k}` : k, depth + 1);
+  };
+  walk(res, "", 0);
+  return seen[0] ?? null;
+}
+
 export function cleanSvg(buf: Buffer): Buffer {
   const text = buf.toString("utf8");
   if (!/<svg[\s>]/i.test(text)) throw new ProviderError("rejected", "ما رجع رسم SVG صالح.", "svg output without <svg>");

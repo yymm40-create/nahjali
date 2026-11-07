@@ -72,3 +72,10 @@ describe("GPT Image 2.6: animated GIF and SVG", () => {
     expect(() => cleanSvg(Buffer.from("not an svg"))).toThrow();
   });
 });
+
+describe("GPT Image 2.6 SVG: the author model", () => {
+  it("names the model that writes the SVG (required: «SVG generation requires 'svg.model'»)", async () => {
+    const { SVG_AUTHOR_MODEL } = await import("@config/jawad/generators");
+    expect(SVG_AUTHOR_MODEL).toBe("gpt-6.1-sol");
+  });
+});

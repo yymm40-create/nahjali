@@ -267,6 +267,13 @@ export const gifFrameMs = (v: unknown) => Math.max(GIF_FRAME_MS.min, Math.min(GI
 const gifFrameUsd = (q: GptImage26Quality) => Math.max(...Object.values(GPT_IMAGE_26_GIF_SIZES).map(([w, h]) => out26Usd(w, h, q)));
 /** SVG: the reference picture it is drawn from (a standard picture) plus this ceiling for the drawing's own tokens. */
 export const SVG_AUTHORING_USD = 0.1;
+/**
+ * The model that writes the SVG from the reference picture (`svg.model`, required on accounts with SVG model selection:
+ * Images API reference, «svg»). OpenAI lists no choices; gpt-6.1-sol reads pictures, $2 in / $10 out per million
+ * tokens (its model page), and is the one OpenAI's own forum answer shows. Its reasoning stays at its default (medium).
+ */
+export const SVG_AUTHOR_MODEL = "gpt-6.1-sol";
+export const SVG_AUTHOR_PRICE = { input: 2, output: 10 };
 
 const gptImage26: GeneratorDef = {
   id: GPT_IMAGE_26_ID,
@@ -415,7 +422,7 @@ const gptImage26: GeneratorDef = {
     { item: "سعر الصور المرجعية", status: "unverified", note: "توكنات الصورة المدخلة غير موثّقة لـ 2.6؛ نسعّرها بسقف 7,100 توكن × $8/مليون، والتكلفة الفعلية تُسجَّل من usage." },
     { item: "GIF متحركة", status: "verified", note: "output_format gif على generations وedits؛ frame_count من 2 إلى 16 (الافتراضي 9)، frame_duration_ms من 20 إلى 2000 بخطوات 10 (الافتراضي 200)؛ size مقاس كل إطار (مضاعفات 16) والإطارات كلها داخل ميزانية البكسل؛ بلا بث ولا output_compression." },
     { item: "سعر GIF", status: "unverified", note: "غير منشور: نسعّر كل إطار بسعر صورة بمقاس الإطار، والتكلفة الفعلية تُسجَّل من usage." },
-    { item: "SVG", status: "verified", note: "output_format svg على generations فقط، n = 1، بلا صور مرجعية؛ رسم متجه بلا سكربتات ولا صور مدمجة." },
+    { item: "SVG", status: "verified", note: "output_format svg على generations فقط، n = 1، بلا صور مرجعية؛ رسم متجه بلا سكربتات ولا صور مدمجة. svg.model مطلوب على حسابنا (رد OpenAI: «SVG generation requires 'svg.model'»): نرسل gpt-6.1-sol ($2 / $10 لكل مليون توكن)." },
     { item: "سعر SVG", status: "unverified", note: "OpenAI: سعر الصورة المرجعية + توكنات النموذج اللي يكتب الرسم (غير محدد)؛ نضيف سقف $0.10 والتكلفة الفعلية تُسجَّل من usage." },
     { item: "الخلفية الشفافة", status: "unverified", note: "المرجع يذكرها لنسخ 2.5 بالاسم وليس 2.6؛ غير معروضة." },
     { item: "التعديل بالتأشير (markup)", status: "unverified", note: "موثّق لـ 2.6 لكن يحتاج طبقة PNG شفافة بنفس المقاس؛ غير معروض بعد." },
