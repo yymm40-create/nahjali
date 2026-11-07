@@ -23,7 +23,7 @@ import { after } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { shortBalance, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { dictionOf, ELEVEN_PRICE, generatorById, GPT_IMAGE_26_ID, gifFrameMs, gifFrames, gptImage26Format, gptImage26Model, OMNI12_EDIT_ID, OMNI12_ID, SEEDREAM_SIZES, JAWAD_VOICE_PRICE, MUSIC_REF_MS, MUSIC_REF_USE } from "@config/jawad/generators";
+import { dictionOf, ELEVEN_PRICE, generatorById, GPT_IMAGE_26_ID, gifFrameMs, gifFrames, gptImage26Format, gptImage26Model, KLING4_FLASH_EDIT_ID, KLING4_FLASH_ID, OMNI12_EDIT_ID, OMNI12_ID, SEEDREAM_SIZES, JAWAD_VOICE_PRICE, MUSIC_REF_MS, MUSIC_REF_USE } from "@config/jawad/generators";
 import { MAX_ACTIVE_JOBS } from "@config/jawad/brand";
 import type { GeneratorDef, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import { evaluate, priceVersion } from "../engine";
@@ -37,6 +37,7 @@ import { arkCancelTask, arkCreateTask, arkGetTask, arkImage, arkListTasks, type 
 import { realFaceCancel, realFaceSubmit, realFaceTask } from "./providers/realface";
 import { omni12EditRequest, omni12Request, omniRequest } from "./gemini-omni";
 import { wanRequest } from "./wan";
+import { kling4FlashEditRequest, kling4FlashRequest } from "./kling4";
 import { falImages, falSubmit, falTask } from "./providers/fal";
 import sharp from "sharp";
 import { prepareEdit, type EditInputs } from "./smart-edit";
@@ -694,7 +695,7 @@ async function submitFalVideo(job: JobRow, def: GeneratorDef, refs: UploadRow[])
 }
 
 /** The generators on fal's queue whose requests are built by their own pure function (the endpoint follows the mode). */
-const FAL_REQUESTS: Record<string, typeof wanRequest> = { "wan-3-0": wanRequest, "gemini-omni": (o) => omniRequest(o), [OMNI12_ID]: omni12Request, [OMNI12_EDIT_ID]: omni12EditRequest };
+const FAL_REQUESTS: Record<string, typeof wanRequest> = { "wan-3-0": wanRequest, "gemini-omni": (o) => omniRequest(o), [OMNI12_ID]: omni12Request, [OMNI12_EDIT_ID]: omni12EditRequest, [KLING4_FLASH_ID]: kling4FlashRequest, [KLING4_FLASH_EDIT_ID]: kling4FlashEditRequest };
 
 /**
  * Wan 3.0 and Gemini Omni on fal's queue: text, a first frame (and a last), or references (Wan: pictures, videos and
