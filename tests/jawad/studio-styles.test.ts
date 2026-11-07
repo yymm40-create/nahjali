@@ -21,9 +21,9 @@ describe("«الستايل» and one «جواد» for the studios", () => {
       "ريترو سِل", "3DCG أنمي", "تجريبي / مؤلف", "الانحراف الأسلوبي", "موي / تشيبي", "نهضة التسعينات",
     ]);
   });
-  it("«خريطة الستايلات»: 100 base styles in 14 families, each under a studio or school", () => {
-    expect(FILM_STYLES).toHaveLength(100);
-    expect(new Set(FILM_STYLES.map((s) => s.id)).size).toBe(100);
+  it("«خريطة الستايلات»: 101 base styles in 14 families, each under a studio or school", () => {
+    expect(FILM_STYLES).toHaveLength(101);
+    expect(new Set(FILM_STYLES.map((s) => s.id)).size).toBe(101);
     expect(STYLE_FAMILIES).toHaveLength(14);
     for (const f of STYLE_FAMILIES) {
       const list = FILM_STYLES.filter((s) => s.family === f.id);
@@ -51,7 +51,7 @@ describe("«الستايل» and one «جواد» for the studios", () => {
   });
   it("a new style shows its family's tile until the owner draws its picture once, from its family's scene", () => {
     const fresh = FILM_STYLES.filter((s) => !GUIDE_STYLE_IDS.has(s.id));
-    expect(fresh).toHaveLength(76);
+    expect(fresh).toHaveLength(77);
     for (const s of fresh) expect(styleImage(s.id)).toBeNull();
     const p = stylePicturePrompt("persian-miniature");
     expect(p).toContain(STYLE_FAMILIES.find((f) => f.id === "heritage")!.scene);
