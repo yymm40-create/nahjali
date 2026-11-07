@@ -7,7 +7,7 @@
 // options, limits and modes only come from this file.
 
 import { COIN_COST_USD, sellKind, wasHalalas, getPricing, marginFor, type PriceKind } from "../coins";
-import type { GeneratorDef, Issue, ModeDef, OptionState, PriceResult, RefKind, RefMeta, Settings } from "./types";
+import type { GeneratorDef, Issue, ModeDef, OptionState, PriceResult, RefKind, RefMeta, RefRole, Settings } from "./types";
 import { DICTION_KEY, DICTION_VALUES, hasMarks, mostlyArabic, type Diction } from "./diction";
 import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, STEM_LABEL, stemsOf, VIDEO_SFX, videoSfxSeconds } from "./smart-split";
 import { REALFACE_LOW_RES, REALFACE_WARNING } from "./realface";
@@ -971,185 +971,237 @@ const kling3: GeneratorDef = {
   notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
 };
 
-// ───────────────────────────── Kling 4.0 Flash (fal.ai) ─────────────────────────────
-// Checked on 2026-11-07: fal's schemas of kling/v4/flash/{text-to-video,image-to-video,reference-to-video,video-to-video}
-// and their model pages. 3–20 s, 720p only, 16:9 · 9:16 · 1:1 · 21:9 (a first frame sets the shape itself; no end frame).
-// References: up to 10 pictures and 5 videos (3–20 s each, 20 s in all), named @Image1…, @Video1… in the prompt.
-// Price: $0.094 a second of output; with any input video (references or the edit card) $0.063 a second of
-// (output + the longer of the input videos' length and the output). fal announced it «with native audio»; the schema has
-// no sound switch. Two cards like Omni 1.2: making a video, and «تعديل فيديو» (one video + an instruction). Hidden until
-// the owner enables them.
+// ───────────────────────────── Kling 4.0 and Kling 4.0 Flash (fal.ai) ─────────────────────────────
+// Checked on 2026-11-07: fal's schemas of kling/v4/{text-to-video,image-to-video,reference-to-video,video-to-video/edit}
+// and kling/v4/flash/{text-to-video,image-to-video,reference-to-video,video-to-video}, and their model pages.
+// Kling 4.0: 3–30 s, 720p or 1080p, a first frame and a last frame (fal also takes up to 8 middle keyframes: not offered
+// here, the studio has no slot for them), references: up to 10 pictures and 5 videos (30 s in all).
+// Flash: 3–20 s, 720p only, a first frame only, references: up to 10 pictures and 5 videos (20 s in all).
+// Both: 16:9 · 9:16 · 1:1 · 21:9; references named @Image1…, @Video1… in the prompt. Price per second of output by
+// resolution; with any input video (references, or the edit card) a cheaper rate per second billed on the input plus
+// the output, at least twice the output. fal announced Flash «with native audio»; neither schema has a sound switch.
+// Each has two cards like Omni 1.2: making a video, and «تعديل فيديو». Hidden until the owner enables them.
 
+type Kling4Variant = "full" | "flash";
+export const KLING4_ID = "kling-4";
+export const KLING4_EDIT_ID = "kling-4-edit";
 export const KLING4_FLASH_ID = "kling-4-flash";
 export const KLING4_FLASH_EDIT_ID = "kling-4-flash-edit";
-export const KLING4_FLASH_USD = { second: 0.094, withVideo: 0.063 } as const;
-const KLING4_CHECKED = "2026-11-07";
-const KLING4_MAX_VIDEO_MS = 20_000;
-/** The output length sent: 3–20 s. */
-export const kling4Sec = (d: { settings: Settings }) => Math.max(3, Math.min(20, Math.round(Number(d.settings.duration) || 5)));
-/** Seconds of all the input videos together (rounded up). */
-export const kling4VideoSec = (refs: { kind: string; durationMs?: number | null }[]) =>
-  Math.ceil(refs.filter((r) => r.kind === "video").reduce((s, r) => s + (r.durationMs ?? 0), 0) / 1000 - 0.05);
-/** Billed seconds: the output alone, or with input videos the output plus the longer of the inputs and the output. */
-export const kling4Billed = (outSec: number, videoSec: number) => (videoSec > 0 ? { per: KLING4_FLASH_USD.withVideo, sec: outSec + Math.max(videoSec, outSec) } : { per: KLING4_FLASH_USD.second, sec: outSec });
-const kling4Label = (kind: RefKind, n: number) => `@${kind[0].toUpperCase()}${kind.slice(1)}${n}`;
-
-const kling4Modes: ModeDef[] = [
-  { id: "text_to_video", label: "من النص", refStyle: "none", refs: {}, promptRequired: true },
-  { id: "first_frame", label: "إطار أول", refStyle: "frames", refs: { image: { min: 1, max: 1 } }, roles: ["first_frame"], promptRequired: false },
-  {
-    id: "omni_reference",
-    label: "مراجع (صور وفيديو)",
-    refStyle: "references",
-    refs: { image: { min: 0, max: 10 }, video: { min: 0, max: 5, totalMaxMs: KLING4_MAX_VIDEO_MS } },
-    needsOneOf: ["image", "video"],
-    promptRequired: true,
-  },
-];
-const kling4Files: GeneratorDef["files"] = {
-  image: { mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 30 * MB, minSide: 300, maxSide: 8192, minAspect: 0.4, maxAspect: 2.5 },
-  video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 100 * MB, minSide: 300, maxSide: 4553, minAspect: 0.4, maxAspect: 2.5, minMs: 3000, maxMs: KLING4_MAX_VIDEO_MS },
+/** fal's published prices a second, by resolution: plain, and with an input video. */
+export const KLING4_USD: Record<Kling4Variant, Record<string, { second: number; withVideo: number }>> = {
+  full: { "720p": { second: 0.157, withVideo: 0.094 }, "1080p": { second: 0.235, withVideo: 0.141 } },
+  flash: { "720p": { second: 0.094, withVideo: 0.063 } },
 };
-const kling4PriceKeys: GeneratorDef["priceKeys"] = [
-  { key: "sec", label: "كل ثانية · 720p", defaultCenti: centiFor(KLING4_FLASH_USD.second), basis: `سعر fal المنشور: $${KLING4_FLASH_USD.second} للثانية (720p)` },
-  {
-    key: "sec:video",
-    label: "كل ثانية محسوبة · مع فيديو داخل",
-    defaultCenti: centiFor(KLING4_FLASH_USD.withVideo),
-    basis: `سعر fal المنشور مع فيديو داخل: $${KLING4_FLASH_USD.withVideo} × (ثواني الناتج + الأطول من الفيديو الداخل والناتج)`,
-  },
-];
-const kling4Sources = (path: string) => [
-  { label: `fal.ai — kling/v4/flash/${path} (schema)`, url: `https://fal.ai/models/kling/v4/flash/${path}/api`, checked: KLING4_CHECKED },
-  { label: `fal.ai — kling/v4/flash/${path} (price)`, url: `https://fal.ai/models/kling/v4/flash/${path}`, checked: KLING4_CHECKED },
-];
-const kling4Price = (def: () => GeneratorDef, d: { settings: Settings; refs: RefMeta[] }, mode: ModeDef, table: Record<string, number | null | undefined>, outSec: number, videoSec: number) => {
-  const { sec } = kling4Billed(outSec, videoSec);
-  const per = table[videoSec > 0 ? "sec:video" : "sec"];
+export const KLING4_FLASH_USD = KLING4_USD.flash["720p"];
+const KLING4_CHECKED = "2026-11-07";
+const KLING4_SPEC: Record<Kling4Variant, { name: string; path: string; maxSec: number; res: string[]; lastFrame: boolean; editPath: string }> = {
+  full: { name: "Kling 4.0", path: "kling/v4", maxSec: 30, res: ["720p", "1080p"], lastFrame: true, editPath: "video-to-video/edit" },
+  flash: { name: "Kling 4.0 Flash", path: "kling/v4/flash", maxSec: 20, res: ["720p"], lastFrame: false, editPath: "video-to-video" },
+};
+/** The output length sent: 3 to the variant's maximum. */
+export const kling4Sec = (d: { settings: Settings }, max = 20) => Math.max(3, Math.min(max, Math.round(Number(d.settings.duration) || 5)));
+/** Seconds of the input videos together (rounded up). */
+export const kling4VideoSec = (refs: { kind: string; durationMs?: number | null }[]) =>
+  Math.max(0, Math.ceil(refs.filter((r) => r.kind === "video").reduce((s, r) => s + (r.durationMs ?? 0), 0) / 1000 - 0.05));
+/** Billed seconds: the output alone, or with input videos the input plus the output, at least twice the output. */
+export const kling4Billed = (outSec: number, videoSec: number, rate: { second: number; withVideo: number } = KLING4_FLASH_USD) =>
+  videoSec > 0 ? { per: rate.withVideo, sec: Math.max(videoSec + outSec, 2 * outSec) } : { per: rate.second, sec: outSec };
+const kling4Label = (kind: RefKind, n: number) => `@${kind[0].toUpperCase()}${kind.slice(1)}${n}`;
+const kling4Res = (v: Kling4Variant, d: { settings: Settings }) => (KLING4_SPEC[v].res.includes(String(d.settings.resolution)) ? String(d.settings.resolution) : KLING4_SPEC[v].res.at(-1)!);
+const kling4PriceKeys = (v: Kling4Variant): GeneratorDef["priceKeys"] =>
+  KLING4_SPEC[v].res.flatMap((r) => [
+    { key: `sec:${r}`, label: `كل ثانية · ${r}`, defaultCenti: centiFor(KLING4_USD[v][r].second), basis: `سعر fal المنشور: $${KLING4_USD[v][r].second} للثانية (${r})` },
+    {
+      key: `sec:video:${r}`,
+      label: `كل ثانية محسوبة · مع فيديو داخل · ${r}`,
+      defaultCenti: centiFor(KLING4_USD[v][r].withVideo),
+      basis: `سعر fal المنشور مع فيديو داخل: $${KLING4_USD[v][r].withVideo} × (ثواني الفيديو الداخل + الناتج، وأقلها ضعف الناتج) (${r})`,
+    },
+  ]);
+const kling4Sources = (v: Kling4Variant, paths: string[]) =>
+  paths.flatMap((p) => [
+    { label: `fal.ai — ${KLING4_SPEC[v].path}/${p} (schema)`, url: `https://fal.ai/models/${KLING4_SPEC[v].path}/${p}/api`, checked: KLING4_CHECKED },
+    { label: `fal.ai — ${KLING4_SPEC[v].path}/${p} (price)`, url: `https://fal.ai/models/${KLING4_SPEC[v].path}/${p}`, checked: KLING4_CHECKED },
+  ]);
+const kling4Price = (v: Kling4Variant, def: () => GeneratorDef, d: { settings: Settings; refs: RefMeta[] }, mode: ModeDef, table: Record<string, number | null | undefined>, outSec: number, videoSec: number) => {
+  const res = kling4Res(v, d);
+  const { sec } = kling4Billed(outSec, videoSec, KLING4_USD[v][res]);
+  const per = table[videoSec > 0 ? `sec:video:${res}` : `sec:${res}`];
   if (per == null) return { ok: false as const, reason: "سعر هذا الإعداد غير محدد بعد." };
-  const label = videoSec > 0 ? `${outSec} ث ناتج + ${Math.max(videoSec, outSec)} ث (الفيديو الداخل)` : `${outSec} ث · 720p`;
+  const label = videoSec > 0 ? `${outSec} ث ناتج + ${sec - outSec} ث (الفيديو الداخل) · ${res}` : `${outSec} ث · ${res}`;
   return total([{ label, centi: per * sec }], def().costUsd(d as never, mode));
 };
+const kling4ResOption = (v: Kling4Variant): GeneratorDef["options"] =>
+  KLING4_SPEC[v].res.length > 1 ? [{ key: "resolution", label: "الدقة", kind: "choice", ltr: true, default: "1080p", values: KLING4_SPEC[v].res.map((r) => ({ value: r, label: r })) }] : [];
 
-const kling4Flash: GeneratorDef = {
-  id: KLING4_FLASH_ID,
-  name: "Kling 4.0 Flash",
-  output: "video",
-  defaultSection: "video",
-  provider: { id: "fal", label: "Kuaishou Kling (fal.ai)" },
-  model: { id: "kling/v4/flash/text-to-video", family: "Kling 4.0 Flash", version: "4.0 flash" },
-  api: { name: "fal.ai queue", endpoint: "POST kling/v4/flash/text-to-video · image-to-video · reference-to-video", tracking: "async", progress: "none", cancel: "none" },
-  modes: kling4Modes,
-  options: [
-    { key: "ratio", label: "نسبة الأبعاد", kind: "choice", ltr: true, default: "9:16", values: RATIO_VALUES.filter((r) => ["16:9", "9:16", "1:1", "21:9"].includes(r.value)) },
-    { key: "duration", label: "المدة", kind: "int", min: 3, max: 20, default: 5, unit: "ثانية" },
-  ],
-  files: kling4Files,
-  prompt: {
-    label: "البرومبت",
-    placeholder: "Describe the scene, the motion and the camera… (with references: «@Image1 runs through @Video1»)",
-    max: 4000,
-    arabic: false,
-    arabicNote: "Kling يفهم الإنجليزية أفضل؛ اكتب البرومبت بالإنجليزية.",
-  },
-  priceKeys: kling4PriceKeys,
-  modeFor(style, refs) {
-    if (!refs.length) return kling4Modes[0];
-    return style === "references" ? kling4Modes[2] : kling4Modes[1];
-  },
-  rules(d, mode) {
-    const notes: string[] = ["نسخة أخف وأرخص من Kling 4.0: من ٣ إلى ٢٠ ثانية، بدقة 720p.", "الصوت يطلع مع الفيديو (ما فيه زر لإيقافه): اكتب «no music» أو «no dialogue» لو ما تبيه."];
-    const states: Partial<Record<string, Partial<OptionState>>> = {};
-    if (mode.refStyle === "frames") {
-      states.ratio = { fixed: { value: "adaptive", reason: "النسبة تتبع صورة الإطار الأول" } };
-      notes.push("إطار أول بس (ما فيه إطار أخير): الفيديو يتبع نسبة الصورة.");
-    }
-    if (mode.id === "omni_reference") {
-      notes.push("اكتب في البرومبت ‎@Image1 و‎@Video1 بترتيب رفعها لتحدد دور كل مرجع. حتى ١٠ صور و٥ فيديوهات (كل فيديو ٣–٢٠ ثانية، و٢٠ ثانية بالمجموع).");
-      if (d.refs.some((r) => r.kind === "video")) notes.push("⚠️ مع فيديو مرجعي يتغير الحساب: سعر أرخص للثانية، لكن تنحسب ثواني الناتج + الأطول من الفيديو المرجعي والناتج.");
-    }
-    if (hasArabic(d.prompt)) notes.push(kling4Flash.prompt.arabicNote!);
-    return { options: opt(kling4Flash.options, states), issues: [], notes };
-  },
-  price(d, mode, table) {
-    return kling4Price(() => kling4Flash, d, mode, table, kling4Sec(d), mode.id === "omni_reference" ? kling4VideoSec(d.refs) : 0);
-  },
-  costUsd(d, mode) {
-    const { per, sec } = kling4Billed(kling4Sec(d), mode.id === "omni_reference" ? kling4VideoSec(d.refs) : 0);
-    return per * sec;
-  },
-  refLabel: kling4Label,
-  sources: [...kling4Sources("text-to-video"), ...kling4Sources("image-to-video"), ...kling4Sources("reference-to-video")],
-  verification: [
-    { item: "الأوضاع", status: "verified", note: "نص (text-to-video) · إطار أول (image-to-video: start_image_url، بلا إطار أخير) · مراجع (reference-to-video: image_urls ≤ 10، video_urls ≤ 5، كل فيديو 3–20 ث و20 ث بالمجموع)." },
-    { item: "الدقة والمدة", status: "verified", note: "720p فقط، من 3 إلى 20 ثانية." },
-    { item: "النسب", status: "verified", note: "16:9 · 9:16 · 1:1 · 21:9 (والمراجع تقبل auto)؛ الإطار الأول بلا نسبة (تتبع الصورة)." },
-    { item: "السعر", status: "verified", note: "$0.094 للثانية؛ مع فيديو مرجعي $0.063 × (ثواني الناتج + الأطول من الفيديو والناتج) (صفحات fal)." },
-    { item: "الصوت", status: "unverified", note: "إعلان fal يقول «with native audio»، والمخطط ما فيه خيار للصوت؛ يُجرَّب أولًا." },
-    { item: "العناصر (elements)", status: "verified", note: "fal يقبل حتى 7 عناصر (‎@Element1)، غير معروضة هنا." },
-    { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
-  ],
-  notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
-};
+function kling4Generator(v: Kling4Variant): GeneratorDef {
+  const spec = KLING4_SPEC[v];
+  const maxMs = spec.maxSec * 1000;
+  const modes: ModeDef[] = [
+    { id: "text_to_video", label: "من النص", refStyle: "none", refs: {}, promptRequired: true },
+    { id: "first_frame", label: "إطار أول", refStyle: "frames", refs: { image: { min: 1, max: 1 } }, roles: ["first_frame"], promptRequired: false },
+    ...(spec.lastFrame ? [{ id: "first_last_frame", label: "إطار أول وأخير", refStyle: "frames" as const, refs: { image: { min: 2, max: 2 } }, roles: ["first_frame", "last_frame"] as RefRole[], promptRequired: false }] : []),
+    {
+      id: "omni_reference",
+      label: "مراجع (صور وفيديو)",
+      refStyle: "references",
+      refs: { image: { min: 0, max: 10 }, video: { min: 0, max: 5, totalMaxMs: maxMs } },
+      needsOneOf: ["image", "video"],
+      promptRequired: true,
+    },
+  ];
+  const refMode = modes.at(-1)!;
+  const def: GeneratorDef = {
+    id: v === "full" ? KLING4_ID : KLING4_FLASH_ID,
+    name: spec.name,
+    output: "video",
+    defaultSection: "video",
+    provider: { id: "fal", label: "Kuaishou Kling (fal.ai)" },
+    model: { id: `${spec.path}/text-to-video`, family: spec.name, version: v === "full" ? "4.0" : "4.0 flash" },
+    api: { name: "fal.ai queue", endpoint: `POST ${spec.path}/text-to-video · image-to-video · reference-to-video`, tracking: "async", progress: "none", cancel: "none" },
+    modes,
+    options: [
+      { key: "ratio", label: "نسبة الأبعاد", kind: "choice", ltr: true, default: "9:16", values: RATIO_VALUES.filter((r) => ["16:9", "9:16", "1:1", "21:9"].includes(r.value)) },
+      ...kling4ResOption(v),
+      { key: "duration", label: "المدة", kind: "int", min: 3, max: spec.maxSec, default: 5, unit: "ثانية" },
+    ],
+    files: {
+      image: { mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 30 * MB, minSide: 300, maxSide: 8192, minAspect: 0.4, maxAspect: 2.5 },
+      video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 100 * MB, minSide: 300, maxSide: 4553, minAspect: 0.4, maxAspect: 2.5, minMs: 3000, maxMs },
+    },
+    prompt: {
+      label: "البرومبت",
+      placeholder: "Describe the scene, the motion and the camera… (with references: «@Image1 runs through @Video1»)",
+      max: 4000,
+      arabic: false,
+      arabicNote: "Kling يفهم الإنجليزية أفضل؛ اكتب البرومبت بالإنجليزية.",
+    },
+    priceKeys: kling4PriceKeys(v),
+    modeFor(style, refs) {
+      if (!refs.length) return modes[0];
+      if (style === "references") return refMode;
+      return spec.lastFrame && refs.length >= 2 ? modes[2] : modes[1];
+    },
+    rules(d, mode) {
+      const notes: string[] =
+        v === "full"
+          ? ["من ٣ إلى ٣٠ ثانية في مرة وحدة، بدقة 720p أو 1080p."]
+          : ["نسخة أخف وأرخص من Kling 4.0: من ٣ إلى ٢٠ ثانية، بدقة 720p. للنسخة النهائية بـ1080p أو بإطار أخير، خذ Kling 4.0."];
+      notes.push("الصوت ما فيه زر له: اكتب «no music» أو «no dialogue» لو ما تبيه.");
+      const states: Partial<Record<string, Partial<OptionState>>> = {};
+      if (mode.refStyle === "frames") {
+        states.ratio = { fixed: { value: "adaptive", reason: "النسبة تتبع صورة الإطار الأول" } };
+        notes.push(spec.lastFrame ? "الفيديو يتبع نسبة صورة الإطار الأول." : "إطار أول بس (ما فيه إطار أخير): الفيديو يتبع نسبة الصورة.");
+      }
+      if (mode.id === "omni_reference") {
+        notes.push(`اكتب في البرومبت ‎@Image1 و‎@Video1 بترتيب رفعها لتحدد دور كل مرجع. حتى ١٠ صور و٥ فيديوهات (كل فيديو من ٣ ثواني، و${spec.maxSec} ثانية بالمجموع).`);
+        if (d.refs.some((r) => r.kind === "video")) notes.push("⚠️ مع فيديو مرجعي يتغير الحساب: سعر أرخص للثانية، لكن تنحسب ثواني الفيديو المرجعي + الناتج (وأقلها ضعف الناتج).");
+      }
+      if (hasArabic(d.prompt)) notes.push(def.prompt.arabicNote!);
+      return { options: opt(def.options, states), issues: [], notes };
+    },
+    price(d, mode, table) {
+      return kling4Price(v, () => def, d, mode, table, kling4Sec(d, spec.maxSec), mode.id === "omni_reference" ? kling4VideoSec(d.refs) : 0);
+    },
+    costUsd(d, mode) {
+      const { per, sec } = kling4Billed(kling4Sec(d, spec.maxSec), mode.id === "omni_reference" ? kling4VideoSec(d.refs) : 0, KLING4_USD[v][kling4Res(v, d)]);
+      return per * sec;
+    },
+    refLabel: kling4Label,
+    sources: kling4Sources(v, ["text-to-video", "image-to-video", "reference-to-video"]),
+    verification: [
+      {
+        item: "الأوضاع",
+        status: "verified",
+        note: spec.lastFrame
+          ? "نص (text-to-video) · إطار أول وأخير (image-to-video: start_image_url + end_image_url) · مراجع (reference-to-video: image_urls ≤ 10، video_urls ≤ 5، 30 ث بالمجموع)."
+          : "نص (text-to-video) · إطار أول (image-to-video: start_image_url، بلا إطار أخير) · مراجع (reference-to-video: image_urls ≤ 10، video_urls ≤ 5، كل فيديو 3–20 ث و20 ث بالمجموع).",
+      },
+      { item: "الدقة والمدة", status: "verified", note: `${spec.res.join(" · ")}، من 3 إلى ${spec.maxSec} ثانية.` },
+      { item: "النسب", status: "verified", note: "16:9 · 9:16 · 1:1 · 21:9 (والمراجع تقبل auto)؛ الإطارات بلا نسبة (تتبع الصورة)." },
+      {
+        item: "السعر",
+        status: "verified",
+        note: `${spec.res.map((r) => `${r}: $${KLING4_USD[v][r].second} للثانية، ومع فيديو مرجعي $${KLING4_USD[v][r].withVideo}`).join(" · ")}؛ مع فيديو تنحسب ثواني الفيديو + الناتج وأقلها ضعف الناتج (صفحات fal).`,
+      },
+      { item: "الصوت", status: "unverified", note: "المخطط ما فيه خيار للصوت؛ إعلان fal لـFlash يقول «with native audio». يُجرَّب أولًا." },
+      ...(v === "full" ? [{ item: "إطارات بالنص", status: "verified" as const, note: "fal يقبل حتى 8 إطارات بين الأول والأخير (middle_image_urls)، والاستوديو ما فيه مكان لها؛ غير معروضة." }] : []),
+      { item: "العناصر والقطع المتعددة", status: "verified", note: "fal يقبل حتى 7 عناصر (‎@Element1) وبرومبت لكل لقطة (multi_prompt)؛ غير معروضة هنا." },
+      { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
+    ],
+    notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
+  };
+  return def;
+}
 
-const kling4EditMode: ModeDef = {
-  id: "video_edit",
-  label: "تعديل فيديو",
-  refStyle: "references",
-  refs: { video: { min: 1, max: 1 }, image: { min: 0, max: 10 } },
-  promptRequired: true,
-  prompt: { label: "التعديل", placeholder: "مثال: غيّر لبس الشخص في ‎@Video1 للي في ‎@Image1 · خلّ الجو مطر" },
-};
-/** The edited video keeps the length of the one sent (3–20 s). */
-export const kling4EditSec = (refs: { kind: string; durationMs?: number | null }[]) => Math.max(3, Math.min(20, kling4VideoSec(refs.filter((r) => r.kind === "video").slice(0, 1))));
+/** The edited video keeps the length of the one sent. */
+export const kling4EditSec = (refs: { kind: string; durationMs?: number | null }[], max = 20) => Math.max(3, Math.min(max, kling4VideoSec(refs.filter((r) => r.kind === "video").slice(0, 1))));
 
-const kling4FlashEdit: GeneratorDef = {
-  id: KLING4_FLASH_EDIT_ID,
-  name: "Kling 4.0 Flash · تعديل فيديو",
-  output: "video",
-  defaultSection: "video",
-  provider: { id: "fal", label: "Kuaishou Kling (fal.ai)" },
-  model: { id: "kling/v4/flash/video-to-video", family: "Kling 4.0 Flash", version: "4.0 flash edit" },
-  api: { name: "fal.ai queue", endpoint: "POST kling/v4/flash/video-to-video", tracking: "async", progress: "none", cancel: "none" },
-  modes: [kling4EditMode],
-  options: [],
-  files: {
-    image: kling4Files.image,
-    video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 100 * MB, minSide: 700, maxSide: 4553, minAspect: 0.4, maxAspect: 2.5, minMs: 3000, maxMs: KLING4_MAX_VIDEO_MS },
-  },
-  prompt: { label: "التعديل", placeholder: "مثال: خلّ المشهد بالليل · غيّر الخلفية لمدينة", max: 4000, arabic: false, arabicNote: "Kling يفهم الإنجليزية أفضل؛ اكتب التعديل بالإنجليزية." },
-  priceKeys: kling4PriceKeys,
-  modeFor: () => kling4EditMode,
-  rules(d) {
-    const notes = [
-      "ارفع فيديو (من ٣ إلى ٢٠ ثانية، وأصغر ضلع فيه ٧٠٠ بكسل على الأقل) واكتب التعديل: يرجع لك نفس المقطع بنفس طوله بعد التعديل، بدقة 720p.",
-      "الفيديو اسمه ‎@Video1 في البرومبت، والصور ‎@Image1 و‎@Image2… (حتى ١٠ صور).",
-      "أطول من ٢٠ ثانية؟ افتح المرجع واضغط «قص» وخذ الجزء اللي تبيه.",
-      "السعر: ثواني المقطع × ٢ (الناتج + الفيديو الداخل) بسعر الثانية مع فيديو.",
-    ];
-    if (hasArabic(d.prompt)) notes.push(kling4FlashEdit.prompt.arabicNote!);
-    return { options: [], issues: [], notes };
-  },
-  price(d, mode, table) {
-    if (!d.refs.some((r) => r.kind === "video" && r.durationMs)) return { ok: false, reason: "أضف الفيديو اللي تبي تعدّله أولًا." };
-    const sec = kling4EditSec(d.refs);
-    return kling4Price(() => kling4FlashEdit, d, mode, table, sec, sec);
-  },
-  costUsd(d) {
-    const sec = kling4EditSec(d.refs);
-    const b = kling4Billed(sec, sec);
-    return b.per * b.sec;
-  },
-  refLabel: kling4Label,
-  sources: kling4Sources("video-to-video"),
-  verification: [
-    { item: "المدخلات", status: "verified", note: "prompt + video_url (3–20 ث، أصغر ضلع 700 بكسل) + image_urls ≤ 10 اختيارية؛ resolution 720p فقط؛ المدة تتبع الفيديو الأصلي." },
-    { item: "السعر", status: "verified", note: "$0.063 × (ثواني الناتج + الأطول من الفيديو الداخل والناتج) = ثواني المقطع × 2 (صفحة fal)." },
-    { item: "فيديوهات مرجعية إضافية", status: "verified", note: "fal يقبل حتى 4 فيديوهات مرجعية (‎@Video2…) والعناصر؛ غير معروضة هنا." },
-    { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
-  ],
-  notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
-};
+function kling4EditGenerator(v: Kling4Variant): GeneratorDef {
+  const spec = KLING4_SPEC[v];
+  const maxMs = spec.maxSec * 1000;
+  const mode: ModeDef = {
+    id: "video_edit",
+    label: "تعديل فيديو",
+    refStyle: "references",
+    refs: { video: { min: 1, max: 1 }, image: { min: 0, max: 10 } },
+    promptRequired: true,
+    prompt: { label: "التعديل", placeholder: "مثال: غيّر لبس الشخص في ‎@Video1 للي في ‎@Image1 · خلّ الجو مطر" },
+  };
+  const def: GeneratorDef = {
+    id: v === "full" ? KLING4_EDIT_ID : KLING4_FLASH_EDIT_ID,
+    name: `${spec.name} · تعديل فيديو`,
+    output: "video",
+    defaultSection: "video",
+    provider: { id: "fal", label: "Kuaishou Kling (fal.ai)" },
+    model: { id: `${spec.path}/${spec.editPath}`, family: spec.name, version: v === "full" ? "4.0 edit" : "4.0 flash edit" },
+    api: { name: "fal.ai queue", endpoint: `POST ${spec.path}/${spec.editPath}`, tracking: "async", progress: "none", cancel: "none" },
+    modes: [mode],
+    options: kling4ResOption(v),
+    files: {
+      image: { mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 30 * MB, minSide: 300, maxSide: 8192, minAspect: 0.4, maxAspect: 2.5 },
+      video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 100 * MB, minSide: 700, maxSide: 4553, minAspect: 0.4, maxAspect: 2.5, minMs: 3000, maxMs },
+    },
+    prompt: { label: "التعديل", placeholder: "مثال: خلّ المشهد بالليل · غيّر الخلفية لمدينة", max: 4000, arabic: false, arabicNote: "Kling يفهم الإنجليزية أفضل؛ اكتب التعديل بالإنجليزية." },
+    priceKeys: kling4PriceKeys(v),
+    modeFor: () => mode,
+    rules(d) {
+      const notes = [
+        `ارفع فيديو (من ٣ إلى ${spec.maxSec} ثانية، وأصغر ضلع فيه ٧٠٠ بكسل على الأقل) واكتب التعديل: يرجع لك نفس المقطع بنفس طوله بعد التعديل، بدقة ${spec.res.join(" أو ")}.`,
+        "الفيديو اسمه ‎@Video1 في البرومبت، والصور ‎@Image1 و‎@Image2… (حتى ١٠ صور).",
+        `أطول من ${spec.maxSec} ثانية؟ افتح المرجع واضغط «قص» وخذ الجزء اللي تبيه.`,
+        "السعر: ثواني المقطع × ٢ (الفيديو الداخل + الناتج) بسعر الثانية مع فيديو.",
+      ];
+      if (hasArabic(d.prompt)) notes.push(def.prompt.arabicNote!);
+      return { options: opt(def.options), issues: [], notes };
+    },
+    price(d, m, table) {
+      if (!d.refs.some((r) => r.kind === "video" && r.durationMs)) return { ok: false, reason: "أضف الفيديو اللي تبي تعدّله أولًا." };
+      const sec = kling4EditSec(d.refs, spec.maxSec);
+      return kling4Price(v, () => def, d, m, table, sec, sec);
+    },
+    costUsd(d) {
+      const sec = kling4EditSec(d.refs, spec.maxSec);
+      const b = kling4Billed(sec, sec, KLING4_USD[v][kling4Res(v, d)]);
+      return b.per * b.sec;
+    },
+    refLabel: kling4Label,
+    sources: kling4Sources(v, [spec.editPath]),
+    verification: [
+      { item: "المدخلات", status: "verified", note: `prompt + video_url (3–${spec.maxSec} ث، أصغر ضلع 700 بكسل) + image_urls ≤ 10 اختيارية؛ resolution ${spec.res.join(" · ")}؛ المدة تتبع الفيديو الأصلي.` },
+      { item: "السعر", status: "verified", note: `$${spec.res.map((r) => `${KLING4_USD[v][r].withVideo} (${r})`).join(" · $")} × (ثواني الفيديو الداخل + الناتج، وأقلها ضعف الناتج) = ثواني المقطع × 2 (صفحة fal).` },
+      { item: "فيديوهات مرجعية إضافية", status: "verified", note: "fal يقبل حتى 4 فيديوهات مرجعية (‎@Video2…) والعناصر؛ غير معروضة هنا." },
+      { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
+    ],
+    notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
+  };
+  return def;
+}
+
+const kling4 = kling4Generator("full");
+const kling4Edit = kling4EditGenerator("full");
+const kling4Flash = kling4Generator("flash");
+const kling4FlashEdit = kling4EditGenerator("flash");
 
 // ───────────────────────────── Alibaba · Wan 3.0 (on fal.ai) ─────────────────────────────
 // Checked on 2026-10-23: fal's schemas of alibaba/wan-3.0/{text,image,reference}-to-video. Priced per second of output by
@@ -2137,7 +2189,7 @@ const jawadVoice: GeneratorDef = {
   notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي.", "لا تُؤخذ بصمة صوت شخص إلا بإذنه."],
 };
 
-export const GENERATORS: GeneratorDef[] = [gptImage2, gptImage26, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, kling4Flash, kling4FlashEdit, wan3, geminiOmni, geminiOmni12, geminiOmni12Edit, miniTts, elevenV4, jawadVoice, elevenSfx, elevenMusic, smartSplit];
+export const GENERATORS: GeneratorDef[] = [gptImage2, gptImage26, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, kling4, kling4Edit, kling4Flash, kling4FlashEdit, wan3, geminiOmni, geminiOmni12, geminiOmni12Edit, miniTts, elevenV4, jawadVoice, elevenSfx, elevenMusic, smartSplit];
 export const generatorById = (id: string) => GENERATORS.find((g) => g.id === id);
 
 /** The settings a generator starts with. */

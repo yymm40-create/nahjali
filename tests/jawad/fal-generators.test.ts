@@ -95,14 +95,14 @@ describe("Wan 3.0 (Alibaba, on fal.ai)", () => {
 });
 
 describe("«المخرج الخارق» on the video generators", () => {
-  it("is offered on every video generator but Kling (3.0 and 4.0 Flash) and the edit cards (a plain instruction, not a scene), and on nothing else", async () => {
-    const { GENERATORS, directorOffered, OMNI12_EDIT_ID, KLING4_FLASH_ID, KLING4_FLASH_EDIT_ID } = await import("@config/jawad/generators");
+  it("is offered on every video generator but Kling (3.0, 4.0 and 4.0 Flash) and the edit cards (a plain instruction, not a scene), and on nothing else", async () => {
+    const { GENERATORS, directorOffered, OMNI12_EDIT_ID, KLING4_FLASH_ID, KLING4_FLASH_EDIT_ID, KLING4_ID, KLING4_EDIT_ID } = await import("@config/jawad/generators");
     const offered = GENERATORS.filter(directorOffered).map((g) => g.id).sort();
     const videos = GENERATORS.filter((g) => g.output === "video").map((g) => g.id);
     expect(videos).toContain("kling-3-pro");
     expect(videos).toContain(OMNI12_EDIT_ID);
     expect(videos).toEqual(expect.arrayContaining([KLING4_FLASH_ID, KLING4_FLASH_EDIT_ID]));
-    const notOffered = ["kling-3-pro", KLING4_FLASH_ID, KLING4_FLASH_EDIT_ID, OMNI12_EDIT_ID];
+    const notOffered = ["kling-3-pro", KLING4_ID, KLING4_EDIT_ID, KLING4_FLASH_ID, KLING4_FLASH_EDIT_ID, OMNI12_EDIT_ID];
     expect(offered).toEqual(videos.filter((id) => !notOffered.includes(id)).sort());
     expect(offered).toEqual(expect.arrayContaining(["wan-3-0", "seedance-real-face"]));
     expect(GENERATORS.filter((g) => g.output !== "video").some(directorOffered)).toBe(false);
