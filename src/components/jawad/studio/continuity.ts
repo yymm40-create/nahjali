@@ -3,7 +3,7 @@
 // «التعديل الذكي» of a part: the seconds of the video itself around the cut, cut out in the browser and uploaded as
 // video references, so the new piece carries on what is there (motion, camera, light, voices, effects, music).
 
-import { ALL_FORMATS, BufferTarget, Conversion, getFirstEncodableAudioCodec, Input, Mp4OutputFormat, Output, UrlSource } from "mediabunny";
+import { ALL_FORMATS, BlobSource, BufferTarget, Conversion, getFirstEncodableAudioCodec, Input, Mp4OutputFormat, Output, UrlSource } from "mediabunny";
 import { api, postJson } from "@/lib/fetch";
 import { putWithProgress } from "./upload";
 
@@ -16,9 +16,9 @@ async function aacOk() {
   return Boolean(await getFirstEncodableAudioCodec(["aac"]).catch(() => null));
 }
 
-/** The video from `from` to `to` (seconds) as an MP4 (H.264, with its sound when it has one). */
-export async function cutClip(url: string, from: number, to: number): Promise<Blob> {
-  const input = new Input({ source: new UrlSource(url), formats: ALL_FORMATS });
+/** The video (a link, or a file of the device) from `from` to `to` (seconds) as an MP4 (H.264, with its sound when it has one). */
+export async function cutClip(src: string | Blob, from: number, to: number): Promise<Blob> {
+  const input = new Input({ source: typeof src === "string" ? new UrlSource(src) : new BlobSource(src), formats: ALL_FORMATS });
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
   const withSound = await aacOk();
   const conv = await Conversion.init({

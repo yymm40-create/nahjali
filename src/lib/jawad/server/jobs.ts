@@ -23,7 +23,7 @@ import { after } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { shortBalance, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { dictionOf, ELEVEN_PRICE, generatorById, GPT_IMAGE_2_SIZES, GPT_IMAGE_26_ID, gptImage26Model, OMNI12_ID, SEEDREAM_SIZES, JAWAD_VOICE_PRICE, MUSIC_REF_MS, MUSIC_REF_USE } from "@config/jawad/generators";
+import { dictionOf, ELEVEN_PRICE, generatorById, GPT_IMAGE_26_ID, gifFrameMs, gifFrames, gptImage26Format, gptImage26Model, OMNI12_EDIT_ID, OMNI12_ID, SEEDREAM_SIZES, JAWAD_VOICE_PRICE, MUSIC_REF_MS, MUSIC_REF_USE } from "@config/jawad/generators";
 import { MAX_ACTIVE_JOBS } from "@config/jawad/brand";
 import type { GeneratorDef, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import { evaluate, priceVersion } from "../engine";
@@ -35,7 +35,7 @@ import { ProviderError, providerUserId } from "./providers/common";
 import { openaiImage, openaiSpeech, TTS_MIME, type ImageQuality } from "./providers/openai";
 import { arkCancelTask, arkCreateTask, arkGetTask, arkImage, arkListTasks, type ArkContent, type ArkTask } from "./providers/modelark";
 import { realFaceCancel, realFaceSubmit, realFaceTask } from "./providers/realface";
-import { omni12Request, omniRequest } from "./gemini-omni";
+import { omni12EditRequest, omni12Request, omniRequest } from "./gemini-omni";
 import { wanRequest } from "./wan";
 import { falImages, falSubmit, falTask } from "./providers/fal";
 import sharp from "sharp";
@@ -483,6 +483,8 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   if (def.output === "image" && def.provider.id !== "openai") return runSimpleImage(job, def, refs);
 
   if (def.output === "image") {
+    // GPT Image 2.6 may return an animated GIF or an SVG drawing instead of a PNG
+    const format = def.id === GPT_IMAGE_26_ID ? gptImage26Format(s.format) : "png";
     const res = await openaiImage({
       // GPT Image 2.6: Flare or Sunburst, as chosen; its planning depth goes with it
       model: def.id === GPT_IMAGE_26_ID ? gptImage26Model(s.variant) : def.model.id,
@@ -494,10 +496,12 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
       count: Number(s.count) || 1,
       references: await Promise.all(refs.map(async (r) => ({ bytes: await download(r.storage_path), mime: r.mime ?? "image/png" }))),
       user: providerUserId(job.user_id),
+      format,
+      ...(format === "gif" ? { frames: gifFrames(s.frames), frameMs: gifFrameMs(s.frameMs) } : {}),
     });
     await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
-    const size = GPT_IMAGE_2_SIZES[s.resolution === "hi" ? "hi" : "std"][String(s.aspect)];
-    for (const [i, png] of res.images.entries()) await saveOutput(job, i, png, "image/png", "png", { width: size?.[0], height: size?.[1] });
+    const [mime, ext] = format === "gif" ? ["image/gif", "gif"] : format === "svg" ? ["image/svg+xml", "svg"] : ["image/png", "png"];
+    for (const [i, file] of res.images.entries()) await saveOutput(job, i, file, mime, ext, { width: res.size[0], height: res.size[1] });
     // «المكتبة»: a character or place made from a description is kept under its name (the picture stays in the works
     // either way, and can be added to the library by hand if this fails)
     if (job.inputs.library) await keepMadeItem(job).catch((e) => event(job.id, "library_keep_failed", { error: String(e instanceof Error ? e.message : e).slice(0, 300) }));
@@ -690,7 +694,7 @@ async function submitFalVideo(job: JobRow, def: GeneratorDef, refs: UploadRow[])
 }
 
 /** The generators on fal's queue whose requests are built by their own pure function (the endpoint follows the mode). */
-const FAL_REQUESTS: Record<string, typeof wanRequest> = { "wan-3-0": wanRequest, "gemini-omni": (o) => omniRequest(o), [OMNI12_ID]: omni12Request };
+const FAL_REQUESTS: Record<string, typeof wanRequest> = { "wan-3-0": wanRequest, "gemini-omni": (o) => omniRequest(o), [OMNI12_ID]: omni12Request, [OMNI12_EDIT_ID]: omni12EditRequest };
 
 /**
  * Wan 3.0 and Gemini Omni on fal's queue: text, a first frame (and a last), or references (Wan: pictures, videos and
