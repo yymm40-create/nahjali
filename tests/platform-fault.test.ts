@@ -2,7 +2,7 @@
 // billing, key) costs the person nothing — not the picture, and not the robot's reply either.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { isPlatformFault, reportFailure, watchTurn } from "@/lib/platform-fault";
+import { isPlatformFault, isSoftFault, nextSoft, reportFailure, reportFinalFailure, SOFT_RULE, watchTurn } from "@/lib/platform-fault";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
 
 const read = (p: string) => readFileSync(p, "utf8");
@@ -30,6 +30,25 @@ describe("which failures are the platform's own account", () => {
   ])("the person's request or a passing hiccup: %s", (t) => expect(isPlatformFault(t)).toBe(false));
 });
 
+describe("the soft kind: a content refusal or a busy provider", () => {
+  it.each(["InputTextSensitiveContentDetected", "400 moderation_blocked Your request was rejected by the safety system", "Claude 529: Overloaded", "429 rate_limit_exceeded", "ServiceUnavailable", "رفض المزوّد الطلب لأنه قد يخالف سياسة المحتوى"])("soft: %s", (t) => expect(isSoftFault(t)).toBe(true));
+  it.each(["429 insufficient_quota You exceeded your current quota", "Claude 400: prompt is too long", "timeout", ""])("not soft: %s", (t) => expect(isSoftFault(t)).toBe(false));
+
+  it("the first three spoiled turns in a row are ours, the fourth is charged; a pause long enough starts again", () => {
+    expect(SOFT_RULE.free).toBe(3);
+    const t0 = 1_000_000;
+    let s = nextSoft(null, t0);
+    expect([s.count, s.ours]).toEqual([1, true]);
+    s = nextSoft(s, t0 + 60_000);
+    expect([s.count, s.ours]).toEqual([2, true]);
+    s = nextSoft(s, t0 + 120_000);
+    expect([s.count, s.ours]).toEqual([3, true]);
+    s = nextSoft(s, t0 + 180_000);
+    expect([s.count, s.ours]).toEqual([4, false]);
+    expect(nextSoft(s, t0 + 180_000 + SOFT_RULE.withinMs + 1)).toMatchObject({ count: 1, ours: true });
+  });
+});
+
 describe("the turn's watch", () => {
   it("a failure of the platform's account anywhere inside marks the turn, and the turns around it", async () => {
     const outer = await watchTurn(async () => {
@@ -47,12 +66,25 @@ describe("the turn's watch", () => {
     expect(outer.ours).toBe(true);
   });
 
-  it("the person's own refusal leaves the turn paid as usual, and nothing outside a turn is touched", async () => {
+  it("a content refusal or a busy provider is the soft kind — only once it failed for good, never while a retry may go through", async () => {
     const t = await watchTurn(async () => {
-      reportFailure("400 moderation_blocked");
+      reportFailure("400 moderation_blocked"); // a provider's error on the way: not counted
       return 1;
     });
     expect(t.ours).toBe(false);
+    expect(t.soft).toBe(false);
+    const f = await watchTurn(async () => {
+      reportFinalFailure("InputTextSensitiveContentDetected");
+      return 1;
+    });
+    expect(f.soft).toBe(true);
+    expect(f.ours).toBe(false);
+    const both = await watchTurn(async () => {
+      reportFinalFailure("Claude 529: Overloaded");
+      reportFinalFailure("429 insufficient_quota");
+      return 1;
+    });
+    expect(both.ours).toBe(true);
     expect(() => reportFailure("insufficient_quota")).not.toThrow();
   });
 
@@ -62,7 +94,9 @@ describe("the turn's watch", () => {
     expect(turn).toContain("await bill.waive(out.usd)");
     expect(read("src/lib/coins.ts")).toContain("waive: async (usd: number)");
     expect(read("src/lib/jawad/server/providers/common.ts")).toContain("reportFailure(detail, userMessage)");
-    expect(read("src/lib/jawad/server/jobs.ts")).toContain('if (status === "failed") reportFailure(o.detail, o.message)');
-    expect(read("src/lib/film/anthropic.ts").match(/reportFailure\(/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(read("src/lib/jawad/server/jobs.ts")).toContain('if (status === "failed") reportFinalFailure(o.detail, o.message)');
+    expect(read("src/lib/film/anthropic.ts").match(/reportFinalFailure\(/g)?.length).toBe(2);
+    expect(turn).toContain("softTurnIsOurs(user.id)");
+    expect(turn).toContain("clearSoftStreak(user.id)");
   });
 });
