@@ -1,5 +1,6 @@
 // JAWAD AI — what every provider adapter reports. Server only.
 import { createHash } from "crypto";
+import { reportFailure } from "@/lib/platform-fault";
 
 /**
  * A provider call that did not produce a result.
@@ -15,6 +16,8 @@ export class ProviderError extends Error {
     public detail: string,
   ) {
     super(detail);
+    // the platform's own account at the provider (balance, billing, key): the robot's turn around it is ours to pay
+    reportFailure(detail, userMessage);
   }
 }
 

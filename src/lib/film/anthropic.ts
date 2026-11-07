@@ -1,5 +1,6 @@
 // Claude Opus 5.5 for the film branch's three assistants. Server only: the key never reaches the browser.
 
+import { reportFailure } from "@/lib/platform-fault";
 import { isAdmin } from "@config/site";
 import { PLATFORM_BRIEF } from "@config/jawad/brief";
 import { currentMemory, memoryBlock } from "@/lib/memory/context";
@@ -111,6 +112,7 @@ export async function claudeFetch(url: string, init: RequestInit, tries = CLAUDE
       if (res.ok) return { res, body };
       const why = (body.error as { message?: string } | undefined)?.message ?? "request failed";
       last = new Error(`Claude ${res.status}: ${why}`);
+      reportFailure(String((last as Error).message));
       if (!AGAIN.has(res.status) || i === tries - 1) throw last;
       const after = Number(res.headers?.get?.("retry-after") ?? "");
       if (Number.isFinite(after) && after > 0) await nap(Math.min(after * 1000, 8000));
@@ -154,6 +156,7 @@ export async function claudeStream(url: string, init: RequestInit & { body: stri
         const body = ((await res.json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
         const why = (body.error as { message?: string } | undefined)?.message ?? "request failed";
         last = new Error(`Claude ${res.status}: ${why}`);
+        reportFailure(String((last as Error).message));
         if (!AGAIN.has(res.status) || i === tries - 1) throw last;
         const after = Number(res.headers?.get?.("retry-after") ?? "");
         if (Number.isFinite(after) && after > 0) await nap(Math.min(after * 1000, 8000));
@@ -392,7 +395,10 @@ export async function callClaudeJson<T>({
   schemaFallback?: object;
 }): Promise<{ data: T; raw: string; usage: ClaudeUsage; partial?: boolean }> {
   const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
+  if (!key) {
+    reportFailure("ANTHROPIC_API_KEY is not set");
+    throw new Error("ANTHROPIC_API_KEY is not set");
+  }
   const asked = currentClaude();
 
   // pictures by link are fetched and made to fit Claude's limits (a large cut-out logo was refused)
@@ -527,7 +533,10 @@ export async function callClaudeJson<T>({
  */
 export async function callClaudeSearch({ system, prompt, maxUses = 4, maxTokens = 4000 }: { system: string; prompt: string; maxUses?: number; maxTokens?: number }): Promise<{ text: string; sources: string[]; usd: number }> {
   const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
+  if (!key) {
+    reportFailure("ANTHROPIC_API_KEY is not set");
+    throw new Error("ANTHROPIC_API_KEY is not set");
+  }
   const messages: { role: "user" | "assistant"; content: unknown }[] = [{ role: "user", content: prompt }];
   const asked = currentClaude();
   let usd = 0;

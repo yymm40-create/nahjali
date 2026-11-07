@@ -19,7 +19,7 @@ describe("«صافي الربح»", () => {
   it("writes every operation's real cost where it is charged", () => {
     const coins = read("src/lib/coins.ts");
     // the robots' replies and «حيدرا ماكس» (paid and free), jobs paid after use, settled jobs
-    expect(coins.match(/await logCost\(who\.id, ref, label, usd\)/g)?.length).toBe(2);
+    expect(coins.match(/await logCost\(who\.id, ref, label, usd\)/g)?.length).toBe(3); // «الغلط علينا»: a waived turn still writes its real cost (it is ours)
     expect(coins).toContain("await logCost(userId, jobId, label, costUsd)");
     expect(coins).toContain("await logCost(r.userId, jobId, r.label, costUsd)");
     expect(read("src/lib/editor/pricing.ts")).toContain("await logCostHalalas(who.id, ref, label, cost)");
