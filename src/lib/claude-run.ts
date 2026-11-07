@@ -10,6 +10,7 @@ import { withClaude } from "@/lib/film/claude-model";
 import { claudeModelOf } from "@config/claude-models";
 import { isAdmin } from "@config/site";
 import { claudeFor } from "@/lib/access-perks";
+import { watchTurn } from "@/lib/platform-fault";
 
 export interface RobotUser {
   id: string;
@@ -59,10 +60,17 @@ export async function robotTurn<T extends { usd: number }>(user: RobotUser, mode
   // a code may cap the model (the owner's «الأكواد»): a dearer pick is served by the ceiling's model
   const model = claudeModelOf(await claudeFor(user.email, modelId));
   const bill = await claudeMeter({ id: user.id, email: user.email, owner: isAdmin(user.email), team: user.team }, model, label, options.price ?? "claude");
-  const out = await withClaude(model.id, () => options.memory === "isolated" ? withMemory("", run) : remembering(user.id, run, memo)).catch(async (e) => {
+  const { out, ours, why } = await watchTurn(() => withClaude(model.id, () => (options.memory === "isolated" ? withMemory("", run) : remembering(user.id, run, memo)))).catch(async (e) => {
     await bill.release().catch(() => {});
     throw e;
   });
+  // «الغلط علينا»: something in this turn failed because of the platform's own account at a provider (Claude's,
+  // OpenAI's… balance or key): the person pays nothing for the turn, not even the reply — its cost is ours
+  if (ours) {
+    console.warn("robot turn waived (platform account)", label, why);
+    await bill.waive(out.usd).catch(() => {});
+    return { ...out, model: model.id, coins: 0, worth: 0 };
+  }
   const coins = await bill.settle(out.usd).catch((e) => {
     console.error("claude settle failed", e);
     return 0;

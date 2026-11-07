@@ -350,6 +350,11 @@ export interface ClaudeBill {
   settle: (usd: number) => Promise<number>;
   /** the reply failed: what was held for it goes back */
   release: () => Promise<void>;
+  /**
+   * «الغلط علينا»: the turn failed because of the platform's own account at a provider (see lib/platform-fault): what
+   * was held goes back and nothing is taken — the reply's real cost is still written down (it is ours to pay).
+   */
+  waive: (usd: number) => Promise<void>;
 }
 
 /**
@@ -372,6 +377,9 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
       return 0;
     },
     release: async () => {},
+    waive: async (usd: number) => {
+      await logCost(who.id, `claude:${crypto.randomUUID()}`, label, usd);
+    },
   };
   if (who.owner || (await unlimitedFor(who.email)) || !(await coinsRequired())) return bill;
   await loadPricing();
@@ -410,6 +418,12 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
       if (!open) return;
       open = false;
       if (held > 0) await back(held);
+    },
+    waive: async (usd: number) => {
+      if (!open) return;
+      open = false;
+      if (held > 0) await back(held);
+      await logCost(who.id, ref, label, usd);
     },
   };
   return paid;
