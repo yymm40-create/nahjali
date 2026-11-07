@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { evaluate, fileProblem, priceTable } from "@/lib/jawad/engine";
-import { generatorById, KLING4_FLASH_EDIT_ID, KLING4_FLASH_ID, KLING4_FLASH_USD, kling4Billed } from "@config/jawad/generators";
+import { generatorById, KLING4_EDIT_ID, KLING4_FLASH_EDIT_ID, KLING4_FLASH_ID, KLING4_FLASH_USD, KLING4_ID, KLING4_USD, kling4Billed } from "@config/jawad/generators";
 import type { GeneratorDef, RefMeta } from "@config/jawad/types";
-import { kling4FlashEditRequest, kling4FlashRequest } from "@/lib/jawad/server/kling4";
+import { kling4EditRequest, kling4FlashEditRequest, kling4FlashRequest, kling4Request } from "@/lib/jawad/server/kling4";
 
 const media = (id: string, kind: "image" | "video", role = "reference", durationMs: number | null = null, side = 720): RefMeta =>
   ({ id, kind, role, mime: kind === "image" ? "image/png" : "video/mp4", bytes: 1000, width: side, height: 1280, durationMs, fps: kind === "video" ? 24 : null, status: "ready" }) as RefMeta;
@@ -63,5 +63,52 @@ describe("Kling 4.0 Flash · تعديل فيديو (fal kling/v4/flash/video-to-
       input: { prompt: "rain", video_url: "v1", resolution: "720p", image_urls: ["i1"] },
     });
     expect(() => kling4FlashEditRequest({ modelId: g.model.id, settings: {}, prompt: "rain", refs: [], urls: [] })).toThrow();
+  });
+});
+
+describe("Kling 4.0 (fal kling/v4)", () => {
+  const g = generatorById(KLING4_ID)!;
+  const full = KLING4_USD.full;
+  it("text, a first frame, first and last frames, or references; 3–30 s at 720p or 1080p", () => {
+    expect(g.model.id).toBe("kling/v4/text-to-video");
+    expect(g.modes.map((m) => m.id)).toEqual(["text_to_video", "first_frame", "first_last_frame", "omni_reference"]);
+    expect(run(g, {}, [media("a", "image", "first_frame"), media("b", "image", "last_frame")], "frames").mode.id).toBe("first_last_frame");
+    expect(run(g, { duration: 99 }).settings.duration).toBe(30);
+    expect(run(g, {}).settings.resolution).toBe("1080p");
+    expect(g.modes[3].refs.video).toEqual({ min: 0, max: 5, totalMaxMs: 30_000 });
+  });
+  it("prices by resolution, and with a reference video the input plus the output (at least twice the output)", () => {
+    const hd = run(g, { duration: 10, resolution: "1080p" }).price;
+    expect(hd.ok && hd.usdCeiling).toBeCloseTo(10 * full["1080p"].second);
+    const sd = run(g, { duration: 10, resolution: "720p" }).price;
+    expect(sd.ok && sd.usdCeiling).toBeCloseTo(10 * full["720p"].second);
+    const withVid = run(g, { duration: 10, resolution: "1080p" }, [media("v", "video", "reference", 4_000)]).price;
+    expect(withVid.ok && withVid.usdCeiling).toBeCloseTo(20 * full["1080p"].withVideo);
+    const longVid = run(g, { duration: 5, resolution: "720p" }, [media("v", "video", "reference", 12_000)]).price;
+    expect(longVid.ok && longVid.usdCeiling).toBeCloseTo(17 * full["720p"].withVideo);
+  });
+  it("sends the last frame and the resolution", () => {
+    expect(kling4Request({ modelId: g.model.id, settings: { duration: 12, resolution: "720p" }, prompt: "", refs: [{ kind: "image", role: "first_frame" }, { kind: "image", role: "last_frame" }], urls: ["a", "b"] })).toEqual({
+      model: "kling/v4/image-to-video",
+      input: { duration: 12, resolution: "720p", start_image_url: "a", end_image_url: "b" },
+    });
+    expect(kling4Request({ modelId: g.model.id, settings: { ratio: "16:9", duration: 30 }, prompt: "go", refs: [], urls: [] }).input).toMatchObject({ resolution: "1080p", duration: 30, aspect_ratio: "16:9" });
+  });
+});
+
+describe("Kling 4.0 · تعديل فيديو (fal kling/v4/video-to-video/edit)", () => {
+  const g = generatorById(KLING4_EDIT_ID)!;
+  it("a video of up to 30 s, priced as its seconds × 2 at the with-video rate of the resolution", () => {
+    expect(g.model.id).toBe("kling/v4/video-to-video/edit");
+    expect(fileProblem(g, media("v", "video", "reference", 30_000))).toBeNull();
+    expect(fileProblem(g, media("v", "video", "reference", 30_500))).toContain("قصّه");
+    const r = run(g, { resolution: "1080p" }, [media("v", "video", "reference", 12_000)], "references", "rain").price;
+    expect(r.ok && r.usdCeiling).toBeCloseTo(24 * KLING4_USD.full["1080p"].withVideo);
+  });
+  it("sends the video, the instruction and the resolution", () => {
+    expect(kling4EditRequest({ modelId: g.model.id, settings: { resolution: "720p" }, prompt: "rain", refs: [{ kind: "video", role: "reference" }], urls: ["v1"] })).toEqual({
+      model: "kling/v4/video-to-video/edit",
+      input: { prompt: "rain", video_url: "v1", resolution: "720p" },
+    });
   });
 });
