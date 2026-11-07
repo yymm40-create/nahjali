@@ -176,6 +176,8 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
   const videoRule = def.files.video;
   const imageOk = Boolean(def.files.image) && ev.refKinds.image.allowed;
   const videoOk = Boolean(videoRule) && ev.refKinds.video.allowed;
+  // A video already in the list can be cut whenever this generator takes videos at all (its slots may be full)
+  const takesVideo = Boolean(videoRule);
   const limitText = (ms: number) => `${Math.round(ms / 10) / 100} ث`;
 
   /** Files from the device (picker or drop): each goes in by what it really is (its first bytes). */
@@ -240,7 +242,7 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
   function trimRef(r: RefItem) {
     if (!r.url) return;
     setPreview(null);
-    setTrims((t) => [...t, { id: crypto.randomUUID(), src: r.url!, name: r.fileName || `${r.name}.mp4`, frameOnly: !videoOk, replace: r.localId }]);
+    setTrims((t) => [...t, { id: crypto.randomUUID(), src: r.url!, name: r.fileName || `${r.name}.mp4`, frameOnly: !takesVideo, replace: r.localId }]);
   }
   const trim = trims[0];
   const nextTrim = () => setTrims((t) => t.slice(1));
@@ -354,9 +356,9 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
           {problems.map(({ r, msg }) => (
             <li key={r.localId}>
               «{r.fileName || KIND_AR[r.kind]}»: {r.error ?? msg}
-              {r.kind === "video" && r.url && (videoOk || imageOk) && (
+              {r.kind === "video" && r.url && (takesVideo || imageOk) && (
                 <button type="button" onClick={() => trimRef(r)} className="ms-2 inline-flex items-center gap-1 font-semibold underline">
-                  <Icon name="scissors" size={12} /> {videoOk ? "قصّه" : "خذ منه فريم"}
+                  <Icon name="scissors" size={12} /> {takesVideo ? "قصّه" : "خذ منه فريم"}
                 </button>
               )}
             </li>
@@ -394,9 +396,9 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
               </div>
             )}
             <div className="flex flex-wrap justify-end gap-2">
-              {preview.kind === "video" && preview.url && (videoOk || imageOk) && (
+              {preview.kind === "video" && preview.url && (takesVideo || imageOk) && (
                 <button type="button" className="jw-btn" onClick={() => trimRef(preview)}>
-                  <Icon name="scissors" size={16} /> {videoOk ? (imageOk ? "قص أو خذ فريم" : "قص") : "خذ فريم"}
+                  <Icon name="scissors" size={16} /> {takesVideo ? (imageOk ? "قص أو خذ فريم" : "قص") : "خذ فريم"}
                 </button>
               )}
               <button type="button" className="jw-btn" onClick={() => (onRemove(preview.localId), setPreview(null))}><Icon name="trash" size={16} /> حذف المرجع</button>
@@ -412,7 +414,7 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
           name={trim.name}
           minMs={videoRule?.minMs}
           maxMs={videoRule?.maxMs}
-          canClip={!trim.frameOnly && videoOk}
+          canClip={!trim.frameOnly && takesVideo}
           canFrame={trim.frameOnly || imageOk}
           reason={trim.reason}
           onKeep={trim.src instanceof File && !trim.replace ? () => (onAdd("video", [trim.src as File]), nextTrim()) : undefined}
