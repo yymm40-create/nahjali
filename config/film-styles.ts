@@ -1,5 +1,5 @@
 // The shared style library used by image generation, video generation, content creation and the cinematic workflow
-// (scene, film, short scene and series): the course guide's 24 and the 76 of config/film-styles-extra.ts — 100 base
+// (scene, film, short scene and series): the course guide's 24 and the 77 of config/film-styles-extra.ts — 101 base
 // styles in 14 families («group»), each filed under the studio or school whose signature it carries («school»).
 // Prompts contain only reusable technical descriptions: no artist, studio or protected-work names and no negative prompt.
 import { EXTRA_STYLES, STYLE_FAMILIES } from "./film-styles-extra";
@@ -120,7 +120,7 @@ const GUIDE: FilmStyle[] = STYLE_DEFINITIONS.map((style) => {
 });
 const EXTRA: FilmStyle[] = EXTRA_STYLES.map((style) => ({ ...style, group: familyName(style.family), tier: null }));
 
-/** All 100, family by family in the map's order; inside a family the guide's own come first. */
+/** All 101, family by family in the map's order; inside a family the guide's own come first. */
 export const FILM_STYLES: FilmStyle[] = STYLE_FAMILIES.flatMap((f) => [...GUIDE, ...EXTRA].filter((s) => s.family === f.id));
 
 export const findStyle = (id: string) => FILM_STYLES.find((style) => style.id === id);
@@ -129,7 +129,7 @@ export const findStyle = (id: string) => FILM_STYLES.find((style) => style.id ==
 export const GUIDE_STYLE_IDS: ReadonlySet<string> = new Set(STYLE_DEFINITIONS.map((s) => s.id));
 
 /**
- * The style's picture shipped with the site, or null: the 76 new ones get theirs drawn once from /admin/film (kept in
+ * The style's picture shipped with the site, or null: the 77 new ones get theirs drawn once from /admin/film (kept in
  * the public bucket, see src/lib/film/style-pictures.ts) and show a tile in their family's colours until then.
  */
 export const styleImage = (id: string): string | null => (GUIDE_STYLE_IDS.has(id) ? `/film/styles/${id}.jpg` : null);
