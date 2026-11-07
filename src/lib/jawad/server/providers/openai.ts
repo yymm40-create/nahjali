@@ -1,7 +1,7 @@
 // JAWAD AI — OpenAI adapters: GPT Image 2 and GPT Image 2.6 (Images API) and GPT-4o mini TTS (speech). Server only.
 // Retries are OFF: a repeated request could be generated (and billed) twice; a failure is reported instead.
 import OpenAI, { APIConnectionError, APIConnectionTimeoutError, APIError, toFile } from "openai";
-import { GPT_IMAGE_2_SIZES } from "@config/jawad/generators";
+import { GPT_IMAGE_2_SIZES, GPT_IMAGE_26_GIF_SIZES } from "@config/jawad/generators";
 import { ProviderError, rejectedMessage } from "./common";
 
 let client: OpenAI | null = null;
@@ -43,19 +43,30 @@ export async function openaiImage(o: {
   user: string;
   /** a shorter wait than the client's default (a caller that must answer within its own time limit) */
   timeoutMs?: number;
-}): Promise<{ images: Buffer[]; costUsd: number | null; usage: ImageUsage | null }> {
-  const size = GPT_IMAGE_2_SIZES[o.resolution][o.aspect];
-  if (!size) throw new ProviderError("rejected", "مقاس غير مدعوم.", `no size for ${o.resolution}/${o.aspect}`);
+  /**
+   * GPT Image 2.6: an animated GIF (`frames` 2–16 of `frameMs` each; the size is each frame's) or an SVG drawing
+   * (generations only, one at a time). PNG when missing.
+   */
+  format?: "png" | "gif" | "svg";
+  frames?: number;
+  frameMs?: number;
+}): Promise<{ images: Buffer[]; costUsd: number | null; usage: ImageUsage | null; size: [number, number] }> {
+  const format = o.format ?? "png";
+  const size = format === "gif" ? GPT_IMAGE_26_GIF_SIZES[o.aspect] : GPT_IMAGE_2_SIZES[format === "svg" ? "std" : o.resolution][o.aspect];
+  if (!size) throw new ProviderError("rejected", "مقاس غير مدعوم.", `no size for ${format}/${o.resolution}/${o.aspect}`);
+  if (format === "svg" && o.references.length) throw new ProviderError("rejected", "SVG يُصنع من النص فقط، بلا صور مرجعية.", "svg with references");
   const common = {
     model: o.model,
     prompt: o.prompt,
     size: `${size[0]}x${size[1]}` as "1024x1024",
     quality: o.quality,
-    n: o.count,
-    output_format: "png" as const,
+    n: format === "png" ? o.count : 1,
+    output_format: format as "png",
     user: o.user,
-    // not in this SDK's types yet: sent as is (Images API reference, `complexity`)
+    // not in this SDK's types yet: sent as is (Images API reference, `complexity`; image generation guide,
+    // «Animated GIF output»: frame_count, frame_duration_ms)
     ...(o.complexity ? ({ complexity: o.complexity } as object) : {}),
+    ...(format === "gif" ? ({ frame_count: o.frames ?? 9, frame_duration_ms: o.frameMs ?? 200 } as object) : {}),
   };
   try {
     const opts = o.timeoutMs ? { timeout: o.timeoutMs } : undefined;
@@ -74,10 +85,26 @@ export async function openaiImage(o: {
     const text = u?.input_tokens_details?.text_tokens ?? 0;
     const image = u?.input_tokens_details?.image_tokens ?? Math.max(0, (u?.input_tokens ?? 0) - text);
     const costUsd = u ? (text * PRICE.textIn + image * PRICE.imageIn + (u.output_tokens ?? 0) * PRICE.imageOut) / 1e6 : null;
-    return { images, costUsd, usage: u };
+    return { images: format === "svg" ? images.map(cleanSvg) : images, costUsd, usage: u, size };
   } catch (e) {
     wrap(e);
   }
+}
+
+/**
+ * An SVG kept as drawing only: OpenAI's SVG has no scripts or external files (image generation guide), and this makes
+ * sure of it before it is stored (no <script>/<foreignObject>, no on…= handlers, no javascript: links).
+ */
+export function cleanSvg(buf: Buffer): Buffer {
+  const text = buf.toString("utf8");
+  if (!/<svg[\s>]/i.test(text)) throw new ProviderError("rejected", "ما رجع رسم SVG صالح.", "svg output without <svg>");
+  const clean = text
+    .replace(/<script[\s\S]*?<\/script\s*>/gi, "")
+    .replace(/<script[^>]*\/>/gi, "")
+    .replace(/<foreignObject[\s\S]*?<\/foreignObject\s*>/gi, "")
+    .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/(href\s*=\s*["']?)\s*javascript:[^"'\s>]*/gi, "$1#");
+  return Buffer.from(clean, "utf8");
 }
 
 export const TTS_MIME: Record<string, string> = { mp3: "audio/mpeg", wav: "audio/wav", opus: "audio/ogg", aac: "audio/aac", flac: "audio/flac" };

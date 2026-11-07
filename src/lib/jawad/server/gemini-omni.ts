@@ -3,6 +3,8 @@
 // gemini-omni-flash/v1.1/*) and 2026-11-06 (v1.2/*: 3–15 s, at most 10 with an end image). Its sound is always on
 // (native, synchronized): the model has no switch for it.
 
+import { ProviderError } from "./providers/common";
+
 export interface OmniRef {
   kind: string;
   role: string;
@@ -39,3 +41,10 @@ export function omniRequest(o: OmniInput, limits: { min: number; max: number; ma
 
 /** Omni 1.2 (google/gemini-omni-flash/v1.2/*): the same request, with its own length limits. */
 export const omni12Request = (o: OmniInput) => omniRequest(o, OMNI12_DURATION);
+
+/** Omni 1.2 «تعديل فيديو» (google/gemini-omni-flash/v1.2/edit): the one video and the instruction, at the chosen resolution. */
+export function omni12EditRequest(o: OmniInput): { model: string; input: Record<string, unknown> } {
+  const video = o.urls[o.refs.findIndex((r) => r.kind === "video")];
+  if (!video) throw new ProviderError("rejected", "أضف الفيديو اللي تبي تعدّله.", "omni 1.2 edit: no video reference");
+  return { model: o.modelId, input: { prompt: o.prompt.trim(), video_url: video, resolution: String(o.settings.resolution || "720p") } };
+}

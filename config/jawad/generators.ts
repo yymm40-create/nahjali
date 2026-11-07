@@ -215,8 +215,13 @@ const gptImage2: GeneratorDef = {
 // edits), the pricing page (the same token rates as gpt-image-2: text in $5 · image in $8 · image out $30 per million),
 // the Images API reference (model ids, `complexity` low/medium/high, up to 16 input images, prompt ≤ 32,000) and the
 // image generation guide (quality low…max, the same size rules, complexity defaults to high and has no fee). One
-// generator with the two models as a choice: same API, same options, same price. GIF and SVG output are not offered
-// (their cost is not documented). Hidden until the owner enables it.
+// generator with the two models as a choice: same API, same options, same price. Checked again on 2026-11-07 (the
+// same guide, «Animated GIF output» and «SVG output»): `output_format: "gif"` on generations and edits, with
+// `frame_count` 2–16 (default 9) and `frame_duration_ms` 20–2000 in steps of 10 (default 200), `size` = each frame
+// (multiples of 16), all frames within the model's pixel budget; `output_format: "svg"` on generations only, n = 1, no
+// raster reference. Their price is not published: GIF is quoted as its frames priced like pictures of the frame's
+// size, SVG as one standard picture plus a ceiling for the vector drawing; the real cost of each job is recorded from
+// `usage`. Hidden until the owner enables it.
 
 export const GPT_IMAGE_26_ID = "openai-gpt-image-2-6";
 const GPT_IMAGE_26_CHECKED = "2026-11-06";
@@ -246,6 +251,23 @@ const out26Usd = (w: number, h: number, q: GptImage26Quality) => (gptImage26Outp
 const tierOut26Usd = (tier: "std" | "hi", q: GptImage26Quality) => Math.max(...Object.values(GPT_IMAGE_2_SIZES[tier]).map(([w, h]) => out26Usd(w, h, q)));
 const q26 = (v: unknown): GptImage26Quality => ((GPT_IMAGE_26_QUALITIES as readonly string[]).includes(String(v)) ? (v as GptImage26Quality) : "medium");
 
+/** What GPT Image 2.6 returns: a picture (PNG), an animated GIF or an SVG drawing. */
+export type GptImage26Format = "png" | "gif" | "svg";
+export const gptImage26Format = (v: unknown): GptImage26Format => (v === "gif" || v === "svg" ? v : "png");
+/**
+ * The size of each GIF frame by shape (multiples of 16): small enough that 16 frames stay inside the model's pixel
+ * budget (8,294,400 pixels for the whole request; 16 × 768 × 512 = 6.3 million).
+ */
+export const GPT_IMAGE_26_GIF_SIZES: Record<string, [number, number]> = { "1:1": [512, 512], "16:9": [768, 432], "9:16": [432, 768], "3:2": [768, 512], "2:3": [512, 768] };
+export const GIF_FRAMES = { min: 2, max: 16, default: 9 } as const;
+export const GIF_FRAME_MS = { min: 20, max: 2000, step: 10, default: 200 } as const;
+export const gifFrames = (v: unknown) => Math.max(GIF_FRAMES.min, Math.min(GIF_FRAMES.max, Math.round(Number(v) || GIF_FRAMES.default)));
+export const gifFrameMs = (v: unknown) => Math.max(GIF_FRAME_MS.min, Math.min(GIF_FRAME_MS.max, Math.round((Number(v) || GIF_FRAME_MS.default) / 10) * 10));
+/** One GIF frame at its dearest shape, priced like a picture of that size. */
+const gifFrameUsd = (q: GptImage26Quality) => Math.max(...Object.values(GPT_IMAGE_26_GIF_SIZES).map(([w, h]) => out26Usd(w, h, q)));
+/** SVG: the reference picture it is drawn from (a standard picture) plus this ceiling for the drawing's own tokens. */
+export const SVG_AUTHORING_USD = 0.1;
+
 const gptImage26: GeneratorDef = {
   id: GPT_IMAGE_26_ID,
   name: "GPT Image 2.6",
@@ -263,6 +285,16 @@ const gptImage26: GeneratorDef = {
         { value: "sunburst", label: "Sunburst", hint: "أدق وأثبت في التعديل" },
       ],
     },
+    {
+      key: "format", label: "نوع الناتج", kind: "choice", default: "png",
+      values: [
+        { value: "png", label: "صورة" },
+        { value: "gif", label: "GIF متحركة", hint: "حتى ١٦ إطار" },
+        { value: "svg", label: "SVG", hint: "رسم متجه ينكبر بلا تشويش" },
+      ],
+    },
+    { key: "frames", label: "عدد الإطارات", kind: "int", min: GIF_FRAMES.min, max: GIF_FRAMES.max, default: GIF_FRAMES.default, unit: "إطار" },
+    { key: "frameMs", label: "مدة كل إطار", kind: "int", min: GIF_FRAME_MS.min, max: GIF_FRAME_MS.max, step: GIF_FRAME_MS.step, default: GIF_FRAME_MS.default, unit: "ملي ثانية" },
     gptImage2.options[0],
     gptImage2.options[1],
     {
@@ -293,24 +325,58 @@ const gptImage26: GeneratorDef = {
     ),
     { key: "prompt:1kb", label: "كل ١٠٠٠ بايت من البرومبت", defaultCenti: centiFor((1000 * GPT_IMAGE_2_PRICE.textIn) / 1e6), basis: "سقف: كل بايت ≤ توكن واحد × $5/مليون" },
     { key: "ref:image", label: "كل صورة مرجعية", defaultCenti: centiFor((GPT_IMAGE_2_REF_TOKENS_CAP * GPT_IMAGE_2_PRICE.imageIn) / 1e6), basis: `سقف (غير متحقق لـ GPT Image 2.6): ${GPT_IMAGE_2_REF_TOKENS_CAP.toLocaleString("en")} توكن، أقصى ما وثّقته OpenAI لصورة مدخلة في gpt-image-1، × $${GPT_IMAGE_2_PRICE.imageIn}/مليون. التكلفة الفعلية تُسجَّل مع كل مهمة` },
+    ...GPT_IMAGE_26_QUALITIES.map((q) => ({
+      key: `gif:frame:${q}`,
+      label: `GIF · كل إطار · ${Q26_LABEL[q]}`,
+      defaultCenti: centiFor(gifFrameUsd(q)),
+      basis: `تقدير (سعر GIF غير منشور): كل إطار بسعر صورة بمقاس الإطار (${Object.values(GPT_IMAGE_26_GIF_SIZES).map(([w, h]) => `${w}×${h}`).join(" · ")}) بمعادلة حاسبة OpenAI × $${GPT_IMAGE_2_PRICE.imageOut}/مليون. التكلفة الفعلية تُسجَّل مع كل مهمة`,
+    })),
+    ...GPT_IMAGE_26_QUALITIES.map((q) => ({
+      key: `svg:${q}`,
+      label: `SVG · ${Q26_LABEL[q]}`,
+      defaultCenti: centiFor(tierOut26Usd("std", q) + SVG_AUTHORING_USD),
+      basis: `تقدير (سعر SVG غير منشور): صورة مرجعية قياسية بنفس الجودة + سقف $${SVG_AUTHORING_USD} لتوكنات النموذج اللي يكتب الرسم. التكلفة الفعلية تُسجَّل مع كل مهمة`,
+    })),
   ],
   modeFor: (_style, refs) => (refs.length ? gptImage2Modes[1] : gptImage2Modes[0]),
-  rules(d) {
+  rules(d, mode) {
+    const f = gptImage26Format(d.settings.format);
     const notes = [d.settings.variant === "flare" ? "Flare: الأسرع، للتجربة والتكرار." : "Sunburst: أدق في التفاصيل وأثبت في تعديل الصور."];
     if (d.settings.complexity !== "high") notes.push("عمق التخطيط الأخف أسرع، لكن النصوص الكثيرة والتصاميم المعقدة تحتاج «عميق».");
-    return { options: opt(gptImage26.options), issues: [], notes };
+    const issues: Issue[] = [];
+    const states: Partial<Record<string, Partial<OptionState>>> = {};
+    if (f !== "gif") {
+      states.frames = { hidden: true };
+      states.frameMs = { hidden: true };
+    }
+    if (f === "gif") {
+      const [w, h] = GPT_IMAGE_26_GIF_SIZES[String(d.settings.aspect)] ?? GPT_IMAGE_26_GIF_SIZES["1:1"];
+      states.resolution = { hidden: true };
+      states.count = { fixed: { value: 1, reason: "GIF واحدة في كل طلب." } };
+      const sec = (gifFrames(d.settings.frames) * gifFrameMs(d.settings.frameMs)) / 1000;
+      notes.push(`GIF متحركة: ${gifFrames(d.settings.frames)} إطار بمقاس ${w}×${h}، وتلف كل ${Math.round(sec * 100) / 100} ثانية. اكتب في البرومبت الحركة اللي تبيها من أول إطار لآخر إطار.`);
+    }
+    if (f === "svg") {
+      states.resolution = { hidden: true };
+      states.count = { fixed: { value: 1, reason: "SVG واحد في كل طلب." } };
+      notes.push("SVG: رسم متجه (أشكال وخطوط) ينكبر لأي مقاس بلا تشويش، يناسب الشعارات والأيقونات والرسوم البسيطة. من النص فقط.");
+      if (mode.id === "image_reference") issues.push({ field: "refs", message: "SVG يُصنع من النص فقط: احذف الصور المرجعية أو اختر «صورة» أو «GIF»." });
+    }
+    return { options: opt(gptImage26.options, states), issues, notes };
   },
   price(d, mode, table) {
     const s = d.settings;
+    const f = gptImage26Format(s.format);
     const tier = s.resolution === "hi" ? "hi" : "std";
     const q = q26(s.quality);
-    const n = Number(s.count) || 1;
-    const per = table[`out:${q}:${tier}`];
+    const n = f === "png" ? Number(s.count) || 1 : 1;
+    const frames = gifFrames(s.frames);
+    const per = table[f === "gif" ? `gif:frame:${q}` : f === "svg" ? `svg:${q}` : `out:${q}:${tier}`];
     const perKb = table["prompt:1kb"];
     if (per == null || perKb == null) return { ok: false, reason: "سعر هذا الإعداد غير محدد بعد." };
     const kb = Math.max(1, Math.ceil(utf8Bytes(d.prompt) / 1000));
     const lines = [
-      { label: `${n} × صورة`, centi: n * per },
+      f === "gif" ? { label: `GIF · ${frames} إطار`, centi: frames * per } : f === "svg" ? { label: "SVG", centi: per } : { label: `${n} × صورة`, centi: n * per },
       { label: "البرومبت", centi: kb * perKb },
     ];
     if (mode.id === "image_reference") {
@@ -325,7 +391,11 @@ const gptImage26: GeneratorDef = {
     const tier = s.resolution === "hi" ? "hi" : "std";
     const size = GPT_IMAGE_2_SIZES[tier][String(s.aspect)] ?? GPT_IMAGE_2_SIZES.std["1:1"];
     const refs = (d.refs.filter((r) => r.kind === "image").length * GPT_IMAGE_2_REF_TOKENS_CAP * GPT_IMAGE_2_PRICE.imageIn) / 1e6;
-    return (Number(s.count) || 1) * out26Usd(size[0], size[1], q26(s.quality)) + (utf8Bytes(d.prompt) * GPT_IMAGE_2_PRICE.textIn) / 1e6 + refs;
+    const text = (utf8Bytes(d.prompt) * GPT_IMAGE_2_PRICE.textIn) / 1e6;
+    const f = gptImage26Format(s.format);
+    if (f === "gif") return gifFrames(s.frames) * gifFrameUsd(q26(s.quality)) + text + refs;
+    if (f === "svg") return tierOut26Usd("std", q26(s.quality)) + SVG_AUTHORING_USD + text;
+    return (Number(s.count) || 1) * out26Usd(size[0], size[1], q26(s.quality)) + text + refs;
   },
   sources: [
     { label: "OpenAI — GPT-Image-2.6 Flare (model page: Images API generations + edits, token prices)", url: "https://developers.openai.com/api/docs/models/gpt-image-2.6-flare", checked: GPT_IMAGE_26_CHECKED },
@@ -343,7 +413,10 @@ const gptImage26: GeneratorDef = {
     { item: "الصور المرجعية", status: "verified", note: "نقطة edits تقبل حتى 16 صورة؛ نقبل PNG وJPEG وWEBP حتى 20MB." },
     { item: "سعر المخرجات", status: "verified", note: "$30 لكل مليون توكن، وعدد التوكنات بمعادلة الحاسبة الرسمية لـ GPT Image 2.6 (1024×1024: low ‏$0.025 · medium ‏$0.043 · high ‏$0.053 · xhigh ‏$0.094 · max ‏$0.211)." },
     { item: "سعر الصور المرجعية", status: "unverified", note: "توكنات الصورة المدخلة غير موثّقة لـ 2.6؛ نسعّرها بسقف 7,100 توكن × $8/مليون، والتكلفة الفعلية تُسجَّل من usage." },
-    { item: "GIF وSVG", status: "unverified", note: "موثّقان في الدليل (output_format gif وsvg)، لكن GIF «يحتاج وصول المعاينة» وتكلفة إطاراته غير منشورة، وSVG يُحسب معه نموذج كاتب غير محدد السعر؛ غير معروضين." },
+    { item: "GIF متحركة", status: "verified", note: "output_format gif على generations وedits؛ frame_count من 2 إلى 16 (الافتراضي 9)، frame_duration_ms من 20 إلى 2000 بخطوات 10 (الافتراضي 200)؛ size مقاس كل إطار (مضاعفات 16) والإطارات كلها داخل ميزانية البكسل؛ بلا بث ولا output_compression." },
+    { item: "سعر GIF", status: "unverified", note: "غير منشور: نسعّر كل إطار بسعر صورة بمقاس الإطار، والتكلفة الفعلية تُسجَّل من usage." },
+    { item: "SVG", status: "verified", note: "output_format svg على generations فقط، n = 1، بلا صور مرجعية؛ رسم متجه بلا سكربتات ولا صور مدمجة." },
+    { item: "سعر SVG", status: "unverified", note: "OpenAI: سعر الصورة المرجعية + توكنات النموذج اللي يكتب الرسم (غير محدد)؛ نضيف سقف $0.10 والتكلفة الفعلية تُسجَّل من usage." },
     { item: "الخلفية الشفافة", status: "unverified", note: "المرجع يذكرها لنسخ 2.5 بالاسم وليس 2.6؛ غير معروضة." },
     { item: "التعديل بالتأشير (markup)", status: "unverified", note: "موثّق لـ 2.6 لكن يحتاج طبقة PNG شفافة بنفس المقاس؛ غير معروض بعد." },
     { item: "التقدم والإلغاء", status: "verified", note: "طلب متزامن بلا نسبة تقدم ولا إلغاء." },
@@ -1190,6 +1263,85 @@ const geminiOmni12: GeneratorDef = {
   notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
 };
 
+// ───────────────────────────── Gemini Omni 1.2 · تعديل فيديو (fal.ai) ─────────────────────────────
+// Checked on 2026-11-07: fal's google/gemini-omni-flash/v1.2/edit (schema: prompt + video_url of at most 15 s +
+// resolution 360p/720p/1080p/4k, default 720p; output one video) and its model page (billed per second of the edited
+// output video, by resolution, at the same rates as v1.2 generation). The edited video keeps the length of the one
+// sent, so the price follows the reference's length. Its own card beside Omni 1.2, so its single mode (one video and
+// a plain instruction) never mixes with the reference mode. Hidden until the owner enables it.
+
+export const OMNI12_EDIT_ID = "gemini-omni-1-2-edit";
+export const OMNI12_EDIT_MAX_MS = 15_000;
+/** Seconds billed for an edit: the reference video's length (at least 1 s, at most 15). */
+export const omni12EditSec = (refs: { kind: string; durationMs?: number | null }[]) => {
+  const ms = refs.find((r) => r.kind === "video")?.durationMs ?? 0;
+  return Math.max(1, Math.min(OMNI12_EDIT_MAX_MS / 1000, Math.ceil(ms / 1000 - 0.05)));
+};
+const omni12EditMode: ModeDef = {
+  id: "video_edit",
+  label: "تعديل فيديو",
+  refStyle: "references",
+  refs: { video: { min: 1, max: 1 } },
+  promptRequired: true,
+  prompt: { label: "التعديل", placeholder: "مثال: خلّ المشهد بالليل تحت ضوء القمر · غيّر الجو لمطر · خلّ لبسه أحمر" },
+};
+
+const geminiOmni12Edit: GeneratorDef = {
+  id: OMNI12_EDIT_ID,
+  name: "Gemini Omni 1.2 · تعديل فيديو",
+  output: "video",
+  defaultSection: "video",
+  provider: { id: "fal", label: "Google Gemini Omni (fal.ai)" },
+  model: { id: "google/gemini-omni-flash/v1.2/edit", family: "Gemini Omni Flash", version: "1.2 edit" },
+  api: { name: "fal.ai queue", endpoint: "POST google/gemini-omni-flash/v1.2/edit", tracking: "async", progress: "none", cancel: "none" },
+  modes: [omni12EditMode],
+  options: [geminiOmni.options[1]],
+  files: {
+    video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 100 * MB, minSide: 300, maxSide: 6000, minAspect: 0.4, maxAspect: 2.5, minMs: 1000, maxMs: OMNI12_EDIT_MAX_MS },
+  },
+  prompt: { label: "التعديل", placeholder: "مثال: خلّ المشهد بالليل تحت ضوء القمر", max: 4000, arabic: true },
+  priceKeys: ["360p", "720p", "1080p", "4k"].map((r) => ({
+    key: `sec:${r}`,
+    label: `كل ثانية · ${OMNI_RES_LABEL[r]}`,
+    defaultCenti: centiFor(OMNI12_SECOND_USD[r]),
+    basis: `سعر fal المنشور لنقطة التعديل: ${OMNI12_SECOND_USD[r]} لكل ثانية من الفيديو المعدّل (${r})`,
+  })),
+  modeFor: () => omni12EditMode,
+  rules() {
+    return {
+      options: opt(geminiOmni12Edit.options),
+      issues: [],
+      notes: [
+        "ارفع فيديو (حتى ١٥ ثانية) واكتب التعديل بالكلام: يرجع لك نفس المقطع بنفس طوله بعد التعديل.",
+        "أطول من ١٥ ثانية؟ افتح المرجع واضغط «قص» وخذ الجزء اللي تبيه.",
+        "الصوت يرجع مع الفيديو. السعر بالثانية حسب طول المقطع والدقة.",
+      ],
+    };
+  },
+  price(d, _mode, table) {
+    const res = String(d.settings.resolution);
+    const per = table[`sec:${res}`];
+    if (per == null) return { ok: false, reason: "سعر هذه الدقة غير محدد بعد." };
+    if (!d.refs.some((r) => r.kind === "video" && r.durationMs)) return { ok: false, reason: "أضف الفيديو اللي تبي تعدّله أولًا." };
+    const sec = omni12EditSec(d.refs);
+    return total([{ label: `${sec} ث · ${OMNI_RES_LABEL[res] ?? res}`, centi: per * sec }], geminiOmni12Edit.costUsd(d, omni12EditMode));
+  },
+  costUsd(d) {
+    return omni12EditSec(d.refs) * (OMNI12_SECOND_USD[String(d.settings.resolution)] ?? OMNI12_SECOND_USD["720p"]);
+  },
+  sources: [
+    { label: "fal.ai — google/gemini-omni-flash/v1.2/edit (schema: prompt, video_url ≤ 15 s, resolution)", url: "https://fal.ai/models/google/gemini-omni-flash/v1.2/edit/api", checked: "2026-11-07" },
+    { label: "fal.ai — google/gemini-omni-flash/v1.2/edit (price per second of the edited video)", url: "https://fal.ai/models/google/gemini-omni-flash/v1.2/edit", checked: "2026-11-07" },
+  ],
+  verification: [
+    { item: "المدخلات", status: "verified", note: "prompt (تعليمات بسيطة) + video_url (حتى 15 ثانية) + resolution (360p · 720p · 1080p · 4K، الافتراضي 720p)." },
+    { item: "السعر", status: "verified", note: "بالثانية من الفيديو المعدّل حسب الدقة: $0.0273 · $0.0819 · $0.1229 · $0.2457." },
+    { item: "طول الناتج", status: "unverified", note: "نفترض أنه بطول الفيديو المرسل؛ التكلفة الفعلية تُسجَّل مع كل مهمة." },
+    { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
+  ],
+  notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
+};
+
 // ───────────────────────────── Seedance وجه واقعي (Seedance 2.5 with the person's own face) ─────────────────────────────
 // Through a partner whose API accepts a real face as a reference (keys: HIGGSFIELD_API). Its name is never shown to
 // users: the card says «Seedance». Prices per second are ceilings until the owner checks the partner's console.
@@ -1798,7 +1950,7 @@ const jawadVoice: GeneratorDef = {
   notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي.", "لا تُؤخذ بصمة صوت شخص إلا بإذنه."],
 };
 
-export const GENERATORS: GeneratorDef[] = [gptImage2, gptImage26, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, wan3, geminiOmni, geminiOmni12, miniTts, elevenV4, jawadVoice, elevenSfx, elevenMusic, smartSplit];
+export const GENERATORS: GeneratorDef[] = [gptImage2, gptImage26, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, wan3, geminiOmni, geminiOmni12, geminiOmni12Edit, miniTts, elevenV4, jawadVoice, elevenSfx, elevenMusic, smartSplit];
 export const generatorById = (id: string) => GENERATORS.find((g) => g.id === id);
 
 /** The settings a generator starts with. */
