@@ -13,7 +13,7 @@ import { useClaudeModel } from "@/components/robots/claude-model";
 import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
-import { answerLine, decisionsOf, pathLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, DELEGATE_LINE, FONT_AUTO_LINE, fontLine, fontStyleLine, moodLine, MOTION_CAROUSEL_HELP_LINE, motionCarouselLine, motionCarouselOwnLine, motionLine, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
+import { answerLine, decisionsOf, pathLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, DELEGATE_LINE, FONT_AUTO_LINE, fontLine, fontStyleLine, moodLine, MOTION_CAROUSEL_HELP_LINE, motionCarouselLine, motionCarouselOwnLine, motionLine, PALETTE_LABEL, PALETTE_STYLE_LINE, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
 import { CONTENT_PATHS, findPath, type ContentPath } from "@config/content-paths";
 import CarouselTable, { type CarouselItem } from "./CarouselTable";
 import FontTable, { type FontItem } from "./FontTable";
@@ -349,8 +349,14 @@ export function Questions({ questions, gal, styleId, disabled, onSend, onWrite }
             </div>
           ) : (
             <div className="ct-opts">
+              {q.kind === "palettes" && q.label === PALETTE_LABEL && (
+                // the colour step after the carousel style: its own colours are the default, the gallery changes them
+                <button type="button" className="ct-opt" aria-pressed={lines[qi] === PALETTE_STYLE_LINE} disabled={disabled} onClick={() => { setLines((s) => ({ ...s, [qi]: PALETTE_STYLE_LINE })); setGallery(null); }}>
+                  ✅ ألوان الستايل نفسها (الافتراضي)
+                </button>
+              )}
               <button type="button" className="ct-opt" aria-pressed={gallery === qi} disabled={disabled} onClick={() => setGallery(gallery === qi ? null : qi)}>
-                {GALLERY[q.kind as GalleryKind].open}
+                {q.kind === "palettes" && q.label === PALETTE_LABEL ? "🎨 غيّر الألوان من المعرض (١٠٠ لوحة)" : GALLERY[q.kind as GalleryKind].open}
               </button>
               {chosenName(qi) && (
                 <span className="ct-chip ct-picked">✓ {chosenName(qi)} <button type="button" aria-label="ألغِ" onClick={() => setLines((s) => { const n = { ...s }; delete n[qi]; return n; })}>✕</button></span>

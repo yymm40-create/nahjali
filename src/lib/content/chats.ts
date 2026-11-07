@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { CONTENT, type CarouselAspect } from "@config/content";
 import { findCarouselStyle } from "@config/content-carousel-styles";
 import { findContentFont } from "@config/content-fonts";
+import { findPalette } from "@config/content-palettes";
 import { findMotionCarouselStyle } from "@config/content-motion-carousel";
 
 const db = () => createAdminClient();
@@ -64,6 +65,8 @@ export interface SlidesBlock {
   carouselId?: string;
   /** the font of the list of 50 the carousel is written in */
   fontId?: string;
+  /** a palette of the 100 that replaces the style's colours (absent: the style's own colours) */
+  paletteId?: string;
   /** a motion carousel: every slide is a short video (its plan, kept for a slide made again) */
   motion?: MotionPlan;
 }
@@ -158,6 +161,8 @@ export interface PendingProduce {
   carouselId?: string;
   /** the font of the list of 50 the carousel is written in */
   fontId?: string;
+  /** a palette of the 100 that replaces the style's colours (absent: the style's own colours) */
+  paletteId?: string;
   /** a motion carousel: «حيدرا ماكس» makes every slide a short video with its sound */
   motion?: MotionPlan;
   /** made in this production so far */
@@ -289,6 +294,7 @@ export function cleanHistory(raw: unknown): Turn[] {
         ...(s.mix === true ? { mix: true } : {}),
         ...(typeof s.carouselId === "string" && findCarouselStyle(s.carouselId) ? { carouselId: s.carouselId } : {}),
         ...(typeof s.fontId === "string" && findContentFont(s.fontId) ? { fontId: s.fontId } : {}),
+        ...(typeof s.paletteId === "string" && findPalette(s.paletteId) ? { paletteId: s.paletteId } : {}),
         ...(readMotion(s.motion) ? { motion: readMotion(s.motion)! } : {}),
         templateId: str(s.templateId, 60),
         ...(typeof s.report === "string" && s.report ? { report: s.report.slice(0, 4000) } : {}),
@@ -327,6 +333,7 @@ export function readPending(v: unknown): PendingProduce | null {
     ...(p.mix === true ? { mix: true } : {}),
     ...(typeof p.carouselId === "string" && findCarouselStyle(p.carouselId) ? { carouselId: p.carouselId } : {}),
     ...(typeof p.fontId === "string" && findContentFont(p.fontId) ? { fontId: p.fontId } : {}),
+    ...(typeof p.paletteId === "string" && findPalette(p.paletteId) ? { paletteId: p.paletteId } : {}),
     ...(readMotion(p.motion) ? { motion: readMotion(p.motion)! } : {}),
     ...(p.arts && typeof p.arts === "object" && !Array.isArray(p.arts) ? { arts: Object.fromEntries(Object.entries(p.arts as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> } : {}),
     made: objs(p.made).filter((x) => typeof x.fileId === "string").map(readSlide),

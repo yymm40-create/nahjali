@@ -38,7 +38,7 @@ describe("the path mark", () => {
     expect(pickedKind([user(pathLine("carousel", "كاروسيل"))])).toBe("still");
     expect(pickedKind([user(pathLine("motion-carousel", "موشن"))])).toBe("motion");
     expect(pickedKind([user("كاروسيل")])).toBeNull();
-    const asked = (path: string) => carouselHold([user(`${pathLine(path, "فكرتي")}\n• ستايل الكاروسيل: «س» [كاروسيل:${CAROUSEL_STYLES.find((s) => !s.photoIdea)!.id}]\n• الخط: خط [خط:auto]`)]);
+    const asked = (path: string) => carouselHold([user(`${pathLine(path, "فكرتي")}\n• ستايل الكاروسيل: «س» [كاروسيل:${CAROUSEL_STYLES.find((s) => !s.photoIdea)!.id}]\n• الألوان: «ألوان الستايل نفسها» [ألوان:style]\n• الخط: خط [خط:auto]`)]);
     expect(asked("carousel")?.question.label).toBe("من يصمم الشرائح؟");
     expect(asked("motion-carousel")?.question.kind).toBe("motioncarousels");
   });

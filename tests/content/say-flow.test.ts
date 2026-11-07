@@ -63,7 +63,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 import { say } from "@/lib/content/chat";
 import { findStyle } from "@config/film-styles";
-import { answerLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, FONT_AUTO_LINE, fontLine, MOTION_CAROUSEL_HELP_LINE, motionCarouselLine, motionCarouselOwnLine, styleLine, templateLine } from "@/lib/content/marks";
+import { answerLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, FONT_AUTO_LINE, fontLine, PALETTE_LABEL, PALETTE_STYLE_LINE, paletteLine, MOTION_CAROUSEL_HELP_LINE, motionCarouselLine, motionCarouselOwnLine, styleLine, templateLine } from "@/lib/content/marks";
 import { MOTION_ROUTES } from "@config/content-motion-carousel";
 
 const empty = { on: false, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: [] };
@@ -76,7 +76,7 @@ const chat = () => db.chat as Chat;
 // a look with no realistic pictures, so the only step left is who makes it
 // the font, then «ثابت» (a still carousel)
 const STILL = answerLine(KIND_LABEL, [KIND_STILL]);
-const FONT = `${fontLine({ id: "cairo", name: "القاهرة" })}\n${STILL}`;
+const FONT = `${PALETTE_STYLE_LINE}\n${fontLine({ id: "cairo", name: "القاهرة" })}\n${STILL}`;
 // a style and its font, as pressed before who makes it
 const FLAT = `${carouselLine({ id: "white-text", name: "الشريحة البيضاء" })}\n${FONT}`;
 const picked = (maker: string) => `${FLAT}\n${answerLine(MAKER_LABEL, [maker])}`;
@@ -200,17 +200,31 @@ describe("his answer", () => {
     expect(second.questions!.at(-1)).toMatchObject({ label: CAROUSEL_LABEL, kind: "carousels" });
   });
 
-  it("after the style comes the font: the list goes out, the style's ready font is named, and the pick is kept with the carousel", async () => {
+  it("after the style come the colours, then the font: the lists go out, the style's ready font is named, and the picks are kept with the carousel", async () => {
+    // 7 Nov 2026: the colours first (the style's own by default); his own colour question gives way to the site's
+    answer({ questions: [{ label: "اختر الألوان", kind: "palettes", options: [], multi: false }], produce: { on: true, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
+    const c = await say("u", null, carouselLine({ id: "soft-3d", name: "ثري دي ناعم" }), []);
+    expect(c.pending).toBeNull();
+    expect(c.questions!.filter((q) => q.kind === "palettes")).toEqual([{ label: PALETTE_LABEL, kind: "palettes", options: [], multi: false }]);
+    expect(c.text).toContain("ألوان الستايل");
     answer({ produce: { on: true, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
-    const r = await say("u", null, carouselLine({ id: "soft-3d", name: "ثري دي ناعم" }), []);
+    const r = await say("u", "chat-1", paletteLine({ id: "ch-0107360d1c4222396ffcf1d0", name: "كحلي ملكي وكريمي" }), []);
     expect(r.pending).toBeNull();
     expect(r.questions!.at(-1)).toMatchObject({ label: FONT_LABEL, kind: "fonts" });
     expect(r.text).toContain("بالو بهايجان");
     expect(claude.calls[0].system).toContain('kind="fonts"');
-    // the font is left to him: the one he names in "font_id" is kept
+    // the font is left to him: the one he names in "font_id" is kept, and the palette goes with the carousel
     answer({ produce: { on: true, mode: "all", font_id: "lemonada", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
     await say("u", "chat-1", `${FONT_AUTO_LINE}\n${STILL}\n${answerLine(MAKER_LABEL, [MAKER_GPT])}`, []);
-    expect(chat().pending).toMatchObject({ carouselId: "soft-3d", fontId: "lemonada" });
+    expect(chat().pending).toMatchObject({ carouselId: "soft-3d", fontId: "lemonada", paletteId: "ch-0107360d1c4222396ffcf1d0" });
+    expect(claude.calls.at(-1)!.system).toContain("تحل محل ألوانه وحدها");
+  });
+
+  it("keeping the style's colours stores no palette", async () => {
+    answer({ produce: { on: true, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
+    await say("u", null, `${carouselLine({ id: "soft-3d", name: "ثري دي ناعم" })}\n${FONT}\n${answerLine(MAKER_LABEL, [MAKER_GPT])}`, []);
+    expect(chat().pending).toMatchObject({ carouselId: "soft-3d" });
+    expect(chat().pending!.paletteId).toBeUndefined();
   });
 
   it("help me choose is not a pick: he helps, and his recommendations are shown first in the table", async () => {
@@ -226,7 +240,7 @@ describe("his answer", () => {
 
   it("something not in the table is a pick in the person's own words", async () => {
     answer({ produce: { on: true, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
-    const r = await say("u", null, `${carouselOwnLine("ستايل خشب محروق")}\n${FONT_AUTO_LINE}\n${STILL}\n${answerLine(MAKER_LABEL, [MAKER_GPT])}`, []);
+    const r = await say("u", null, `${carouselOwnLine("ستايل خشب محروق")}\n${PALETTE_STYLE_LINE}\n${FONT_AUTO_LINE}\n${STILL}\n${answerLine(MAKER_LABEL, [MAKER_GPT])}`, []);
     expect(claude.calls[0].system).toContain("يريد شكلًا غير الموجود");
     expect(r.pending).toEqual({ total: 2, mode: "all", todo: [1, 2] });
     expect(chat().pending!.carouselId).toBeUndefined();
@@ -234,7 +248,7 @@ describe("his answer", () => {
 
   it("a motion carousel: still or moving, then the motion style from the table of ten, then the way of making it, cheapest first", async () => {
     const order = () => answer({ produce: { on: true, mode: "all", refs: [], aspect: "2:3", template_id: "", style_id: "", slides: slides() } });
-    const LOOK = `${carouselLine({ id: "white-text", name: "الشريحة البيضاء" })}\n${fontLine({ id: "cairo", name: "القاهرة" })}`;
+    const LOOK = `${carouselLine({ id: "white-text", name: "الشريحة البيضاء" })}\n${PALETTE_STYLE_LINE}\n${fontLine({ id: "cairo", name: "القاهرة" })}`;
     order();
     const kind = await say("u", null, LOOK, []);
     expect(kind.pending).toBeNull();
