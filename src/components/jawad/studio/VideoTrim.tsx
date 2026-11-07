@@ -35,8 +35,24 @@ interface Props {
 }
 
 export default function VideoTrim({ src, name, minMs, maxMs, canClip, canFrame, reason, onKeep, onClip, onFrame, onClose }: Props) {
-  const url = useMemo(() => (typeof src === "string" ? src : URL.createObjectURL(src)), [src]);
-  useEffect(() => () => void (typeof src !== "string" && URL.revokeObjectURL(url)), [src, url]);
+  // A stored video is read once into memory: the player, the cut and the frame then all work on the same bytes. It is
+  // fetched past the browser's cache, because the preview may have kept a copy without the storage's CORS headers
+  // (then any cross-origin read of it fails).
+  const [data, setData] = useState<Blob | null>(typeof src === "string" ? null : src);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    if (typeof src !== "string") return;
+    let live = true;
+    fetch(src, { cache: "no-store" })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+      .then((b) => live && setData(b))
+      .catch(() => live && setLoadError("تعذّر تحميل الفيديو؛ احذفه وأضفه من جديد، أو نزّله وارفعه من جهازك."));
+    return () => {
+      live = false;
+    };
+  }, [src]);
+  const url = useMemo(() => (data ? URL.createObjectURL(data) : null), [data]);
+  useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url]);
   const video = useRef<HTMLVideoElement>(null);
   const [dur, setDur] = useState(0);
   const [range, setRange] = useState<[number, number]>([0, 0]);
@@ -71,7 +87,8 @@ export default function VideoTrim({ src, name, minMs, maxMs, canClip, canFrame, 
     setBusy("clip");
     setError("");
     try {
-      const blob = await cutClip(src, from, to);
+      if (!data) return;
+      const blob = await cutClip(data, from, to);
       onClip(new File([blob], `${base}-قص.mp4`, { type: "video/mp4" }));
     } catch (e) {
       setError((e as Error).message || "تعذّر قص المقطع.");
@@ -94,8 +111,7 @@ export default function VideoTrim({ src, name, minMs, maxMs, canClip, canFrame, 
       if (!blob) throw new Error("تعذّر أخذ الفريم.");
       onFrame(new File([blob], `${base}-فريم-${Math.round(v.currentTime * 100) / 100}.jpg`, { type: "image/jpeg" }));
     } catch (e) {
-      // a stored video from another address can't be read into a picture unless it allows it
-      setError(e instanceof DOMException ? "ما قدرنا ناخذ فريم من هذا الفيديو؛ نزّله على جهازك وارفعه من جديد." : (e as Error).message);
+      setError((e as Error).message || "تعذّر أخذ الفريم.");
       setBusy(null);
     }
   }
@@ -104,11 +120,13 @@ export default function VideoTrim({ src, name, minMs, maxMs, canClip, canFrame, 
     <Dialog open onClose={busy ? () => {} : onClose} title={canClip ? "قص المرجع أو خذ منه فريم" : "خذ فريم من الفيديو"} wide>
       <div className="space-y-3 p-4">
         {reason && <p className="flex items-start gap-2 rounded-lg bg-jw-accent-soft px-3 py-2 text-sm"><Icon name="info" size={16} className="mt-0.5 shrink-0" /> {reason}</p>}
-        <div className="grid place-items-center overflow-hidden rounded-lg bg-black">
+        <div className="grid min-h-40 place-items-center overflow-hidden rounded-lg bg-black">
+          {!url && !loadError && <span className="jw-spinner" role="status" aria-label="يحمّل الفيديو" />}
+          {loadError && <p className="p-6 text-sm text-jw-danger" role="alert">{loadError}</p>}
+          {url && (
           <video
             ref={video}
             src={url}
-            crossOrigin={typeof src === "string" ? "anonymous" : undefined}
             controls
             playsInline
             preload="auto"
@@ -117,6 +135,7 @@ export default function VideoTrim({ src, name, minMs, maxMs, canClip, canFrame, 
             onSeeked={(e) => setNow(e.currentTarget.currentTime)}
             className="max-h-[45dvh] w-full object-contain"
           />
+          )}
         </div>
 
         {dur > 0 && canClip && (
