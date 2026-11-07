@@ -9,6 +9,9 @@ import Dialog from "../Dialog";
 import Icon from "../Icon";
 import { cutClip } from "./continuity";
 
+/** A cut that takes longer than this has hung in the browser's encoder (seen in one Chrome): say so instead of spinning. */
+const CUT_TIMEOUT_MS = 90_000;
+
 /** The end set by default when a video is too long: this much under the limit, so a re-encoded cut never ends up a hair over it. */
 const UNDER_LIMIT_S = 0.1;
 
@@ -88,7 +91,10 @@ export default function VideoTrim({ src, name, minMs, maxMs, canClip, canFrame, 
     setError("");
     try {
       if (!data) return;
-      const blob = await cutClip(data, from, to);
+      const blob = await Promise.race([
+        cutClip(data, from, to),
+        new Promise<never>((_, fail) => setTimeout(() => fail(new Error("القص علّق في متصفحك. سكّر المتصفح كله وافتحه من جديد، أو جرّب متصفح ثاني.")), CUT_TIMEOUT_MS)),
+      ]);
       onClip(new File([blob], `${base}-قص.mp4`, { type: "video/mp4" }));
     } catch (e) {
       setError((e as Error).message || "تعذّر قص المقطع.");
@@ -117,7 +123,7 @@ export default function VideoTrim({ src, name, minMs, maxMs, canClip, canFrame, 
   }
 
   return (
-    <Dialog open onClose={busy ? () => {} : onClose} title={canClip ? "قص المرجع أو خذ منه فريم" : "خذ فريم من الفيديو"} wide>
+    <Dialog open onClose={onClose} title={canClip ? "قص المرجع أو خذ منه فريم" : "خذ فريم من الفيديو"} wide>
       <div className="space-y-3 p-4">
         {reason && <p className="flex items-start gap-2 rounded-lg bg-jw-accent-soft px-3 py-2 text-sm"><Icon name="info" size={16} className="mt-0.5 shrink-0" /> {reason}</p>}
         <div className="grid min-h-40 place-items-center overflow-hidden rounded-lg bg-black">
