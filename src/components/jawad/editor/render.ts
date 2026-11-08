@@ -871,6 +871,8 @@ function drawText(ctx: CanvasRenderingContext2D, clip: Clip, t: Transform, look:
   // «طباعة» on a caption with timed words follows the voice (each word typed while it is said); otherwise its own length
   const spoken = clip.anim?.in === "type" && clip.words.length > 0 && clip.words.length === tokens.length;
   const typed = spoken ? typedBySpeech(clip.words, ms - clip.start) : look.type;
+  // «حرف حرف»: the text rises into place a letter at a time (a word at a time for Arabic)
+  if (look.letters != null && !timed && typed == null) return drawLetters(ctx, s, t, look, W, H);
   // a caption with timed words lights the word being said; «كلمة كلمة» brings the words in one by one
   if (timed || look.words != null || typed != null) return drawCaption(ctx, { ...clip, text: s }, tokens, timed ? wordAt(clip, ms) : -1, t, look, W, H, typed, ms);
   ctx.save();
@@ -929,14 +931,84 @@ function drawText(ctx: CanvasRenderingContext2D, clip: Clip, t: Transform, look:
     write(0, 0.9, s.glow, false);
     ctx.restore();
   }
-  // «تدرّج»: the words filled top to bottom from their colour to the second one
+  // «تدرّج»: the words filled top to bottom (or, «أفقي», along the reading direction) from their colour to the second one
   if (s.grad) {
-    const g = ctx.createLinearGradient(0, top - lh / 2, 0, top + (lines.length - 0.5) * lh);
+    const g = s.gradDir === "h" ? hGrad(ctx, s.body, blockW) : ctx.createLinearGradient(0, top - lh / 2, 0, top + (lines.length - 0.5) * lh);
     g.addColorStop(0, s.color);
     g.addColorStop(1, s.grad);
     write(0, 1, g as unknown as string, true);
   } else write(0, 1, s.color, true);
   if (look.flash > 0) write(0, Math.min(1, look.flash), "#ffffff", false);
+  ctx.restore();
+}
+
+/** «التدرّج أفقي»: from the first colour where the words start reading (the right for Arabic, the left otherwise). */
+const hGrad = (ctx: CanvasRenderingContext2D, body: string, w: number) => (ARABIC.test(body) ? ctx.createLinearGradient(w / 2, 0, -w / 2, 0) : ctx.createLinearGradient(-w / 2, 0, w / 2, 0));
+
+/** «حرف حرف»: how far unit `i` of `n` has risen (0–1) when the whole text is at `p`; about five rise at once. */
+const letterIn = (p: number, i: number, n: number) => Math.min(1, Math.max(0, (p * (n + 5) - i) / 5));
+
+/**
+ * «حرف حرف»: each letter rises a little into place out of a soft blur, one after the other, right to left for
+ * Arabic and left to right otherwise. Arabic goes a whole word at a time, so its joined letters never break apart.
+ */
+function drawLetters(ctx: CanvasRenderingContext2D, s: TextStyle, t: Transform, look: Drawn, W: number, H: number) {
+  ctx.save();
+  place(ctx, t, look, W, H);
+  const { size, lines, widths, lh } = textLayout(ctx, s, t.scale * look.scale, W, H);
+  const rtl = ARABIC.test(s.body);
+  ctx.direction = rtl ? "rtl" : "ltr";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = rtl ? "right" : "left";
+  ctx.lineJoin = "round";
+  const blockW = Math.max(...widths);
+  const top = -((lines.length - 1) * lh) / 2;
+  const space = ctx.measureText(" ").width;
+  const units = lines.map((l) => (rtl ? l.split(/\s+/).filter(Boolean) : letters(l)));
+  const n = units.reduce((m, u) => m + u.length, 0);
+  const fill = s.grad
+    ? (() => {
+        const g = s.gradDir === "h" ? hGrad(ctx, s.body, blockW) : ctx.createLinearGradient(0, top - lh / 2, 0, top + (lines.length - 0.5) * lh);
+        g.addColorStop(0, s.color);
+        g.addColorStop(1, s.grad!);
+        return g;
+      })()
+    : s.color;
+  const base = ctx.globalAlpha;
+  let k = 0;
+  lines.forEach((_, li) => {
+    const y = top + li * lh;
+    const lw = widths[li];
+    const x0 = s.align === "center" ? 0 : s.align === "right" ? blockW / 2 - lw / 2 : -blockW / 2 + lw / 2;
+    if (s.box) {
+      ctx.globalAlpha = base * Math.min(1, (look.letters ?? 1) * 3);
+      ctx.fillStyle = s.box;
+      roundRect(ctx, x0 - lw / 2 - size * 0.3, y - lh / 2, lw + size * 0.6, lh, size * 0.2);
+    }
+    let x = rtl ? x0 + lw / 2 : x0 - lw / 2;
+    for (const u of units[li]) {
+      const w = ctx.measureText(u).width;
+      const a = letterIn(look.letters ?? 1, k++, n);
+      const e = 1 - (1 - a) ** 3;
+      if (a > 0) {
+        ctx.save();
+        ctx.globalAlpha = base * Math.min(1, a * 1.6);
+        if (a < 1) ctx.filter = `blur(${((1 - e) * size * 0.12).toFixed(1)}px)`;
+        ctx.translate(x, y + (1 - e) * size * 0.45);
+        if (!s.box) {
+          ctx.strokeStyle = "rgba(0,0,0,0.55)";
+          ctx.lineWidth = Math.max(2, size * 0.08);
+          ctx.strokeText(u, 0, 0);
+        }
+        // the gradient belongs to the whole block, so it is drawn in the block's own space
+        ctx.translate(-x, -(y + (1 - e) * size * 0.45));
+        ctx.fillStyle = fill;
+        ctx.fillText(u, x, y + (1 - e) * size * 0.45);
+        ctx.restore();
+      }
+      x += rtl ? -(w + space) : w;
+    }
+  });
   ctx.restore();
 }
 

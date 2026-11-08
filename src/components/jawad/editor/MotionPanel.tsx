@@ -144,12 +144,19 @@ export default function MotionPanel({ clip, motion: m, locked, run, player, tl, 
 
       {tab === "el" && m.kind !== "ambient" && (
         <div className="space-y-3">
-          {m.kind !== "ribbon" && (
+          {m.kind !== "ribbon" && m.kind !== "burst" && (
             <label className="block space-y-1">
-              <span className="text-xs text-jw-muted">{m.kind === "phrase" ? "العبارة" : m.kind === "big" ? "الوصف تحت الرقم" : m.kind === "facehud" ? "الكلمة جنب الأرقام" : "العنوان"}</span>
+              <span className="text-xs text-jw-muted">{m.kind === "phrase" ? "العبارة" : m.kind === "big" ? "الوصف تحت الرقم" : m.kind === "facehud" ? "الكلمة جنب الأرقام" : m.kind === "chip" ? "الكلمة البارزة" : "العنوان"}</span>
               <input className="jw-input w-full" dir="auto" maxLength={MOTION_LIMITS.title} value={m.title} disabled={locked} onChange={(e) => set({ title: e.target.value }, "title")} />
             </label>
           )}
+          {m.kind === "chip" && (
+            <label className="block space-y-1">
+              <span className="text-xs text-jw-muted">الجزء الثاني (مثل «بيض ← خبز»، يدخل بعدها بشوي)</span>
+              <input className="jw-input w-full" dir="auto" maxLength={MOTION_LIMITS.sub} value={m.sub} disabled={locked} onChange={(e) => set({ sub: e.target.value }, "sub")} />
+            </label>
+          )}
+          {m.kind === "burst" && <p className="text-[11px] leading-5 text-jw-faint">دوائر وأشعة تنفجر من النقطة خلال نص ثانية من بداية العنصر: حطه على لحظة الصرقعة أو الضربة، وحرّك مكانه من «المكان». لونه من «البارز الثاني» و«النص» في «الشكل».</p>}
           {m.kind === "title" && (
             <label className="block space-y-1">
               <span className="text-xs text-jw-muted">السطر اللي تحته</span>
