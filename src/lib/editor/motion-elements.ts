@@ -17,6 +17,8 @@ export const MOTION_KINDS = {
   emojipop: { label: "إيموجي جنب الراس", icon: "😀", hint: "إيموجي كبير يطلع جنب راس المتكلم ويطفو" },
   uicard: { label: "كرت تطبيق", icon: "🔔", hint: "كرت مثل إشعار الجوال: عنوان صغير وتحته الكلام" },
   speedlines: { label: "خطوط سرعة", icon: "💨", hint: "خطوط تطلع من حول الوجه مثل الأنمي، للحماس واللحظة القوية" },
+  chip: { label: "ملصق بإطار", icon: "🏷️", hint: "ملصق مدوّر بإطار ملوّن: كلمة بارزة، وبعدها «من ← إلى» تدخل بعدها بشوي" },
+  burst: { label: "انفجار ذهبي", icon: "💫", hint: "دوائر ذهبية تنفجر من نقطة مع أشعة ولمعة، مثل لحظة صرقعة أو سحر" },
 } as const;
 export type MotionKind = keyof typeof MOTION_KINDS;
 export const isMotionKind = (v: unknown): v is MotionKind => typeof v === "string" && v in MOTION_KINDS;
@@ -125,6 +127,8 @@ export function newMotion(kind: MotionKind, o: Partial<MotionEl> = {}): MotionEl
     emojipop: { title: "🎵", y: 0.3, x: 0.72, panel: false, enter: "fade" },
     uicard: { title: "سؤال جديد", sub: "شنو أول قصيدة لك؟", y: 0.66, theme: "paper", enter: "rise" },
     speedlines: { y: 0.4, panel: false, theme: "mono", enter: "fade" },
+    chip: { title: "صرقعة ١", sub: "بيض ← خبز", y: 0.13, theme: "gold", enter: "rise" },
+    burst: { y: 0.45, panel: false, theme: "gold", enter: "fade" },
   };
   return readMotion({ ...base, ...sample[kind], ...o }) ?? base;
 }
@@ -195,7 +199,7 @@ export function faceAt(track: FaceSample[], local: number): Omit<FaceSample, "t"
 export const motionColors = (m: Pick<MotionEl, "theme" | "colors">): MotionColors => m.colors ?? MOTION_THEMES[m.theme];
 
 /** What the timeline shows on the clip (its kind and its first words). */
-export const motionLabel = (m: MotionEl) => `${MOTION_KINDS[m.kind].icon} ${(m.kind === "facehud" || m.kind === "ribbon" || m.kind === "speedlines" ? "" : m.kind === "doodle" ? DOODLE_MARKS[m.mark] : m.title) || MOTION_KINDS[m.kind].label}`.slice(0, 60);
+export const motionLabel = (m: MotionEl) => `${MOTION_KINDS[m.kind].icon} ${(m.kind === "facehud" || m.kind === "ribbon" || m.kind === "speedlines" || m.kind === "burst" ? "" : m.kind === "doodle" ? DOODLE_MARKS[m.mark] : m.title) || MOTION_KINDS[m.kind].label}`.slice(0, 60);
 
 /** The smooth ease every entrance uses (no bounce: Majed's rules). */
 export const easeOut = (p: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, p)), 3);

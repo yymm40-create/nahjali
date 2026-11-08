@@ -102,6 +102,17 @@ export function drawMotion(ctx: CanvasRenderingContext2D, m: MotionEl, W: number
     ctx.restore();
     return;
   }
+  if (m.kind === "burst") {
+    drawBurst(ctx, c, u, cx, cy, b);
+    ctx.restore();
+    return;
+  }
+  if (m.kind === "chip") {
+    entrance(ctx, m, p, u, cx, cy);
+    drawChip(ctx, m, c, u, cx, cy, maxW, b);
+    ctx.restore();
+    return;
+  }
   ctx.direction = "rtl";
   ctx.textBaseline = "middle";
   entrance(ctx, m, p, u, cx, cy);
@@ -591,4 +602,88 @@ function drawUiCard(ctx: CanvasRenderingContext2D, m: MotionEl, c: C, u: number,
   ctx.fillStyle = c.text;
   ctx.font = font(700, body, b.family);
   ls.forEach((l, i) => ctx.fillText(l, x + w - 40 * u, y + 110 * u + (i + 0.5) * body * 1.35));
+}
+
+/**
+ * «ملصق بإطار»: a rounded pill on the dark panel with a border in the accent colour: a small ✦, the stressed word
+ * (`title`) in the accent, a thin divider, then the second part (`sub`, e.g. «بيض ← خبز») coming in a moment later.
+ */
+function drawChip(ctx: CanvasRenderingContext2D, m: MotionEl, c: C, u: number, cx: number, cy: number, maxW: number, b: Box) {
+  const big = 46 * u, small = 38 * u, pad = 40 * u, h = 104 * u;
+  ctx.direction = "rtl";
+  ctx.textBaseline = "middle";
+  ctx.font = font(700, small, b.family);
+  const wT = ctx.measureText(m.title).width;
+  ctx.font = font(600, big, b.family);
+  const wS = m.sub ? ctx.measureText(m.sub).width : 0;
+  const icon = 30 * u, gap = 26 * u;
+  const w = Math.min(maxW, pad * 2 + icon + 18 * u + wT + (m.sub ? gap * 2 + 3 * u + wS : 0));
+  const x = cx - w / 2;
+  ctx.shadowColor = "rgba(0,0,0,0.35)";
+  ctx.shadowBlur = 30 * u;
+  ctx.shadowOffsetY = 8 * u;
+  ctx.fillStyle = alphaHex(c.bg, 0.82);
+  rounded(ctx, x, cy - h / 2, w, h, h / 2);
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.lineWidth = 2.5 * u;
+  ctx.strokeStyle = alphaHex(c.accent, 0.9);
+  ctx.stroke();
+  let r = x + w - pad;
+  ctx.textAlign = "center";
+  ctx.fillStyle = c.second;
+  ctx.font = font(700, small, b.family);
+  ctx.fillText("✦", r - icon / 2, cy + 2 * u);
+  r -= icon + 18 * u;
+  ctx.textAlign = "right";
+  ctx.fillStyle = c.accent;
+  ctx.fillText(m.title, r, cy);
+  if (!m.sub) return;
+  r -= wT + gap;
+  ctx.fillStyle = alphaHex(c.text, 0.35);
+  ctx.fillRect(r - 3 * u, cy - 26 * u, 3 * u, 52 * u);
+  r -= 3 * u + gap;
+  // the second part comes in 350 ms after the chip, sliding in from the side it reads towards
+  const q = enterAt(Math.max(0, b.local - 350));
+  ctx.globalAlpha *= q;
+  ctx.fillStyle = c.text;
+  ctx.font = font(600, big, b.family);
+  ctx.fillText(m.sub, r - (1 - q) * 20 * u, cy);
+}
+
+/**
+ * «انفجار ذهبي»: two thin rings racing out of the point with ten short rays and a soft flare, fading as they go
+ * (about half a second from the element's start: put it on the moment of a snap, a hit or a reveal).
+ */
+function drawBurst(ctx: CanvasRenderingContext2D, c: C, u: number, cx: number, cy: number, b: Box) {
+  const k = Math.min(1, Math.max(0, b.local / 550));
+  if (k >= 1) return;
+  const e = k >= 1 ? 1 : 1 - Math.pow(2, -10 * k);
+  const a = 1 - k;
+  const R = 280 * u;
+  ctx.translate(cx, cy);
+  ctx.lineCap = "round";
+  for (const [scale, wid] of [[1, 9], [0.62, 5]] as const) {
+    ctx.beginPath();
+    ctx.arc(0, 0, 20 * u + R * scale * e, 0, Math.PI * 2);
+    ctx.lineWidth = (wid * a + 0.5) * u;
+    ctx.strokeStyle = alphaHex(c.second, 0.85 * a);
+    ctx.stroke();
+  }
+  for (let i = 0; i < 10; i++) {
+    const ang = (i / 10) * Math.PI * 2 + 0.3;
+    const r0 = 40 * u + R * 0.55 * e;
+    const r1 = r0 + 70 * u * a;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(ang) * r0, Math.sin(ang) * r0);
+    ctx.lineTo(Math.cos(ang) * r1, Math.sin(ang) * r1);
+    ctx.lineWidth = 5 * u * a;
+    ctx.strokeStyle = alphaHex(c.text, a);
+    ctx.stroke();
+  }
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 160 * u);
+  g.addColorStop(0, alphaHex(c.second, 0.55 * a * a));
+  g.addColorStop(1, alphaHex(c.second, 0));
+  ctx.fillStyle = g;
+  ctx.fillRect(-160 * u, -160 * u, 320 * u, 320 * u);
 }

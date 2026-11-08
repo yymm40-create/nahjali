@@ -823,6 +823,12 @@ function TextControls({ text, locked, setText }: { text: TextStyle; locked: bool
           تدرّج
           {text.grad && <input type="color" disabled={locked} value={text.grad.slice(0, 7)} onChange={(e) => setText({ grad: e.target.value }, "grad")} className="h-6 w-8 rounded border border-jw-line bg-transparent" aria-label="لون التدرج" />}
         </label>
+        {text.grad && (
+          <label className="col-span-2 flex items-center gap-2">
+            <input type="checkbox" disabled={locked} checked={text.gradDir === "h"} onChange={(e) => setText({ gradDir: e.target.checked ? "h" : "v" }, "gradDir")} className="accent-[var(--jw-accent)]" />
+            التدرّج أفقي (مع اتجاه القراءة، مثل شعار جيميناي)
+          </label>
+        )}
       </div>
       <Slider label="عمق ثلاثي الأبعاد" value={Math.round((text.depth ?? 0) * 100)} min={0} max={100} step={5} disabled={locked} onChange={(v) => setText({ depth: v / 100 }, "depth")} format={(v) => (v ? `${v}%` : "بدون")} />
       {/* «ميلان ثلاثي»: the words turned in 3D with a perspective (one side nearer, or the top leaning back) */}

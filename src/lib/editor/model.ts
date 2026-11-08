@@ -44,6 +44,8 @@ export interface TextStyle {
   glow?: string | null;
   /** «تدرّج»: the words filled from `color` at the top to this colour at the bottom (null/absent = one colour) */
   grad?: string | null;
+  /** «تدرّج أفقي»: the gradient runs across the words along their reading direction instead of top to bottom ("h"); absent = "v" */
+  gradDir?: "h" | "v";
   /** «عمق ثلاثي»: the words extruded as a 3D block, 0 (flat) … 1 (deep), its sides a darker shade */
   depth?: number;
   /**
@@ -207,7 +209,8 @@ export const hasSoundFx = (c: { sound: SoundFx | null }) => !!c.sound && (c.soun
 /**
  * Entrances and exits («دخول» / «خروج») for texts and pictures. Letters never fly apart (that breaks the joined Arabic
  * letters): «كتابة» reveals from the right, «كلمة كلمة» pops whole words, «مطّ» uses the kashida, and «طباعة» writes the
- * words as a keyboard does, each letter joining the one before, with a cursor after the last.
+ * words as a keyboard does, each letter joining the one before, with a cursor after the last. «حرف حرف» raises Latin
+ * letters one by one out of a soft blur, and Arabic a whole word at a time.
  */
 export const ANIMS = {
   fade: { label: "ظهور", icon: "◐", ms: 400 },
@@ -231,6 +234,7 @@ export const ANIMS = {
   kashida: { label: "مطّ", icon: "〰️", ms: 650, only: "text" },
   decode: { label: "فك الشفرة", icon: "🔐", ms: 700, only: "text" },
   count: { label: "عدّاد", icon: "🔢", ms: 900, only: "text" },
+  letters: { label: "حرف حرف", icon: "🔠", ms: 900, only: "text" },
   kenburns: { label: "كين بيرنز", icon: "🎞️", ms: 0, only: "media" },
 } as const satisfies Record<string, { label: string; icon: string; ms: number; only?: "text" | "media" }>;
 export type AnimKind = keyof typeof ANIMS;
@@ -273,8 +277,13 @@ export interface AnimLook {
   decode: number | null;
   /** «عدّاد»: the numbers counted up 0–1 (null = their full value) */
   count: number | null;
+  /**
+   * «حرف حرف»: the share of the text risen into place 0–1 (null = all there). Latin letters rise one by one with a
+   * soft blur; Arabic rises a whole word at a time, so its joined letters never break apart.
+   */
+  letters: number | null;
 }
-export const STILL: AnimLook = { alpha: 1, dx: 0, dy: 0, scale: 1, rotate: 0, squash: 1, blur: 0, show: null, flash: 0, smear: 0, tear: 0, seed: 0, words: null, type: null, kashida: 0, decode: null, count: null };
+export const STILL: AnimLook = { alpha: 1, dx: 0, dy: 0, scale: 1, rotate: 0, squash: 1, blur: 0, show: null, flash: 0, smear: 0, tear: 0, seed: 0, words: null, type: null, kashida: 0, decode: null, count: null, letters: null };
 
 const outCubic = (p: number) => 1 - (1 - p) ** 3;
 const outExpo = (p: number) => (p >= 1 ? 1 : 1 - 2 ** (-10 * p));
@@ -374,6 +383,9 @@ function animStep(k: AnimKind, p: number, l: AnimLook, ms: number, entering: boo
       break;
     case "words":
       l.words = Math.min(l.words ?? 1, q);
+      break;
+    case "letters":
+      l.letters = Math.min(l.letters ?? 1, q);
       break;
     case "type":
       l.type = Math.min(l.type ?? 1, q);
@@ -869,6 +881,7 @@ function readText(v: unknown): TextStyle | null {
     highlight: o.highlight == null ? null : color(o.highlight, "#facc15"),
     ...(o.glow == null ? {} : { glow: color(o.glow, "#ffffff") }),
     ...(o.grad == null ? {} : { grad: color(o.grad, "#ffffff") }),
+    ...(o.gradDir === "h" ? { gradDir: "h" as const } : {}),
     ...(o.depth == null || !Number(o.depth) ? {} : { depth: num(o.depth, 0, 1, 0) }),
     ...(o.tiltY == null || !Number(o.tiltY) ? {} : { tiltY: Math.round(num(o.tiltY, -60, 60, 0)) }),
     ...(o.tiltX == null || !Number(o.tiltX) ? {} : { tiltX: Math.round(num(o.tiltX, -60, 60, 0)) }),
