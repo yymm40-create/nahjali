@@ -124,7 +124,7 @@ describe("the buttons and the galleries", () => {
     const c = catalogBlock();
     for (const t of CAROUSEL_TEMPLATES) expect(c).toContain(`- ${t.id} — ${t.name}`);
     for (const s of FILM_STYLES) expect(c).toContain(`- ${s.id} — ${s.name}`);
-    expect(FILM_STYLES).toHaveLength(101);
+    expect(FILM_STYLES).toHaveLength(102);
   });
 });
 
