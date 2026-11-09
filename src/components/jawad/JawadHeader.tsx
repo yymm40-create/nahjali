@@ -43,6 +43,10 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
             <Link href="/jawad-ai/course" className="jw-course-pill inline-flex h-9 min-h-9 items-center whitespace-nowrap rounded-full px-2.5 text-xs font-bold sm:px-3" title="الدورات: اشترِ دورة">
               🛒<span className="hidden sm:inline">&nbsp;الدورات</span>
             </Link>
+            {/* «طرق إبداعية»: full workflows with their prompts, for everyone */}
+            <Link href="/jawad-ai/creative" className="sr-pill inline-flex h-9 min-h-9 items-center whitespace-nowrap rounded-full px-2.5 text-xs font-bold sm:px-3" title="طرق إبداعية: الطريقة كاملة بالبرومبتات">
+              💡<span className="hidden sm:inline">&nbsp;طرق إبداعية</span>
+            </Link>
             {user && !preview && (
               <Link href="/jawad-ai/learn" className="sr-pill inline-flex h-9 min-h-9 items-center whitespace-nowrap rounded-full px-2.5 text-xs font-bold sm:px-3" title="دوراتي">
                 📚<span className="hidden sm:inline">&nbsp;دوراتي</span>
