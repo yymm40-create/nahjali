@@ -157,11 +157,17 @@ export default function BookPage() {
       </section>
 
       {book.pdfSize !== null && !book.hidden && (
-        // A plain link: the server checks the reader and answers with a short download link
-        <a href={`/api/mahdi/reading/books/${book.id}/pdf`} className="m-btn m-btn-ghost w-full" download>
-          <Icon name="arrowDown" size={18} /> {t.reading.pdf.download}
-          {book.pdfSize > 0 && <span className="m-num m-muted text-sm">({pdfSizeLabel(book.pdfSize)})</span>}
-        </a>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {/* Read inside the platform, page by page, with the reading timer */}
+          <Link href={`/mahdi/reading/read/${book.id}`} className="m-btn m-btn-primary w-full">
+            <Icon name="book" size={18} /> {t.reading.pdf.read}
+          </Link>
+          {/* A plain link: the server checks the reader and answers with a short download link */}
+          <a href={`/api/mahdi/reading/books/${book.id}/pdf`} className="m-btn m-btn-ghost w-full" download>
+            <Icon name="arrowDown" size={18} /> {t.reading.pdf.download}
+            {book.pdfSize > 0 && <span className="m-num m-muted text-sm">({pdfSizeLabel(book.pdfSize)})</span>}
+          </a>
+        </div>
       )}
       {book.pdfSize === null && book.addedByMe && !book.hidden && (
         <section className="m-card space-y-3 p-5" aria-label={t.reading.pdf.add}>

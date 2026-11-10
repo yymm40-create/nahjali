@@ -23,7 +23,10 @@ const timeNow = () => Date.now();
  */
 export default function SessionPage() {
   const router = useRouter();
-  const bookId = useSearchParams().get("book") ?? "";
+  const params = useSearchParams();
+  const bookId = params.get("book") ?? "";
+  // From the PDF reader: «إنهاء وحفظ الجلسة» at the page reached
+  const endAt = params.get("end");
   const { store, toast } = useMahdi();
   const { reading, progress, userId } = useReading();
   const entry = reading.library.find((e) => e.book.id === bookId);
@@ -51,11 +54,23 @@ export default function SessionPage() {
   // The saved timer is read after the first render (the server has no access to it)
   useEffect(() => {
     let live = true;
-    Promise.resolve().then(() => live && setTimerState(loadTimer(userId)));
+    Promise.resolve().then(() => {
+      if (!live) return;
+      const saved = loadTimer(userId);
+      if (saved && saved.bookId === bookId && endAt && /^\d{1,5}$/.test(endAt)) {
+        const paused = saved.runningSince ? { ...saved, accumulated: elapsedMs(saved), runningSince: null } : saved;
+        saveTimer(userId, paused);
+        setTimerState(paused);
+        setEnding(true);
+        setEndPage(endAt);
+      } else {
+        setTimerState(saved);
+      }
+    });
     return () => {
       live = false;
     };
-  }, [userId]);
+  }, [userId, bookId, endAt]);
 
   // The clock ticks while running
   useEffect(() => {
