@@ -18,7 +18,7 @@ export interface Attachment {
 /** A question of a batch, answered by pressing (or writing). */
 export interface Question {
   label: string;
-  kind: "choice" | "source" | "directions" | "fonts";
+  kind: "choice" | "source" | "directions" | "fonts" | "palettes";
   options: string[];
   multi: boolean;
 }
@@ -64,6 +64,10 @@ export interface PendingDesign {
    * was drawn from) — the program is patched instead of written from zero
    */
   base?: string;
+  /** the font of «قائمة الخطوط» the writing is set in (the person's pick, else كاظم's): «حيدرا ماكس» is held to it */
+  fontId?: string;
+  /** a palette of the 100 (Color Hunt) the person picked: it replaces the direction's colours */
+  paletteId?: string;
 }
 
 export interface Chat {
@@ -94,11 +98,11 @@ function readFiles(v: unknown): Attachment[] | undefined {
 export function readQuestions(v: unknown): Question[] | undefined {
   const out = objs(v)
     .map((q): Question => {
-      const kind = q.kind === "source" || q.kind === "directions" || q.kind === "fonts" ? q.kind : "choice";
-      const options = kind === "source" || kind === "fonts" ? [] : (Array.isArray(q.options) ? q.options : []).filter((o): o is string => typeof o === "string" && o.trim().length > 0).map((o) => o.trim().slice(0, 160)).slice(0, 8);
+      const kind = q.kind === "source" || q.kind === "directions" || q.kind === "fonts" || q.kind === "palettes" ? q.kind : "choice";
+      const options = kind === "source" || kind === "fonts" || kind === "palettes" ? [] : (Array.isArray(q.options) ? q.options : []).filter((o): o is string => typeof o === "string" && o.trim().length > 0).map((o) => o.trim().slice(0, 160)).slice(0, 8);
       return { label: str(q.label, 140).trim(), kind, options, multi: q.multi === true && kind === "choice" };
     })
-    .filter((q) => q.label && (q.kind === "source" || q.kind === "fonts" || q.options.length > 0))
+    .filter((q) => q.label && (q.kind === "source" || q.kind === "fonts" || q.kind === "palettes" || q.options.length > 0))
     .slice(0, 5);
   return out.length ? out : undefined;
 }
@@ -151,6 +155,8 @@ export function readPending(v: unknown): PendingDesign | null {
     ...(typeof p.picture === "string" && p.picture.trim() ? { picture: p.picture.trim().slice(0, 4000) } : {}),
     ...(typeof p.art === "string" && p.art ? { art: p.art } : {}),
     ...(typeof p.base === "string" && p.base ? { base: p.base.slice(0, 60) } : {}),
+    ...(typeof p.fontId === "string" && p.fontId ? { fontId: p.fontId.slice(0, 60) } : {}),
+    ...(typeof p.paletteId === "string" && p.paletteId ? { paletteId: p.paletteId.slice(0, 80) } : {}),
   };
 }
 

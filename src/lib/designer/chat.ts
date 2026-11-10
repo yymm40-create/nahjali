@@ -1,14 +1,18 @@
 // «المصمم الذكي» — one message in a conversation: the persona (the owner's edit or the template), the platform's
-// rules and tools, the fonts, the style library, the project's record, the person's attachments (pictures seen),
-// then «كاظم»'s structured answer: the reply, the questions, the record, and — on an explicit request — a design to
-// produce (the complete design, including its text by default, through جواد's desk) or a
-// picture to split into layers. Server only.
+// rules and tools, the talk and the edits (as «صانع المحتوى» has them), the fonts, the style library, the project's
+// record, the person's attachments (pictures seen), then «كاظم»'s structured answer: the reply, the questions, the
+// record, and — on an explicit request — a design for «حيدرا ماكس» to draw in code (its exact writing in the font
+// picked, its colours, the picture GPT Image 2 paints for it without writing) or a picture to split into layers.
+// Server only.
 
 import { remember, withNote } from "@/lib/robot-handoff";
 import { randomUUID } from "crypto";
 import { isLeader, callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { DESIGNER, DESIGN_ASPECTS, isDesignAspect, isDesignKind, type DesignAspect, type DesignKind } from "@config/designer";
 import { findKindStyle } from "@config/designer-library";
+import { DESIGNER_VERBOSE_RULES, lastMark } from "@config/designer-talk";
+import { findContentFont } from "@config/content-fonts";
+import { findPalette } from "@config/content-palettes";
 import { cleanHistory, getChat, lastDesignAt, readQuestions, saveChat, type Attachment, type PendingDesign, type Turn } from "./chats";
 import { attachmentsOf, uploadLinks } from "./files";
 import { layersNote, readLayers, sizeOf, type Design } from "./layers";
@@ -29,8 +33,8 @@ export const ANSWER_SCHEMA = {
         required: ["label", "kind", "options", "multi"],
         properties: {
           label: { type: "string", description: "نص السؤال القصير" },
-          kind: { type: "string", enum: ["choice", "source", "directions", "fonts"], description: "choice: خيارات نصية؛ source: بطاقات مصدر التصميم الأربع؛ directions: ٣ اتجاهات من المكتبة؛ fonts: معرض الخطوط" },
-          options: { type: "array", items: { type: "string" }, description: "إجابات قصيرة (٢–٦) لـ choice، و٣ أسطر لـ directions، وفارغة لـ source وfonts" },
+          kind: { type: "string", enum: ["choice", "source", "directions", "fonts", "palettes"], description: "choice: خيارات نصية؛ source: بطاقات مصدر التصميم الأربع؛ directions: ٣ اتجاهات من المكتبة؛ fonts: قائمة الخطوط؛ palettes: معرض الألوان" },
+          options: { type: "array", items: { type: "string" }, description: "إجابات قصيرة (٢–٥) لـ choice، و٣ أسطر لـ directions، وفارغة لـ source وfonts وpalettes" },
           multi: { type: "boolean", description: "يجوز اختيار أكثر من إجابة (choice فقط)" },
         },
       },
@@ -39,7 +43,7 @@ export const ANSWER_SCHEMA = {
     produce: {
       type: "object",
       additionalProperties: false,
-      required: ["on", "kind", "aspect", "picture", "picture_keep", "change", "artwork", "refs", "place", "layers"],
+      required: ["on", "kind", "aspect", "picture", "picture_keep", "change", "artwork", "font", "refs", "place", "layers"],
       description: "طلب التصميم، فقط بعد طلب صريح. on=false بدون إنتاج.",
       properties: {
         on: { type: "boolean" },
@@ -49,6 +53,7 @@ export const ANSWER_SCHEMA = {
         picture_keep: { type: "boolean", description: "true لإبقاء صورة التصميم السابق كما هي (لما يتغير الكلام أو الألوان أو الترتيب فقط)" },
         change: { type: "boolean", description: "true إذا كان هذا تعديلًا على التصميم السابق نفسه (كلمة، خطأ إملائي، سطر، لون، حجم، مكان، عنصر يُضاف أو يُشال) — يُعدَّل برنامج التصميم السابق بدل رسمه من الصفر؛ false لتصميم جديد (فكرة أو مناسبة أو قالب آخر)" },
         artwork: { type: "string", description: "توجيه التصميم كاملًا بالإنجليزية لـ «حيدرا ماكس»: الأسلوب، الألوان، الخطوط، التكوين، مكان كل كلمة وكل صورة" },
+        font: { type: "string", description: "معرّف الخط من «قائمة الخطوط» (آخر [خط:…] اختاره العميل، أو اختيارك إن كان auto أو لم يختر)" },
         refs: { type: "array", items: { type: "string" }, description: "معرّفات (id) صور العميل المرفقة المسلَّمة مرجعًا للرسم، أو فارغة" },
         place: { type: "array", items: { type: "string" }, description: "معرّفات (id) صور العميل التي تُوضع داخل التصميم كما هي (صورة الخطيب أو الرادود أو المولود أو الشعار) — مع حيدرا ماكس تنحط الصورة نفسها بلا إعادة رسم للوجه؛ أو فارغة" },
         layers: {
@@ -89,7 +94,7 @@ interface Answer {
   reply: string;
   questions: unknown;
   record: string;
-  produce: { on: boolean; kind: string; aspect: string; picture?: string; picture_keep?: boolean; change?: boolean; artwork: string; refs: string[]; place?: string[]; layers: unknown[] };
+  produce: { on: boolean; kind: string; aspect: string; picture?: string; picture_keep?: boolean; change?: boolean; artwork: string; font?: string; refs: string[]; place?: string[]; layers: unknown[] };
   split: { on: boolean; ref: string };
 }
 
@@ -106,7 +111,20 @@ export interface Reply {
   spentHalalas: number;
 }
 
-const KIND_AR = { image: "صورة", video: "فيديو", audio: "صوت" , doc: "ملف PDF" } as const;
+const KIND_AR = { image: "صورة", video: "فيديو", audio: "صوت", doc: "ملف PDF" } as const;
+
+/** The font the writing is set in: the person's last pick of «قائمة الخطوط», else كاظم's (both checked), else none. */
+export function fontFor(userTexts: string[], his: unknown): string | undefined {
+  const picked = lastMark(userTexts, "خط");
+  if (picked && picked !== "auto" && findContentFont(picked)) return picked;
+  return typeof his === "string" && findContentFont(his) ? his : undefined;
+}
+
+/** The palette of the 100 the person picked last (none: the direction's colours, or كاظم's). */
+export function paletteFor(userTexts: string[]): string | undefined {
+  const picked = lastMark(userTexts, "ألوان");
+  return picked && picked !== "auto" && findPalette(picked) ? picked : undefined;
+}
 
 /** What an answer of his looked like to the person beyond its words: the buttons he offered and the design's state. */
 function assistantNote(t: Turn): string {
@@ -139,13 +157,19 @@ function toClaudeTurn(t: Turn, links: Map<string, string>): ClaudeTurn {
   return { role: t.role, content: parts };
 }
 
-/** The person says something in a conversation (a new one when `chatId` is null). */
-export async function say(userId: string, chatId: string | null, message: string, attachmentIds: unknown, email: string | null = null): Promise<Reply> {
+/**
+ * The person says something in a conversation (a new one when `chatId` is null). `verbose`: the longer talk they asked
+ * for (the default is short, to cost less). `from`: they edited an old message of theirs (its index): the talk goes on
+ * from there — what came after it is dropped, and so are the design waiting to be drawn and the record kept for it.
+ */
+export async function say(userId: string, chatId: string | null, message: string, attachmentIds: unknown, email: string | null = null, opts: { verbose?: boolean; from?: number } = {}): Promise<Reply> {
   const said = message.trim().slice(0, DESIGNER.messageMax);
   const { list: files } = await attachmentsOf(userId, attachmentIds);
   if (!said && !files.length) throw new Error("empty message");
-  const before = chatId ? await getChat(userId, chatId) : null;
-  if (chatId && !before) throw new Error("chat not found");
+  const full = chatId ? await getChat(userId, chatId) : null;
+  if (chatId && !full) throw new Error("chat not found");
+  const cut = full && Number.isInteger(opts.from) && opts.from! >= 0 && opts.from! < full.messages.length && full.messages[opts.from!].role === "user" ? opts.from! : -1;
+  const before = full && cut >= 0 ? { ...full, messages: full.messages.slice(0, cut), record: "", pending: null } : full;
   const history = cleanHistory([...(before?.messages ?? []), { role: "user", text: said || "(صور مرفقة)", files: files.length ? files : undefined }]);
   // a long conversation: his own handoff of everything before, then the latest turns (lib/robot-handoff)
   const mem = await remember({ key: `designer:${chatId ?? ""}`, userId, robot: "كاظم (المصمم الذكي)", turns: history, window: DESIGNER.historyTurns });
@@ -155,7 +179,7 @@ export async function say(userId: string, chatId: string | null, message: string
   const persona = await getPersona();
   // the same system every message (cached); the record rides with this turn
   const system = systemText(persona.text);
-  const turnNote = turnText([], before?.record ?? "");
+  const turnNote = turnText(opts.verbose ? [DESIGNER_VERBOSE_RULES] : [], before?.record ?? "");
   const r = await callClaudeJson<Answer>({ system, turnNote, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: DESIGNER.maxTokens, effort: "medium", leader: isLeader(email) });
   const a = r.data;
   let usd = claudeCost(r.usage) + mem.usd;
@@ -194,7 +218,10 @@ export async function say(userId: string, chatId: string | null, message: string
     } else {
       const design: Design = { id: randomUUID().slice(0, 8), aspect, ...sizeOf(aspect), artwork: keep, textMode, layers: [], state: "drawing" };
       reply.design = design;
-      pending = { id: design.id, at, kind, aspect, textMode, artwork, refs, layers, keep, maker, ...(place.length ? { place } : {}), ...(picture ? { picture } : keptArt ? { art: keptArt } : {}), ...(base ? { base } : {}) };
+      const said = history.filter((t) => t.role === "user").map((t) => t.text);
+      const fontId = fontFor(said, a.produce.font);
+      const paletteId = paletteFor(said);
+      pending = { id: design.id, at, kind, aspect, textMode, artwork, refs, layers, keep, maker, ...(place.length ? { place } : {}), ...(picture ? { picture } : keptArt ? { art: keptArt } : {}), ...(base ? { base } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}) };
     }
   }
 
@@ -206,10 +233,12 @@ export async function say(userId: string, chatId: string | null, message: string
     const prev = prevAt >= 0 ? history[prevAt].design : undefined;
     // the split makes its own design: the original picture as the artwork, the cut-out as a layer (filled by the split step)
     const aspect: DesignAspect = prev?.aspect ?? "1:1";
-    reply.design = { id: randomUUID().slice(0, 8), aspect, ...sizeOf(aspect), artwork: null, layers: [], state: "drawing" };
+    reply.design = { id: randomUUID().slice(0, 8), aspect, ...sizeOf(aspect), artwork: null, layers: [], state: "drawing", splitOf: split };
   }
 
-  const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : undefined, pending, addUsd: usd });
+  // an edited old message starts the record again (what he decided after it is gone with the turns that said it)
+  const record = a.record?.trim() ? a.record.trim() : cut >= 0 ? "" : undefined;
+  const id = await saveChat(userId, chatId, { messages, record, pending, addUsd: usd });
   usd = Math.round(usd * 10000) / 10000;
   return { chatId: id, text: reply.text, questions: questions ?? null, usd, pending: !!pending, split, spentHalalas: before?.spentHalalas ?? 0 };
 }
