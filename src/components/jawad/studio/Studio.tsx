@@ -36,6 +36,7 @@ import WorksPanel from "./WorksPanel";
 import StylePicker from "./StylePicker";
 import MorePrompts from "./MorePrompts";
 import { findStyle } from "@config/film-styles";
+import { refKindOfTag, takeCreativeUse } from "@/lib/jawad/creative-use";
 import { refMeta, type Draft, type RefItem, type StudioProps, type UploadView } from "./types";
 import Coined from "@/components/Coined";
 import { useAtCost } from "@/components/usePerks";
@@ -131,7 +132,9 @@ function withNames(refs: RefItem[]): RefItem[] {
     return { ...r, name };
   });
 }
-const nextName = (kind: RefKind, refs: RefItem[]) => defaultRefName(kind, refs.map((r) => r.name));
+/** The next reference's name: a name the handed-over prompt is waiting for (same kind, not taken yet), else image1, image2… */
+const nextName = (kind: RefKind, refs: RefItem[], want?: { name: string; kind: RefKind }[]) =>
+  want?.find((w) => w.kind === kind && !refs.some((r) => sameName(r.name, w.name)))?.name ?? defaultRefName(kind, refs.map((r) => r.name));
 
 /** Roles for a reference style: frames → the first two images become first/last frame; otherwise all references. */
 function withRoles(refs: RefItem[], style: RefStyle): RefItem[] {
@@ -215,6 +218,41 @@ export default function Studio({ section, studioSections, generators, directorGe
     if (!saved && unified) saved = readDraft(draftKey(user?.id, section.id));
     const idea = new URLSearchParams(window.location.search).get("idea");
     if (idea) saved = { ...(saved ?? {}), prompt: idea.slice(0, 500) };
+    // «جرّبه في الاستوديو» from «طرق إبداعية»: the same prompt, generator, settings and style; the person's own references
+    const handed = new URLSearchParams(window.location.search).get("use") === "1" ? takeCreativeUse() : null;
+    if (handed) {
+      const gid = generators.some((g) => g.id === handed.generatorId) ? handed.generatorId : null;
+      const gdef = gid ? generatorById(gid) : undefined;
+      const base = saved ?? {};
+      const settingsOk = gdef ? Object.fromEntries(Object.entries(handed.settings ?? {}).filter(([k]) => gdef.options.some((o) => o.key === k))) : {};
+      saved = {
+        ...base,
+        ...(gid ? { generatorId: gid } : {}),
+        prompt: handed.prompt,
+        settings: gid ? { ...(base.settings ?? {}), [gid]: { ...(base.settings?.[gid] ?? {}), ...settingsOk } as Settings } : base.settings,
+        refStyle: gid && handed.refStyle && gdef?.modes.some((m) => m.refStyle === handed.refStyle) ? { ...(base.refStyle ?? {}), [gid]: handed.refStyle } : base.refStyle,
+        styleId: handed.styleId ?? "",
+        refs: [],
+        extra: [],
+        mainRefs: null,
+        wantNames: handed.refs.flatMap((r) => {
+          const kind = refKindOfTag(r.name);
+          return kind ? [{ name: r.name, kind }] : [];
+        }),
+      };
+      const list = handed.refs.map((r) => `@${r.name} (${r.what})`).join("، ");
+      const gname = gid ? generators.find((g) => g.id === gid)?.name : null;
+      setNotice(
+        `جهّزنا برومبت «${handed.label}» من طرق إبداعية` +
+          (gname ? ` على ${gname} بنفس الإعدادات.` : `، بس مولّده غير متاح لحسابك الحين فاختر مولّد.`) +
+          (list ? ` أضف مراجعك أنت بالترتيب: ${list}، وبتاخذ هالأسماء تلقائيًا.` : " عدّل اللي تبيه واضغط «توليد».")
+      );
+      try {
+        window.history.replaceState(null, "", window.location.pathname);
+      } catch {
+        // the address keeps ?use=1; the hand-off was already taken, so a reload doesn't apply it again
+      }
+    }
     // written before signing in (under "anon"): it is this person's draft, so it follows them into their account
     if (user && !saved?.prompt && !saved?.refs?.length) {
       const anon = readDraft(draftKey(undefined, unified ? "studio" : section.id)) ?? (unified ? readDraft(draftKey(undefined, section.id)) : null);
@@ -239,6 +277,7 @@ export default function Studio({ section, studioSections, generators, directorGe
         styleId: typeof saved.styleId === "string" && findStyle(saved.styleId) ? saved.styleId : "",
         extra: Array.isArray(saved.extra) ? saved.extra.slice(0, 2) : [],
         mainRefs: Array.isArray(saved.mainRefs) ? saved.mainRefs : null,
+        wantNames: Array.isArray(saved.wantNames) ? saved.wantNames : undefined,
       }));
       // Fresh links (and existence) of the kept references
       const ids = (saved.refs ?? []).flatMap((r) => (r.uploadId ? [r.uploadId] : []));
@@ -371,7 +410,7 @@ export default function Studio({ section, studioSections, generators, directorGe
     setDraft((d) => {
       const refs = [...d.refs];
       for (const { item } of added) {
-        refs.push({ ...item, name: nextName(kind, refs), role: refStyle === "frames" && kind === "image" ? role ?? nextFrameRole(refs) : "reference" });
+        refs.push({ ...item, name: nextName(kind, refs, d.wantNames), role: refStyle === "frames" && kind === "image" ? role ?? nextFrameRole(refs) : "reference" });
       }
       return { ...d, refs };
     });
@@ -777,7 +816,7 @@ export default function Studio({ section, studioSections, generators, directorGe
   async function addFromWork(source: WorkSource, role?: RefRole): Promise<string | null> {
     const { ok, body } = await postJson<{ upload: UploadView }>("/api/jawad/uploads/from-output", source);
     if (!ok) return body.error ?? "تعذّر إضافته كمرجع.";
-    setDraft((d) => ({ ...d, refs: [...d.refs, fromView(body.upload, refStyle === "frames" && body.upload.kind === "image" ? role ?? nextFrameRole(d.refs) : "reference", nextName(body.upload.kind, d.refs))] }));
+    setDraft((d) => ({ ...d, refs: [...d.refs, fromView(body.upload, refStyle === "frames" && body.upload.kind === "image" ? role ?? nextFrameRole(d.refs) : "reference", nextName(body.upload.kind, d.refs, d.wantNames))] }));
     return null;
   }
 
@@ -1133,7 +1172,7 @@ export default function Studio({ section, studioSections, generators, directorGe
           results={composerResults}
           initial={composer}
           onKeep={(v) => {
-            setDraft((d) => ({ ...d, refs: [...d.refs, fromView(v, "reference", nextName("image", d.refs))] }));
+            setDraft((d) => ({ ...d, refs: [...d.refs, fromView(v, "reference", nextName("image", d.refs, d.wantNames))] }));
             setNotice("أضفت الصورة المركّبة كمرجع.");
           }}
         />

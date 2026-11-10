@@ -80,6 +80,8 @@ export interface Draft {
   extra?: ExtraPrompt[];
   /** the references of the first prompt when there are more (names; null = all of them) */
   mainRefs?: string[] | null;
+  /** «جرّبه في الاستوديو»: the names the handed-over prompt mentions (@img1…), given to the next references of that kind */
+  wantNames?: { name: string; kind: RefKind }[];
 }
 
 export interface ExtraPrompt {

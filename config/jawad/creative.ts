@@ -17,7 +17,42 @@ export type CreativePrompt = {
   refs?: { tag: string; name: string; src?: string }[];
   note?: string;
   text: string;
+  /** «جرّبه في الاستوديو»: the generator and settings it was made with (inferred from `tool`/`settings` when absent; null = no button) */
+  use?: PromptUse | null;
 };
+
+/** What the Creative Studio is opened with from a method: the same generator, settings and style; the person adds their own references. */
+export type PromptUse = {
+  generatorId: string;
+  settings?: Record<string, string | number | boolean>;
+  /** a style from the studio's style map (config/film-styles) */
+  styleId?: string;
+  refStyle?: "references" | "frames" | "none";
+};
+
+const DIGITS = (t: string) => t.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
+
+/** The studio set-up of a prompt: its own `use`, else read from the generator name and the settings line. */
+export function promptUse(p: CreativePrompt): PromptUse | null {
+  if (p.use !== undefined) return p.use;
+  const tool = p.tool;
+  const set = DIGITS(p.settings ?? "");
+  const ratio = set.match(/\b(16:9|9:16|1:1|4:3|3:4|3:2|2:3)\b/)?.[1];
+  const hasRefs = Boolean(p.refs?.some((r) => r.tag.startsWith("@")));
+  if (/GPT Image 2(?!\.\d)/.test(tool)) {
+    const q = /متوسطة/.test(tool + set) ? "medium" : /عالية/.test(tool + set) ? "high" : undefined;
+    return { generatorId: "openai-gpt-image-2", settings: { ...(ratio ? { aspect: ratio } : {}), ...(q ? { quality: q } : {}) } };
+  }
+  const video = /Wan 3\.0/.test(tool) ? "wan-3-0" : /Seedance 2\.0/.test(tool) ? "byteplus-seedance-2-0" : null;
+  if (!video) return null;
+  const sec = set.match(/(\d+)\s*ث/)?.[1];
+  const res = set.match(/\b(480p|720p|1080p)\b/)?.[1];
+  return {
+    generatorId: video,
+    settings: { ...(ratio ? { ratio } : {}), ...(res ? { resolution: res } : {}), ...(sec ? { duration: Number(sec) } : {}) },
+    ...(hasRefs ? { refStyle: "references" as const } : {}),
+  };
+}
 
 export type CreativeStep = {
   title: string;
@@ -593,6 +628,115 @@ const GOLDEN_BADGE_2: CreativeMethod = {
   ],
 };
 
-export const CREATIVE_METHODS: CreativeMethod[] = [GOLDEN_BADGE_2, GOLDEN_BADGE];
+
+// ───────── «من كلاود إلى الجواد»: Claude talks the idea through, then works the Creative Studio itself in the browser ─────────
+const M3 = `${CREATIVE_BASE}/claude-carpet`;
+const img3 = (f: string) => `${M3}/${f}`;
+const SHEET_USE: PromptUse = { generatorId: "openai-gpt-image-2", settings: { aspect: "16:9", resolution: "hi", quality: "high" }, styleId: "football-drift" };
+const CARPET_SHEETS = [
+  { tag: "@image1", name: "شيت الشخصية", src: img3("sheet-character.webp") },
+  { tag: "@image2", name: "شيت المكان", src: img3("sheet-place.webp") },
+  { tag: "@image3", name: "شيت الزولية", src: img3("sheet-carpet.webp") },
+];
+
+const CLAUDE_CARPET: CreativeMethod = {
+  slug: "claude-carpet",
+  title: "خل كلاود يسوي لك الصور والفيديو بنفسه",
+  kicker: "من كلاود إلى الجواد",
+  summary:
+    "تسولف مع كلاود عن فكرتك، يطوّر القصة ويختار الستايل ويكتب البرومبتات، وبعدها تعطيه رابط الجواد فيدخل الاستوديو الإبداعي من المتصفح ويسوي الشيتات والفيديو ويحمّلها لك. المثال: ولد متعلق بغصن على جبل، الغصن ينكسر، وتلقفه زولية سحرية وتطير فيه. هنا السير كامل وكل برومبت حرفيًا.",
+  cover: img3("cover.webp"),
+  film: { src: img3("film.mp4"), poster: img3("film-poster.webp") },
+  facts: [
+    { k: "المساعد", v: "Claude في المتصفح (أو ChatGPT)" },
+    { k: "الستايل", v: "كورة بيكسار حديث" },
+    { k: "الشيتات", v: "GPT Image 2 · ٣ برومبتات بتوليدة وحدة" },
+    { k: "الفيديو", v: "Wan 3.0 · ٢٠ ث · 480p · 9:16" },
+    { k: "المراجع", v: "الشيتات الثلاث @image1 إلى @image3" },
+    { k: "المكان", v: "الاستوديو الإبداعي بس" },
+  ],
+  steps: [
+    {
+      title: "افتح كلاود وسولف معاه عن فكرتك",
+      body: [
+        "افتح Claude (أو ChatGPT) من المتصفح في جهازك، واكتب له فكرتك بكلامك العادي. إحنا قلنا له: «أبي طفل متعلق بجذع شجرة على منحدر جبل كبير، والغصن على وشك الانكسار ووجهه خايف، فينكسر الغصن ويطيح، وهو يطيح تمر عليه زولية سحرية فيطيح عليها في الهوا وتطير فيه ويفرح».",
+        "وطلبنا منه بنفس الرسالة: شيت للشخصية بثلاث أقسام (الملابس، والولد من قدام ميديم كلوز، والولد من ورا)، وشيت للمكان بدون شخصيات، وشيت للزولية، وبعدها فيديو واحد ٢٠ ثانية بـ Wan 3.0.",
+      ],
+      table: {
+        head: ["الثواني", "اللي يصير"],
+        rows: [
+          ["٠–٦", "التعلّق والخوف: الغصن يطقطق والشق يكبر"],
+          ["٦–٩", "الغصن ينكسر والولد يطيح ويصرخ"],
+          ["٩–١٣", "الزولية تنقضّ من الغروب وتلقفه في الهوا"],
+          ["١٣–٢٠", "تطير فيه بعيد عن الجبل، يرتخي ويضحك"],
+        ],
+      },
+      tip: "خل كلاود يطوّر القصة ويقسّمها على الثواني قبل أي توليد. القصة الواضحة تطلع برومبتات واضحة.",
+    },
+    {
+      title: "عطه رابط الجواد وخله يدخل بنفسه",
+      body: [
+        "عطه الرابط aljawadai.app/jawad-ai/images وقل له: «ادخل الاستوديو الإبداعي وسوّها لي». كلاود يفتح المتصفح، ويختار المولّد والإعدادات، ويكتب البرومبت، ويضغط توليد، وينزّل الملفات على جهازك.",
+        "انتبه: كل الشغل داخل «الاستوديو الإبداعي» بس، مو في أقسام ثانية.",
+      ],
+      tip: "أول مرة كروم بيسألك يسمح بتنزيل أكثر من ملف من الموقع: وافق، وإلا بينزل ملف واحد بس.",
+    },
+    {
+      title: "الستايل: كورة بيكسار حديث",
+      body: [
+        "جرّبنا ستايلين من «خريطة الستايلات» في الاستوديو: «بيكسار الطبيعية» و«كورة بيكسار حديث»، واعتمدنا الثاني لأن ألوانه أقوى وتعابيره أوضح.",
+        "نفس الستايل يتحط مع الشيتات ومع الفيديو، عشان الشخصية والمكان والزولية يطلعون بنفس الشكل.",
+      ],
+    },
+    {
+      title: "الشيتات الثلاث في توليدة وحدة",
+      body: [
+        "GPT Image 2، نسبة ١٦:٩، دقة عالية، جودة عالية، والستايل «كورة بيكسار حديث». حطينا البرومبتات الثلاث مع بعض بزر «أضف برومبت ثاني» و«أضف برومبت ثالث»، فطلعت الشيتات الثلاث بتوليدة وحدة.",
+      ],
+      images: [
+        { src: img3("sheet-character.webp"), alt: "شيت الشخصية: الملابس، من قدام، من ورا", wide: true },
+        { src: img3("sheet-place.webp"), alt: "شيت المكان بدون شخصيات", wide: true },
+        { src: img3("sheet-carpet.webp"), alt: "شيت الزولية", wide: true },
+      ],
+      prompts: [
+        { label: "شيت الشخصية", tool: "GPT Image 2", settings: "١٦:٩ · دقة عالية · جودة عالية", use: SHEET_USE, text: "Character sheet in three panels side by side on a clean warm off-white background, one consistent character design. The character: a slim 8-9-year-old boy with warm wheat-tan skin, big brown eyes and short black hair, wearing a light green t-shirt with a small simple graphic on the chest, light blue jeans and grey sneakers. Panel 1 (left): the outfit alone, laid out neatly with no person - the light green t-shirt, the light blue jeans and the grey sneakers. Panel 2 (middle): the boy from the front, medium close-up from the chest up, wearing the outfit, calm natural expression, looking at the camera. Panel 3 (right): the boy full body seen from behind, same hair and outfit. Soft even studio light, the same proportions in every panel. No text, no labels, no logos." },
+        { label: "شيت المكان", tool: "GPT Image 2", settings: "١٦:٩ · دقة عالية · جودة عالية", use: SHEET_USE, text: "Environment design sheet with NO people, NO characters and NO animals anywhere. A towering rocky mountain cliff with scattered green shrubs at golden sunset. From a crack in the rock grows a small twisted tree whose one long branch stretches out over a deep drop. Far below lies a green valley with a winding river glinting with the sunset light, thin clouds drifting at mid height. Three panels: a wide establishing shot of the whole cliff, the tree and the valley; a medium shot of the twisted tree and its branch reaching over the void; the view looking straight down from the branch to the valley and the shining river. Warm golden light, cinematic depth and atmosphere, the same place in every panel. No text, no labels." },
+        { label: "شيت الزولية", tool: "GPT Image 2", settings: "١٦:٩ · دقة عالية · جودة عالية", use: SHEET_USE, text: "Prop design sheet of a magic flying carpet, with NO people and NO characters. A medium-size traditional red carpet, big enough for a child to sit and lie on, covered in ornate eastern patterns whose lines carry a soft golden glow, with golden tassels along both short ends. Four views on a clean warm off-white background: the top view laid flat showing the full pattern; a three-quarter view floating in the air with a gentle wave rippling through the fabric; a low side view showing its thickness and the swinging tassels; a flying view with the edges curling slightly and a soft golden light trail behind it. The same carpet in every view. No text, no labels." },
+      ],
+    },
+    {
+      title: "الفيديو: ٢٠ ثانية بـ Wan 3.0",
+      body: [
+        "اختار «فيديو» ثم Wan 3.0 بوضع «مراجع متعددة»، وأضف الشيتات الثلاث بالترتيب: @image1 الشخصية، @image2 المكان، @image3 الزولية. الإعدادات: ٢٠ ثانية، 480p، ٩:١٦، والصوت المتزامن شغّال.",
+        "البرومبت مكتوب بطريقة المخرج: كل قطع يغيّر حجم اللقطة وحركة الكاميرا، وفيه انسرتات قصيرة (الأصابع تزلق، شق الغصن، العيون، الشراشيب). نسخة إنجليزية ونسخة صينية بنفس المعنى في برومبت واحد.",
+      ],
+      prompts: [
+        {
+          label: "الفيديو",
+          tool: "Wan 3.0",
+          settings: "٢٠ ث · 480p · 9:16 · صوت متزامن",
+          refs: CARPET_SHEETS,
+          use: { generatorId: "wan-3-0", settings: { ratio: "9:16", resolution: "480p", duration: 20, audio: true }, styleId: "football-drift", refStyle: "references" },
+          note: "أول نسخة كانت لقطة وحدة طويلة وما عجبتنا. هذي النسخة المعتمدة: كلوزات وانسرتات أكثر.",
+          text: "[{\"lang\": \"en\", \"prompt\": \"@image1 = the figure in the light green t-shirt (face, spiky black hair, green t-shirt with the mountain-and-sun graphic, light blue jeans, grey sneakers). @image2 = the cliff, the twisted tree and the valley. @image3 = the red magic carpet with golden tassels. Style & Mood: modern stylized 3D animation matching the references, slightly anime-influenced proportions, bold saturated colour. Golden-hour backlight, amber sun low on the horizon, orange rim light on rock, hair and shoulders, warm haze over the valley. 24mm wide for the drop, 85mm for faces. Tension, then a fast release, then open joy. Dynamic Description: handheld close-up, the figure from @image1 hangs from the long twisted branch of @image2, jaw clenched, nostrils flaring, chest heaving, legs swinging over the drop. Insert, static extreme close-up of the figure's fingers slipping on the bark, knuckles pale. Insert, handheld close-up of the branch where it meets the trunk: the bark splits, splinters lifting. Cut to a low-angle wide crane rising slowly: the figure small against the sheer cliff, the branch dipping, the sun behind. Insert, static extreme close-up of the figure's eyes widening, locked on the split. The branch snaps. Hard cut to a stabilized vertical tracking medium shot falling with the figure: hair and t-shirt whipping upward, arms flailing, speed ramp into the drop. Insert, handheld close-up of the figure's grey sneakers kicking at empty air, the river far below. Cut to an aerial extreme wide: the red carpet of @image3 streaks in from the sunset side of the sky, a golden light trail behind it, diving under the falling figure. Insert, handheld close-up of the carpet's golden tassels whipping as it banks. Cut to a stabilized orbit, medium close-up: the figure lands on their back on the carpet, the fabric sags and its edges curl up around them like a hug. Insert, static extreme close-up of the figure's hands gripping the carpet's edge, trembling. Cut to a handheld close-up of the figure's face: eyes wide, breath shaking, then the corners of the mouth lift and they burst out laughing, head tipping back. Final aerial pull-back, extreme wide: the carpet climbs away from the cliff over the green valley toward the low sun, golden trail behind it, the figure sitting up with both arms raised. Static Description: sheer cliff of orange-brown rock with green shrubs; a small gnarled tree with one long branch over the void; far below a green valley with a river shining gold; soft clouds under the cliff line. No text on screen. Audio: no words, no music. Branch creaking, bark cracking, fast breathing, a sharp snap, one scream over rising wind, a soft thump on the catch, tassels fluttering, then loud happy laughter.\"}, {\"lang\": \"zh\", \"prompt\": \"@image1\u4e3a\u8eab\u7a7f\u6d45\u7effT\u6064\u7684\u8eab\u5f71\uff08\u9762\u5bb9\u3001\u84ec\u4e71\u9ed1\u53d1\u3001\u5370\u5c71\u5ce6\u592a\u9633\u56fe\u6848\u7684\u7effT\u6064\u3001\u6d45\u84dd\u725b\u4ed4\u88e4\u3001\u7070\u8272\u8fd0\u52a8\u978b\uff09\u3002@image2\u4e3a\u60ac\u5d16\u3001\u626d\u66f2\u5c0f\u6811\u4e0e\u5c71\u8c37\u3002@image3\u4e3a\u91d1\u8272\u6d41\u82cf\u7684\u7ea2\u8272\u9b54\u6bef\u3002\u98ce\u683c\u4e0e\u6c1b\u56f4\uff1a\u4e0e\u53c2\u8003\u56fe\u4e00\u81f4\u7684\u73b0\u4ee3\u98ce\u683c\u5316\u4e09\u7ef4\u52a8\u753b\uff0c\u7565\u5e26\u65e5\u6f2b\u6bd4\u4f8b\uff0c\u8272\u5f69\u9971\u6ee1\u6d53\u70c8\u3002\u9ec4\u91d1\u65f6\u523b\u9006\u5149\uff0c\u7425\u73c0\u8272\u5915\u9633\u4f4e\u5782\uff0c\u6a59\u8272\u8f6e\u5ed3\u5149\u52fe\u52d2\u5ca9\u9762\u3001\u53d1\u68a2\u4e0e\u80a9\u5934\uff0c\u5c71\u8c37\u6696\u8272\u8584\u972d\u300224mm\u5e7f\u89d2\u62cd\u6df1\u6e0a\uff0c85mm\u62cd\u9762\u90e8\u3002\u5148\u7d27\u7ef7\uff0c\u518d\u6025\u5760\u91ca\u653e\uff0c\u7ec8\u81f3\u5f00\u9614\u559c\u60a6\u3002\u52a8\u6001\u63cf\u8ff0\uff1a\u624b\u6301\u7279\u5199\uff0c@image1\u4e2d\u7684\u8eab\u5f71\u60ac\u6302\u5728@image2\u90a3\u6839\u626d\u66f2\u957f\u679d\u4e0a\uff0c\u4e0b\u988c\u54ac\u7d27\uff0c\u9f3b\u7ffc\u7fd5\u5f20\uff0c\u80f8\u53e3\u5267\u70c8\u8d77\u4f0f\uff0c\u53cc\u817f\u5728\u6df1\u6e0a\u4e0a\u65b9\u6643\u8361\u3002\u63d2\u5165\u56fa\u5b9a\u6781\u7279\u5199\uff1a\u8eab\u5f71\u624b\u6307\u5728\u6811\u76ae\u4e0a\u6253\u6ed1\uff0c\u6307\u8282\u53d1\u767d\u3002\u63d2\u5165\u624b\u6301\u7279\u5199\uff1a\u6811\u679d\u4e0e\u6811\u5e72\u8fde\u63a5\u5904\u6811\u76ae\u5d29\u88c2\uff0c\u6728\u5c51\u7fd8\u8d77\u3002\u5207\u81f3\u4f4e\u89d2\u5ea6\u5e7f\u89d2\u6447\u81c2\u7f13\u5347\uff1a\u8eab\u5f71\u5728\u9661\u5ced\u5d16\u58c1\u524d\u663e\u5f97\u6e3a\u5c0f\uff0c\u6811\u679d\u4e0b\u6c89\uff0c\u5915\u9633\u5728\u540e\u3002\u63d2\u5165\u56fa\u5b9a\u6781\u7279\u5199\uff1a\u8eab\u5f71\u53cc\u773c\u9aa4\u7136\u7741\u5927\uff0c\u6b7b\u76ef\u88c2\u53e3\u3002\u6811\u679d\u65ad\u88c2\u3002\u786c\u5207\u81f3\u7a33\u5b9a\u5782\u76f4\u8ddf\u62cd\u4e2d\u666f\uff0c\u968f\u8eab\u5f71\u4e00\u540c\u4e0b\u5760\uff1a\u5934\u53d1\u4e0eT\u6064\u88ab\u98ce\u6380\u8d77\uff0c\u56db\u80a2\u4e71\u821e\uff0c\u53d8\u901f\u51b2\u5165\u5760\u843d\u3002\u63d2\u5165\u624b\u6301\u7279\u5199\uff1a\u8eab\u5f71\u7684\u7070\u8272\u8fd0\u52a8\u978b\u5728\u7a7a\u4e2d\u4e71\u8e6c\uff0c\u6cb3\u6d41\u8fdc\u5728\u4e0b\u65b9\u3002\u5207\u81f3\u822a\u62cd\u6781\u8fdc\u666f\uff1a@image3\u7684\u7ea2\u8272\u9b54\u6bef\u4ece\u843d\u65e5\u4e00\u4fa7\u75be\u63a0\u800c\u6765\uff0c\u62d6\u51fa\u91d1\u8272\u5149\u8ff9\uff0c\u4fef\u51b2\u81f3\u4e0b\u5760\u8eab\u5f71\u4e0b\u65b9\u3002\u63d2\u5165\u624b\u6301\u7279\u5199\uff1a\u9b54\u6bef\u4fa7\u8f6c\u65f6\u91d1\u8272\u6d41\u82cf\u731b\u70c8\u7529\u52a8\u3002\u5207\u81f3\u7a33\u5b9a\u73af\u7ed5\u4e2d\u8fd1\u666f\uff1a\u8eab\u5f71\u4ef0\u9762\u843d\u5728\u6bef\u4e0a\uff0c\u6bef\u9762\u4e0b\u9677\uff0c\u56db\u8fb9\u5377\u8d77\u5982\u62e5\u62b1\u822c\u5c06\u5176\u5305\u4f4f\u3002\u63d2\u5165\u56fa\u5b9a\u6781\u7279\u5199\uff1a\u8eab\u5f71\u53cc\u624b\u7d27\u6293\u6bef\u8fb9\uff0c\u5fae\u5fae\u53d1\u6296\u3002\u5207\u81f3\u624b\u6301\u7279\u5199\u8eab\u5f71\u9762\u90e8\uff1a\u53cc\u773c\u5706\u7741\uff0c\u547c\u5438\u98a4\u6296\uff0c\u968f\u540e\u5634\u89d2\u4e0a\u626c\uff0c\u4ef0\u5934\u653e\u58f0\u5927\u7b11\u3002\u6700\u540e\u822a\u62cd\u540e\u62c9\u6781\u8fdc\u666f\uff1a\u9b54\u6bef\u79bb\u5f00\u60ac\u5d16\uff0c\u8d8a\u8fc7\u7eff\u8272\u5c71\u8c37\u98de\u5411\u4f4e\u5782\u5915\u9633\uff0c\u8eab\u540e\u91d1\u8272\u5149\u8ff9\uff0c\u8eab\u5f71\u5750\u8d77\u9ad8\u4e3e\u53cc\u81c2\u3002\u9759\u6001\u63cf\u8ff0\uff1a\u6a59\u8910\u8272\u9661\u5ced\u60ac\u5d16\uff0c\u77f3\u7f1d\u751f\u51fa\u704c\u6728\uff1b\u866c\u66f2\u5c0f\u6811\uff0c\u552f\u4e00\u957f\u679d\u4f38\u5411\u865a\u7a7a\uff1b\u4e0b\u65b9\u7eff\u8272\u5c71\u8c37\uff0c\u6cb3\u6d41\u6cdb\u7740\u91d1\u5149\uff1b\u5d16\u7ebf\u4e0b\u67d4\u4e91\u98d8\u6d6e\u3002\u753b\u9762\u65e0\u6587\u5b57\u3002\u97f3\u6548\uff1a\u65e0\u53f0\u8bcd\u65e0\u97f3\u4e50\u3002\u6811\u679d\u5431\u560e\uff0c\u6811\u76ae\u5f00\u88c2\uff0c\u6025\u4fc3\u5598\u606f\uff0c\u4e00\u58f0\u8106\u54cd\uff0c\u4e00\u58f0\u5c16\u53eb\u76d6\u8fc7\u6e10\u5f3a\u98ce\u58f0\uff0c\u63a5\u4f4f\u65f6\u4e00\u58f0\u95f7\u54cd\uff0c\u6d41\u82cf\u7ffb\u52a8\uff0c\u968f\u540e\u54cd\u4eae\u5f00\u6000\u7684\u7b11\u58f0\u3002\"}]",
+        },
+      ],
+    },
+  ],
+  fixes: [
+    { problem: "«المخرج الخارق» كتب برومبت لخمس ثواني بس", fix: "يكتب على المدة المضبوطة في الفورم، فاضبط ٢٠ ثانية قبل ما تضغطه." },
+    { problem: "زر التوليد وقف بعد «المخرج الخارق»", fix: "البرومبت تعدّى ٤٠٠٠ حرف (حد Wan 3.0). قصّره لين ينزل تحت الحد." },
+    { problem: "الفيديو طلع لقطة وحدة طويلة ومملة", fix: "اكتب البرومبت لقطات: كل قطع يغيّر حجم اللقطة وحركة الكاميرا، وحط انسرتات قصيرة بين اللقطات." },
+    { problem: "Wan 3.0 رجّع خطأ عند الإرسال", fix: "صار معنا مرة وحدة، وأعدنا المحاولة واشتغل." },
+    { problem: "كلاود دخل قسم ثاني غير الاستوديو", fix: "قل له بوضوح: الاستوديو الإبداعي بس (aljawadai.app/jawad-ai/images)، ولا يروح مكان ثاني." },
+  ],
+  faq: [
+    { q: "لازم يكون كلاود؟", a: "لا، أي مساعد يقدر يفتح المتصفح ويستخدمه (مثل ChatGPT) يمشي على نفس الطريقة." },
+    { q: "أقدر أسوي نفس الشي بشخصيتي أنا؟", a: "إيه. اضغط «جرّبه في الاستوديو» تحت أي برومبت، ينفتح الاستوديو بنفس البرومبت والمولّد والإعدادات، وتضيف صورك أنت مراجع وتولّد." },
+    { q: "ليش ٤٨٠p؟", a: "عشان التجربة أسرع وأرخص. إذا عجبك الناتج ولّده مرة ثانية بدقة أعلى." },
+  ],
+};
+
+export const CREATIVE_METHODS: CreativeMethod[] = [CLAUDE_CARPET, GOLDEN_BADGE_2, GOLDEN_BADGE];
 
 export const creativeMethod = (slug: string) => CREATIVE_METHODS.find((m) => m.slug === slug) ?? null;
