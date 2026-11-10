@@ -26,7 +26,7 @@ export default async function CreativeMethodPage({ params }: { params: Promise<{
   return (
     <div className="ld cr" dir="rtl">
       <header className="ld-hero cr-hero cr-hero-m">
-        <div className="ld-in cr-top">
+        <div className={`ld-in cr-top${m.film.wide ? " cr-top-wide" : ""}`}>
           <div className="cr-intro">
             <Link href={CREATIVE_BASE} className="cr-back">→ طرق إبداعية</Link>
             <span className="ld-eyebrow"><i aria-hidden />{m.kicker}</span>
@@ -41,7 +41,7 @@ export default async function CreativeMethodPage({ params }: { params: Promise<{
               ))}
             </dl>
           </div>
-          <video className="cr-film" src={m.film.src} poster={m.film.poster} controls playsInline preload="none" />
+          <video className={`cr-film${m.film.wide ? " cr-film-wide" : ""}`} src={m.film.src} poster={m.film.poster} controls playsInline preload="none" />
         </div>
       </header>
 
