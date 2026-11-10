@@ -4,7 +4,6 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DESIGNER_KV, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, KAZEM_PERSONA } from "@config/designer";
-import { libraryBlock } from "@config/designer-library";
 import { HUSSEINI_MOURNING_FEED } from "@config/husseini-mourning";
 import { CONTENT_FONTS } from "@config/content-fonts";
 import { DESIGNER_EDIT_RULES, DESIGNER_TALK_RULES } from "@config/designer-talk";
@@ -39,10 +38,10 @@ export function fontsBlock(): string {
 
 /**
  * The whole system text: the persona, what the platform requires, how its tools are reached, the talk and the edits
- * (as «صانع المحتوى» has them), the fonts, the style library, then the project's record.
+ * (as «صانع المحتوى» has them), the fonts, the Husseini feed, then the project's record.
  */
 export function systemText(persona: string, parts: string[] = [], record = "") {
-  return [persona, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, DESIGNER_TALK_RULES, DESIGNER_EDIT_RULES, fontsBlock(), libraryBlock(), HUSSEINI_MOURNING_FEED, ...parts, recordText(record)].filter(Boolean).join("\n\n");
+  return [persona, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, DESIGNER_TALK_RULES, DESIGNER_EDIT_RULES, fontsBlock(), HUSSEINI_MOURNING_FEED, ...parts, recordText(record)].filter(Boolean).join("\n\n");
 }
 
 const recordText = (record: string) => (record ? `سجل المشروع الحالي (كما حفظته آخر مرة؛ حدّثه في "record" عند أي تغيير):\n${record}` : "");

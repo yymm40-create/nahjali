@@ -8,8 +8,7 @@
 import { remember, withNote } from "@/lib/robot-handoff";
 import { randomUUID } from "crypto";
 import { isLeader, callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
-import { DESIGNER, DESIGN_ASPECTS, isDesignAspect, isDesignKind, type DesignAspect, type DesignKind } from "@config/designer";
-import { findKindStyle } from "@config/designer-library";
+import { DESIGNER, DESIGN_ASPECTS, isDesignAspect, type DesignAspect, type DesignKind } from "@config/designer";
 import { DESIGNER_VERBOSE_RULES, lastMark } from "@config/designer-talk";
 import { findContentFont } from "@config/content-fonts";
 import { findPalette } from "@config/content-palettes";
@@ -33,8 +32,8 @@ export const ANSWER_SCHEMA = {
         required: ["label", "kind", "options", "multi"],
         properties: {
           label: { type: "string", description: "نص السؤال القصير" },
-          kind: { type: "string", enum: ["choice", "source", "directions", "fonts", "palettes"], description: "choice: خيارات نصية؛ source: بطاقات مصدر التصميم الأربع؛ directions: ٣ اتجاهات من المكتبة؛ fonts: قائمة الخطوط؛ palettes: معرض الألوان" },
-          options: { type: "array", items: { type: "string" }, description: "إجابات قصيرة (٢–٥) لـ choice، و٣ أسطر لـ directions، وفارغة لـ source وfonts وpalettes" },
+          kind: { type: "string", enum: ["choice", "fonts", "palettes"], description: "choice: خيارات نصية؛ fonts: قائمة الخطوط؛ palettes: معرض الألوان" },
+          options: { type: "array", items: { type: "string" }, description: "إجابات قصيرة (٢–٥) لـ choice، وفارغة لـ fonts وpalettes" },
           multi: { type: "boolean", description: "يجوز اختيار أكثر من إجابة (choice فقط)" },
         },
       },
@@ -43,11 +42,10 @@ export const ANSWER_SCHEMA = {
     produce: {
       type: "object",
       additionalProperties: false,
-      required: ["on", "kind", "aspect", "picture", "picture_keep", "change", "artwork", "font", "refs", "place", "layers"],
+      required: ["on", "aspect", "picture", "picture_keep", "change", "artwork", "font", "refs", "place", "layers"],
       description: "طلب التصميم، فقط بعد طلب صريح. on=false بدون إنتاج.",
       properties: {
         on: { type: "boolean" },
-        kind: { type: "string", enum: ["wedding", "husseini_joy", "husseini_mourning", "newborn", "thumbnail", "latmiya", "other"] },
         aspect: { type: "string", enum: ["1:1", "2:3", "9:16", "16:9", "3:2"] },
         picture: { type: "string", description: "إذا احتاج التصميم صورة مرسومة (منظر، خلفية واقعية، رسمة، عنصر) لا يقدر الكود يرسمها: توجيهها بالإنجليزية لـ GPT Image 2 — بدون أي كتابة فيها أبدًا، ومع مناطق هادئة للكتابة. وإلا فارغ (حيدرا ماكس يرسم كل شي بالكود)." },
         picture_keep: { type: "boolean", description: "true لإبقاء صورة التصميم السابق كما هي (لما يتغير الكلام أو الألوان أو الترتيب فقط)" },
@@ -94,7 +92,7 @@ interface Answer {
   reply: string;
   questions: unknown;
   record: string;
-  produce: { on: boolean; kind: string; aspect: string; picture?: string; picture_keep?: boolean; change?: boolean; artwork: string; font?: string; refs: string[]; place?: string[]; layers: unknown[] };
+  produce: { on: boolean; aspect: string; picture?: string; picture_keep?: boolean; change?: boolean; artwork: string; font?: string; refs: string[]; place?: string[]; layers: unknown[] };
   split: { on: boolean; ref: string };
 }
 
@@ -130,7 +128,7 @@ export function paletteFor(userTexts: string[]): string | undefined {
 function assistantNote(t: Turn): string {
   const parts: string[] = [];
   if (t.questions?.length) {
-    parts.push(`[الأسئلة التي عُرضت للعميل كأزرار: ${t.questions.map((q, i) => `${i + 1}) ${q.label}${q.kind === "source" ? " (بطاقات المصدر)" : q.kind === "fonts" ? " (معرض الخطوط)" : `: ${q.options.join(" | ")}`}`).join("؛ ")}]`);
+    parts.push(`[الأسئلة التي عُرضت للعميل كأزرار: ${t.questions.map((q, i) => `${i + 1}) ${q.label}${q.kind === "fonts" ? " (قائمة الخطوط)" : q.kind === "palettes" ? " (معرض الألوان)" : `: ${q.options.join(" | ")}`}`).join("؛ ")}]`);
   }
   const d = t.design;
   if (d) {
@@ -192,11 +190,11 @@ export async function say(userId: string, chatId: string | null, message: string
   let pending: PendingDesign | null = null;
   const mine = new Set(history.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
   if (a.produce?.on) {
-    const kind: DesignKind = isDesignKind(a.produce.kind) ? a.produce.kind : "other";
-    const style = findKindStyle(kind);
-    const aspect: DesignAspect = isDesignAspect(a.produce.aspect) ? a.produce.aspect : ((style?.aspects[0] as DesignAspect | undefined) ?? "1:1");
+    // no kinds for now (the owner is rebuilding them): every design is the one internal kind
+    const kind: DesignKind = "other";
+    const aspect: DesignAspect = isDesignAspect(a.produce.aspect) ? a.produce.aspect : "1:1";
     const artwork = String(a.produce.artwork ?? "").trim().slice(0, 6000);
-    const layers = readLayers(a.produce.layers, style?.directions[0]?.fonts.body ?? "readex");
+    const layers = readLayers(a.produce.layers, "readex-pro");
     // «حيدرا ماكس» designs every design in code with its exact writing; GPT Image 2 only paints the picture it needs
     const maker = "code" as const;
     const textMode = "baked" as const;

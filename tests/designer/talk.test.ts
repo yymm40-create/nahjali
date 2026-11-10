@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DESIGN_KINDS, DESIGN_SOURCES } from "@config/designer";
-import { decisionsOf, DESIGNER_EDIT_RULES, DESIGNER_TALK_RULES, DESIGNER_VERBOSE_RULES, findOpening, fontAnswer, KIND_OPENINGS, kindLine, lastMark, paletteAnswer, sourceAnswer, stripMarks } from "@config/designer-talk";
+import { decisionsOf, DESIGNER_EDIT_RULES, DESIGNER_TALK_RULES, DESIGNER_VERBOSE_RULES, fontAnswer, lastMark, paletteAnswer, stripMarks } from "@config/designer-talk";
 import { CONTENT_FONTS, pinnedFont } from "@config/content-fonts";
 import { CONTENT_PALETTES } from "@config/content-palettes";
 import { PATH_EDIT_RULES, PATH_TALK_RULES } from "@config/content-paths";
@@ -12,43 +11,21 @@ import { pickedLook } from "@/lib/designer/produce";
 import { cutPlace } from "@/lib/designer/split";
 
 describe("«المصمم الذكي» on «صانع المحتوى»'s way", () => {
-  it("opens every kind with its own short first questions, the source cards first", () => {
-    expect(KIND_OPENINGS.map((k) => k.kind)).toEqual(DESIGN_KINDS.map((k) => k.id));
-    for (const k of KIND_OPENINGS) {
-      expect(k.opening.length).toBeGreaterThan(20);
-      expect(k.first.length).toBeGreaterThan(0);
-      expect(k.first.length).toBeLessThanOrEqual(3);
-      expect(k.first[0].kind).toBe("source");
-      for (const q of k.first.slice(1)) {
-        expect(q.kind).toBe("choice");
-        expect(q.options.length).toBeGreaterThanOrEqual(2);
-        expect(q.options.length).toBeLessThanOrEqual(5);
-      }
-    }
-    expect(findOpening("wedding")?.opening).toContain("بطاقة زواج");
-    expect(findOpening("nope")).toBeNull();
-  });
-
-  it("carries the person's picks as marks the server reads and the page hides", () => {
-    const first = kindLine("husseini_mourning", "مجلس ليلة العاشر");
-    expect(first).toBe("مجلس ليلة العاشر [نوع:husseini_mourning]");
-    expect(stripMarks(first)).toBe("مجلس ليلة العاشر");
+  it("carries the person's gallery picks as marks the server reads and the page hides", () => {
     const font = CONTENT_FONTS[0];
     const pal = CONTENT_PALETTES[3];
-    const said = [first, `• من وين نبدأ؟: ${sourceAnswer(DESIGN_SOURCES[2])}\n• الخط: ${fontAnswer(font)}`, `• الألوان: ${paletteAnswer(pal)}`];
-    expect(lastMark(said, "نوع")).toBe("husseini_mourning");
-    expect(lastMark(said, "مصدر")).toBe("scratch");
+    const said = ["إعلان مجلس [نوع:husseini_mourning]", `• الخط: ${fontAnswer(font)}`, `• الألوان: ${paletteAnswer(pal)}`];
+    // an old message's removed marks are hidden too
+    expect(stripMarks(said[0])).toBe("إعلان مجلس");
     expect(lastMark(said, "خط")).toBe(font.id);
     expect(lastMark(said, "ألوان")).toBe(pal.id);
     expect(stripMarks(said[1])).not.toContain("[");
     // the last pick wins
     expect(lastMark([...said, `• الخط: ${fontAnswer("auto")}`], "خط")).toBe("auto");
     const d = decisionsOf(said);
-    expect(d.map((x) => x.key)).toEqual(["kind", "source", "font", "palette"]);
-    expect(d[0].name).toBe("إعلان مجلس عزاء");
-    expect(d[1].name).toBe("من الصفر");
-    expect(d[2].name).toBe(font.name);
-    expect(d[3].name).toBe(pal.name);
+    expect(d.map((x) => x.key)).toEqual(["font", "palette"]);
+    expect(d[0].name).toBe(font.name);
+    expect(d[1].name).toBe(pal.name);
     for (const x of d) expect(x.change.length).toBeGreaterThan(5);
   });
 

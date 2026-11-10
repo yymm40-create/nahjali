@@ -1,9 +1,9 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-// «المصمم الذكي» — the studio and the conversation with «كاظم», on «صانع المحتوى»'s way: chats on the side, a card per
-// kind of design that opens with its own first questions (written here, so opening one costs nothing), his questions as
-// buttons (the source cards, the directions, «قائمة الخطوط», «معرض الألوان»), the decisions as chips over the chat
+// «المصمم الذكي» — the studio and the conversation with «كاظم», on «صانع المحتوى»'s way: chats on the side (the kinds
+// of design were removed while the owner rebuilds them), his questions as buttons («قائمة الخطوط», «معرض الألوان»),
+// the decisions as chips over the chat
 // (tap one to change it), a short talk by default («📝 خلّها مفصّلة» for the longer one), any message of the person's
 // edited to go on from there, the design drawn by «حيدرا ماكس» in code, and the final PNG saved. The look is designer.css.
 
@@ -17,16 +17,15 @@ import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
 import { answerLine, DELEGATE_LINE } from "@/lib/content/marks";
-import { DESIGN_KINDS, DESIGN_SOURCES } from "@config/designer";
-import { decisionsOf, findOpening, fontAnswer, kindLine, paletteAnswer, sourceAnswer, stripMarks, type KindOpening } from "@config/designer-talk";
+import { decisionsOf, fontAnswer, paletteAnswer, stripMarks } from "@config/designer-talk";
 import { FontList, PaletteGrid } from "./Pickers";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { renderDesign, type DesignView, type FontDef } from "./LayerEditor";
 import { drawWithCode, pngBody, smallJpeg, type DrawEdit } from "@/components/claude-code/draw";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
-interface Question { label: string; kind: "choice" | "source" | "directions" | "fonts" | "palettes"; options: string[]; multi: boolean }
-/** `local`: written on this page (the opening of a kind), never saved with the conversation */
+interface Question { label: string; kind: "choice" | "fonts" | "palettes"; options: string[]; multi: boolean }
+/** `local`: written on this page, never saved with the conversation */
 interface Msg { role: "user" | "assistant"; text: string; files?: FileView[]; questions?: Question[]; design?: DesignView; error?: boolean; local?: boolean }
 interface ChatItem { id: string; title: string }
 
@@ -105,15 +104,7 @@ export function Questions({ questions, disabled, onSend, onWrite }: { questions:
       {questions.map((q, qi) => (
         <div key={qi} className="dz-q">
           <b>{qi + 1}) {q.label}{q.multi ? " (يجوز أكثر من خيار)" : ""}</b>
-          {q.kind === "source" ? (
-            <div className="dz-sources">
-              {DESIGN_SOURCES.map((s, i) => (
-                <button key={s.id} type="button" className="dz-source" style={{ ["--c" as string]: COLORS[i] }} aria-pressed={has(qi, sourceAnswer(s))} disabled={disabled} onClick={() => toggle(qi, sourceAnswer(s), false)}>
-                  <span className="ic">{s.icon}</span><b>{s.name}</b><small>{s.hint}</small>
-                </button>
-              ))}
-            </div>
-          ) : q.kind === "fonts" ? (
+          {q.kind === "fonts" ? (
             <FontList
               picked={(picked[qi] ?? []).map((a) => /\[خط:([a-z0-9_-]+)\]/.exec(a)?.[1] ?? "")[0] ?? null}
               autoPicked={has(qi, fontAnswer("auto"))}
@@ -132,7 +123,7 @@ export function Questions({ questions, disabled, onSend, onWrite }: { questions:
           ) : (
             <div className="dz-opts">
               {q.options.map((o) => (
-                <button key={o} type="button" className={`dz-opt ${q.kind === "directions" ? "dir" : ""}`} aria-pressed={(picked[qi] ?? []).includes(o)} disabled={disabled} onClick={() => toggle(qi, o, q.multi)}>
+                <button key={o} type="button" className="dz-opt" aria-pressed={(picked[qi] ?? []).includes(o)} disabled={disabled} onClick={() => toggle(qi, o, q.multi)}>
                   <Swatches text={o} cls="dz" />
                 </button>
               ))}
@@ -157,7 +148,7 @@ const OPEN_KEY = "jw-designer-open";
 const VERBOSE_KEY = "jw-designer-verbose";
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 /** a message that carries a pick of a gallery is changed by picking again (the chips), not by editing its words */
-const PICK_MARK = /\[(?:مصدر|خط|ألوان):/;
+const PICK_MARK = /\[(?:خط|ألوان):/;
 const store = {
   get: (k: string) => {
     try {
@@ -202,8 +193,6 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   const end = useRef<HTMLDivElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
-  /** the kind opened before the conversation began (its mark goes with the first message) */
-  const [kindId, setKindId] = useState<string | null>(null);
   /** the longer talk (the default is short, to cost less); remembered on this device */
   const [verbose, setVerbose] = useState(false);
   /** an old message being edited: the talk goes on from it */
@@ -296,7 +285,6 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   async function open(id: string) {
     setSide(false);
     setEditFrom(null);
-    setKindId(null);
     try {
       const r = await api<{ chat: { id: string; messages: Msg[]; pending: boolean; spent?: number } }>(`/api/designer/chats?id=${id}`);
       setChatId(r.chat.id);
@@ -311,7 +299,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
       setMsgs([{ role: "assistant", text: e instanceof Error ? e.message : "تعذّر فتح المحادثة.", error: true }]);
     }
   }
-  const fresh = () => { setChatId(null); setMsgs([]); setPending([]); setSide(false); setSpent(0); setKindId(null); setEditFrom(null); setQ(""); store.set(OPEN_KEY, null); };
+  const fresh = () => { setChatId(null); setMsgs([]); setPending([]); setSide(false); setSpent(0); setEditFrom(null); setQ(""); store.set(OPEN_KEY, null); };
 
   // coming back from «زهراء فوتو ماستر» (or a link) opens that conversation; else the one open on the last visit
   const opened = useRef(false);
@@ -324,12 +312,6 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialChat, loginHref]);
 
-  /** A kind opened: its first questions appear at once (written here, so opening one costs nothing). */
-  function openKind(k: KindOpening) {
-    setKindId(k.kind);
-    setMsgs([{ role: "assistant", text: k.opening, questions: k.first, local: true }]);
-    window.setTimeout(() => box.current?.focus(), 0);
-  }
   function startEdit(i: number) {
     const m = msgs[i];
     if (!m || busy) return;
@@ -388,10 +370,9 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
     const typed = text.trim();
     if ((!typed && !pending.length) || busy || uploading) return;
     const files = pending;
-    // the first message of a kind carries its mark; an edited old message keeps the mark it had, and the talk goes on from there
+    // an edited old message: the talk goes on from there
     const editing = editFrom;
-    const keepKind = editing != null ? (msgs[editing]?.text.match(/\[نوع:[a-z0-9_-]+\]/)?.[0] ?? "") : "";
-    const message = editing != null ? `${typed} ${keepKind}`.trim() : !chatId && kindId ? kindLine(kindId, typed || "(صور مرفقة)") : typed;
+    const message = typed;
     const from = editing != null ? msgs.slice(0, editing).filter((x) => !x.local && !x.error).length : undefined;
     const before = msgs;
     setQ("");
@@ -459,12 +440,8 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
 
   const lastAssistant = msgs.map((x) => x.role).lastIndexOf("assistant");
   const lastDesign = msgs.map((x) => !!x.design).lastIndexOf(true);
-  // what they decided so far, from the marks of their messages (the kind opened but not yet sent counts too)
-  const decisions = (() => {
-    const d = decisionsOf(msgs.filter((m) => m.role === "user").map((m) => m.text));
-    const open = kindId ? DESIGN_KINDS.find((k) => k.id === kindId) : null;
-    return !d.some((x) => x.key === "kind") && open ? [{ key: "kind" as const, label: "النوع", name: open.name, change: "" }, ...d] : d;
-  })();
+  // what they picked so far in the galleries, from the marks of their messages
+  const decisions = decisionsOf(msgs.filter((m) => m.role === "user").map((m) => m.text));
 
   return (
     <div className="dz" ref={root} onPointerMove={move}>
@@ -502,7 +479,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
           {!loginHref && decisions.length > 0 && (
             <div className="dz-decs" role="group" aria-label="قراراتك (اضغط أي واحد لتغيّره)">
               {decisions.map((d) => (
-                <button key={d.key} type="button" className="dz-dec" disabled={!!busy} onClick={() => (d.change ? void send(d.change) : fresh())} title="غيّره">
+                <button key={d.key} type="button" className="dz-dec" disabled={!!busy} onClick={() => void send(d.change)} title="غيّره">
                   {d.label}: <b>{d.name}</b> ✎
                 </button>
               ))}
@@ -519,18 +496,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
               <>
                 <div className="dz-msg bot">
                   <h3>أهلًا، أنا {persona} 🎨</h3>
-                  <p>اختر نوع التصميم: أسألك أقل ما يمكن، وتجاوب بضغطة أو بكلامك، وتقدر تغيّر أي قرار في أي لحظة. وبعد التصميم قل لي وش تبي يتغيّر (كلمة، لون، مكان) وأعدّله لك.</p>
-                </div>
-                <div className="dz-start">
-                  {DESIGN_KINDS.map((k, i) => {
-                    const o = findOpening(k.id);
-                    return o ? (
-                      <button key={k.id} className="dz-card" style={{ ["--c" as string]: k.id === "other" ? "#94a3b8" : COLORS[i % COLORS.length], animationDelay: `${i * 70}ms` }} onClick={() => openKind(o)}>
-                        <span className="ic">{k.icon}</span>
-                        <b>{k.name}</b>
-                      </button>
-                    ) : null;
-                  })}
+                  <p>قل لي وش تبي تصمّم: أسألك أقل ما يمكن، وتجاوب بضغطة أو بكلامك، وتقدر تغيّر أي قرار في أي لحظة. وبعد التصميم قل لي وش تبي يتغيّر (كلمة، لون، مكان) وأعدّله لك.</p>
                 </div>
               </>
             ) : (

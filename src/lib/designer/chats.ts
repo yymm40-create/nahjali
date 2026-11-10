@@ -18,7 +18,7 @@ export interface Attachment {
 /** A question of a batch, answered by pressing (or writing). */
 export interface Question {
   label: string;
-  kind: "choice" | "source" | "directions" | "fonts" | "palettes";
+  kind: "choice" | "fonts" | "palettes";
   options: string[];
   multi: boolean;
 }
@@ -98,11 +98,11 @@ function readFiles(v: unknown): Attachment[] | undefined {
 export function readQuestions(v: unknown): Question[] | undefined {
   const out = objs(v)
     .map((q): Question => {
-      const kind = q.kind === "source" || q.kind === "directions" || q.kind === "fonts" || q.kind === "palettes" ? q.kind : "choice";
-      const options = kind === "source" || kind === "fonts" || kind === "palettes" ? [] : (Array.isArray(q.options) ? q.options : []).filter((o): o is string => typeof o === "string" && o.trim().length > 0).map((o) => o.trim().slice(0, 160)).slice(0, 8);
+      const kind = q.kind === "fonts" || q.kind === "palettes" ? q.kind : "choice";
+      const options = kind === "fonts" || kind === "palettes" ? [] : (Array.isArray(q.options) ? q.options : []).filter((o): o is string => typeof o === "string" && o.trim().length > 0).map((o) => o.trim().slice(0, 160)).slice(0, 8);
       return { label: str(q.label, 140).trim(), kind, options, multi: q.multi === true && kind === "choice" };
     })
-    .filter((q) => q.label && (q.kind === "source" || q.kind === "fonts" || q.kind === "palettes" || q.options.length > 0))
+    .filter((q) => q.label && (q.kind === "fonts" || q.kind === "palettes" || q.options.length > 0))
     .slice(0, 5);
   return out.length ? out : undefined;
 }
