@@ -15,7 +15,6 @@ import { drawnPng } from "@/lib/jawad/server/uploads";
 import { addFile, addFileFromOutput, attachmentsOf, fileLinks, uploadLinks } from "./files";
 import { readLayers, type Design } from "./layers";
 import { editOf, photoKeys, readProgram, type DesignEdit } from "./program";
-import { COVER_RULES_TEXT } from "@/lib/editor/cover-skill-text";
 import { findContentFont, FONT_PIN, fontBlock } from "@config/content-fonts";
 import { darkToLight, findPalette } from "@config/content-palettes";
 
@@ -155,10 +154,8 @@ export async function codeBrief(userId: string, chatId: string, o: { email?: str
   const photos = keys.map((k) => (k === art ? artUrl! : links.get(k)!));
   const urls = [...links].filter(([id]) => !place.has(id)).map(([, url]) => url);
   const prompt = artworkPrompt({ prompt: p.artwork, refs: urls.length, textMode: "baked", layers: p.layers });
-  // a YouTube thumbnail (a latmiya's too) follows the owner's cover skill: its sizes that read on a phone, word for word
-  const cover = p.kind === "thumbnail" || p.kind === "latmiya" ? `\n\nTHE OWNER'S COVER SKILL — its rules file, word for word (this is a YouTube thumbnail: follow its ▶️ part):\n${COVER_RULES_TEXT}` : "";
   const look = pickedLook(p);
-  const brief = { prompt: `${artUrl ? `${prompt}\n\n${ART_NOTE}` : prompt}${look ? `\n\n${look}` : ""}${cover}`, aspect: p.aspect, refs: urls.slice(0, 4), photos, picture: Boolean(artUrl), style: look };
+  const brief = { prompt: `${artUrl ? `${prompt}\n\n${ART_NOTE}` : prompt}${look ? `\n\n${look}` : ""}`, aspect: p.aspect, refs: urls.slice(0, 4), photos, picture: Boolean(artUrl), style: look };
   // a change to a design drawn before: its program, to patch
   const edit = p.base ? await editFor(userId, chat, p, keys) : null;
   return edit ? { ...brief, edit } : brief;

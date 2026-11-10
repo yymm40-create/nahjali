@@ -5,8 +5,6 @@ import { getVisibility, setVisibility } from "@/lib/designer/access";
 import { getPersona, resetPersona, savePersona } from "@/lib/designer/persona";
 import { splitReady } from "@/lib/designer/split";
 import { deleteRun, ESTIMATE_USD, listRuns, runStatus, startRun, stepRun, worst, type Mode } from "@/lib/designer/tests";
-import { DESIGN_KINDS } from "@config/designer";
-import { DESIGN_LIBRARY } from "@config/designer-library";
 import { isAdmin } from "@config/site";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +16,7 @@ async function owner() {
   return user;
 }
 
-/** The dashboard's view: the persona, the style library's size, the latest test runs. */
+/** The dashboard's view: the persona, the latest test runs, whether splitting works. */
 export const GET = handle(async (req: Request) => {
   await owner();
   const run = new URL(req.url).searchParams.get("run");
@@ -29,7 +27,6 @@ export const GET = handle(async (req: Request) => {
     persona,
     runs,
     estimate: ESTIMATE_USD,
-    kinds: DESIGN_KINDS.map((k) => ({ id: k.id, name: k.name, directions: DESIGN_LIBRARY.find((x) => x.kind === k.id)?.directions.length ?? 0 })),
     split: splitReady(),
   });
 });
