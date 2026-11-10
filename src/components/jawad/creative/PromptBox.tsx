@@ -1,11 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import type { CreativePrompt } from "@config/jawad/creative";
+import { useRouter } from "next/navigation";
+import { promptUse, type CreativePrompt } from "@config/jawad/creative";
+import { putCreativeUse, refKindOfTag } from "@/lib/jawad/creative-use";
 
 /** One prompt as it was sent: the generator, its settings and references, and the English text with a copy button. */
 export default function PromptBox({ p }: { p: CreativePrompt }) {
   const [copied, setCopied] = useState<"ok" | "fail" | null>(null);
+  const router = useRouter();
+  const use = promptUse(p);
+  // «جرّبه في الاستوديو»: the same prompt, generator and settings, opened in the Creative Studio; the person adds their own references there
+  const tryIt = () => {
+    if (!use) return;
+    const refs = (p.refs ?? []).filter((r) => refKindOfTag(r.tag)).map((r) => ({ name: r.tag.replace(/^@/, ""), what: r.name }));
+    putCreativeUse({ ...use, prompt: p.text, label: p.label, refs });
+    router.push("/jawad-ai/images?use=1");
+  };
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(p.text);
@@ -32,9 +43,16 @@ export default function PromptBox({ p }: { p: CreativePrompt }) {
           <span className="cr-tool" dir="ltr">{p.tool}</span>
           {p.settings && <span className="cr-set">{p.settings}</span>}
         </div>
-        <button type="button" className={`cr-copy${copied === "ok" ? " ok" : ""}`} onClick={copy} aria-label={`انسخ برومبت ${p.label}`}>
-          {copied === "ok" ? "✓ انتسخ" : copied === "fail" ? "حدّده وانسخه" : "انسخ البرومبت"}
-        </button>
+        <div className="cr-acts">
+          {use && (
+            <button type="button" className="cr-copy cr-use" onClick={tryIt} aria-label={`جرّب برومبت ${p.label} في الاستوديو الإبداعي`}>
+              ✨ جرّبه في الاستوديو
+            </button>
+          )}
+          <button type="button" className={`cr-copy${copied === "ok" ? " ok" : ""}`} onClick={copy} aria-label={`انسخ برومبت ${p.label}`}>
+            {copied === "ok" ? "✓ انتسخ" : copied === "fail" ? "حدّده وانسخه" : "انسخ البرومبت"}
+          </button>
+        </div>
       </div>
       {p.refs?.length ? (
         <ul className="cr-refs" aria-label="المراجع المرفقة">
