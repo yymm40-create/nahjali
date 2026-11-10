@@ -1,5 +1,5 @@
-// The project left open in «حيدرة كت»: going to another section and pressing «حيدرة كت» again opens it straight
-// back (not the projects page); «اطلع من المشروع» forgets it. Kept on this device only.
+// The project left open in «حيدرة كت»: the projects page offers it as «كمّل» at the top (it never opens it by itself,
+// which kept sending the person back when they came to start a new one); «اطلع من المشروع» forgets it. This device only.
 
 const KEY = "editor-open-project";
 
