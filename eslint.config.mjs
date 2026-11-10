@@ -19,6 +19,8 @@ const eslintConfig = defineConfig([
     "config/editor/skills/higgsfield-motion/**",
     "config/editor/skills/higgsfield-motion-saas/**",
     "public/editor/skills/**",
+    // pdf.js (Mozilla's built files, served as they are for the in-app book reader)
+    "public/vendor/**",
   ]),
 ]);
 

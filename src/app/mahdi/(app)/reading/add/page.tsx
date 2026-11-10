@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fmtNum, t } from "@/lib/mahdi/i18n";
 import { parseNumberInput } from "@/lib/mahdi/client/derive";
@@ -20,12 +20,20 @@ export default function AddBookPage() {
   const router = useRouter();
   const { store, toast } = useMahdi();
   const { reading, current } = useReading();
-  const [q, setQ] = useState("");
+  // From «مسبار القارئ»: the guide book's title and author come ready
+  const params = useSearchParams();
+  const [q, setQ] = useState(params.get("q") ?? "");
   const [results, setResults] = useState<Book[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [form, setForm] = useState<{ title: string; author: string; pages: string; description: string; unit: BookUnit }>({ title: "", author: "", pages: "", description: "", unit: "page" });
+  const [form, setForm] = useState<{ title: string; author: string; pages: string; description: string; unit: BookUnit }>({
+    title: params.get("title") ?? "",
+    author: params.get("author") ?? "",
+    pages: "",
+    description: "",
+    unit: "page",
+  });
   const [cover, setCover] = useState<Blob | null>(null);
   const [pdf, setPdf] = useState<File | null>(null);
   const [uploading, setUploading] = useState<number | null>(null);
