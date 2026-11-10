@@ -37,15 +37,24 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
     return () => clearTimeout(t);
   }, []);
 
-  // a project left open (the person went to another section without leaving it): straight back into it
+  // the project left open last time (another section, the back button, a closed tab): offered as «كمّل» at the top,
+  // never opened by itself — jumping there on its own sent the person back to the old project every time they came
+  // to start a new one
+  const [lastOpen, setLastOpen] = useState<ProjectSummary | null>(null);
   useEffect(() => {
     const id = openProject();
     if (!id) return;
-    if (projects?.some((p) => p.id === id)) router.replace(`/jawad-ai/editor/${id}`);
-    else forgetOpen();
+    const p = projects?.find((x) => x.id === id);
+    if (!p) return forgetOpen();
+    const t = setTimeout(() => setLastOpen(p), 0);
+    return () => clearTimeout(t);
     // once, when «حيدرة كت» opens
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const dismissLast = () => {
+    forgetOpen();
+    setLastOpen(null);
+  };
 
   const startNew = () => (loginHref ? router.push(loginHref) : setWizard(true));
 
@@ -112,6 +121,19 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
           </p>
         )}
         {error && <p className="error-box text-sm">{error}</p>}
+        {lastOpen && (
+          <div className="jw-panel flex items-center gap-3 p-3">
+            <span className="text-2xl" aria-hidden>↩️</span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[11px] text-jw-muted">آخر مشروع كنت فيه</span>
+              <span className="block truncate text-sm font-bold">{lastOpen.title}</span>
+            </span>
+            <Link href={`/jawad-ai/editor/${lastOpen.id}`} className="jw-btn jw-btn-primary shrink-0 text-xs">كمّل</Link>
+            <button type="button" onClick={dismissLast} className="jw-btn jw-btn-quiet jw-btn-icon shrink-0" aria-label="أخفِ" title="أخفِ">
+              <Icon name="x" size={14} />
+            </button>
+          </div>
+        )}
 
         <section aria-labelledby="ed-mine" className="space-y-3">
           <h2 id="ed-mine" className="text-sm font-bold">مشاريعي</h2>
