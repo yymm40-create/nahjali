@@ -1,0 +1,166 @@
+/* «الجواد في كلاود وشات جي بي تي» — the pages and the popup in the motion carousels' language (the owner, 10 November
+   2026: «نبي glassy وحركات», never black): warm cream, a living background of soft colour, frosted glass cards, heavy
+   headlines with one gradient word, and quiet entrances. */
+
+.cn {
+  --cn-ink: #16121f;
+  --cn-muted: #6b6478;
+  --cn-cream: #f8f5ef;
+  --cn-o: #f97316;
+  --cn-p: #ec4899;
+  --cn-v: #8b5cf6;
+  --cn-glass: rgba(255, 255, 255, 0.58);
+  --cn-glass-line: rgba(255, 255, 255, 0.85);
+  --cn-grad: linear-gradient(100deg, var(--cn-o), var(--cn-p) 50%, var(--cn-v));
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: var(--cn-ink);
+  color-scheme: light;
+  background: var(--cn-cream);
+  min-height: calc(100dvh - var(--jw-header-h, 64px) - var(--jw-bar-h, 0px));
+}
+
+/* the living background: three soft blobs drifting slowly */
+.cn-bg { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.cn-bg i { position: absolute; border-radius: 50%; filter: blur(70px); opacity: 0.55; animation: cn-drift 18s ease-in-out infinite alternate; }
+.cn-bg i:nth-child(1) { width: 420px; height: 420px; background: #fdba74; top: -120px; inset-inline-start: -80px; }
+.cn-bg i:nth-child(2) { width: 380px; height: 380px; background: #f9a8d4; top: 30%; inset-inline-end: -120px; animation-delay: -6s; animation-duration: 22s; }
+.cn-bg i:nth-child(3) { width: 460px; height: 460px; background: #c4b5fd; bottom: -180px; inset-inline-start: 20%; animation-delay: -11s; animation-duration: 26s; }
+@keyframes cn-drift {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(60px, 40px) scale(1.12); }
+  100% { transform: translate(-40px, 80px) scale(0.95); }
+}
+
+.cn-in { position: relative; max-width: 760px; margin: 0 auto; padding: 40px 16px 64px; }
+
+.cn button, .cn input { font: inherit; }
+
+/* frosted glass */
+.cn-glass {
+  background: var(--cn-glass);
+  border: 1px solid var(--cn-glass-line);
+  border-radius: 24px;
+  box-shadow: 0 20px 50px -24px rgba(76, 29, 149, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+}
+
+/* quiet entrances, one after another */
+.cn-rise { opacity: 0; transform: translateY(18px); animation: cn-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: calc(var(--d, 0) * 110ms + 80ms); }
+@keyframes cn-rise { to { opacity: 1; transform: none; } }
+
+.cn-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
+  font-size: 13px; font-weight: 800; color: var(--cn-v);
+}
+.cn-eyebrow b { width: 8px; height: 8px; border-radius: 50%; background: var(--cn-p); box-shadow: 0 0 0 0 rgba(236, 72, 153, 0.6); animation: cn-ping 1.8s infinite; }
+@keyframes cn-ping { 70% { box-shadow: 0 0 0 10px rgba(236, 72, 153, 0); } 100% { box-shadow: 0 0 0 0 rgba(236, 72, 153, 0); } }
+
+.cn-h1 { margin: 16px 0 10px; font-size: clamp(32px, 7vw, 54px); line-height: 1.15; font-weight: 900; letter-spacing: -0.5px; }
+.cn-grad {
+  background: var(--cn-grad); background-size: 200% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: cn-shift 6s ease-in-out infinite alternate;
+}
+@keyframes cn-shift { to { background-position: 100% 0; } }
+.cn-lead { font-size: 17px; font-weight: 600; color: var(--cn-muted); line-height: 1.8; }
+
+/* the little chat that plays by itself (like «المحادثة») */
+.cn-chat { margin: 28px 0 8px; padding: 16px; display: grid; gap: 10px; }
+.cn-chat .cn-who { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; color: var(--cn-muted); }
+.cn-chat .cn-who i { width: 22px; height: 22px; border-radius: 50%; background: var(--cn-grad); }
+.cn-msg { max-width: 82%; padding: 10px 14px; border-radius: 18px; font-size: 14px; font-weight: 700; opacity: 0; animation: cn-pop 9s infinite; }
+.cn-msg.me { justify-self: start; background: #fff; color: var(--cn-ink); box-shadow: 0 6px 16px -10px rgba(0, 0, 0, 0.25); border-end-start-radius: 6px; }
+.cn-msg.ai { justify-self: end; background: var(--cn-grad); color: #fff; border-end-end-radius: 6px; }
+.cn-msg.m1 { animation-name: cn-m1; }
+.cn-msg.m2 { animation-name: cn-m2; }
+.cn-msg.m3 { animation-name: cn-m3; }
+.cn-dots { justify-self: end; display: inline-flex; gap: 4px; padding: 12px 14px; border-radius: 18px; background: rgba(139, 92, 246, 0.12); opacity: 0; animation: cn-typing 9s infinite; }
+.cn-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--cn-v); animation: cn-dot 1s infinite; }
+.cn-dots i:nth-child(2) { animation-delay: 0.15s; }
+.cn-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes cn-dot { 50% { transform: translateY(-4px); opacity: 0.5; } }
+@keyframes cn-m1 { 0%, 4% { opacity: 0; transform: translateY(10px); } 9%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+@keyframes cn-typing { 0%, 14% { opacity: 0; } 18%, 36% { opacity: 1; } 40%, 100% { opacity: 0; } }
+@keyframes cn-m2 { 0%, 38% { opacity: 0; transform: translateY(10px) scale(0.96); } 44%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+@keyframes cn-m3 { 0%, 56% { opacity: 0; transform: translateY(10px) scale(0.96); } 62%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+.cn-slides { display: flex; gap: 6px; margin-top: 8px; }
+.cn-slides i { width: 34px; height: 44px; border-radius: 8px; background: rgba(255, 255, 255, 0.85); box-shadow: 0 4px 10px -6px rgba(0, 0, 0, 0.4); }
+
+/* sections */
+.cn-card { padding: 22px; margin-top: 18px; }
+.cn-card h2 { display: flex; align-items: center; gap: 12px; font-size: 21px; font-weight: 900; margin: 0 0 14px; }
+.cn-num {
+  display: inline-grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 14px;
+  background: var(--cn-grad); color: #fff; font-size: 18px; font-weight: 900;
+  box-shadow: 0 10px 22px -10px rgba(236, 72, 153, 0.8);
+}
+.cn-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; counter-reset: s; }
+.cn-steps li { position: relative; padding-inline-start: 34px; font-weight: 700; line-height: 1.7; counter-increment: s; }
+.cn-steps li::before {
+  content: counter(s, arabic-indic); position: absolute; inset-inline-start: 0; top: 2px; width: 24px; height: 24px; border-radius: 8px;
+  display: grid; place-items: center; font-size: 13px; font-weight: 900; color: var(--cn-v); background: rgba(139, 92, 246, 0.12);
+}
+.cn-note { margin-top: 10px; font-size: 13px; font-weight: 700; color: var(--cn-muted); }
+.cn-note a { color: var(--cn-v); text-decoration: underline; }
+
+/* the address with its copy button */
+.cn-link { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.cn-link code {
+  flex: 1 1 260px; min-width: 0; padding: 12px 16px; border-radius: 16px; background: rgba(255, 255, 255, 0.8);
+  border: 1px dashed rgba(139, 92, 246, 0.45); font-size: 14px; font-weight: 700; word-break: break-all; color: var(--cn-ink);
+}
+
+/* the gradient button with a light sweeping across it */
+.cn-btn {
+  position: relative; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; padding: 0 22px; border-radius: 16px; border: 0; cursor: pointer;
+  background: var(--cn-grad); color: #fff; font-size: 16px; font-weight: 900; text-decoration: none;
+  box-shadow: 0 14px 30px -14px rgba(236, 72, 153, 0.9); transition: transform 0.15s;
+}
+.cn-btn:hover { transform: translateY(-2px); }
+.cn-btn:active { transform: scale(0.97); }
+.cn-btn::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-120%);
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%);
+  animation: cn-sweep 3.2s ease-in-out infinite;
+}
+@keyframes cn-sweep { 60%, 100% { transform: translateX(120%); } }
+.cn-btn-soft {
+  min-height: 48px; padding: 0 20px; border-radius: 16px; border: 1px solid var(--cn-glass-line); cursor: pointer;
+  background: rgba(255, 255, 255, 0.7); color: var(--cn-ink); font-size: 15px; font-weight: 800;
+}
+.cn-ok { animation: cn-pop-in 0.35s cubic-bezier(0.2, 1.6, 0.4, 1); }
+@keyframes cn-pop-in { from { transform: scale(0.6); } }
+
+/* what it does: small glass tiles that pop in */
+.cn-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.cn-tile {
+  display: flex; gap: 10px; align-items: flex-start; padding: 14px; border-radius: 18px; font-size: 14px; font-weight: 800; line-height: 1.6;
+  background: rgba(255, 255, 255, 0.7); border: 1px solid var(--cn-glass-line); transition: transform 0.2s, box-shadow 0.2s;
+}
+.cn-tile:hover { transform: translateY(-3px) rotate(-0.4deg); box-shadow: 0 16px 30px -18px rgba(139, 92, 246, 0.7); }
+.cn-tile span { font-size: 22px; line-height: 1; }
+
+/* the two clients */
+.cn-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.cn-chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; font-size: 14px; font-weight: 800; animation: cn-float 5s ease-in-out infinite; }
+.cn-chip:nth-child(2) { animation-delay: -2.5s; }
+.cn-chip i { width: 10px; height: 10px; border-radius: 50%; }
+@keyframes cn-float { 50% { transform: translateY(-6px); } }
+
+/* the consent and upload pages: one glass card in the middle */
+.cn-solo { max-width: 560px; }
+
+/* the popup: the same glass over the site */
+.cn-pop.jw-dialog { background: transparent; border: 0; box-shadow: none; border-radius: 28px; overflow: auto; }
+.cn-pop .cn { min-height: 0; border-radius: 28px; }
+.cn-pop .cn-in { padding: 26px 22px 22px; }
+.cn-pop .cn-h1 { font-size: clamp(26px, 6vw, 34px); margin-top: 12px; }
+.cn-pop .cn-chat { margin: 16px 0 4px; }
+.cn-x {
+  position: absolute; top: 14px; inset-inline-end: 14px; width: 34px; height: 34px; border-radius: 12px; border: 1px solid var(--cn-glass-line);
+  background: rgba(255, 255, 255, 0.7); color: var(--cn-ink); font-size: 16px; font-weight: 900; cursor: pointer; z-index: 2;
+}

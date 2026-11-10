@@ -38,7 +38,7 @@ export default function UploadFiles() {
 
   return (
     <div className="space-y-4">
-      <label className="btn btn-primary cursor-pointer">
+      <label className="cn-btn">
         اختر الملفات
         <input
           type="file"
@@ -57,16 +57,16 @@ export default function UploadFiles() {
       {items.length > 0 && (
         <ul className="space-y-2">
           {items.map((x) => (
-            <li key={x.key} className="card space-y-1 p-3">
-              <p className="font-extrabold break-all">{x.name}</p>
-              {x.state === "up" && <p className="text-sm font-bold text-muted">يرتفع… {Math.round(x.progress * 100)}٪</p>}
+            <li key={x.key} className="cn-tile cn-rise" style={{ flexDirection: "column", gap: 4 }}>
+              <p className="break-all">{x.name}</p>
+              {x.state === "up" && <p className="text-sm" style={{ color: "var(--cn-muted)" }}>يرتفع… {Math.round(x.progress * 100)}٪</p>}
               {x.state === "ok" && <p className="text-sm font-bold text-emerald-600">✅ جاهز</p>}
               {x.state === "fail" && <p className="text-sm font-bold text-red-500">{x.error}</p>}
             </li>
           ))}
         </ul>
       )}
-      {items.some((x) => x.state === "ok") && <p className="font-extrabold">ارجع للمحادثة في كلاود أو شات جي بي تي وقول: «رفعت الملفات».</p>}
+      {items.some((x) => x.state === "ok") && <p className="cn-lead" style={{ fontSize: 15 }}>ارجع للمحادثة في كلاود أو شات جي بي تي وقول: «رفعت الملفات».</p>}
     </div>
   );
 }
