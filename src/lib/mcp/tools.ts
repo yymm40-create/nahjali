@@ -16,6 +16,13 @@ import { coinBalance } from "@/lib/coins";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { outputFile } from "@/lib/jawad/student/actions";
+import { uploadFromBuffer, uploadViews, type UploadRow, type UploadView } from "@/lib/jawad/server/uploads";
+import { JAWAD_BUCKET } from "@/lib/jawad/server/runtime";
+import { storage } from "@/lib/storage";
+import { requireEditorProject } from "@/lib/editor/server";
+import { appendChat } from "@/lib/editor/chat";
+import { saveLabChat } from "@/lib/editor/lab-chats";
+import { downloadPublic } from "./fetch-file";
 import { freeFor } from "@/lib/jawad/server/access";
 import { isAdmin } from "@config/site";
 import type { User } from "@supabase/supabase-js";
@@ -45,6 +52,8 @@ export interface ToolDef {
   description: string;
   inputSchema: Json;
   annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean };
+  /** client-specific hints (ChatGPT: which argument receives a file the person attached) */
+  _meta?: Json;
   run: (args: Json, c: ToolCtx) => Promise<Json>;
 }
 
@@ -68,6 +77,66 @@ const balance: ToolDef = {
   },
 };
 
+// ─────────────────────────────── the person's files ───────────────────────────────
+// One store for every section (the studio's references, محمد باقر's and كاظم's attachments, the student's sources,
+// حيدرة كت's library): a file is added once and its upload_id is used anywhere.
+
+const fileOut = (u: UploadView) => ({ upload_id: u.id, kind: u.kind, name: u.fileName, status: u.status, ...(u.error ? { error: u.error } : {}), width: u.width, height: u.height, duration_ms: u.durationMs, url: u.url });
+
+const addFile: ToolDef = {
+  name: "jawad_add_file",
+  title: "أضف ملف",
+  description:
+    "Adds a file (image PNG/JPG/WEBP, video MP4/MOV, audio MP3/WAV, or PDF; up to 100 MB) to the person's JAWAD AI files and returns its upload_id, usable as a reference in studio_generate, as an attachment in carousel_chat / designer_chat, as a source in student_new, or in haidara_new_project. In ChatGPT pass the file the person attached as `file`. Otherwise pass a public `url`. In Claude, files attached to the chat cannot reach this tool: give the person jawad_upload_page instead.",
+  inputSchema: obj({
+    url: { type: "string", description: "A public link to the file." },
+    file: { type: "object", description: "A file the person attached in ChatGPT.", properties: { download_url: { type: "string" }, file_id: { type: "string" } }, required: ["download_url"], additionalProperties: true },
+    name: { type: "string", description: "Optional file name." },
+  }),
+  annotations: { openWorldHint: true },
+  _meta: { "openai/fileParams": ["file"] },
+  run: async (a, c) => {
+    const f = a.file && typeof a.file === "object" ? (a.file as Json) : null;
+    const url = str(f?.download_url, 4000) || str(a.url, 4000);
+    if (!url) throw new Error("أرسل الملف أو رابطه.");
+    const got = await downloadPublic(url, c.signal);
+    const row = await uploadFromBuffer(c.user.id, got.bytes, str(a.name, 200) || got.name);
+    const [view] = await uploadViews([row]);
+    return fileOut(view);
+  },
+};
+
+const uploadPage: ToolDef = {
+  name: "jawad_upload_page",
+  title: "صفحة رفع الملفات",
+  description:
+    "The link to a page on JAWAD AI where the person uploads files from their own device (pictures, videos up to 200 MB, audio, PDF). Use it in Claude (attached chat files cannot reach the tools) or for big files. After the person says they uploaded, call jawad_my_files to get the upload_ids.",
+  inputSchema: obj({}),
+  annotations: { readOnlyHint: true },
+  run: async (_a, c) => ({ upload_page: `${c.origin}/jawad-ai/connect/upload`, next: "Give the person this link; when they say they are done, call jawad_my_files." }),
+};
+
+const myFiles: ToolDef = {
+  name: "jawad_my_files",
+  title: "ملفاتي",
+  description: "The person's most recent files in JAWAD AI (newest first), with upload_id, kind, name and a link to each.",
+  inputSchema: obj({ kind: { type: "string", enum: ["image", "video", "audio", "doc"] }, limit: { type: "integer", minimum: 1, maximum: 50 } }),
+  annotations: { readOnlyHint: true },
+  run: async (a, c) => {
+    let q = createAdminClient().from("jawad_uploads").select("*").eq("user_id", c.user.id).eq("status", "ready").order("created_at", { ascending: false }).limit(Math.min(50, Math.max(1, Number(a.limit) || 15)));
+    if (typeof a.kind === "string") q = q.eq("kind", a.kind);
+    const { data, error } = await q;
+    if (error) throw new Error("ما قدرنا نقرأ ملفاتك الحين.");
+    return { files: (await uploadViews((data ?? []) as UploadRow[])).map(fileOut), upload_page: `${c.origin}/jawad-ai/connect/upload` };
+  },
+};
+
+/** upload_ids from a tool's `files` argument (the person's own; each section checks them again). */
+const fileIds = (v: unknown) => (Array.isArray(v) ? v : []).map((x) => uuid(typeof x === "object" && x ? (x as Json).upload_id : x)).filter((x): x is string => !!x).slice(0, 20);
+
+/** A tool's `files` argument: the person's files, by upload_id. */
+const FILES_ARG = { type: "array", items: { type: "string" }, maxItems: 20, description: "upload_ids of the person's files (jawad_add_file / jawad_my_files) to attach." };
+
 // ─────────────────────────── «الاستوديو الإبداعي» ───────────────────────────
 
 const OUTPUTS = ["image", "video", "audio"] as const;
@@ -76,7 +145,7 @@ const generators: ToolDef = {
   name: "studio_generators",
   title: "مولدات الاستوديو الإبداعي",
   description:
-    "Lists the creative studio's generators the person can use (images, videos, voices, sound effects, music…): their id, the modes, the settings each takes (key, allowed values, default) and the prompt limit. Call it before studio_generate. Modes marked needs_files need uploaded reference files, which this connector cannot send yet: for those, give the person the studio link.",
+    "Lists the creative studio's generators the person can use (images, videos, voices, sound effects, music…): their id, the modes, the settings each takes (key, allowed values, default), the prompt limit, and which reference files each mode takes (`files`: kind → min/max; `frames`: first/last frame roles). Call it before studio_generate. Files are added with jawad_add_file or jawad_upload_page.",
   inputSchema: obj({ output: { type: "string", enum: OUTPUTS, description: "Only generators of this kind." } }),
   annotations: { readOnlyHint: true },
   run: async (a, c) => {
@@ -96,7 +165,11 @@ const generators: ToolDef = {
           id: m.id,
           label: m.label,
           prompt_required: m.promptRequired,
-          needs_files: Object.values(m.refs).some((r) => (r?.min ?? 0) > 0) || !!m.needsOneOf?.length,
+          use: m.refStyle,
+          ...(Object.keys(m.refs).length ? { files: m.refs } : {}),
+          ...(m.roles?.length ? { frames: m.roles } : {}),
+          ...(m.needsOneOf?.length ? { needs_one_of: m.needsOneOf } : {}),
+          ...(m.prompt?.label ? { prompt_label: m.prompt.label } : {}),
         })),
         settings: def!.options.map((o) =>
           o.kind === "choice"
@@ -162,9 +235,16 @@ const generate: ToolDef = {
       instructions: { type: "string", description: "Only for generators that take a second text (e.g. how a voice performs)." },
       settings: { type: "object", description: "Setting key → value, from studio_generators. Missing keys take the default.", additionalProperties: { type: ["string", "number", "boolean"] } },
       style_id: { type: "string", description: "Optional style from studio_styles (images and videos)." },
+      files: {
+        type: "array",
+        description: "Reference files (upload_ids from jawad_add_file / jawad_my_files). With use=frames, give each a role: first_frame or last_frame. A name lets the prompt mention it as @name.",
+        maxItems: 20,
+        items: { type: "object", properties: { upload_id: { type: "string" }, role: { type: "string", enum: ["first_frame", "last_frame", "reference"] }, name: { type: "string" } }, required: ["upload_id"], additionalProperties: false },
+      },
+      use: { type: "string", enum: ["references", "frames"], description: "How the files are used (the mode's `use` in studio_generators). Default: references." },
       confirm_price_halalas: { type: "integer", description: "The price the person agreed to, in halalas (from the first call)." },
     },
-    ["generator_id", "prompt"],
+    ["generator_id"],
   ),
   annotations: { openWorldHint: true },
   run: async (a, c) => {
@@ -174,6 +254,11 @@ const generate: ToolDef = {
     if (!g) throw new Error("ما لقينا هذا المولد. استخدم studio_generators.");
     const confirm = typeof a.confirm_price_halalas === "number" ? Math.round(a.confirm_price_halalas) : null;
     const settings = a.settings && typeof a.settings === "object" ? a.settings : {};
+    const refs = (Array.isArray(a.files) ? a.files : [])
+      .map((f) => (f && typeof f === "object" ? (f as Json) : {}))
+      .filter((f) => uuid(f.upload_id))
+      .slice(0, 20)
+      .map((f) => ({ uploadId: f.upload_id, role: f.role === "first_frame" || f.role === "last_frame" ? f.role : "reference", ...(str(f.name, 40) ? { name: str(f.name, 40) } : {}) }));
     const body = {
       sectionId: g.sectionId,
       generatorId: id,
@@ -181,11 +266,11 @@ const generate: ToolDef = {
       instructions: str(a.instructions, 5_000),
       settings,
       ...(str(a.style_id, 120) ? { styleId: str(a.style_id, 120) } : {}),
-      refStyle: "none",
-      refs: [],
+      refStyle: refs.length ? (a.use === "frames" ? "frames" : "references") : "none",
+      refs,
       expectedCoins: confirm ?? -1,
       // the same request repeated within ten minutes (a client's retry) is the same job, never a second charge
-      idempotencyKey: `mcp-${createHash("sha256").update(JSON.stringify([c.user.id, id, a.prompt, a.instructions, settings, a.style_id, confirm, Math.floor(Date.now() / 600_000)])).digest("base64url").slice(0, 40)}`,
+      idempotencyKey: `mcp-${createHash("sha256").update(JSON.stringify([c.user.id, id, a.prompt, a.instructions, settings, a.style_id, refs, a.use, confirm, Math.floor(Date.now() / 600_000)])).digest("base64url").slice(0, 40)}`,
     };
     try {
       const r = await callRoute<{ job: JobView; created: boolean; balance: number | null }>(studioGenerate.POST, { origin: c.origin, path: "/api/jawad/generate", body, signal: c.signal });
@@ -230,13 +315,13 @@ const carouselChat: ToolDef = {
   title: "صانع الكاروسيل · محمد باقر",
   description:
     "Talks to «محمد باقر», JAWAD AI's carousel and content maker (Arabic). Send the person's request or answer as `message`; pass chat_id to continue the same conversation. He asks questions (shown in `questions`: relay them, or answer from what the person said), then plans the carousel. When `slides_to_draw` appears, call carousel_produce. When `media` appears, call carousel_media. A motion piece is handed to «حيدرة كت»: give the person `haidara_link`. Each reply is charged at the site's price.",
-  inputSchema: obj({ message: { type: "string" }, chat_id: { type: "string", description: "To continue a conversation." } }, ["message"]),
+  inputSchema: obj({ message: { type: "string" }, chat_id: { type: "string", description: "To continue a conversation." }, files: FILES_ARG }, ["message"]),
   annotations: { openWorldHint: true },
   run: async (a, c) => {
     const r = await callRoute<Json & { chatId: string; text: string; questions: unknown; pending: Json | null; editor: { id: string; title: string; lab?: string } | null; media: unknown; spent?: number }>(contentChat.POST, {
       origin: c.origin,
       path: "/api/content/chat",
-      body: { chatId: uuid(a.chat_id), message: str(a.message, 20_000) },
+      body: { chatId: uuid(a.chat_id), message: str(a.message, 20_000), attachments: fileIds(a.files) },
       signal: c.signal,
     });
     return {
@@ -331,10 +416,10 @@ const designChat: ToolDef = {
   title: "المصمم الذكي · كاظم",
   description:
     "Talks to «كاظم», JAWAD AI's designer (posters, posts, covers, ads; Arabic). Send the person's request or answer; pass chat_id to continue. When a design is ready to be drawn (`design_ready`), it is drawn by «حيدرا ماكس» in code on the site: give the person `open_on_site` — the page draws it by itself — and later read it back with designer_conversations. Each reply is charged at the site's price.",
-  inputSchema: obj({ message: { type: "string" }, chat_id: { type: "string" } }, ["message"]),
+  inputSchema: obj({ message: { type: "string" }, chat_id: { type: "string" }, files: FILES_ARG }, ["message"]),
   annotations: { openWorldHint: true },
   run: async (a, c) => {
-    const r = await callRoute<Json & { chatId: string; text: string; questions: unknown; pending: boolean; spent?: number }>(designerChat.POST, { origin: c.origin, path: "/api/designer/chat", body: { chatId: uuid(a.chat_id), message: str(a.message, 20_000) }, signal: c.signal });
+    const r = await callRoute<Json & { chatId: string; text: string; questions: unknown; pending: boolean; spent?: number }>(designerChat.POST, { origin: c.origin, path: "/api/designer/chat", body: { chatId: uuid(a.chat_id), message: str(a.message, 20_000), attachments: fileIds(a.files) }, signal: c.signal });
     return {
       chat_id: r.chatId,
       reply: r.text,
@@ -372,25 +457,51 @@ const studentNew: ToolDef = {
   name: "student_new",
   title: "مادة جديدة · الطالب الذكي",
   description:
-    "Starts a new material in «الطالب الذكي» (JAWAD AI's study assistant «صادق») from a text the person gives (lesson, chapter, notes), with «صادق يكمل تلقائيًا» on. The study steps (reading, understanding, then outputs such as summaries, explanations, slides, quizzes, mind maps, recordings) continue on the site: give the person `open_on_site`. Follow it with student_materials.",
+    "Starts a new material in «الطالب الذكي» (JAWAD AI's study assistant «صادق») from a text the person gives (lesson, chapter, notes) and/or their files (PDF or page pictures, as upload_ids), with «صادق يكمل تلقائيًا» on. The study steps (reading, understanding, then outputs such as summaries, explanations, slides, quizzes, mind maps, recordings) continue on the site: give the person `open_on_site`. Follow it with student_materials.",
   inputSchema: obj(
     {
       title: { type: "string" },
-      text: { type: "string", description: "The study text itself." },
+      text: { type: "string", description: "The study text itself (or give files)." },
+      files: { ...FILES_ARG, description: "upload_ids of PDFs or page pictures (PNG/JPG/WEBP) to study." },
       level: { type: "string", enum: [...LEVELS] },
       audience: { type: "string", description: "Who studies it (optional)." },
     },
-    ["title", "text"],
+    ["title"],
   ),
   annotations: { openWorldHint: true },
   run: async (a, c) => {
     const text = typeof a.text === "string" ? a.text.slice(0, 400_000) : "";
-    if (!text.trim()) throw new Error("اكتب نص المادة.");
+    const files = fileIds(a.files);
+    if (!text.trim() && !files.length) throw new Error("أعط نص المادة أو ملفاتها.");
     const { id } = await callRoute<{ id: string }>(studentProjects.POST, { origin: c.origin, path: "/api/jawad/student/projects", body: { title: str(a.title, 200), level: str(a.level, 120), audience: str(a.audience, 300) } });
     const path = `/api/jawad/student/projects/${id}`;
-    await callRoute(studentProject.POST, { origin: c.origin, path, params: { id }, body: { action: "source_text", body: text, name: str(a.title, 300) || "نص مكتوب" } });
+    if (text.trim()) await callRoute(studentProject.POST, { origin: c.origin, path, params: { id }, body: { action: "source_text", body: text, name: str(a.title, 300) || "نص مكتوب" } });
+    // each file goes the page's way: a source with a one-time upload address, the bytes, then the check
+    const skipped: string[] = [];
+    if (files.length) {
+      const { data } = await createAdminClient().from("jawad_uploads").select("*").in("id", files).eq("user_id", c.user.id).eq("status", "ready");
+      for (const u of (data ?? []) as UploadRow[]) {
+        if (u.mime !== "application/pdf" && !/^image\/(png|jpeg|webp)$/.test(u.mime ?? "")) {
+          skipped.push(u.file_name || u.id);
+          continue;
+        }
+        const dl = await storage.from(JAWAD_BUCKET).download(u.storage_path);
+        if (dl.error || !dl.data) {
+          skipped.push(u.file_name || u.id);
+          continue;
+        }
+        const bytes = new Uint8Array(await dl.data.arrayBuffer());
+        const src = await callRoute<{ sourceId: string; signedUrl: string }>(studentProject.POST, { origin: c.origin, path, params: { id }, body: { action: "source_file", mime: u.mime, name: u.file_name || "ملف", bytes: bytes.length } });
+        const put = await fetch(src.signedUrl, { method: "PUT", body: bytes, headers: { "content-type": u.mime ?? "application/octet-stream" } });
+        if (!put.ok) {
+          skipped.push(u.file_name || u.id);
+          continue;
+        }
+        await callRoute(studentProject.POST, { origin: c.origin, path, params: { id }, body: { action: "source_confirm", sourceId: src.sourceId } });
+      }
+    }
     await callRoute(studentProject.POST, { origin: c.origin, path, params: { id }, body: { action: "auto", on: true } }).catch(() => null);
-    return { project_id: id, open_on_site: studentLink(c.origin, id), next: "Give the person open_on_site: «صادق» goes on there (prices are shown before anything is charged)." };
+    return { project_id: id, ...(skipped.length ? { files_not_used: skipped, note: "Only PDFs and page pictures can be study sources." } : {}), open_on_site: studentLink(c.origin, id), next: "Give the person open_on_site: «صادق» goes on there (prices are shown before anything is charged)." };
   },
 };
 
@@ -434,6 +545,8 @@ const haidaraNew: ToolDef = {
       title: { type: "string" },
       kind: { type: "string", enum: KINDS, description: "reel 9:16 (default), horizontal 16:9, podcast, poem." },
       brief: { type: "string", description: "Everything «حيدرا ماكس» should know and do, in the person's words." },
+      files: { ...FILES_ARG, description: "upload_ids of the clips, pictures and sounds to put in the edit's library." },
+      motion: { type: "boolean", description: "A motion-graphics piece: opens «مختبر الموشن», where «حيدرا ماكس» writes the scenario from the brief by himself, then builds it in code." },
     },
     ["brief"],
   ),
@@ -447,7 +560,52 @@ const haidaraNew: ToolDef = {
       .from("editor_chats")
       .upsert({ project_id: id, user_id: c.user.id, messages: [], handoff: `طلب الشخص (من محادثته مع كلاود أو شات جي بي تي):\n${brief}`, chats: 1, updated_at: new Date().toISOString() });
     if (error) console.error("mcp haidara handoff", error.message);
-    return { project_id: id, open_on_site: `${c.origin}/jawad-ai/editor/${id}`, brief_saved: !error, next: "Give the person open_on_site: they open it, add their clips if any, and tell «حيدرا ماكس» to start." };
+    const p = await requireEditorProject(id, c.user.id);
+    // the person's files, pointed at from the edit's library (they stay where they are), as محمد باقر hands them over
+    const files = fileIds(a.files);
+    let added = 0;
+    if (files.length) {
+      const { data } = await createAdminClient().from("jawad_uploads").select("*").in("id", files).eq("user_id", c.user.id).eq("status", "ready");
+      const rows = ((data ?? []) as UploadRow[])
+        .filter((u) => u.kind !== "doc")
+        .map((u) => ({
+          project_id: id,
+          user_id: c.user.id,
+          kind: u.kind,
+          bucket: "jawad",
+          path: u.storage_path,
+          name: String(u.file_name ?? "").slice(0, 200) || (u.kind === "video" ? "فيديو" : u.kind === "audio" ? "صوت" : "صورة"),
+          mime: u.mime ?? (u.kind === "video" ? "video/mp4" : u.kind === "audio" ? "audio/mpeg" : "image/png"),
+          bytes: u.bytes ?? 0,
+          duration_ms: u.duration_ms,
+          width: u.width,
+          height: u.height,
+          origin: "jawad",
+          status: "ready",
+          meta: { hasAudio: u.kind !== "image", fromConnector: true },
+        }));
+      if (rows.length) {
+        const { error: e } = await createAdminClient().from("editor_assets").insert(rows);
+        if (e) console.error("mcp haidara assets", e.message);
+        else added = rows.length;
+      }
+    }
+    await appendChat(p, [{ role: "assistant", text: `📨 وصلني طلبك من محادثتك مع كلاود أو شات جي بي تي${added ? `، ومعه ${added} ملفات في المكتبة` : ""}. قول لي «ابدأ» وأنفّذه، أو اسألني عن أي جزء منه.` }]).catch(() => {});
+    // a motion piece: «مختبر الموشن» with the brief, writing its scenario by itself when opened
+    let lab: string | undefined;
+    if (a.motion === true) {
+      const title = str(a.title, 100) || "موشن";
+      const r = await saveLabChat(p, c.user.id, { title, state: { brief: brief.slice(0, 6000), seconds: 15, chat: [{ role: "user", text: `📨 ${brief.slice(0, 1800)}` }], autoPlan: true } }).catch((e: unknown) => (console.error("mcp haidara lab", e), null));
+      if (r?.id) lab = r.id;
+    }
+    return {
+      project_id: id,
+      open_on_site: editorLink(c.origin, { id, lab }),
+      brief_saved: !error,
+      files_added: added,
+      ...(lab ? { motion_lab: true } : {}),
+      next: lab ? "Give the person open_on_site: «مختبر الموشن» writes the scenario by itself, they approve it, and it is built in code there." : "Give the person open_on_site: they open it and tell «حيدرا ماكس» to start.",
+    };
   },
 };
 
@@ -465,6 +623,9 @@ const haidaraList: ToolDef = {
 
 export const TOOLS: ToolDef[] = [
   balance,
+  addFile,
+  uploadPage,
+  myFiles,
   generators,
   styles,
   voices,

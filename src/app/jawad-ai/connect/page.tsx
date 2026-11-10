@@ -62,6 +62,13 @@ export default async function ConnectPage() {
           ))}
         </ul>
         <p className="text-sm font-bold text-muted">قبل أي توليد من الاستوديو يقولك السعر وينتظر موافقتك. والتصاميم ومونتاج حيدرة كت وخطوات الطالب الذكي تكمل هنا بالموقع: يعطيك رابط يفتحها وتكمل لحالها.</p>
+        <p className="text-sm font-bold text-muted">
+          الملفات: في شات جي بي تي ترفقها بالمحادثة وتوصل على طول. في كلاود يعطيك رابط{" "}
+          <Link href="/jawad-ai/connect/upload" className="underline">
+            صفحة الرفع
+          </Link>{" "}
+          ترفع منها، أو ترسل له رابط الملف.
+        </p>
       </div>
 
       <div className="card space-y-3 p-5">

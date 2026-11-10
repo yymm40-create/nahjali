@@ -1,6 +1,7 @@
 /** What a linked Claude / ChatGPT can do, as the consent page and /jawad-ai/connect say it. */
 export const MCP_TOOLS_SUMMARY = [
   "يشوف رصيدك",
+  "يضيف ملفاتك (صور، فيديو، صوت، PDF) ويستخدمها في كل الأقسام",
   "يولّد من الاستوديو الإبداعي: صور وفيديو وأصوات وموسيقى وكل المولدات",
   "يكلّم محمد باقر في صانع الكاروسيل ويرسم الشرائح",
   "يكلّم كاظم في المصمم الذكي",

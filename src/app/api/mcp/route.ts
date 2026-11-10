@@ -58,7 +58,7 @@ export const POST = async (req: Request) => {
       case "ping":
         return ok({});
       case "tools/list":
-        return ok({ tools: TOOLS.map((t) => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, ...(t.annotations ? { annotations: t.annotations } : {}) })) });
+        return ok({ tools: TOOLS.map((t) => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, ...(t.annotations ? { annotations: t.annotations } : {}), ...(t._meta ? { _meta: t._meta } : {}) })) });
       case "tools/call": {
         const tool = TOOLS.find((t) => t.name === m.params?.name);
         if (!tool) return fail(-32602, `Unknown tool: ${String(m.params?.name)}`);

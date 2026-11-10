@@ -53,3 +53,14 @@ describe("connector tokens", () => {
     expect(t.revoked(200, {})).toBe(false);
   });
 });
+
+describe("a file from a link", () => {
+  it("never reaches the server's own network", async () => {
+    const { privateAddress, downloadPublic } = await import("@/lib/mcp/fetch-file");
+    for (const ip of ["127.0.0.1", "10.0.0.5", "172.16.3.4", "192.168.1.1", "169.254.169.254", "0.0.0.0", "::1", "fd00::1", "::ffff:127.0.0.1", "100.64.0.1"]) expect(privateAddress(ip)).toBe(true);
+    for (const ip of ["8.8.8.8", "142.250.72.14", "2606:4700::1111"]) expect(privateAddress(ip)).toBe(false);
+    await expect(downloadPublic("http://169.254.169.254/latest/meta-data")).rejects.toMatchObject({ status: 400 });
+    await expect(downloadPublic("http://localhost:3000/x")).rejects.toMatchObject({ status: 400 });
+    await expect(downloadPublic("file:///etc/passwd")).rejects.toMatchObject({ status: 400 });
+  });
+});

@@ -61,7 +61,9 @@ describe("the connector, end to end", () => {
     expect(init.result.protocolVersion).toBe("2025-06-18");
     const list = await (await rpc(tokens.access_token, { jsonrpc: "2.0", id: 2, method: "tools/list" })).json();
     const names = list.result.tools.map((t: { name: string }) => t.name);
-    for (const n of ["jawad_balance", "studio_generate", "carousel_chat", "designer_chat", "student_new", "haidara_new_project"]) expect(names).toContain(n);
+    for (const n of ["jawad_balance", "jawad_add_file", "jawad_upload_page", "jawad_my_files", "studio_generate", "carousel_chat", "designer_chat", "student_new", "haidara_new_project"]) expect(names).toContain(n);
+    // ChatGPT hands a file attached to the chat to this argument
+    expect(list.result.tools.find((t: { name: string }) => t.name === "jawad_add_file")._meta["openai/fileParams"]).toEqual(["file"]);
     const bal = await (await rpc(tokens.access_token, { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "jawad_balance", arguments: {} } })).json();
     expect(bal.result.isError).toBeUndefined();
     expect(bal.result.structuredContent.balance_halalas).toBe(1250);
