@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { actingUser } from "@/lib/mcp/acting";
 import type { Order } from "@/lib/types";
 
 /** Error with an Arabic, user-facing message and an HTTP status (and, for the page, extra fields sent beside `error`). */
@@ -66,6 +67,9 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
 }
 
 export async function requireApiUser() {
+  // a request from the Claude / ChatGPT connector: its token was checked by the MCP route (src/lib/mcp/acting.ts)
+  const acting = actingUser();
+  if (acting) return acting;
   const supabase = await createClient();
   const {
     data: { user },

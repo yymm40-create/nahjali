@@ -14,6 +14,9 @@ export function rulesFor(path: string, method: string): Rule[] {
   if (!path.startsWith("/api/")) return [];
   // the scheduled jobs and the notification dispatcher are called by Vercel and carry their own secret
   if (path.startsWith("/api/cron/") || path === "/api/islamic/cron" || path === "/api/mahdi/notifications/dispatch" || path === "/api/course/telegram") return [];
+  // «الجواد في كلاود وشات جي بي تي»: every Claude / ChatGPT person reaches us from the same few addresses of theirs, so a
+  // limit per address would stop all of them together; each call carries the person's own token instead
+  if (path === "/api/mcp" || path.startsWith("/api/mcp/")) return [];
   const out: Rule[] = [];
   // the secret codes: a few tries, then a pause (guessing a code takes millions)
   if (path === "/api/access/code" && method === "POST") out.push({ key: "code", max: 8, windowMs: 10 * 60_000 });

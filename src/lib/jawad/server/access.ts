@@ -7,6 +7,7 @@ import { notFound, redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { requireApiUser, UserError } from "@/lib/api";
+import { actingUser } from "@/lib/mcp/acting";
 import { can, hasAnyAccess, unlimitedFor, type Perm } from "@/lib/access";
 import { isAdmin } from "@config/site";
 import { isPublicOpen } from "@/lib/launch";
@@ -20,6 +21,9 @@ export const JAWAD_MESSAGES = {
 
 /** The signed-in user (or null), once per request. */
 export const jawadSession = cache(async (): Promise<{ user: User | null; owner: boolean }> => {
+  // a request from the Claude / ChatGPT connector (src/lib/mcp/acting.ts)
+  const acting = actingUser();
+  if (acting) return { user: acting, owner: isAdmin(acting.email) };
   const supabase = await createClient();
   const {
     data: { user },
