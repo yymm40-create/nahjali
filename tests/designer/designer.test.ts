@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BAKED_TEXT_RULE, DESIGN_ASPECTS, DESIGN_KINDS, DESIGN_SOURCES, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, KAZEM_PERSONA, NO_TEXT_RULE } from "@config/designer";
 import { DESIGN_LIBRARY, findDirection, libraryBlock } from "@config/designer-library";
-import { FONTS } from "@config/jawad/student";
+import { CONTENT_FONTS } from "@config/content-fonts";
 import { ALL_PERMS, OPEN_PERMS } from "@config/access";
 import { DEFAULT_SECTIONS, FIXED_IMPLEMENTATIONS, RESERVED_SECTION_IDS, sectionPath } from "@config/jawad/sections";
 import { cleanHistory, forModel, readPending, readQuestions, titleOf } from "@/lib/designer/chats";
@@ -31,17 +31,22 @@ describe("«كاظم»", () => {
     expect(DESIGNER_PLATFORM_RULES).toContain("بدون أي كتابة فيها");
     expect(DESIGNER_PLATFORM_RULES).toContain("لا يوجد طريق ثالث");
     expect(DESIGNER_PLATFORM_RULES).not.toContain("جواد يرسم التصميم كاملًا بالصورة والكتابة");
-    for (const f of FONTS) expect(fontsBlock()).toContain(f.id);
+    // «قائمة الخطوط»: the same 50 fonts as «صانع المحتوى»
+    for (const f of CONTENT_FONTS) expect(fontsBlock()).toContain(f.id);
+    // the template now tells the same way the platform does: no complete design painted with its writing
+    for (const gone of ["text_mode", "baked", "النص داخل الصورة المرسومة هو الأساس", "ترسل التصميم الكامل إلى «جواد» ليرسمه"]) expect(KAZEM_PERSONA).not.toContain(gone);
+    expect(KAZEM_PERSONA).toContain("«حيدرا ماكس» يصمم التصميم كاملًا بالكود");
+    expect(KAZEM_PERSONA).toContain("kind=\"palettes\"");
   });
 
   it("answers in the shape the site reads: a reply, questions, the record, a design to produce, a split", () => {
     expect(ANSWER_SCHEMA.required).toEqual(["reply", "questions", "record", "produce", "split"]);
-    expect(ANSWER_SCHEMA.properties.questions.items.properties.kind.enum).toEqual(["choice", "source", "directions", "fonts"]);
+    expect(ANSWER_SCHEMA.properties.questions.items.properties.kind.enum).toEqual(["choice", "source", "directions", "fonts", "palettes"]);
     expect(ANSWER_SCHEMA.properties.produce.properties.kind.enum).toEqual(DESIGN_KINDS.map((k) => k.id));
     expect(ANSWER_SCHEMA.properties.produce.properties.aspect.enum).toEqual(Object.keys(DESIGN_ASPECTS));
-    expect(ANSWER_SCHEMA.properties.produce.required).toEqual(["on", "kind", "aspect", "picture", "picture_keep", "change", "artwork", "refs", "place", "layers"]);
+    expect(ANSWER_SCHEMA.properties.produce.required).toEqual(["on", "kind", "aspect", "picture", "picture_keep", "change", "artwork", "font", "refs", "place", "layers"]);
     expect(Object.keys(ANSWER_SCHEMA.properties.produce.properties)).not.toContain("maker");
-    for (const field of ["\"reply\"", "\"questions\"", "\"record\"", "\"produce\"", "\"split\"", "kind=\"source\"", "kind=\"fonts\"", "kind=\"directions\"", "\"layers\"", "#RRGGBB"]) expect(DESIGNER_TOOLS).toContain(field);
+    for (const field of ["\"reply\"", "\"questions\"", "\"record\"", "\"produce\"", "\"split\"", "kind=\"source\"", "kind=\"fonts\"", "kind=\"palettes\"", "kind=\"directions\"", "\"layers\"", "#RRGGBB"]) expect(DESIGNER_TOOLS).toContain(field);
   });
 });
 
@@ -54,8 +59,8 @@ describe("the style library", () => {
       for (const d of k.directions) {
         expect(d.colors).toHaveLength(4);
         for (const c of d.colors) expect(c).toMatch(/^#[0-9A-F]{6}$/i);
-        expect(FONTS.some((f) => f.id === d.fonts.title)).toBe(true);
-        expect(FONTS.some((f) => f.id === d.fonts.body)).toBe(true);
+        expect(CONTENT_FONTS.some((f) => f.id === d.fonts.title)).toBe(true);
+        expect(CONTENT_FONTS.some((f) => f.id === d.fonts.body)).toBe(true);
         expect(d.artwork).not.toMatch(/\btext\b.*\bsays\b|"[^"]*[؀-ۿ]+[^"]*"/);
       }
     }

@@ -16,14 +16,14 @@ const UUID = /^[0-9a-f-]{36}$/i;
 /** «المصمم الذكي» · a message to «كاظم» (with the ids of the person's uploads attached to it). */
 export const POST = handle(async (req: Request) => {
   const { user } = await requireDesignerUser();
-  const b = (await req.json().catch(() => ({}))) as { chatId?: unknown; message?: unknown; attachments?: unknown; model?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { chatId?: unknown; message?: unknown; attachments?: unknown; model?: unknown; verbose?: unknown; from?: unknown };
   const message = String(b.message ?? "").trim();
   const attachments = Array.isArray(b.attachments) ? b.attachments : [];
   if (!message && !attachments.length) throw new UserError("اكتب رسالتك.");
   if (message.length > DESIGNER.messageMax) throw new UserError(`الرسالة أطول من ${DESIGNER.messageMax} حرف.`);
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   try {
-    const r = await robotTurn(user, b.model, "محادثة كاظم", () => say(user.id, chatId, message, attachments, user.email), { said: message, reply: (r) => r.text });
+    const r = await robotTurn(user, b.model, "محادثة كاظم", () => say(user.id, chatId, message, attachments, user.email, { verbose: b.verbose === true, from: typeof b.from === "number" ? b.from : undefined }), { said: message, reply: (r) => r.text });
     const spent = await addChatSpent("designer_chats", "id", r.chatId, r.spentHalalas, r.worth);
     return NextResponse.json({ ...r, spent });
   } catch (e) {

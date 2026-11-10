@@ -197,3 +197,25 @@
 .dz-done-img { width: 100%; max-height: 62vh; object-fit: contain; border-radius: 14px; border: 1px solid var(--jw-line); background: var(--jw-bg-2); }
 .dz-done-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .dz-opt-main { font-weight: 700; background: color-mix(in srgb, var(--jw-gold) 22%, var(--jw-surface-2)); border-color: color-mix(in srgb, var(--jw-gold) 55%, transparent); }
+
+/* «صانع المحتوى»'s way, in the designer's light look: the decisions as chips over the chat, editing an old message,
+   the longer-talk switch, «قائمة الخطوط» and «معرض الألوان». */
+.dz-decs { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--dz-line); background: rgba(255, 255, 255, 0.55); }
+.dz-dec { border: 1px solid rgba(47, 116, 255, 0.3); background: #fff; color: var(--dz-ink); padding: 3px 11px; border-radius: 999px; font-size: 12px; cursor: pointer; transition: transform 0.15s, background 0.15s; }
+.dz-dec:hover:not(:disabled) { transform: translateY(-1px); background: rgba(47, 116, 255, 0.08); }
+.dz-dec b { color: var(--dz-blue); }
+.dz-edit { display: block; margin-top: 4px; margin-inline-start: auto; border: 0; background: none; color: rgba(255, 255, 255, 0.85); font-size: 11px; cursor: pointer; padding: 0; }
+.dz-msg.bot .dz-edit { color: var(--dz-muted); }
+.dz-editing { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 10px; border-radius: 12px; background: #fffbeb; border: 1px solid #fcd34d; font-size: 13px; }
+.dz-compose-opts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dz-verbose.on { background: linear-gradient(135deg, var(--dz-blue), var(--dz-violet)); color: #fff; border-color: transparent; }
+.dz-pick { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.dz-pick-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dz-pick-chips .dz-opt { padding: 4px 10px; font-size: 12px; }
+.dz-pick-chips small { opacity: 0.6; }
+.dz-pick .dz-fonts { max-height: 340px; overflow-y: auto; margin-top: 0; padding: 2px; }
+.dz-pals { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); max-height: 320px; overflow-y: auto; padding: 2px; }
+.dz-pal { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 14px; border: 1px solid var(--dz-line); background: #fff; cursor: pointer; text-align: center; font-size: 12px; }
+.dz-pal[aria-pressed="true"] { border-color: var(--dz-blue); box-shadow: 0 0 0 3px rgba(47, 116, 255, 0.25); }
+.dz-pal-bar { display: flex; height: 34px; border-radius: 9px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.08); }
+.dz-pal-bar span { flex: 1; }
