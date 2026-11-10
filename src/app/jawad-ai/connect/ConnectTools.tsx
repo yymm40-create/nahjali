@@ -6,13 +6,11 @@ import { useState } from "react";
 export function CopyLink({ url }: { url: string }) {
   const [done, setDone] = useState(false);
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <code dir="ltr" className="min-w-0 flex-1 break-all rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm font-bold">
-        {url}
-      </code>
+    <div className="cn-link">
+      <code dir="ltr">{url}</code>
       <button
         type="button"
-        className="btn btn-primary min-h-11 px-5 text-base"
+        className="cn-btn"
         onClick={() => {
           void navigator.clipboard?.writeText(url).then(() => {
             setDone(true);
@@ -20,7 +18,7 @@ export function CopyLink({ url }: { url: string }) {
           });
         }}
       >
-        {done ? "✅ انتسخ" : "انسخ الرابط"}
+        {done ? <span className="cn-ok">✅ انتسخ</span> : "انسخ الرابط"}
       </button>
     </div>
   );
@@ -33,7 +31,7 @@ export function Disconnect() {
     <div className="space-y-2">
       <button
         type="button"
-        className="btn btn-ghost min-h-11 px-5 text-base"
+        className="cn-btn-soft"
         disabled={state === "busy"}
         onClick={async () => {
           if (!window.confirm("تفصل كل ربط كلاود وشات جي بي تي بحسابك؟ يوقف على طول، وتقدر تربط من جديد بعدين.")) return;
