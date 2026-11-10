@@ -4,7 +4,7 @@
 --   · mahdi_guide_books  — a guide book the owner gave a PDF: it points at a book of the shared catalogue (mahdi_books),
 --                          whose PDF opens in the reader inside the platform.
 --   · mahdi_pdf_progress — the last page I reached in a book's PDF, so the reader opens where I stopped (any device).
--- Run once in Supabase: Dashboard → SQL Editor → paste → Run (after 0019). Safe to run twice.
+-- Run in Supabase: Dashboard → SQL Editor → paste → Run (after 0019). Safe to run twice (run it again if you ran it before the size part was added).
 -- The guide works before it runs (the list then stays on the device, and no guide book has a PDF yet).
 
 create table if not exists public.mahdi_guide_list (
@@ -50,3 +50,11 @@ create policy "mahdi pdf progress: own rows" on public.mahdi_pdf_progress
 revoke all on public.mahdi_guide_list, public.mahdi_guide_books, public.mahdi_pdf_progress from anon;
 grant select, insert, update, delete on public.mahdi_guide_list, public.mahdi_pdf_progress to authenticated;
 grant select on public.mahdi_guide_books to authenticated;
+
+-- ───────────────────────── No size limit on a book's PDF (the owner, 10 November 2026) ─────────────────────────
+-- 0019 capped a book's file at 50 MB. Now any size: the column takes big files (bigint) and only checks it is a real size.
+-- (Files live in R2; the old Supabase bucket's own cap goes too, for any upload that still lands there.)
+alter table public.mahdi_books drop constraint if exists mahdi_books_pdf_size_check;
+alter table public.mahdi_books alter column pdf_size type bigint;
+alter table public.mahdi_books add constraint mahdi_books_pdf_size_check check (pdf_size is null or pdf_size > 0);
+update storage.buckets set file_size_limit = null where id = 'mahdi-book-files';

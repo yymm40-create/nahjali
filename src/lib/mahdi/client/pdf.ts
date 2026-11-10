@@ -49,8 +49,14 @@ export async function openPdf(url: string): Promise<PdfDoc> {
 /** The number of pages of a PDF picked on this device (the owner attaching a guide book's file). */
 export async function countPdfPages(file: File): Promise<number> {
   const pdfjs = await loadPdfJs();
-  const doc = await pdfjs.getDocument({ ...COMMON, data: new Uint8Array(await file.arrayBuffer()) }).promise;
-  const n = doc.numPages;
-  await doc.destroy();
-  return n;
+  // A link to the file on this device: a big book is read in parts, not copied whole into memory
+  const url = URL.createObjectURL(file);
+  try {
+    const doc = await pdfjs.getDocument({ ...COMMON, url, disableAutoFetch: true }).promise;
+    const n = doc.numPages;
+    await doc.destroy();
+    return n;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
