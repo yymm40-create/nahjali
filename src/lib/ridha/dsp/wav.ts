@@ -190,3 +190,24 @@ export function drawWave(
     g.fillRect(px, top, 1, Math.max(1, bot - top));
   }
 }
+
+const peakCache = new WeakMap<Peaks, number>();
+
+/** The loudest sample of a sound (0 for silence), read from its coarsest outline and remembered. */
+export function peakOf(p: Peaks): number {
+  const known = peakCache.get(p);
+  if (known != null) return known;
+  let v = 0;
+  const top = p.levels[p.levels.length - 1];
+  if (top) {
+    for (let c = 0; c < top.min.length; c++) {
+      for (let i = 0; i < top.min[c].length; i++) {
+        const lo = -top.min[c][i], hi = top.max[c][i];
+        if (lo > v && Number.isFinite(lo)) v = lo;
+        if (hi > v && Number.isFinite(hi)) v = hi;
+      }
+    }
+  }
+  peakCache.set(p, v);
+  return v;
+}
