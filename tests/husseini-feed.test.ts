@@ -42,7 +42,7 @@ describe("محمد باقر: Claude Code يرسم الكاروسيل", () => {
     expect(readFileSync("src/app/api/content/produce/route.ts", "utf8")).toContain("produceFromCode(user.id, chatId, b)");
     const page = readFileSync("src/components/jawad/content/ContentChat.tsx", "utf8");
     expect(page).toContain('from: "content"');
-    expect(page).toContain("n: r.code.n, png: drawn.png");
+    expect(page).toContain("n: r.code.n, ...(await pngBody(drawn.png))");
   });
 });
 

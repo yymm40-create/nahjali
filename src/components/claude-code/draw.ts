@@ -100,47 +100,74 @@ export interface DrawTemplate {
   faces?: { photo: number; aspect: number; place?: number[]; cut?: boolean }[];
 }
 
-/** A cut-out with clear room around it, so the frame's crop around his face is never squeezed by the cut-out's edges. */
-function padded(bm: ImageBitmap): ImageBitmap {
-  const c = new OffscreenCanvas(Math.round(bm.width * 2), Math.round(bm.height * 1.6));
-  c.getContext("2d")!.drawImage(bm, Math.round(bm.width * 0.5), Math.round(bm.height * 0.3));
-  bm.close();
-  return c.transferToImageBitmap();
+/** A working canvas (a plain one: an iPhone's older Safari has no OffscreenCanvas for 2D). */
+function sheet(w: number, h: number) {
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(w));
+  c.height = Math.max(1, Math.round(h));
+  return { c, x: c.getContext("2d")! };
 }
 
-/** A cut-out's edge made clean: the hard, stair-stepped border softened by a hair, the stray specks around it gone. */
-function cleanEdge(bm: ImageBitmap): ImageBitmap {
-  const c = new OffscreenCanvas(bm.width, bm.height);
-  const x = c.getContext("2d")!;
-  x.drawImage(bm, 0, 0);
-  const m = new OffscreenCanvas(bm.width, bm.height);
-  const mx = m.getContext("2d")!;
-  // the alpha slightly shrunk (specks and fringe gone), then softened
-  mx.filter = `blur(${Math.max(1, Math.round(bm.width / 1400))}px)`;
-  mx.drawImage(bm, 0, 0);
-  mx.filter = "none";
-  x.globalCompositeOperation = "destination-in";
-  x.drawImage(m, 0, 0);
-  x.drawImage(m, 0, 0);
-  return c.transferToImageBitmap();
+/** How much clear room `padded` leaves over a cut-out (a share of its height) and at each side (of its width). */
+const PAD = { top: 0.3, side: 0.5 };
+
+/** A cut-out with clear room around it, so the frame's crop around his face is never squeezed by the cut-out's edges. */
+async function padded(bm: ImageBitmap): Promise<ImageBitmap> {
+  const { c, x } = sheet(bm.width * (1 + 2 * PAD.side), bm.height * (1 + 2 * PAD.top));
+  x.drawImage(bm, Math.round(bm.width * PAD.side), Math.round(bm.height * PAD.top));
+  bm.close();
+  return createImageBitmap(c);
 }
 
 /**
- * A person cut out of his photo (transparent around him), put on a clear picture of the whole frame with his face at
- * `place` (x, y, w, h fractions: where the man's face was in the design) — the same size and the same spot.
+ * A cut-out's edge made clean: its border drawn in by a hair on every side, so the thin halo of the old background
+ * and the stray specks around the person go, and the edge stays soft. No canvas filter (Safari has none).
+ */
+async function cleanEdge(bm: ImageBitmap): Promise<ImageBitmap> {
+  const { c, x } = sheet(bm.width, bm.height);
+  x.drawImage(bm, 0, 0);
+  const e = Math.max(1, Math.round(Math.max(bm.width, bm.height) / 1300));
+  x.globalCompositeOperation = "destination-in";
+  for (const [dx, dy] of [[e, 0], [-e, 0], [0, e], [0, -e]]) x.drawImage(bm, dx, dy);
+  bm.close();
+  return createImageBitmap(c);
+}
+
+/**
+ * A person put on a clear picture of the whole frame with his face at `place` (x, y, w, h fractions: where the man's
+ * face was in the design) — the same size and the same spot. `cut`: he is cut out (transparent around him), and where
+ * his cut-out ends above the frame's bottom it fades out instead of ending in a hard line; else the photo keeps its
+ * own background: the face, the hair and the chest, its edges fading into the design.
  */
 async function placeByFace(bm: ImageBitmap, place: number[], W: number, H: number, cut: boolean): Promise<ImageBitmap> {
   const { faceInPicture } = await import("@/components/jawad/editor/face");
   const f = await faceInPicture(bm);
   const [fx, fy, fw, fh] = place;
-  const c = new OffscreenCanvas(W, H);
-  const x = c.getContext("2d")!;
-  if (f && !cut) {
-    // the photo kept with its background: the face, the hair and the chest, its edges fading into the design
-    const k = (fw * W) / f.w;
-    const cx = (fx + fw / 2) * W, cy = (fy + fh / 2) * H;
-    const sw = f.w * 3.2, sh = f.h * 4.2, sx = f.x + f.w / 2 - sw / 2, sy = f.y - f.h * 0.9;
-    const dx = cx - (f.x + f.w / 2 - sx) * k, dy = cy - (f.y + f.h / 2 - sy) * k, dw = sw * k, dh = sh * k;
+  const { c, x } = sheet(W, H);
+  const cx = (fx + fw / 2) * W, cy = (fy + fh / 2) * H;
+  if (cut) {
+    // by his face when it is found; else his top at the man's head and his width about three faces
+    const k = f ? (fw * W) / f.w : (fw * W * 3) / bm.width;
+    const dx = f ? cx - (f.x + f.w / 2) * k : cx - (bm.width * k) / 2;
+    const dy = f ? cy - (f.y + f.h / 2) * k : (fy - fh * 0.4) * H;
+    x.drawImage(bm, dx, dy, bm.width * k, bm.height * k);
+    const bottom = dy + bm.height * k;
+    if (bottom < H * 0.985) {
+      const fade = Math.min(bm.height * k * 0.16, H * 0.12);
+      const g = x.createLinearGradient(0, bottom - fade, 0, bottom);
+      g.addColorStop(0, "rgba(0,0,0,0)");
+      g.addColorStop(1, "rgba(0,0,0,1)");
+      x.globalCompositeOperation = "destination-out";
+      x.fillStyle = g;
+      x.fillRect(0, bottom - fade, W, fade + 2);
+    }
+  } else {
+    // the part of the photo around the face (the whole photo when no face is found), its edges fading out
+    const k = f ? (fw * W) / f.w : (fw * W * 3.2) / bm.width;
+    const sw = f ? f.w * 3.2 : bm.width, sh = f ? f.h * 4.2 : bm.height;
+    const sx = f ? f.x + f.w / 2 - sw / 2 : 0, sy = f ? f.y - f.h * 0.9 : 0;
+    const dw = sw * k, dh = sh * k;
+    const dx = cx - dw / 2, dy = f ? cy - (f.y + f.h / 2 - sy) * k : (fy - fh * 0.9) * H;
     x.drawImage(bm, sx, sy, sw, sh, dx, dy, dw, dh);
     const g = x.createRadialGradient(dx + dw / 2, dy + dh * 0.42, Math.min(dw, dh) * 0.3, dx + dw / 2, dy + dh * 0.5, Math.max(dw, dh) * 0.55);
     g.addColorStop(0, "rgba(0,0,0,1)");
@@ -148,24 +175,20 @@ async function placeByFace(bm: ImageBitmap, place: number[], W: number, H: numbe
     x.globalCompositeOperation = "destination-in";
     x.fillStyle = g;
     x.fillRect(0, 0, W, H);
-  } else if (f) {
-    const k = (fw * W) / f.w;
-    const cx = (fx + fw / 2) * W, cy = (fy + fh / 2) * H;
-    x.drawImage(bm, cx - (f.x + f.w / 2) * k, cy - (f.y + f.h / 2) * k, bm.width * k, bm.height * k);
-  } else {
-    // no face found: the person's top at the man's head, his width about three faces
-    const k = (fw * W * 3) / bm.width;
-    x.drawImage(bm, (fx + fw / 2) * W - (bm.width * k) / 2, (fy - fh * 0.4) * H, bm.width * k, bm.height * k);
   }
   bm.close();
-  return c.transferToImageBitmap();
+  return createImageBitmap(c);
 }
 
-/** A person's photo cut for his frame: the face whole with its hair at the top, the chest under it as far as it goes. */
-async function aroundFace(bm: ImageBitmap, aspect: number): Promise<ImageBitmap> {
+/**
+ * A person's photo cut for his frame: the face whole with its hair at the top, the chest under it as far as it goes.
+ * `floor`: where the person ends in the picture (a cut-out with room under it) — the crop never goes below it, so a
+ * frame never shows a body ending in mid-air. `known`: his face, when it was found already.
+ */
+async function aroundFace(bm: ImageBitmap, aspect: number, floor?: number, known?: { x: number; y: number; w: number; h: number } | null): Promise<ImageBitmap> {
   const { faceInPicture } = await import("@/components/jawad/editor/face");
-  const f = await faceInPicture(bm);
-  const W = bm.width, H = bm.height;
+  const f = known !== undefined ? known : await faceInPicture(bm);
+  const W = bm.width, H = Math.min(bm.height, floor ?? bm.height);
   let cw: number, ch: number, cx: number, top: number;
   if (f) {
     cw = f.w * 2.5;
@@ -186,7 +209,7 @@ async function aroundFace(bm: ImageBitmap, aspect: number): Promise<ImageBitmap>
   ch *= k;
   const x = Math.max(0, Math.min(W - cw, cx - cw / 2));
   const y = Math.max(0, Math.min(H - ch, top));
-  if (x <= 0 && y <= 0 && cw >= W - 1 && ch >= H - 1) return bm;
+  if (x <= 0 && y <= 0 && cw >= W - 1 && ch >= bm.height - 1) return bm;
   const out = await createImageBitmap(bm, Math.round(x), Math.round(y), Math.round(cw), Math.round(ch));
   bm.close();
   return out;
@@ -242,9 +265,17 @@ async function drawTemplate(o: DrawOptions, t: DrawTemplate): Promise<DrawResult
     const i = f.photo - 1;
     if (!bms[i]) continue;
     // the person's choice: cut out (his edge cleaned) or with his own background
-    const pic = f.cut ? cleanEdge(bms[i]!) : bms[i]!;
-    if (pic !== bms[i]) bms[i]!.close();
-    bms[i] = f.place ? await placeByFace(pic, f.place, W, H, !!f.cut) : await aroundFace(f.cut ? padded(pic) : pic, f.aspect);
+    const pic = f.cut ? await cleanEdge(bms[i]!) : bms[i]!;
+    if (f.place) bms[i] = await placeByFace(pic, f.place, W, H, !!f.cut);
+    else if (f.cut) {
+      // in a frame: room around the cut-out, and the crop never below where he ends
+      // (his face is found before the room is added: it would be too small to find after)
+      const { faceInPicture } = await import("@/components/jawad/editor/face");
+      const face = await faceInPicture(pic);
+      const ox = Math.round(pic.width * PAD.side), oy = Math.round(pic.height * PAD.top);
+      const floor = Math.round(pic.height * (1 + PAD.top));
+      bms[i] = await aroundFace(await padded(pic), f.aspect, floor, face ? { ...face, x: face.x + ox, y: face.y + oy } : null);
+    } else bms[i] = await aroundFace(pic, f.aspect);
   }
   const assets = bms.map((bm, i) => ({ id: `photo${i + 1}`, bitmap: bm! }));
   const fonts = [...sceneFonts(t.fonts), ...Object.entries(t.extra ?? {}).map(([role, id]) => sceneFont(role, id)).filter((f): f is NonNullable<typeof f> => !!f)];
