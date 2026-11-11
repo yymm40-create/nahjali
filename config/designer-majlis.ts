@@ -4,6 +4,10 @@
 // GPT Image 2 (warned: the faces will likely change). Pure (server and browser).
 
 import { MAJLIS_TEMPLATES } from "./designer-majlis-data";
+import { MAJLIS_PEOPLE } from "./designer-majlis-people";
+
+/** Every ready design: the 60 invitations, then the designs with people (بأشخاص_معدلة). */
+export const MAJLIS_ALL = [...MAJLIS_TEMPLATES, ...MAJLIS_PEOPLE];
 
 /** A word of a template: where it sits (fractions of the frame), its size (fraction of the height) and its look. */
 export interface MajlisWord {
@@ -23,9 +27,12 @@ export interface MajlisWord {
 /** A photo frame of a template: kh = the first person (the bigger or right one), rd = the second. */
 export interface MajlisSlot {
   who: "kh" | "rd";
-  /** "mask": the frame's exact inside is the template's mask picture; else drawn in code */
-  shape: "mask" | "arch" | "mihrab" | "round" | "rect" | "circle";
+  /** "mask": the frame's exact inside is the template's mask picture; "person": a design WITH a man, the person cut out
+   * of his photo stands where the man stood (his face at `face`); else a frame drawn in code */
+  shape: "mask" | "arch" | "mihrab" | "round" | "rect" | "circle" | "person";
   r: number[];
+  /** "person": where the man's face was (x, y, w, h fractions) — the person's face is put exactly there */
+  face?: number[];
 }
 
 export interface MajlisTemplate {
@@ -40,6 +47,10 @@ export interface MajlisTemplate {
   slots: MajlisSlot[];
   words: MajlisWord[];
   logo?: number[];
+  /** a design with people: its title as a layer of its own (<id>_title.png), drawn over the person like in the original */
+  titleLayer?: boolean;
+  /** a design with people: the band (top and bottom, fractions of the height) that carries the names and details */
+  band?: number[];
 }
 
 export const MAJLIS = {
@@ -48,16 +59,17 @@ export const MAJLIS = {
   dir: "/designer/majlis",
 } as const;
 
-export const templateById = (id: unknown) => MAJLIS_TEMPLATES.find((t) => t.id === id) ?? null;
+export const templateById = (id: unknown) => MAJLIS_ALL.find((t) => t.id === id) ?? null;
 export const viewUrl = (id: string) => `${MAJLIS.dir}/${id}.jpg`;
 export const baseUrl = (id: string) => `${MAJLIS.dir}/${id}_base.jpg`;
 export const maskUrl = (id: string) => `${MAJLIS.dir}/${id}_mask.png`;
+export const titleUrl = (id: string) => `${MAJLIS.dir}/${id}_title.png`;
 
 /** The designs that fit this many people: the invitations (دعوات ٢) first, the ones with people after. */
 export function templatesFor(kh: number, rd: number): MajlisTemplate[] {
   const n = kh + rd;
   if (n < 1 || n > MAJLIS.maxPeople) return [];
-  return MAJLIS_TEMPLATES.filter((t) => t.slots.length === n).sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "invite" ? -1 : 1));
+  return MAJLIS_ALL.filter((t) => t.slots.length === n).sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "invite" ? -1 : 1));
 }
 
 /** The details the person fills (labels shown in the form; defaults put in when left empty). */
@@ -89,7 +101,20 @@ export interface MajlisOrder {
   people: MajlisPerson[];
   /** a jawad_uploads id */
   logo?: string;
+  /**
+   * the person's choice (always asked): true = the background of each photo is removed and the person alone is put in
+   * the design («حيدرا ماكس» cuts him out professionally); false = each photo goes in with its own background
+   */
+  cut: boolean;
+  /** set once the photos in `people` are the cut-outs (the cut is not done twice) */
+  cutDone?: boolean;
 }
+
+/** The background choice, as the picker asks it. */
+export const MAJLIS_BG = [
+  { cut: true, name: "✂️ فرّغ الخلفية", hint: "حيدرا ماكس يقص الشخص باحتراف ويحطه على خلفية التصميم" },
+  { cut: false, name: "🖼️ خلّ الصورة بخلفيتها", hint: "الصورة تنحط مثل ما رفعتها، بخلفيتها" },
+] as const;
 
 export const ROLE_LABEL = { kh: "الخطيب الحسيني", rd: "الرادود" } as const;
 
@@ -122,7 +147,8 @@ export function readOrder(raw: unknown): MajlisOrder | null {
     .map((p) => ({ role: p.role === "rd" ? ("rd" as const) : ("kh" as const), name: clean(p.name, 80), photo: typeof p.photo === "string" ? p.photo.slice(0, 60) : "" }))
     .slice(0, t.slots.length);
   if (people.length !== t.slots.length) return null;
-  return { templateId: t.id, fields, people, ...(typeof o.logo === "string" && o.logo ? { logo: o.logo.slice(0, 60) } : {}) };
+  if (typeof o.cut !== "boolean") return null;
+  return { templateId: t.id, fields, people, cut: o.cut, ...(o.cutDone === true ? { cutDone: true } : {}), ...(typeof o.logo === "string" && o.logo ? { logo: o.logo.slice(0, 60) } : {}) };
 }
 
 /** What's missing before it can be made (Arabic, for the form); empty when ready. */
@@ -153,6 +179,11 @@ export function wordText(o: MajlisOrder, k: string): string {
     case "occ": return "السيدة فاطمة الزهراء عليها السلام";
     case "dateLine": return [field(o, "night"), field(o, "date")].filter(Boolean).join(" — ");
     case "timeLine": return [field(o, "time"), field(o, "ampm")].filter(Boolean).join(" ");
+    case "names": return o.people.length > 1 ? o.people.map((p) => p.name).filter(Boolean).join("  ◆  ") : a ? `${ROLE_LABEL[a.role]}: ${a.name}` : "";
+    case "roles": return o.people.length > 1 ? o.people.map((p) => ROLE_LABEL[p.role]).join("  ◆  ") : "";
+    case "detailsA": return [field(o, "invite"), field(o, "host"), field(o, "pre"), "السيدة فاطمة الزهراء عليها السلام"].filter(Boolean).join(" ");
+    case "detailsB": return [wordText(o, "dateLine"), wordText(o, "timeLine"), field(o, "place")].filter(Boolean).join("  ◆  ");
+    case "extra": return [field(o, "women"), field(o, "live")].filter(Boolean).join("  ◆  ");
     case "hostLine": return [field(o, "invite"), field(o, "host"), field(o, "pre"), "السيدة فاطمة الزهراء عليها السلام"].filter(Boolean).join(" ");
     default: return MAJLIS_FIELDS.some((d) => d.key === k) ? field(o, k as MajlisFieldKey) : "";
   }
@@ -165,4 +196,4 @@ export function orderSummary(o: MajlisOrder, maker: MajlisMaker): string {
   return `دعوة مجلس من التصميم ${t.id.slice(1)} «${t.title}» — ${field(o, "host")} · ${who} · ${wordText(o, "dateLine")} · ${wordText(o, "timeLine")} · ${field(o, "place")} — يصمّمها: ${MAJLIS_MAKERS.find((m) => m.id === maker)!.name}`;
 }
 
-export { MAJLIS_TEMPLATES };
+export { MAJLIS_TEMPLATES, MAJLIS_PEOPLE };

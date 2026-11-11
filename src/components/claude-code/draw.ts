@@ -97,7 +97,68 @@ export interface DrawTemplate {
   extra?: Record<string, string>;
   /** the people's photos (photo numbers) and the shape (width ÷ height) of the frame each goes in: each is cut around
    * his face first — the whole face with the hair, then as much of the chest as the frame holds (the owner's rule) */
-  faces?: { photo: number; aspect: number }[];
+  faces?: { photo: number; aspect: number; place?: number[]; cut?: boolean }[];
+}
+
+/** A cut-out with clear room around it, so the frame's crop around his face is never squeezed by the cut-out's edges. */
+function padded(bm: ImageBitmap): ImageBitmap {
+  const c = new OffscreenCanvas(Math.round(bm.width * 2), Math.round(bm.height * 1.6));
+  c.getContext("2d")!.drawImage(bm, Math.round(bm.width * 0.5), Math.round(bm.height * 0.3));
+  bm.close();
+  return c.transferToImageBitmap();
+}
+
+/** A cut-out's edge made clean: the hard, stair-stepped border softened by a hair, the stray specks around it gone. */
+function cleanEdge(bm: ImageBitmap): ImageBitmap {
+  const c = new OffscreenCanvas(bm.width, bm.height);
+  const x = c.getContext("2d")!;
+  x.drawImage(bm, 0, 0);
+  const m = new OffscreenCanvas(bm.width, bm.height);
+  const mx = m.getContext("2d")!;
+  // the alpha slightly shrunk (specks and fringe gone), then softened
+  mx.filter = `blur(${Math.max(1, Math.round(bm.width / 1400))}px)`;
+  mx.drawImage(bm, 0, 0);
+  mx.filter = "none";
+  x.globalCompositeOperation = "destination-in";
+  x.drawImage(m, 0, 0);
+  x.drawImage(m, 0, 0);
+  return c.transferToImageBitmap();
+}
+
+/**
+ * A person cut out of his photo (transparent around him), put on a clear picture of the whole frame with his face at
+ * `place` (x, y, w, h fractions: where the man's face was in the design) — the same size and the same spot.
+ */
+async function placeByFace(bm: ImageBitmap, place: number[], W: number, H: number, cut: boolean): Promise<ImageBitmap> {
+  const { faceInPicture } = await import("@/components/jawad/editor/face");
+  const f = await faceInPicture(bm);
+  const [fx, fy, fw, fh] = place;
+  const c = new OffscreenCanvas(W, H);
+  const x = c.getContext("2d")!;
+  if (f && !cut) {
+    // the photo kept with its background: the face, the hair and the chest, its edges fading into the design
+    const k = (fw * W) / f.w;
+    const cx = (fx + fw / 2) * W, cy = (fy + fh / 2) * H;
+    const sw = f.w * 3.2, sh = f.h * 4.2, sx = f.x + f.w / 2 - sw / 2, sy = f.y - f.h * 0.9;
+    const dx = cx - (f.x + f.w / 2 - sx) * k, dy = cy - (f.y + f.h / 2 - sy) * k, dw = sw * k, dh = sh * k;
+    x.drawImage(bm, sx, sy, sw, sh, dx, dy, dw, dh);
+    const g = x.createRadialGradient(dx + dw / 2, dy + dh * 0.42, Math.min(dw, dh) * 0.3, dx + dw / 2, dy + dh * 0.5, Math.max(dw, dh) * 0.55);
+    g.addColorStop(0, "rgba(0,0,0,1)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    x.globalCompositeOperation = "destination-in";
+    x.fillStyle = g;
+    x.fillRect(0, 0, W, H);
+  } else if (f) {
+    const k = (fw * W) / f.w;
+    const cx = (fx + fw / 2) * W, cy = (fy + fh / 2) * H;
+    x.drawImage(bm, cx - (f.x + f.w / 2) * k, cy - (f.y + f.h / 2) * k, bm.width * k, bm.height * k);
+  } else {
+    // no face found: the person's top at the man's head, his width about three faces
+    const k = (fw * W * 3) / bm.width;
+    x.drawImage(bm, (fx + fw / 2) * W - (bm.width * k) / 2, (fy - fh * 0.4) * H, bm.width * k, bm.height * k);
+  }
+  bm.close();
+  return c.transferToImageBitmap();
 }
 
 /** A person's photo cut for his frame: the face whole with its hair at the top, the chest under it as far as it goes. */
@@ -169,19 +230,23 @@ SECOND ROUND: photo1 is the design as it stands after the first round (its first
 /** A ready design: its program drawn at full size, as it is. */
 async function drawTemplate(o: DrawOptions, t: DrawTemplate): Promise<DrawResult> {
   const list = o.photos ?? [];
-  o.onStep({ text: "🧑‍💻 حيدرا ماكس يجهّز التصميم اللي اخترته بصورك وكلامك…" });
+  o.onStep({ text: t.faces?.some((f) => f.cut) ? "✂️ حيدرا ماكس فرّغ خلفية الصور باحتراف — يحط الأشخاص في التصميم اللي اخترته…" : "🧑‍💻 حيدرا ماكس يجهّز التصميم اللي اخترته بصورك وكلامك…" });
   const bms = await Promise.all(list.map((url) => photoBitmap(url, 2400)));
   const missing = bms.findIndex((b) => !b);
   if (missing >= 0) {
     for (const b of bms) b?.close();
     throw new Error(missing === 0 ? "ما قدرنا نحمّل التصميم المختار؛ جرّب مرة ثانية." : "ما قدرنا نحمّل إحدى الصور؛ ارفعها مرة ثانية.");
   }
+  const [W, H] = pictureSize(o.aspect);
   for (const f of t.faces ?? []) {
     const i = f.photo - 1;
-    if (bms[i]) bms[i] = await aroundFace(bms[i]!, f.aspect);
+    if (!bms[i]) continue;
+    // the person's choice: cut out (his edge cleaned) or with his own background
+    const pic = f.cut ? cleanEdge(bms[i]!) : bms[i]!;
+    if (pic !== bms[i]) bms[i]!.close();
+    bms[i] = f.place ? await placeByFace(pic, f.place, W, H, !!f.cut) : await aroundFace(f.cut ? padded(pic) : pic, f.aspect);
   }
   const assets = bms.map((bm, i) => ({ id: `photo${i + 1}`, bitmap: bm! }));
-  const [W, H] = pictureSize(o.aspect);
   const fonts = [...sceneFonts(t.fonts), ...Object.entries(t.extra ?? {}).map(([role, id]) => sceneFont(role, id)).filter((f): f is NonNullable<typeof f> => !!f)];
   const host = new SceneHost();
   try {

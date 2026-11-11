@@ -6,7 +6,7 @@ import { majlisGptPrompt, majlisPhotos, majlisProgram } from "@/lib/designer/maj
 import { checkScene } from "@/lib/editor/scene/contract";
 
 const PUB = path.join(__dirname, "..", "..", "public", "designer", "majlis");
-const order = (id: string) => readOrder({ templateId: id, fields: { host: "مأتم الزهراء", night: "ليلة الجمعة", date: "١٥ جمادى الأولى", time: "٨:٣٠", place: "القطيف" }, people: [{ role: "kh", name: "الشيخ حسن", photo: "u1" }, { role: "rd", name: "الملا علي", photo: "u2" }] })!;
+const order = (id: string) => readOrder({ templateId: id, fields: { host: "مأتم الزهراء", night: "ليلة الجمعة", date: "١٥ جمادى الأولى", time: "٨:٣٠", place: "القطيف" }, people: [{ role: "kh", name: "الشيخ حسن", photo: "u1" }, { role: "rd", name: "الملا علي", photo: "u2" }], cut: false })!;
 
 describe("«كاظم»'s ready majlis designs", () => {
   it("has the 60 invitations, each with its files, two frames and its words", () => {
@@ -24,6 +24,9 @@ describe("«كاظم»'s ready majlis designs", () => {
   });
   it("checks an order and says what is missing", () => {
     expect(readOrder({ templateId: "nope" })).toBeNull();
+    // the background choice is always asked
+    expect(readOrder({ ...order("q201"), cut: undefined })).toBeNull();
+    expect(readOrder({ ...order("q201"), cut: true })?.cut).toBe(true);
     expect(orderMissing(order("q201"))).toEqual([]);
     expect(orderMissing({ ...order("q201"), people: [{ role: "kh", name: "", photo: "" }, { role: "rd", name: "x", photo: "y" }] }).length).toBe(2);
   });
