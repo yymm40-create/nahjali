@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { MAJLIS_TEMPLATES, orderMissing, readOrder, templatesFor } from "@config/designer-majlis";
+import { MAJLIS_PEOPLE, MAJLIS_TEMPLATES, orderMissing, readOrder, templatesFor } from "@config/designer-majlis";
 import { majlisGptPrompt, majlisPhotos, majlisProgram } from "@/lib/designer/majlis";
 import { checkScene } from "@/lib/editor/scene/contract";
 
@@ -17,10 +17,24 @@ describe("«كاظم»'s ready majlis designs", () => {
       for (const f of [`${t.id}.jpg`, `${t.id}_base.jpg`, ...(t.mask ? [`${t.id}_mask.png`] : [])]) expect(existsSync(path.join(PUB, f)), f).toBe(true);
     }
   });
-  it("shows the designs that fit the count", () => {
-    expect(templatesFor(1, 1)).toHaveLength(60);
-    expect(templatesFor(0, 2)).toHaveLength(60);
+  it("shows the designs that fit the count: the invitations first, then the ones with people", () => {
+    const two = templatesFor(1, 1);
+    expect(two.slice(0, 60).every((t) => t.kind === "invite")).toBe(true);
+    expect(two.length).toBe(60 + MAJLIS_PEOPLE.filter((t) => t.slots.length === 2).length);
+    expect(templatesFor(1, 0).every((t) => t.kind === "people" && t.slots.length === 1)).toBe(true);
+    expect(templatesFor(1, 0).length).toBeGreaterThan(0);
     expect(templatesFor(2, 1)).toHaveLength(0);
+  });
+  it("has the designs with people: their empty base, the man's face to stand in, the title layer and the band", () => {
+    expect(MAJLIS_PEOPLE.length).toBeGreaterThanOrEqual(18);
+    for (const t of MAJLIS_PEOPLE) {
+      for (const f of [`${t.id}.jpg`, `${t.id}_base.jpg`, ...(t.titleLayer ? [`${t.id}_title.png`] : [])]) expect(existsSync(path.join(PUB, f)), f).toBe(true);
+      for (const s of t.slots) if (s.shape === "person") expect(s.face).toHaveLength(4);
+      expect(t.band).toHaveLength(2);
+      const o = readOrder({ templateId: t.id, fields: { host: "م", night: "ل", date: "د", time: "٨", place: "ق" }, people: t.slots.map((_, i) => ({ role: i ? "rd" : "kh", name: "س", photo: "u" + i })), cut: true })!;
+      const ph = majlisPhotos(t, o, (id) => `https://x/${id}`);
+      expect(checkScene(majlisProgram(t, o, ph.ids)).ok).toBe(true);
+    }
   });
   it("checks an order and says what is missing", () => {
     expect(readOrder({ templateId: "nope" })).toBeNull();
