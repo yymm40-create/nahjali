@@ -6,7 +6,7 @@ import { detectKey, scaleById, snap, stepFrom } from "@/lib/ridha/dsp/scales";
 import { pitchMarks, psolaShift } from "@/lib/ridha/dsp/psola";
 import { harmonyWhen, planHarmony, planTune } from "@/lib/ridha/dsp/tune";
 import { changeSpeed, shiftAll } from "@/lib/ridha/dsp/stretch";
-import { cleanVoice, deEss, detectHum, gate, noiseProfile, reduceNoise, removeClicks, removeHum } from "@/lib/ridha/dsp/clean";
+import { cleanVoice, deEss, detectHum, gate, noiseProfile, reduceNoise, reduceReverb, removeClicks, removeHum } from "@/lib/ridha/dsp/clean";
 import { limit, loudness, normalizeLoudness, peakDb } from "@/lib/ridha/dsp/loudness";
 import { encodeWav, makePeaks, rangeOf } from "@/lib/ridha/dsp/wav";
 
@@ -193,6 +193,18 @@ describe("الرضا فويس: cleaning", () => {
     const out = gate(g, SR);
     expect(rms(out, SR * 0.8, SR)).toBeLessThan(rms(g, SR * 0.8, SR) * 0.2);
     expect(rms(out, 2000, SR / 4 - 2000)).toBeGreaterThan(rms(g, 2000, SR / 4 - 2000) * 0.95);
+  });
+  it("lowers a room's ring after a note without eating the note while it is held", async () => {
+    // a second of held voice, then its ring dying away over half a second (a room answering)
+    const n = SR * 2;
+    const x = new Float32Array(n);
+    const v = voice(2, () => 200);
+    for (let i = 0; i < n; i++) x[i] = v[i] * (i < SR ? 1 : Math.exp(-(i - SR) / (SR * 0.12)));
+    const y = await reduceReverb(x, 0.6);
+    // the held part keeps its level (within 2 dB)…
+    expect(rms(y, 14400, 43200) / rms(x, 14400, 43200)).toBeGreaterThan(0.8);
+    // …and the ring is pulled down well below what it was
+    expect(rms(y, 55200, 72000) / rms(x, 55200, 72000)).toBeLessThan(0.55);
   });
   it("runs the whole professional chain and says what it did", async () => {
     const n = SR * 2;
@@ -545,5 +557,82 @@ describe("الرضا فويس: the harmony generator and track groups", () => {
     const freed = removeTrack(addRecording(p, b.track.id, "s", 0, 2, "x").project, g.track.id);
     expect(freed.tracks.some((t) => t.group)).toBe(false);
     expect(freed.clips.length).toBe(1);
+  });
+});
+
+import { ACTIONS_DOC, applyActions, describeStudio, readActions } from "@/lib/ridha/actions";
+import { RIDHA_MAX_SYSTEM } from "@config/ridha-max";
+
+describe("الرضا ماكس: his commands", () => {
+  const start = () => {
+    const p = makeProject("m");
+    return { p, tid: p.tracks[0].id };
+  };
+  it("reads only well-formed commands", () => {
+    expect(readActions(['{"do":"tempo","bpm":72}', "not json", '{"no":"do"}', '["x"]', 5, { do: "master", gain: -2 }]).map((a) => a.do)).toEqual(["tempo", "master"]);
+    expect(readActions("nope")).toEqual([]);
+  });
+  it("applies mixer commands to the named track, clamps every number, and reports what it did", () => {
+    const { p, tid } = start();
+    const r = applyActions(p, readActions([
+      '{"do":"chain","track":"selected","preset":"podcast"}',
+      '{"do":"fx","track":"' + tid + '","kind":"comp","params":{"threshold":-200,"ratio":3,"bogus":9}}',
+      '{"do":"eq","track":"selected","bands":[{"i":0,"freq":95,"on":true},{"i":2,"gain":-40},{"i":99,"gain":3}]}',
+      '{"do":"track","track":"صوت 1","gain":50,"sendReverb":0.3,"stereo":true}',
+      '{"do":"room","decay":3.2,"predelay":900}',
+      '{"do":"key","tonic":2,"scale":"bayati"}',
+      '{"do":"tempo","bpm":72}',
+      '{"do":"master","gain":-1}',
+    ]), tid);
+    const t = r.project.tracks[0];
+    expect(t.fx.map((f) => f.kind)).toEqual(["eq", "gate", "comp", "deess", "limiter"]);
+    const comp = t.fx.find((f) => f.kind === "comp")!;
+    expect(comp.p.threshold).toBe(-60);
+    expect(comp.p.ratio).toBe(3);
+    expect(comp.p.bogus).toBeUndefined();
+    const bands = t.fx[0].bands!;
+    expect(bands[0]).toMatchObject({ on: true, freq: 95 });
+    expect(bands[2].gain).toBe(-18);
+    expect(t).toMatchObject({ gain: 6, sendReverb: 0.3, stereo: true });
+    expect(r.project.reverb).toMatchObject({ decay: 3.2, predelay: 150 });
+    expect(r.project.key).toEqual({ tonic: 2, scale: "bayati" });
+    expect(r.project.bpm).toBe(72);
+    expect(r.project.master.gain).toBe(-1);
+    expect(r.done.length).toBe(8);
+    expect(r.skipped).toEqual([]);
+    // the project he was given is untouched: the whole answer is one undo step
+    expect(p.tracks[0].fx).toEqual([]);
+  });
+  it("refuses what it does not know and hands clip work back as jobs", () => {
+    const { p, tid } = start();
+    const r = applyActions(p, readActions([
+      '{"do":"chain","preset":"nope"}',
+      '{"do":"fx","kind":"laser"}',
+      '{"do":"track","track":"ghost","gain":0}',
+      '{"do":"format_disk"}',
+      '{"do":"clean","use":"podcast","noise":3,"gate":true}',
+      '{"do":"tune","strength":0.7}',
+      '{"do":"loudness","lufs":-16}',
+    ]), tid);
+    expect(r.project).toBe(p);
+    expect(r.skipped.length).toBe(4);
+    expect(r.jobs).toEqual([
+      { do: "clean", use: "podcast", options: { noise: 1, gate: true }, level: null },
+      { do: "tune", strength: 0.7, speedMs: 120, transpose: 0 },
+      { do: "loudness", lufs: -16 },
+    ]);
+  });
+  it("writes the studio out for him, and his instructions name every command and the training", () => {
+    const { p, tid } = start();
+    const withFx = applyActions(p, readActions(['{"do":"chain","preset":"radood"}']), tid).project;
+    const text = describeStudio(withFx, tid, null, null);
+    expect(text).toContain(`track id=${tid}`);
+    expect(text).toContain("[SELECTED]");
+    expect(text).toContain("comp{");
+    expect(text).toContain("no clip is selected");
+    for (const cmd of ["chain", "fx", "remove_fx", "eq", "track", "room", "echo", "master", "key", "tempo", "clean", "tune", "loudness"]) expect(ACTIONS_DOC).toContain(`"do":"${cmd}"`);
+    expect(RIDHA_MAX_SYSTEM).toContain("الرضا ماكس");
+    expect(RIDHA_MAX_SYSTEM).toContain("<training>");
+    expect(RIDHA_MAX_SYSTEM).not.toMatch(/\$\{|undefined/);
   });
 });

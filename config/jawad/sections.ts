@@ -20,7 +20,7 @@ export const SECTION_IMPLEMENTATIONS = {
   photo: { label: "زهراء فوتو ماستر (برنامج تحرير الصور والتصميم المستقل مع الروبوت «زهراء»)", output: null },
   director: { label: "جواد المخرج (محادثة كاملة بروحها مع مخرج ذكي: يخطط اللقطات ويولّد الصور والفيديو من نفس المحادثة، ويسلّم نفسه لمحادثة جديدة قبل ضغط السياق)", output: null },
   kharq: { label: "محمد الخارق (محادثة عامة في أي موضوع، تفهم المطلوب بالضبط وتسلّم: كلامًا ورسائل وجداول وملفات PDF وصورًا وفيديو)", output: null },
-  ridha: { label: "الرضا فويس (استوديو الصوت: تسجيل ومسارات ومكس، أوتوتيون ومقامات، تنظيف احترافي، هارموني 3D، وتوزيع سريع بإيقاع لطم أو صفقة)", output: null },
+  ridha: { label: "الرضا فويس (استوديو الصوت مع المهندس «الرضا ماكس»: تسجيل ومسارات ومكس، أوتوتيون ومقامات، تنظيف احترافي، هارموني 3D، وتوزيع سريع بإيقاع لطم أو صفقة)", output: null },
 } as const;
 export type SectionImplementation = keyof typeof SECTION_IMPLEMENTATIONS;
 export const isImplementation = (s: string): s is SectionImplementation => s in SECTION_IMPLEMENTATIONS;

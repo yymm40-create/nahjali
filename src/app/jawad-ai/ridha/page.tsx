@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: RIDHA.name };
 
 /**
- * «الرضا فويس»: the sound studio. Everything in it runs on the person's device (nothing is uploaded, nothing is
- * charged), so it has no permission of its own: the owner always; everyone else once the owner turns the section on
+ * «الرضا فويس»: the sound studio. Everything in it runs on the person's device (no sound is uploaded; only the
+ * conversation with «الرضا ماكس» uses the balance), so it has no permission of its own: the owner always; everyone else once the owner turns the section on
  * from the dashboard (it starts off, in its private trial).
  */
 export default async function RidhaPage() {

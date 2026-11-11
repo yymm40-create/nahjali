@@ -25,6 +25,7 @@ import HarmonyPanel from "./panels/HarmonyPanel";
 import ArrangePanel from "./panels/ArrangePanel";
 import VoicePanel from "./panels/VoicePanel";
 import ExportPanel from "./panels/ExportPanel";
+import MaxPanel from "./panels/MaxPanel";
 import LatencyDialog, { loadLatency } from "./LatencyDialog";
 
 const PANELS: { id: PanelId; name: string }[] = [
@@ -38,6 +39,7 @@ const PANELS: { id: PanelId; name: string }[] = [
   { id: "arrange", name: "التوزيع السريع" },
   { id: "voice", name: "تغيير الصوت" },
   { id: "export", name: "التصدير" },
+  { id: "max", name: "الرضا ماكس" },
 ];
 
 const TOOLS: { id: Tool; name: string; key: string; path: string }[] = [
@@ -487,6 +489,7 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
             {panel === "arrange" ? <ArrangePanel /> : null}
             {panel === "voice" ? <VoicePanel /> : null}
             {panel === "export" ? <ExportPanel /> : null}
+            {panel === "max" ? <MaxPanel /> : null}
           </section>
         ) : null}
 

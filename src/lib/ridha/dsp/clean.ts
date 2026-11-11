@@ -61,18 +61,24 @@ export async function reduceNoise(x: Float32Array, profile: Float32Array, amount
   }, onProgress);
 }
 
-/** A room's tail under the voice, lowered: what rang a moment ago and is still ringing now is treated as echo. */
+/**
+ * A room's tail under the voice, lowered. The room answers a sound some tens of milliseconds after it: so at every
+ * frequency, a share of the POWER that sounded a moment ago is taken to be the room and subtracted. While a note is
+ * held, that share is small against the note itself and it passes almost untouched (under 1.5 dB at full amount);
+ * when the note stops and only its ring is left, the ring IS that share, and it is pulled down.
+ */
 export async function reduceReverb(x: Float32Array, amount = 0.5, onProgress?: Progress) {
   const late = new Float32Array(BINS);
   const past: Float32Array[] = [];
   const DELAY = 4; // about 43 ms: the direct voice is over, the room is answering
-  const floor = dbToGain(-14 * amount - 4);
+  const share = 0.45 * amount;
+  const floor = dbToGain(-16 * amount - 4);
   return stftGain(x, SIZE, (mag, g) => {
     const old = past.length >= DELAY ? past.shift()! : null;
     for (let b = 0; b < BINS; b++) {
-      late[b] = 0.86 * late[b] + (old ? 0.14 * old[b] : 0);
-      const v = mag[b] > 0 ? 1 - (1.6 * amount * late[b] * 7) / (mag[b] + 1e-9) : 1;
-      g[b] = Math.max(floor, Math.min(1, v));
+      late[b] = 0.7 * late[b] + (old ? 0.3 * old[b] * old[b] : 0);
+      const p = mag[b] * mag[b];
+      g[b] = p > 0 ? Math.max(floor, Math.sqrt(Math.max(0, 1 - (share * late[b]) / p))) : floor;
     }
     past.push(mag.slice());
   }, onProgress);
