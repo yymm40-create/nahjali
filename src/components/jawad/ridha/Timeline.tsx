@@ -30,7 +30,7 @@ export interface TimelineApi {
   fit(): void;
 }
 
-export default function Timeline({ onImport, onPick, onRecord, recStart, apiRef, tool }: { onImport(files: File[], trackId: string | null, at: number): void; onPick(): void; onRecord(): void; recStart: number | null; apiRef: React.MutableRefObject<TimelineApi | null>; tool: Tool }) {
+export default function Timeline({ onImport, onPick, onRecord, onChoir, recStart, apiRef, tool }: { onImport(files: File[], trackId: string | null, at: number): void; onPick(): void; onRecord(): void; onChoir(): void; recStart: number | null; apiRef: React.MutableRefObject<TimelineApi | null>; tool: Tool }) {
   const st = useStudio();
   const { project: p, engine, store } = st;
   const [pps, setPps] = useState(70);
@@ -101,6 +101,16 @@ export default function Timeline({ onImport, onPick, onRecord, recStart, apiRef,
       g.fillRect(0, i * TRACK_H, width, TRACK_H - 1);
       g.fillStyle = "#0e0f12";
       g.fillRect(0, (i + 1) * TRACK_H - 1, width, 1);
+      if (t.note && t.kind !== "group" && !p.clips.some((c) => c.trackId === t.id)) {
+        // a part not recorded yet: its lane says what to sing on it
+        g.fillStyle = "rgba(166,170,178,0.6)";
+        g.font = "12px system-ui, sans-serif";
+        g.textBaseline = "middle";
+        g.direction = "rtl";
+        g.textAlign = "left";
+        g.fillText(`${t.arm ? "● جاهز للتسجيل — " : ""}${t.note}`, 16, i * TRACK_H + TRACK_H / 2, width - 32);
+        g.direction = "ltr";
+      }
       if (t.kind === "group") {
         // a group holds no clips: its lane says what it does
         g.fillStyle = "rgba(233,185,73,0.06)";
@@ -340,9 +350,11 @@ export default function Timeline({ onImport, onPick, onRecord, recStart, apiRef,
   }, [zoomAt]);
 
   const onDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith("audio/") || f.type.startsWith("video/") || /\.(wav|mp3|m4a|aac|ogg|flac|opus|webm|mp4|mov)$/i.test(f.name));
+    // dropped on the lanes: the file starts where it was let go (and takes that track only if the track is empty)
+    const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith("audio/") || f.type.startsWith("video/") || /\.(wav|mp3|m4a|aac|ogg|flac|opus|webm|mp4|mov|aif|aiff)$/i.test(f.name));
     if (!files.length) return;
+    e.preventDefault();
+    e.stopPropagation();
     const r = lanes.current!.getBoundingClientRect();
     const track = p.tracks[Math.floor((e.clientY - r.top) / TRACK_H)];
     onImport(files, track && track.kind !== "group" ? track.id : null, Math.max(0, snapTime(p, Tm(e.clientX - r.left), pps)));
@@ -360,6 +372,7 @@ export default function Timeline({ onImport, onPick, onRecord, recStart, apiRef,
           <div className="rv-pop rv-addmenu" onPointerLeave={() => setAdding(false)}>
             <button type="button" onClick={() => (store.set((q) => addTrack(q, undefined, { stereo: false }).project), setAdding(false))}><b>مسار صوت</b><small>مونو — للتسجيل بالمايك</small></button>
             <button type="button" onClick={() => (store.set((q) => addTrack(q, `موسيقى ${q.tracks.length + 1}`, { stereo: true }).project), setAdding(false))}><b>مسار ستيريو</b><small>للموسيقى والملفات الستيريو</small></button>
+            <button type="button" onClick={() => (onChoir(), setAdding(false))}><b>كورال</b><small>مسارات جاهزة بالأدوار: قرار، وسط، جواب…</small></button>
             <button type="button" onClick={() => (onPick(), setAdding(false))}><b>استيراد ملف</b><small>صوت أو فيديو من جهازك</small></button>
             <button type="button" onClick={() => {
               store.set((q) => {
@@ -406,6 +419,7 @@ export default function Timeline({ onImport, onPick, onRecord, recStart, apiRef,
                     setMenu(menu?.id === t.id ? null : { id: t.id, x: Math.min((list?.right ?? r.right) + 8, window.innerWidth - 292), y: r.top - 8 });
                   }} title="إعدادات المسار" aria-label="إعدادات المسار">⋯</button>
                 </div>
+                {t.note && t.kind !== "group" ? <small className="rv-th-note" title={t.note}>{t.note}</small> : null}
                 <div className="rv-th-row rv-th-btns" dir="ltr">
                   {tb("m", t.mute, "M", "كتم", () => store.set((q) => patchTrack(q, t.id, { mute: !t.mute })))}
                   {tb("s", t.solo, "S", "منفرد", () => store.set((q) => patchTrack(q, t.id, { solo: !t.solo })))}

@@ -56,6 +56,8 @@ export interface Track {
    * voice, placed by its pan); a STEREO track keeps left and right (music, a stereo recording). Absent = stereo.
    */
   stereo?: boolean;
+  /** what this track is for — a choir part's instruction («اللحن أوكتاف تحت، صدري وهادئ») — shown on it until it is recorded */
+  note?: string;
   /** a group track: it holds no clips; the tracks under it play THROUGH it, so its effects and fader shape them all together */
   kind?: "group";
   /** the group this track plays through (a group's id); none = straight to the master */

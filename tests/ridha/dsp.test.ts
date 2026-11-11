@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FFT, stftGain } from "@/lib/ridha/dsp/fft";
 import { biquad, filter, responseDb } from "@/lib/ridha/dsp/biquad";
-import { hzToMidi, midiToHz, trackPitch, pitchStats } from "@/lib/ridha/dsp/pitch";
+import { hzToMidi, midiToHz, trackPitch, pitchStats, type PitchTrack } from "@/lib/ridha/dsp/pitch";
 import { detectKey, scaleById, snap, stepFrom } from "@/lib/ridha/dsp/scales";
 import { pitchMarks, psolaShift } from "@/lib/ridha/dsp/psola";
 import { harmonyWhen, planHarmony, planTune } from "@/lib/ridha/dsp/tune";
@@ -634,5 +634,115 @@ describe("الرضا ماكس: his commands", () => {
     expect(RIDHA_MAX_SYSTEM).toContain("الرضا ماكس");
     expect(RIDHA_MAX_SYSTEM).toContain("<training>");
     expect(RIDHA_MAX_SYSTEM).not.toMatch(/\$\{|undefined/);
+  });
+});
+
+import { changeVoice, holdPitch, middleHz, VOICE_CHARACTERS } from "@/lib/ridha/dsp/voice";
+
+describe("الرضا فويس: changing the voice", () => {
+  /** A man speaking: three «words» whose note moves, each dying away into a faint, breathy end. */
+  const man = () => {
+    const x = new Float32Array(SR * 3);
+    let ph = 0;
+    for (let i = 0; i < x.length; i++) {
+      const t = i / SR, w = t % 1;
+      const hz = 118 + 14 * Math.sin(2 * Math.PI * 0.8 * t);
+      ph += (2 * Math.PI * hz) / SR;
+      // strong for half a second, then a long faint tail (the part a note-finder gives up on)
+      const level = w < 0.5 ? 0.3 : 0.3 * Math.exp(-(w - 0.5) / 0.09);
+      x[i] = level * (Math.sin(ph) + 0.5 * Math.sin(2 * ph) + 0.3 * Math.sin(3 * ph) + 0.15 * Math.sin(4 * ph)) + rand() * 0.0006;
+    }
+    return x;
+  };
+  /** How much of a sound sits at one exact frequency (a narrow probe). */
+  const at = (x: Float32Array, hz: number, a: number, b: number) => {
+    let re = 0, im = 0;
+    for (let i = a; i < b; i++) {
+      const w = 0.5 - 0.5 * Math.cos((2 * Math.PI * (i - a)) / (b - a));
+      re += x[i] * w * Math.cos((2 * Math.PI * hz * i) / SR);
+      im += x[i] * w * Math.sin((2 * Math.PI * hz * i) / SR);
+    }
+    return Math.hypot(re, im) / (b - a);
+  };
+  it("lands every realistic character in its own range, from this speaker's own middle, at the same length and level", async () => {
+    const x = man();
+    const from = middleHz(await trackPitch(x, SR));
+    expect(Math.abs(from - 118)).toBeLessThan(8);
+    for (const id of ["child", "woman", "elder", "deep"]) {
+      const c = VOICE_CHARACTERS.find((v) => v.id === id)!;
+      const y = await changeVoice(x, SR, c);
+      expect(y.length).toBe(x.length);
+      const got = middleHz(await trackPitch(y, SR, { fmax: 1100 }));
+      const want = c.targetHz ?? from * c.ratio!;
+      expect(Math.abs(12 * Math.log2(got / want)), `${id}: ${got.toFixed(0)} Hz, wanted ${want.toFixed(0)}`).toBeLessThan(1.2);
+      expect(rms(y) / rms(x)).toBeGreaterThan(0.7);
+      expect(rms(y) / rms(x)).toBeLessThan(1.4);
+      for (let i = 0; i < y.length; i += 997) expect(Number.isFinite(y[i])).toBe(true);
+    }
+  }, 60_000);
+  it("leaves none of the original voice behind, even in the faint ends of words", async () => {
+    const x = man();
+    const y = await changeVoice(x, SR, VOICE_CHARACTERS.find((v) => v.id === "woman")!);
+    // the faint tail of the first word (0.62–0.80 s): how much is still at the man's own note there?
+    const a = Math.round(0.62 * SR), b = Math.round(0.8 * SR);
+    const hz = 118 + 14 * Math.sin(2 * Math.PI * 0.8 * 0.71);
+    const before = at(x, hz, a, b) + at(x, 2 * hz, a, b);
+    const after = at(y, hz, a, b) + at(y, 2 * hz, a, b);
+    expect(after / before).toBeLessThan(0.25);
+    // and the tail is still there — moved, not deleted
+    expect(rms(y, a, b)).toBeGreaterThan(rms(x, a, b) * 0.3);
+  }, 60_000);
+  it("carries the note over the gaps a note-finder leaves in voice, but not over a hiss", async () => {
+    const x = man();
+    const found = await trackPitch(x, SR);
+    const held = holdPitch(x, found);
+    const voiced = (t: PitchTrack) => t.f0.reduce((n, v) => n + (v ? 1 : 0), 0);
+    expect(voiced(held)).toBeGreaterThanOrEqual(voiced(found));
+    // a pure «س»: nothing to hold
+    const sss = new Float32Array(SR);
+    for (let i = 0; i < sss.length; i++) sss[i] = rand() * 0.2;
+    const hiss = filter(sss, biquad("highpass", SR, 5000));
+    const t2 = await trackPitch(hiss, SR);
+    expect(voiced(holdPitch(hiss, t2))).toBe(voiced(t2));
+  });
+});
+
+import { buildChoir } from "@/lib/ridha/choir";
+import { CHOIRS, CHOIR_TONES } from "@config/ridha-choirs";
+
+describe("الرضا فويس: choirs", () => {
+  it("lays every choir out as mono parts inside one group, each with its instruction, place, level and tone", () => {
+    for (const kind of CHOIRS) {
+      const base = makeProject("c");
+      const made = buildChoir(base, kind);
+      const group = made.project.tracks.find((t) => t.id === made.groupId)!;
+      const parts = made.project.tracks.filter((t) => t.group === made.groupId);
+      expect(group.kind).toBe("group");
+      expect(parts.length, kind.id).toBe(kind.parts.length);
+      expect(parts.length).toBeGreaterThanOrEqual(3);
+      // the parts sit right under their group, in order
+      const gi = made.project.tracks.indexOf(group);
+      expect(made.project.tracks.slice(gi + 1, gi + 1 + parts.length).map((t) => t.name)).toEqual(kind.parts.map((x) => x.name));
+      parts.forEach((t, i) => {
+        expect(t.stereo).toBe(false);
+        expect(t.note).toBe(kind.parts[i].sing);
+        expect(t.note!.length).toBeGreaterThan(8);
+        expect(t.pan).toBe(kind.parts[i].pan);
+        expect(t.gain).toBeLessThan(0);
+        expect(t.fx[0].kind).toBe("eq");
+        expect(t.fx[0].bands![0].on).toBe(true);
+      });
+      // only the first part is ready to record; the group carries the glue and the reverb
+      expect(made.project.tracks.filter((t) => t.arm).map((t) => t.id)).toEqual([made.first]);
+      expect(group.fx.some((f) => f.kind === "comp")).toBe(true);
+      expect(group.sendReverb).toBe(kind.reverb);
+      // spread across the stereo field, not piled in the middle
+      const pans = parts.map((t) => t.pan);
+      expect(Math.max(...pans) - Math.min(...pans)).toBeGreaterThanOrEqual(0.6);
+      // what was in the project stays
+      expect(made.project.tracks[0].id).toBe(base.tracks[0].id);
+    }
+    for (const tone of Object.values(CHOIR_TONES)) expect(tone.length).toBeLessThanOrEqual(8);
+    expect(new Set(CHOIRS.map((c) => c.id)).size).toBe(CHOIRS.length);
   });
 });
