@@ -21,7 +21,8 @@ import { decisionsOf, fontAnswer, paletteAnswer, stripMarks } from "@config/desi
 import { FontList, PaletteGrid } from "./Pickers";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { renderDesign, type DesignView, type FontDef } from "./LayerEditor";
-import { drawWithCode, pngBody, smallJpeg, type DrawEdit } from "@/components/claude-code/draw";
+import MajlisPicker, { type MajlisDone } from "./MajlisPicker";
+import { drawWithCode, pngBody, smallJpeg, type DrawEdit, type DrawTemplate } from "@/components/claude-code/draw";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface Question { label: string; kind: "choice" | "fonts" | "palettes"; options: string[]; multi: boolean }
@@ -197,6 +198,8 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   const [verbose, setVerbose] = useState(false);
   /** an old message being edited: the talk goes on from it */
   const [editFrom, setEditFrom] = useState<number | null>(null);
+  /** «دعوة مجلس من تصميم جاهز»: the picker is open */
+  const [majlis, setMajlis] = useState(false);
   /** one drawing loop per conversation (opening it again must not start a second, paid one) */
   const drawingFor = useRef<string | null>(null);
   useEffect(() => setVerbose(store.get(VERBOSE_KEY) === "1"), []);
@@ -245,13 +248,13 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
     setCodePreview(null);
     step("أجهّز التصميم (وإذا يحتاج صورة مرسومة، جواد يرسمها بـ GPT Image 2 بدون كتابة)…");
     try {
-      const r = await postJson<{ design?: DesignView; code?: { prompt: string; aspect: string; refs: string[]; photos?: string[]; picture?: boolean; edit?: DrawEdit; style?: string } }>("/api/designer/produce", { chatId: id, ...(retry ? { retry: true } : {}) });
+      const r = await postJson<{ design?: DesignView; code?: { prompt: string; aspect: string; refs: string[]; photos?: string[]; picture?: boolean; edit?: DrawEdit; style?: string; template?: DrawTemplate } }>("/api/designer/produce", { chatId: id, ...(retry ? { retry: true } : {}) });
       if (r.code) {
         if (r.code.picture) step("🖼️ صورة التصميم جاهزة من GPT Image 2 (بدون كتابة) — حيدرا ماكس يحطها ويكتب الكلام فوقها.");
         // «حيدرا ماكس»: the design is drawn here in code, looked at and rewritten, then kept as the design's artwork with
         // its program — a change to a design drawn before is a patch on that program (`edit`), not a new one
         const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
-        const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "designer", edit: r.code.edit ?? null, onStep: (s) => (step(s.text), s.preview && setCodePreview(s.preview)) });
+        const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "designer", edit: r.code.edit ?? null, template: r.code.template ?? null, onStep: (s) => (step(s.text), s.preview && setCodePreview(s.preview)) });
         step("أحفظ التصميم…");
         const saved = await postJson<{ design: DesignView }>("/api/designer/produce", { chatId: id, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(drawn.program ? { program: drawn.program } : {}), ...(drawn.edited ? { edited: true } : {}) });
         putDesign(() => saved.design);
@@ -324,6 +327,13 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
     setEditFrom(null);
     setQ("");
     setPending([]);
+  }
+
+  /** A ready majlis design was ordered: the conversation opens (a code design starts drawing here at once). */
+  async function majlisDone(r: MajlisDone) {
+    setMajlis(false);
+    await open(r.chatId);
+    void refresh();
   }
 
   /** Sends the last design to «زهراء» to be edited (she can send it back). */
@@ -474,6 +484,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
               <div className="dz-title">{name}</div>
               <div className="dz-muted" style={{ fontSize: 12 }}>تكلّم مع {persona} · حيدرا ماكس يصمم والكلام بخطك، وأي كلمة تتعدّل بطلب</div>
             </div>
+            {!loginHref && <button type="button" className="dz-mini mj-open" disabled={!!busy} onClick={() => { fresh(); setMajlis(true); }}>🕯️ دعوة مجلس</button>}
           </header>
 
           {!loginHref && decisions.length > 0 && (
@@ -492,8 +503,14 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                 <p>سجّل دخولك عشان تتكلم مع {persona}.</p>
                 <div className="dz-actions"><Link className="dz-mini" href={loginHref}>تسجيل الدخول</Link></div>
               </div>
+            ) : majlis ? (
+              <MajlisPicker chatId={chatId} onClose={() => setMajlis(false)} onDone={(r) => void majlisDone(r)} />
             ) : msgs.length === 0 ? (
               <>
+                <button type="button" className="mj-cta" onClick={() => setMajlis(true)}>
+                  <b>🕯️ صمّم دعوة مجلس من تصميم جاهز</b>
+                  <span>حدّد عدد الخطباء والرواديد، اختر تصميمك، واكتب بياناتك — ويوصلك بنفس الشكل اللي اخترته</span>
+                </button>
                 <div className="dz-msg bot">
                   <h3>أهلًا، أنا {persona} 🎨</h3>
                   <p>قل لي وش تبي تصمّم: أسألك أقل ما يمكن، وتجاوب بضغطة أو بكلامك، وتقدر تغيّر أي قرار في أي لحظة. وبعد التصميم قل لي وش تبي يتغيّر (كلمة، لون، مكان) وأعدّله لك.</p>

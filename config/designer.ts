@@ -51,6 +51,9 @@ export const DESIGN_ASPECTS = {
   "9:16": { label: "ستوري / حالة واتساب", px: [1152, 2048] },
   "16:9": { label: "عرضي (مصغّرة يوتيوب)", px: [2048, 1152] },
   "3:2": { label: "عرضي (بانر)", px: [1920, 1280] },
+  // the ready majlis designs («كاظم»'s invitations): drawn in code at these sizes
+  "3:4": { label: "طولي ٣:٤ (دعوة مجلس)", px: [1536, 2048] },
+  "4:5": { label: "طولي ٤:٥ (بوست انستغرام)", px: [1440, 1800] },
 } as const;
 export type DesignAspect = keyof typeof DESIGN_ASPECTS;
 export const isDesignAspect = (v: unknown): v is DesignAspect => typeof v === "string" && v in DESIGN_ASPECTS;

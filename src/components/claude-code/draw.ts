@@ -8,6 +8,7 @@ import { SceneHost, SceneError, sceneFont, type SceneInfo } from "@/components/j
 import { canExport, probe, renderVideo, sheetAt } from "@/components/jawad/editor/scene-render";
 import { mixSoundtrack } from "@/components/jawad/editor/lab-sound";
 import { readCues } from "@/lib/editor/scene/contract";
+import { pictureSize } from "@/lib/claude-code/picture-rubric";
 import { putWithProgress } from "@/components/jawad/studio/upload";
 
 const URL = "/api/jawad/claude-code";
@@ -85,7 +86,52 @@ async function photoBitmap(url: string, side: number): Promise<ImageBitmap | nul
   }
 }
 
-type DrawOptions = { prompt: string; aspect: string; style: string; references: string[]; photos?: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" | "content"; edit?: DrawEdit | null; motion?: DrawMotion | null };
+/**
+ * A READY design («كاظم»'s majlis designs): its exact program, written by the site from the template the person picked.
+ * The page draws it as it is (the photos placed in its frames, the words in their places) — nothing is rewritten.
+ */
+export interface DrawTemplate {
+  code: string;
+  fonts: { head: string; body: string };
+  /** more fonts of the catalogue the program reads as K.fonts.<role> */
+  extra?: Record<string, string>;
+  /** the people's photos (photo numbers) and the shape (width ÷ height) of the frame each goes in: each is cut around
+   * his face first — the whole face with the hair, then as much of the chest as the frame holds (the owner's rule) */
+  faces?: { photo: number; aspect: number }[];
+}
+
+/** A person's photo cut for his frame: the face whole with its hair at the top, the chest under it as far as it goes. */
+async function aroundFace(bm: ImageBitmap, aspect: number): Promise<ImageBitmap> {
+  const { faceInPicture } = await import("@/components/jawad/editor/face");
+  const f = await faceInPicture(bm);
+  const W = bm.width, H = bm.height;
+  let cw: number, ch: number, cx: number, top: number;
+  if (f) {
+    cw = f.w * 2.5;
+    ch = cw / aspect;
+    // never shorter than the face with its hair and chin
+    if (ch < f.h * 1.9) { ch = f.h * 1.9; cw = ch * aspect; }
+    cx = f.x + f.w / 2;
+    top = f.y - f.h * 0.55;
+  } else {
+    // no face found: the upper part of the picture
+    cw = W;
+    ch = cw / aspect;
+    cx = W / 2;
+    top = 0;
+  }
+  const k = Math.min(1, W / cw, H / ch);
+  cw *= k;
+  ch *= k;
+  const x = Math.max(0, Math.min(W - cw, cx - cw / 2));
+  const y = Math.max(0, Math.min(H - ch, top));
+  if (x <= 0 && y <= 0 && cw >= W - 1 && ch >= H - 1) return bm;
+  const out = await createImageBitmap(bm, Math.round(x), Math.round(y), Math.round(cw), Math.round(ch));
+  bm.close();
+  return out;
+}
+
+type DrawOptions = { prompt: string; aspect: string; style: string; references: string[]; photos?: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" | "content"; edit?: DrawEdit | null; motion?: DrawMotion | null; template?: DrawTemplate | null };
 
 /**
  * Draws the picture by program, with up to CODE_ROUNDS looks and rewrites. `photos` are the person's pictures to PUT IN
@@ -94,6 +140,7 @@ type DrawOptions = { prompt: string; aspect: string; style: string; references: 
  */
 export async function drawWithCode(o: DrawOptions): Promise<DrawResult> {
   if (o.motion) return drawMotion(o, o.motion);
+  if (o.template) return drawTemplate(o, o.template);
   const all = (o.photos ?? []).slice(0, PHOTOS_MAX);
   if (o.edit && all.length <= PHOTOS_PER_ROUND) {
     const tried = await drawEdit({ ...o, photos: all }, o.edit);
@@ -117,6 +164,39 @@ SECOND ROUND: photo1 is the design as it stands after the first round (its first
   });
   // the second drawing's program places the first picture, which is not kept: no program to patch later
   return { ...second, program: undefined, rounds: first.rounds + second.rounds, coins: first.coins + second.coins };
+}
+
+/** A ready design: its program drawn at full size, as it is. */
+async function drawTemplate(o: DrawOptions, t: DrawTemplate): Promise<DrawResult> {
+  const list = o.photos ?? [];
+  o.onStep({ text: "🧑‍💻 حيدرا ماكس يجهّز التصميم اللي اخترته بصورك وكلامك…" });
+  const bms = await Promise.all(list.map((url) => photoBitmap(url, 2400)));
+  const missing = bms.findIndex((b) => !b);
+  if (missing >= 0) {
+    for (const b of bms) b?.close();
+    throw new Error(missing === 0 ? "ما قدرنا نحمّل التصميم المختار؛ جرّب مرة ثانية." : "ما قدرنا نحمّل إحدى الصور؛ ارفعها مرة ثانية.");
+  }
+  for (const f of t.faces ?? []) {
+    const i = f.photo - 1;
+    if (bms[i]) bms[i] = await aroundFace(bms[i]!, f.aspect);
+  }
+  const assets = bms.map((bm, i) => ({ id: `photo${i + 1}`, bitmap: bm! }));
+  const [W, H] = pictureSize(o.aspect);
+  const fonts = [...sceneFonts(t.fonts), ...Object.entries(t.extra ?? {}).map(([role, id]) => sceneFont(role, id)).filter((f): f is NonNullable<typeof f> => !!f)];
+  const host = new SceneHost();
+  try {
+    o.onStep({ text: "أرسم التصميم…" });
+    await host.load(t.code, { w: W, h: H, assets, fonts });
+    const bm = await host.frame(0);
+    const png = await bitmapTo(bm, "image/png");
+    const still = await bitmapTo(bm, "image/jpeg", 1280, 0.85);
+    bm.close();
+    o.onStep({ text: "✅ التصميم جاهز.", preview: `data:image/jpeg;base64,${still}` });
+    return { png, scores: {}, pass: true, verdict: "", rounds: 1, coins: 0, program: { code: t.code, fonts: t.fonts, size: [W, H] } };
+  } finally {
+    host.destroy();
+    for (const a of assets) a.bitmap.close();
+  }
 }
 
 type Wrote = { code: string; problems: string[]; fonts: { head: string; body: string }; size: [number, number]; notes: string; coins: number; patchFailed?: string };

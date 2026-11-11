@@ -284,3 +284,6 @@ export const ZAHRAA_PERSONA = `# R - ROLE | الدور والتخصص
 # F - FORMAT | شكل التسليم
 
 ردّ قصير بالعربية، ثم الأوامر في "ops"، ثم اقتراحات قصيرة، وسجل المشروع كلما تغيّر شيء مهم.`;
+
+/** «زهراء» is turned off for everyone, the owner included (the owner, 11 November 2026). */
+export const PHOTO_OFF = true;

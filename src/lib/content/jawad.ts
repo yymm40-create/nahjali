@@ -40,6 +40,8 @@ export interface DeskRequest {
   withSound?: boolean;
   /** the person's own stored pictures to use as references (jawad_uploads ids) with the names they go by */
   refs?: { uploadId: string; name: string }[];
+  /** GPT Image 2.6: flare | sunburst (default sunburst) */
+  variant?: string;
 }
 
 export interface DeskWho {
@@ -96,7 +98,9 @@ function option(def: GeneratorDef, key: string, value: unknown, fallback: string
 /** The registry's settings for a request (جواد's own knowledge of his generators). */
 export function deskSettings(def: GeneratorDef, req: DeskRequest): Settings {
   if (req.kind === "image") {
-    return { aspect: option(def, "aspect", req.aspect, "1:1"), resolution: option(def, "resolution", req.resolution, "std"), quality: option(def, "quality", req.quality, "high"), count: 1 };
+    const s: Settings = { aspect: option(def, "aspect", req.aspect, "1:1"), resolution: option(def, "resolution", req.resolution, "std"), quality: option(def, "quality", req.quality, "high"), count: 1 };
+    if (def.options.some((x) => x.key === "variant")) s.variant = option(def, "variant", req.variant, "sunburst");
+    return s;
   }
   const seconds = Math.max(SECONDS.min, Math.min(SECONDS.max, Math.round(Number(req.seconds) || 5)));
   return { ratio: option(def, "ratio", req.aspect, "9:16"), resolution: option(def, "resolution", req.resolution, "720p"), duration: seconds, audio: req.withSound !== false };

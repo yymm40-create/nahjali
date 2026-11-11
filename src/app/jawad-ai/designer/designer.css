@@ -219,3 +219,36 @@
 .dz-pal[aria-pressed="true"] { border-color: var(--dz-blue); box-shadow: 0 0 0 3px rgba(47, 116, 255, 0.25); }
 .dz-pal-bar { display: flex; height: 34px; border-radius: 9px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.08); }
 .dz-pal-bar span { flex: 1; }
+
+/* «دعوة مجلس من تصميم جاهز» (MajlisPicker) */
+.mj-open { margin-inline-start: auto; }
+.mj-cta { display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: right; padding: 18px 20px; margin-bottom: 14px; border-radius: 20px; border: 0; cursor: pointer; color: #f6ead0; background: radial-gradient(120% 140% at 100% 0%, #5a1218 0%, #1d0f10 55%, #0d0a0b 100%); box-shadow: 0 18px 40px -18px #5a1218; transition: transform .15s; }
+.mj-cta:hover { transform: translateY(-2px); }
+.mj-cta b { font-size: 18px; color: #f0cf86; } .mj-cta span { font-size: 13px; opacity: .85; }
+.mj { background: #fff; border-radius: 20px; padding: 16px; box-shadow: 0 10px 30px -18px rgba(20, 20, 60, .5); }
+.mj-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.mj-head b { font-size: 16px; }
+.mj-body { display: flex; flex-direction: column; gap: 12px; }
+.mj-step { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-radius: 14px; background: #f5f6fb; font-weight: 700; }
+.mj-step-ctl { display: flex; align-items: center; gap: 12px; }
+.mj-step-ctl button { width: 38px; height: 38px; border-radius: 50%; border: 1px solid rgba(47,116,255,.4); background: #fff; font-size: 20px; cursor: pointer; }
+.mj-step-ctl b { min-width: 24px; text-align: center; font-size: 22px; }
+.mj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; max-height: 60vh; overflow: auto; padding: 2px; }
+.mj-card { display: flex; flex-direction: column; gap: 4px; padding: 4px; border-radius: 12px; border: 2px solid transparent; background: #f5f6fb; cursor: pointer; font-size: 11px; color: #333; }
+.mj-card img { width: 100%; border-radius: 9px; display: block; }
+.mj-card.on { border-color: var(--dz-blue); box-shadow: 0 0 0 3px rgba(47,116,255,.2); }
+.mj-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mj-chosen { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+.mj-chosen img { width: 72px; border-radius: 8px; }
+.mj-person { display: flex; align-items: flex-end; gap: 10px; }
+.mj-person label, .mj-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 700; flex: 1; }
+.mj-person input, .mj-fields input { height: 40px; border-radius: 10px; border: 1px solid #d8dbe8; padding: 0 10px; font: inherit; font-weight: 400; }
+.mj-photo { width: 64px; height: 64px; flex: none; border-radius: 12px; border: 1px dashed #b8bdd3; background: #f5f6fb; cursor: pointer; overflow: hidden; font-size: 11px; padding: 0; }
+.mj-photo img { width: 100%; height: 100%; object-fit: cover; }
+.mj-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.mj-makers { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+.mj-maker { display: flex; flex-direction: column; gap: 3px; text-align: right; padding: 10px 12px; border-radius: 12px; border: 2px solid #e2e5f0; background: #fff; cursor: pointer; }
+.mj-maker span { font-size: 11px; opacity: .75; }
+.mj-maker.on { border-color: var(--dz-blue); background: rgba(47,116,255,.06); }
+.mj-note { font-size: 13px; opacity: .8; margin: 0; }
+.mj-warn { font-size: 13px; color: #a5161e; background: #fdecec; border-radius: 10px; padding: 8px 10px; margin: 0; }
