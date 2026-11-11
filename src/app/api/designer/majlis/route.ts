@@ -44,6 +44,7 @@ export const POST = handle(async (req: Request) => {
   const at = messages.length - 1;
 
   if (maker === "code") {
+    // the background choice is carried out by «حيدرا ماكس» when he draws it (the produce step cuts the people out first)
     const pending: PendingDesign = { id: design.id, at, kind: "other", aspect: t.aspect, textMode: "baked", artwork: summary, refs: order.people.map((p) => p.photo), layers: [], keep: null, maker: "code", place: order.people.map((p) => p.photo), majlis: order };
     const id = await saveChat(user.id, chatId, { messages, pending });
     return NextResponse.json({ chatId: id, mode: "code" });

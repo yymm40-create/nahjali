@@ -19,6 +19,7 @@ import { findContentFont, FONT_PIN, fontBlock } from "@config/content-fonts";
 import { darkToLight, findPalette } from "@config/content-palettes";
 import { templateById, viewUrl } from "@config/designer-majlis";
 import { MAJLIS_FONTS, majlisPhotos, majlisProgram } from "./majlis";
+import { cutPeople } from "./majlis-cut";
 
 /** GPT Image 2 for the artwork: the high tier (the design is exported at this size), high quality. */
 export const IMAGE_TIER = "hi" as const;
@@ -130,7 +131,7 @@ export async function codeBrief(userId: string, chatId: string, o: { email?: str
   if (!chat) throw new Error("chat not found");
   const p = chat.pending;
   if (!p) return null;
-  if (p.majlis) return majlisBrief(userId, p, o.origin ?? "");
+  if (p.majlis) return majlisBrief(userId, chat, o.origin ?? "");
   const { list } = await attachmentsOf(userId, p.refs);
   const images = list.filter((a) => a.kind === "image");
   const place = new Set(p.place ?? []);
@@ -168,7 +169,15 @@ export async function codeBrief(userId: string, chatId: string, o: { email?: str
  * A ready majlis design: the template's own program («حيدرا ماكس»'s engine draws it exactly as picked), its empty
  * design, its frames' mask and the person's photos to place, and the picked design to compare with.
  */
-async function majlisBrief(userId: string, p: PendingDesign, origin: string) {
+async function majlisBrief(userId: string, chat: Chat, origin: string) {
+  let p = chat.pending!;
+  // the person chose to remove the photos' background: «حيدرا ماكس» cuts each person out first (once)
+  if (p.majlis!.cut && !p.majlis!.cutDone) {
+    const cut = await cutPeople(userId, p.majlis!.people.map((x) => x.photo));
+    const majlis = { ...p.majlis!, cutDone: true, people: p.majlis!.people.map((x, i) => ({ ...x, photo: cut[i] })) };
+    p = { ...p, refs: cut, place: cut, majlis };
+    await saveChat(userId, chat.id, { messages: chat.messages, pending: p });
+  }
   const o = p.majlis!;
   const t = templateById(o.templateId);
   if (!t) throw new UserError("ما لقينا التصميم المختار.", 409);
@@ -177,7 +186,8 @@ async function majlisBrief(userId: string, p: PendingDesign, origin: string) {
   const ph = majlisPhotos(t, o, (id) => links.get(id) ?? null, origin);
   if (ph.ids.people.some((x) => !x)) throw new UserError("ما قدرنا نفتح صور الأشخاص؛ ارفعها مرة ثانية.", 409);
   const code = majlisProgram(t, o, ph.ids);
-  const faces = t.slots.map((s, i) => ({ photo: Number(ph.ids.people[i]!.slice(5)), aspect: (s.r[2] * t.size[0]) / (s.r[3] * t.size[1]) }));
+  // each person's photo: cut around his face for a frame, or (a design with people) put with his face where the man's was
+  const faces = t.slots.map((s, i) => ({ photo: Number(ph.ids.people[i]!.slice(5)), aspect: (s.r[2] * t.size[0]) / (s.r[3] * t.size[1]), cut: o.cut, ...(s.shape === "person" && s.face ? { place: s.face } : {}) }));
   return { prompt: p.artwork, aspect: t.aspect, refs: [origin + viewUrl(t.id)], photos: ph.urls, picture: false, style: "", template: { code, fonts: { head: MAJLIS_FONTS.head, body: MAJLIS_FONTS.body }, extra: { lalezar: MAJLIS_FONTS.lalezar }, faces } };
 }
 

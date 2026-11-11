@@ -6,7 +6,7 @@
 import { useMemo, useRef, useState } from "react";
 import { postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
-import { MAJLIS, MAJLIS_FIELDS, MAJLIS_MAKERS, ROLE_LABEL, templatesFor, viewUrl, type MajlisFieldKey, type MajlisMaker, type MajlisOrder, type MajlisTemplate } from "@config/designer-majlis";
+import { MAJLIS, MAJLIS_BG, MAJLIS_FIELDS, MAJLIS_MAKERS, ROLE_LABEL, templatesFor, viewUrl, type MajlisFieldKey, type MajlisMaker, type MajlisOrder, type MajlisTemplate } from "@config/designer-majlis";
 
 type Photo = { id: string; url: string | null } | null;
 export type MajlisDone = { chatId: string; mode: "code" | "gpt"; design?: unknown };
@@ -43,6 +43,8 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [logo, setLogo] = useState<Photo>(null);
   const [maker, setMaker] = useState<MajlisMaker>("code");
+  // the person's own choice, always asked: remove the photos' background, or keep it
+  const [cut, setCut] = useState<boolean | null>(null);
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const total = kh + rd;
@@ -73,7 +75,8 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
 
   async function submit() {
     if (!tpl) return;
-    const order: MajlisOrder = { templateId: tpl.id, fields, people: roles.map((role, i) => ({ role, name: (names[i] ?? "").trim(), photo: photos[i]?.id ?? "" })), ...(logo ? { logo: logo.id } : {}) };
+    if (cut === null) { setErr("اختر: تفرّغ خلفية الصور أو تخليها بخلفيتها."); return; }
+    const order: MajlisOrder = { templateId: tpl.id, fields, people: roles.map((role, i) => ({ role, name: (names[i] ?? "").trim(), photo: photos[i]?.id ?? "" })), cut, ...(logo ? { logo: logo.id } : {}) };
     setErr("");
     setBusy(maker === "code" ? "أرسل الطلب لحيدرا ماكس…" : "جواد يسوي التصميم (دقيقة إلى دقيقتين)…");
     try {
@@ -100,7 +103,7 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
           <Stepper label="الخطباء" value={kh} set={setKh} />
           <Stepper label="الرواديد" value={rd} set={setRd} />
           {total > MAJLIS.maxPeople && <p className="mj-note">التصاميم الحالية تتسع لشخصين بالكثير؛ المربعات الزيادة قريبًا إن شاء الله.</p>}
-          {total === 1 && !list.length && <p className="mj-note">التصاميم الحالية كلها لشخصين (خطيب ورادود). اختر شخصين.</p>}
+          {total === 1 && !list.length && <p className="mj-note">ما فيه تصاميم لشخص واحد حاليًا. اختر شخصين.</p>}
           <button type="button" className="dz-send" disabled={!list.length} onClick={() => setStage("pick")}>اعرض التصاميم المناسبة ({list.length.toLocaleString("ar-EG")})</button>
         </div>
       )}
@@ -112,7 +115,7 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
             {list.map((t) => (
               <button type="button" key={t.id} className={`mj-card ${tpl?.id === t.id ? "on" : ""}`} onClick={() => setTpl(t)} title={t.title}>
                 <img src={viewUrl(t.id)} alt={t.title} loading="lazy" />
-                <span>{t.id.slice(1)} · {t.title}</span>
+                <span>{t.kind === "people" ? "بأشخاص · " : ""}{t.id.slice(1)} · {t.title}</span>
               </button>
             ))}
           </div>
@@ -148,6 +151,14 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
               <button type="button" className="dz-mini" onClick={() => logoFile.current?.click()}>{logo ? "✓ الشعار مرفوع" : "＋ شعار المأتم (اختياري)"}</button>
             </div>
           )}
+          <p>صور الأشخاص: تبي نفرّغ الخلفية أو نخليها بخلفيتها؟</p>
+          <div className="mj-makers">
+            {MAJLIS_BG.map((b) => (
+              <button type="button" key={String(b.cut)} className={`mj-maker ${cut === b.cut ? "on" : ""}`} onClick={() => setCut(b.cut)}>
+                <b>{b.name}</b><span>{b.hint}</span>
+              </button>
+            ))}
+          </div>
           <p>مين يسوي التصميم؟</p>
           <div className="mj-makers">
             {MAJLIS_MAKERS.map((m) => (

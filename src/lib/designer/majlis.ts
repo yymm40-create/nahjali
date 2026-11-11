@@ -2,7 +2,7 @@
 // template as it was picked, with the person's photos in its frames and their words on its plates and boxes — the
 // faces untouched); for GPT Image 2.6 / 2, the prompt that rebuilds the picked design with them. Pure (server and page).
 
-import { baseUrl, maskUrl, ROLE_LABEL, wordText, type MajlisOrder, type MajlisTemplate } from "@config/designer-majlis";
+import { baseUrl, maskUrl, ROLE_LABEL, titleUrl, wordText, type MajlisOrder, type MajlisTemplate } from "@config/designer-majlis";
 
 /** The fonts the programs use (ids of the site's font catalogue): head, body, and the big numerals. */
 export const MAJLIS_FONTS = { head: "el-messiri", body: "readex-pro", lalezar: "lalezar", ruqaa: "aref-ruqaa" } as const;
@@ -11,12 +11,16 @@ const GRAD: Record<string, [string, string]> = { gold: ["#fff1c2", "#b07c2c"], s
 
 /** The pictures the program places, in order: photo1 the empty design, photo2 its frames' mask (GPT designs), then
  * the people in the order of the frames, then the logo. Each is a link the page loads. */
-export function majlisPhotos(t: MajlisTemplate, o: MajlisOrder, link: (uploadId: string) => string | null, origin = ""): { urls: string[]; ids: { base: string; mask: string | null; people: (string | null)[]; logo: string | null } } {
+export function majlisPhotos(t: MajlisTemplate, o: MajlisOrder, link: (uploadId: string) => string | null, origin = ""): { urls: string[]; ids: { base: string; mask: string | null; title: string | null; people: (string | null)[]; logo: string | null } } {
   const urls = [origin + baseUrl(t.id)];
-  let mask: string | null = null;
+  let mask: string | null = null, title: string | null = null;
   if (t.mask) {
     urls.push(origin + maskUrl(t.id));
     mask = `photo${urls.length}`;
+  }
+  if (t.titleLayer) {
+    urls.push(origin + titleUrl(t.id));
+    title = `photo${urls.length}`;
   }
   const people = o.people.map((p) => {
     const u = p.photo ? link(p.photo) : null;
@@ -30,7 +34,7 @@ export function majlisPhotos(t: MajlisTemplate, o: MajlisOrder, link: (uploadId:
     urls.push(lu);
     logo = `photo${urls.length}`;
   }
-  return { urls, ids: { base: "photo1", mask, people, logo } };
+  return { urls, ids: { base: "photo1", mask, title, people, logo } };
 }
 
 /** The scene program of the design: exact, the same every time («حيدرا ماكس»'s engine draws it in the page). */
@@ -45,6 +49,7 @@ export function majlisProgram(t: MajlisTemplate, o: MajlisOrder, ids: ReturnType
       return { k: w.k, r: w.r, room: fit.room, ax: fit.ax, align: fit.align, size: w.size, font: w.font, color: w.color, grad: w.grad ? GRAD[w.grad] : null };
     })
     .filter(Boolean);
+  // a design with people: the one standing behind is drawn first
   const slots = t.slots.map((s, i) => ({ shape: s.shape, r: s.r, id: ids.people[i] ?? null }));
   const scale = t.size[0] / (t.aspect === "4:5" ? 1080 : t.size[0]);
   return `// «${t.title}» — التصميم ${t.id.slice(1)}: القالب كما اختاره الشخص، صوره في الإطارات وكلامه في أماكنه.
@@ -70,6 +75,8 @@ scene({
     for (var i = 0; i < SLOTS.length; i++) {
       var s = SLOTS[i], im = s.id ? K.img(s.id) : null;
       if (!im) continue;
+      // a design with people: the page put the person (cut out of his photo) where the man stood, at the frame's size
+      if (s.shape === "person") { ctx.drawImage(im, 0, 0, W, H); continue; }
       var X = s.r[0] * W, Y = s.r[1] * H, w = s.r[2] * W, h = s.r[3] * H;
       var L = K.layer("slot" + i, W, H), x = L.x;
       x.save();
@@ -82,6 +89,8 @@ scene({
       ctx.drawImage(L.c, 0, 0);
     }
     ${ids.logo && t.logo ? `var lg = K.img(${JSON.stringify(ids.logo)}); if (lg) { var LX = ${t.logo[0]} * W, LY = ${t.logo[1]} * H, LW = ${t.logo[2]} * W, LH = ${t.logo[3]} * H; ctx.save(); ctx.beginPath(); ctx.ellipse(LX + LW / 2, LY + LH / 2, LW / 2, LH / 2, 0, 0, Math.PI * 2); ctx.clip(); var q = Math.min(LW / lg.width, LH / lg.height); ctx.drawImage(lg, LX + (LW - lg.width * q) / 2, LY + (LH - lg.height * q) / 2, lg.width * q, lg.height * q); ctx.restore(); }` : ""}
+    ${ids.title ? `ctx.drawImage(K.img(${JSON.stringify(ids.title)}), 0, 0, W, H);` : ""}
+    ${t.band ? `var B0 = ${t.band[0]} * H, B1 = ${t.band[1]} * H, BG = ctx.createLinearGradient(0, B0, 0, B1); ${t.band[0] < 0.3 ? 'BG.addColorStop(0, "rgba(6,4,5,0.88)"); BG.addColorStop(0.7, "rgba(6,4,5,0.6)"); BG.addColorStop(1, "rgba(6,4,5,0)");' : 'BG.addColorStop(0, "rgba(6,4,5,0)"); BG.addColorStop(0.3, "rgba(6,4,5,0.6)"); BG.addColorStop(1, "rgba(6,4,5,0.9)");'} ctx.fillStyle = BG; ctx.fillRect(0, B0, W, B1 - B0);` : ""}
     var WORDS = ${JSON.stringify(words)};
     var FAM = { head: K.fonts.head, body: K.fonts.body, lalezar: K.fonts.lalezar || K.fonts.head, ruqaa: K.fonts.ruqaa || K.fonts.head };
     for (var j = 0; j < WORDS.length; j++) {
@@ -138,10 +147,21 @@ const labelOf = (k: string) => LABELS[k] ?? k;
 
 /** What GPT Image 2.6 / 2 is told: rebuild the picked design (ref1) with the people (ref2…) and the exact words. */
 export function majlisGptPrompt(t: MajlisTemplate, o: MajlisOrder): string {
+  if (t.kind === "people") {
+    const who = o.people.map((p, i) => `- ${t.slots.length > 1 ? (i === 0 ? "The FIRST man (the bigger or right one)" : "The OTHER man") : "The man"} becomes the person of ref${i + 2} (${p.role === "kh" ? "a khateeb" : "a radood"}): same place, size, pose and light as the man in ref1, but HIS face, beard, hair, glasses and features EXACTLY as in his photo, in a plain black thobe. ${o.cut ? "His photo's background is removed: he is cleanly cut out and stands in the design's own scene." : "Keep his photo's own background around him, blended softly into the design."}`);
+    const lines = [wordText(o, "names"), wordText(o, "detailsA"), wordText(o, "detailsB"), wordText(o, "extra")].filter((v) => v.trim());
+    return [
+      `Recreate the attached design ref1 EXACTLY — the same background, the same title calligraphy «${t.title}» in the same place, the same colours, light and composition — but replace the man (or men) in it:`,
+      ...who,
+      `Then add a refined dark band ${t.band && t.band[0] < 0.3 ? "at the top" : "at the bottom"} of the picture, away from the faces and the title, with these Arabic lines, small, elegant and centred, written exactly as given:`,
+      ...lines.map((l) => `- «${l}»`),
+      "Every Arabic word exactly as given, letters joined right to left, crisp and readable; no other new words, numbers, logos or watermarks. No women anywhere.",
+    ].join("\n");
+  }
   const frames = t.slots.map((s, i) => {
     const p = o.people[i];
     const where = t.slots.length === 2 ? (i === 0 ? "the FIRST photo frame (the bigger one, or the right one, or the top one)" : "the OTHER photo frame") : "the photo frame";
-    return `- Put the person of ref${i + 2} (${p.role === "kh" ? "a khateeb" : "a radood"}) inside ${where}: head and shoulders, centred, filling the frame. Keep his face, beard, glasses and features EXACTLY as in his photo; only the background around him may follow the design. The name under that frame: «${p.name}»${t.words.some((w) => w.k === "khLbl") ? ` with the small label «${ROLE_LABEL[p.role]}» above it` : ""}.`;
+    return `- Put the person of ref${i + 2} (${p.role === "kh" ? "a khateeb" : "a radood"}) inside ${where}: head and shoulders, centred, filling the frame. Keep his face, beard, glasses and features EXACTLY as in his photo; ${o.cut ? "his photo's background is REMOVED: cleanly cut out, he stands on the frame's own dark background" : "keep his photo's own background behind him inside the frame"}. The name under that frame: «${p.name}»${t.words.some((w) => w.k === "khLbl") ? ` with the small label «${ROLE_LABEL[p.role]}» above it` : ""}.`;
   });
   const lines = [
     ["the name of the majlis at the top (or as a small line at the bottom if there is no room)", `${wordText(o, "invite")} ${wordText(o, "host")} ${wordText(o, "pre")}`],
