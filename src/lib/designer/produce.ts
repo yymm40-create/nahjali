@@ -8,7 +8,7 @@
 import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";
 import { unlimitedFor } from "@/lib/access";
-import { deskImage, DeskError, type DeskWho } from "@/lib/content/jawad";
+import { deskImage, deskReference, DeskError, type DeskWho } from "@/lib/content/jawad";
 import { BAKED_TEXT_RULE, NO_TEXT_RULE, type DesignerTextMode } from "@config/designer";
 import { getChat, saveChat, type Chat, type PendingDesign } from "./chats";
 import { drawnPng } from "@/lib/jawad/server/uploads";
@@ -17,9 +17,10 @@ import { readLayers, type Design } from "./layers";
 import { editOf, photoKeys, readProgram, type DesignEdit } from "./program";
 import { findContentFont, FONT_PIN, fontBlock } from "@config/content-fonts";
 import { darkToLight, findPalette } from "@config/content-palettes";
-import { templateById, viewUrl } from "@config/designer-majlis";
+import { baseUrl, isMajlisMaker, readOrder, templateById, viewUrl, type MajlisMaker, type MajlisOrder } from "@config/designer-majlis";
+import { GPT_IMAGE_26_ID } from "@config/jawad/generators";
 import { isAdmin } from "@config/site";
-import { MAJLIS_FONTS, majlisPhotos, majlisProgram } from "./majlis";
+import { MAJLIS_FONTS, majlisGptPrompt, majlisPhotos, majlisProgram } from "./majlis";
 import { cutPeople } from "./majlis-cut";
 
 /** GPT Image 2 for the artwork: the high tier (the design is exported at this size), high quality. */
@@ -74,15 +75,16 @@ export async function retry(userId: string, chat: Chat): Promise<void> {
   // a change to a design drawn before stays a change (a patch on that design's program) when it is drawn again
   const base = chat.pending?.at === at ? chat.pending.base : undefined;
   const look = chat.pending?.at === at ? { fontId: chat.pending.fontId, paletteId: chat.pending.paletteId } : { fontId: prompt.fontId, paletteId: prompt.paletteId };
-  const pending: PendingDesign = { id: d.id, at, kind: prompt.kind, aspect: d.aspect, textMode: "baked", artwork: prompt.artwork, refs: prompt.refs, layers: prompt.layers, keep: null, maker: "code", ...(prompt.place?.length ? { place: prompt.place } : {}), ...(d.art ? { art: d.art } : prompt.picture ? { picture: prompt.picture } : {}), ...(base ? { base } : {}), ...(look.fontId ? { fontId: look.fontId } : {}), ...(look.paletteId ? { paletteId: look.paletteId } : {}) };
+  // a ready majlis design stays the design the person picked (its template, details, photos and background choice)
+  const pending: PendingDesign = { id: d.id, at, kind: prompt.kind, aspect: d.aspect, textMode: "baked", artwork: prompt.artwork, refs: prompt.refs, layers: prompt.layers, keep: null, maker: "code", ...(prompt.place?.length ? { place: prompt.place } : {}), ...(d.art ? { art: d.art } : prompt.picture ? { picture: prompt.picture } : {}), ...(base ? { base } : {}), ...(look.fontId ? { fontId: look.fontId } : {}), ...(look.paletteId ? { paletteId: look.paletteId } : {}), ...(prompt.majlis ? { majlis: prompt.majlis, ...(prompt.majlisMaker ? { majlisMaker: prompt.majlisMaker } : {}) } : {}) };
   const messages = [...chat.messages];
   messages[at] = { ...messages[at], design: { ...d, state: "drawing", error: undefined, detail: undefined, flag: undefined } };
   await saveChat(userId, chat.id, { messages, pending });
 }
 
 /** The prompt a design was (or is to be) drawn with: the pending order, else what its artwork's record keeps. */
-async function lastPrompt(chat: Chat, at: number): Promise<{ artwork: string; refs: string[]; kind: PendingDesign["kind"]; textMode: PendingDesign["textMode"]; layers: PendingDesign["layers"]; maker?: PendingDesign["maker"]; place?: string[]; picture?: string; fontId?: string; paletteId?: string } | null> {
-  if (chat.pending && chat.pending.at === at && chat.pending.artwork) return { artwork: chat.pending.artwork, refs: chat.pending.refs, kind: chat.pending.kind, textMode: chat.pending.textMode, layers: chat.pending.layers, maker: chat.pending.maker, place: chat.pending.place, picture: chat.pending.picture };
+async function lastPrompt(chat: Chat, at: number): Promise<{ artwork: string; refs: string[]; kind: PendingDesign["kind"]; textMode: PendingDesign["textMode"]; layers: PendingDesign["layers"]; maker?: PendingDesign["maker"]; place?: string[]; picture?: string; fontId?: string; paletteId?: string; majlis?: MajlisOrder; majlisMaker?: MajlisMaker } | null> {
+  if (chat.pending && chat.pending.at === at && chat.pending.artwork) return { artwork: chat.pending.artwork, refs: chat.pending.refs, kind: chat.pending.kind, textMode: chat.pending.textMode, layers: chat.pending.layers, maker: chat.pending.maker, place: chat.pending.place, picture: chat.pending.picture, majlis: chat.pending.majlis, majlisMaker: chat.pending.majlisMaker };
   const d = chat.messages[at].design;
   if (!d?.artwork) return null;
   const { createAdminClient } = await import("@/lib/supabase/admin");
@@ -100,6 +102,7 @@ async function lastPrompt(chat: Chat, at: number): Promise<{ artwork: string; re
     ...(typeof meta.picture === "string" && meta.picture ? { picture: meta.picture } : {}),
     ...(typeof meta.fontId === "string" && meta.fontId ? { fontId: meta.fontId } : {}),
     ...(typeof meta.paletteId === "string" && meta.paletteId ? { paletteId: meta.paletteId } : {}),
+    ...(readOrder(meta.majlis) ? { majlis: readOrder(meta.majlis)!, ...(isMajlisMaker(meta.maker) ? { majlisMaker: meta.maker } : {}) } : {}),
   };
 }
 
@@ -167,6 +170,43 @@ export async function codeBrief(userId: string, chatId: string, o: { email?: str
 }
 
 /**
+ * A ready majlis design made by GPT Image 2.6 (Sunburst / Flare) or GPT Image 2: the picked design (its empty version)
+ * is rebuilt with the people as references and the exact words, and becomes the pending design's artwork.
+ */
+export async function majlisGpt(userId: string, chatId: string, o: { email?: string | null; origin: string }): Promise<Produced> {
+  const chat = await getChat(userId, chatId);
+  if (!chat) throw new Error("chat not found");
+  const p = chat.pending;
+  const maker = p?.majlisMaker;
+  if (!p?.majlis || !maker || maker === "code") throw new UserError("ما فيه تصميم ينتظر الرسم في هذي المحادثة.", 409);
+  const t = templateById(p.majlis.templateId);
+  if (!t) throw new UserError("ما لقينا التصميم المختار.", 409);
+  const at = Math.min(p.at, chat.messages.length - 1);
+  const base = chat.messages[at]?.design;
+  if (!base) throw new UserError("ما لقينا التصميم في المحادثة.", 409);
+  try {
+    const res = await fetch(o.origin + baseUrl(t.id));
+    if (!res.ok) throw new UserError("ما قدرنا نفتح التصميم المختار.", 502);
+    const ref1 = await deskReference(userId, Buffer.from(await res.arrayBuffer()), `majlis-${t.id}`);
+    const who: DeskWho = { id: userId, email: o.email, owner: await unlimitedFor(o.email), origin: o.origin };
+    const refs = [{ uploadId: ref1, name: "ref1" }, ...p.majlis.people.map((x, i) => ({ uploadId: x.photo, name: `ref${i + 2}` }))];
+    const r = await deskImage(who, { key: `mj-${randomUUID().replace(/-/g, "")}`, kind: "image", generatorId: maker === "gpt2" ? "openai-gpt-image-2" : GPT_IMAGE_26_ID, ...(maker === "gpt2" ? {} : { variant: maker }), prompt: majlisGptPrompt(t, p.majlis), aspect: "2:3", resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
+    const file = await addFileFromOutput({ userId, chatId, out: r.out, name: `artwork-${p.id}`, meta: { prompt: p.artwork, aspect: t.aspect, kind: p.kind, textMode: "baked", refs: p.refs, maker, majlis: p.majlis, desk: r.receipt } });
+    const design: Design = { ...base, artwork: file.id, width: r.out.width ?? base.width, height: r.out.height ?? base.height, textMode: "baked", layers: [], state: "ready", error: undefined, detail: undefined };
+    const messages = [...chat.messages];
+    messages[at] = { ...messages[at], design };
+    await saveChat(userId, chatId, { messages, pending: null });
+    return { chatId, design, usd: 0 };
+  } catch (e) {
+    if (e instanceof DeskError) {
+      console.error("designer majlis gpt", e.detail);
+      throw new UserError(e.reason, 502);
+    }
+    throw e;
+  }
+}
+
+/**
  * A ready majlis design: the template's own program («حيدرا ماكس»'s engine draws it exactly as picked), its empty
  * design, its frames' mask and the person's photos to place, and the picked design to compare with.
  */
@@ -226,7 +266,7 @@ export async function produceFromCode(userId: string, chatId: string, b: { png?:
   if (meta?.format !== "png" || !meta.width || !meta.height) throw new UserError("صورة التصميم مو صالحة.", 400);
   // the program it was drawn from is kept with it (when it drew exactly this picture), so a change patches it later
   const program = readProgram(b.program, [meta.width, meta.height]);
-  const file = await addFile({ userId, chatId, bytes, name: `artwork-${p.id}`, role: "artwork", width: meta.width, height: meta.height, meta: { prompt: p.artwork, aspect: p.aspect, kind: p.kind, textMode: "baked", textPlan: p.layers, refs: p.refs, ...(p.place?.length ? { place: p.place } : {}), ...(p.picture ? { picture: p.picture } : {}), ...(p.art ? { art: p.art } : {}), ...(p.fontId ? { fontId: p.fontId } : {}), ...(p.paletteId ? { paletteId: p.paletteId } : {}), maker: "code", claudeCode: { rounds: Math.round(Number(b.rounds) || 0), scores: b.scores ?? null, ...(b.edited === true ? { edited: true } : {}) }, ...(program ? { program: { ...program, photos: photoKeys(p) } } : {}) } });
+  const file = await addFile({ userId, chatId, bytes, name: `artwork-${p.id}`, role: "artwork", width: meta.width, height: meta.height, meta: { prompt: p.artwork, aspect: p.aspect, kind: p.kind, textMode: "baked", textPlan: p.layers, refs: p.refs, ...(p.place?.length ? { place: p.place } : {}), ...(p.picture ? { picture: p.picture } : {}), ...(p.art ? { art: p.art } : {}), ...(p.fontId ? { fontId: p.fontId } : {}), ...(p.paletteId ? { paletteId: p.paletteId } : {}), ...(p.majlis ? { majlis: p.majlis } : {}), maker: "code", claudeCode: { rounds: Math.round(Number(b.rounds) || 0), scores: b.scores ?? null, ...(b.edited === true ? { edited: true } : {}) }, ...(program ? { program: { ...program, photos: photoKeys(p) } } : {}) } });
   const design: Design = { ...base, artwork: file.id, width: meta.width, height: meta.height, textMode: "baked", layers: [], state: "ready", ...(p.art ? { art: p.art } : {}) };
   const messages = [...chat.messages];
   messages[at] = { ...messages[at], design };

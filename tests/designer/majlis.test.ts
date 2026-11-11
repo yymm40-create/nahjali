@@ -17,6 +17,18 @@ describe("«كاظم»'s ready majlis designs", () => {
       for (const f of [`${t.id}.jpg`, `${t.id}_base.jpg`, ...(t.mask ? [`${t.id}_mask.png`] : [])]) expect(existsSync(path.join(PUB, f)), f).toBe(true);
     }
   });
+  it("puts each name on its own plate, right under its own frame (no two names on one plate)", () => {
+    for (const t of MAJLIS_TEMPLATES) {
+      const kh = t.words.find((w) => w.k === "kh")!.r, rd = t.words.find((w) => w.k === "rd")!.r;
+      expect(Math.abs(kh[0] - rd[0]) + Math.abs(kh[1] - rd[1]), t.id).toBeGreaterThan(0.05);
+      if (t.source !== "gpt") continue;
+      for (const [who, r] of [["kh", kh], ["rd", rd]] as const) {
+        const f = t.slots.find((s) => s.who === who)!.r;
+        expect(r[1], `${t.id} ${who}`).toBeGreaterThan(f[1] + f[3] - 0.04);
+        expect(r[1], `${t.id} ${who}`).toBeLessThan(f[1] + f[3] + 0.1);
+      }
+    }
+  });
   it("shows the designs that fit the count: the invitations first, then the ones with people", () => {
     const two = templatesFor(1, 1);
     expect(two.slice(0, 60).every((t) => t.kind === "invite")).toBe(true);

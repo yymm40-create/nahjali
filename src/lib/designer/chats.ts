@@ -4,7 +4,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DESIGNER, isDesignAspect, isDesignKind, type DesignerTextMode, type DesignAspect, type DesignKind } from "@config/designer";
 import { readDesign, readLayers, type Design, type Layer } from "./layers";
-import { readOrder, type MajlisOrder } from "@config/designer-majlis";
+import { isMajlisMaker, readOrder, type MajlisMaker, type MajlisOrder } from "@config/designer-majlis";
 
 const db = () => createAdminClient();
 
@@ -71,6 +71,8 @@ export interface PendingDesign {
   paletteId?: string;
   /** a ready majlis design the person picked and filled (its exact program is drawn, not a design from zero) */
   majlis?: MajlisOrder;
+  /** who makes that ready design: «حيدرا ماكس» in the page ("code", the default) or GPT Image 2.6 / 2 on the server */
+  majlisMaker?: MajlisMaker;
 }
 
 export interface Chat {
@@ -160,7 +162,7 @@ export function readPending(v: unknown): PendingDesign | null {
     ...(typeof p.base === "string" && p.base ? { base: p.base.slice(0, 60) } : {}),
     ...(typeof p.fontId === "string" && p.fontId ? { fontId: p.fontId.slice(0, 60) } : {}),
     ...(typeof p.paletteId === "string" && p.paletteId ? { paletteId: p.paletteId.slice(0, 80) } : {}),
-    ...(readOrder(p.majlis) ? { majlis: readOrder(p.majlis)! } : {}),
+    ...(readOrder(p.majlis) ? { majlis: readOrder(p.majlis)!, ...(isMajlisMaker(p.majlisMaker) ? { majlisMaker: p.majlisMaker } : {}) } : {}),
   };
 }
 
