@@ -106,6 +106,12 @@ scene({
 export function roomOf(t: MajlisTemplate, w: MajlisTemplate["words"][number]): { room: number; ax: number; align: "center" | "right" | "left" } {
   const GAP = 0.012;
   const [x, y, ww, h] = w.r;
+  const r4 = (v: number) => Math.round(v * 10000) / 10000;
+  // a GPT design's plate keeps clear of its end ornaments, and a box's words keep clear of its icon (on the left)
+  if (t.source === "gpt") {
+    if (["dateLine", "timeLine", "place", "women"].includes(w.k)) return { room: r4(ww * 0.76), ax: r4(x + ww * 0.56), align: "center" };
+    if (w.k !== "hostLine") return { room: r4(ww * 0.84), ax: r4(x + ww / 2), align: "center" };
+  }
   const box = t.source === "gpt" ? w.r : w.box && w.box[2] < 0.75 ? w.box : null;
   let lo = box ? box[0] : 0.03, hi = box ? box[0] + box[2] : 0.97;
   const cx = x + ww / 2;
@@ -117,7 +123,6 @@ export function roomOf(t: MajlisTemplate, w: MajlisTemplate["words"][number]): {
     if (nx + nw <= cx) lo = Math.max(lo, nx + nw);
     else if (nx >= cx) hi = Math.min(hi, nx);
   }
-  const r4 = (v: number) => Math.round(v * 10000) / 10000;
   if (w.align === "right") return { room: r4(Math.max(ww, x + ww - lo - GAP)), ax: r4(x + ww), align: "right" };
   if (w.align === "left") return { room: r4(Math.max(ww, hi - x - GAP)), ax: r4(x), align: "left" };
   // centred: grows both ways, unless a neighbour sits close on one side — then it keeps to that side and grows away
