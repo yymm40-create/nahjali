@@ -7,14 +7,15 @@
 // The ruler seeks and draws the cycle.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { addGroup, armTrack, addTrack, deleteClips, moveClip, moveTrack, patchClip, patchTrack, removeTrack, setFades, setGroup, splitClip, trimClip } from "@/lib/ridha/ops";
+import { addGroup, armTrack, addTrack, deleteClips, moveClip, patchClip, patchTrack, setFades, splitClip, trimClip } from "@/lib/ridha/ops";
 import { barSec, barsLabel, beatSec, clockLabel, projectEnd, snapTime, SR, type Clip, type Project } from "@/lib/ridha/model";
 import { drawWave } from "@/lib/ridha/dsp/wav";
 import { getSound, soundDur } from "./engine";
 import { useStudio } from "./ctx";
+import TrackMenu from "./TrackMenu";
 import { meterPos } from "./ui";
 
-export const TRACK_H = 60;
+export const TRACK_H = 84;
 const EDGE = 6;
 
 export type Tool = "select" | "split" | "erase" | "mute";
@@ -29,12 +30,14 @@ export interface TimelineApi {
   fit(): void;
 }
 
-export default function Timeline({ onImport, recStart, apiRef, tool }: { onImport(files: File[], trackId: string | null, at: number): void; recStart: number | null; apiRef: React.MutableRefObject<TimelineApi | null>; tool: Tool }) {
+export default function Timeline({ onImport, onPick, onRecord, recStart, apiRef, tool }: { onImport(files: File[], trackId: string | null, at: number): void; onPick(): void; onRecord(): void; recStart: number | null; apiRef: React.MutableRefObject<TimelineApi | null>; tool: Tool }) {
   const st = useStudio();
   const { project: p, engine, store } = st;
   const [pps, setPps] = useState(70);
   const [scroll, setScroll] = useState(0);
   const [width, setWidth] = useState(800);
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [adding, setAdding] = useState(false);
   const lanes = useRef<HTMLCanvasElement>(null);
   const ruler = useRef<HTMLCanvasElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
@@ -51,9 +54,8 @@ export default function Timeline({ onImport, recStart, apiRef, tool }: { onImpor
     pRef.current = p;
   });
 
-  const groups = p.tracks.filter((t) => t.kind === "group");
   const total = Math.max(projectEnd(p) + 20, (width / pps) * 1.5, 60);
-  const height = Math.max(p.tracks.length * TRACK_H + 60, 160);
+  const height = Math.max(p.tracks.length * TRACK_H + 72, 160);
   const X = useCallback((t: number) => (t - view.current.scroll) * view.current.pps, []);
   const Tm = useCallback((x: number) => x / view.current.pps + view.current.scroll, []);
 
@@ -95,26 +97,28 @@ export default function Timeline({ onImport, recStart, apiRef, tool }: { onImpor
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, width, height);
     p.tracks.forEach((t, i) => {
-      g.fillStyle = t.id === st.selTrack ? "#33363c" : t.kind === "group" ? "#2e2f2c" : i % 2 ? "#292b2f" : "#2c2e32";
+      g.fillStyle = t.id === st.selTrack ? "#1f2126" : "#17181c";
       g.fillRect(0, i * TRACK_H, width, TRACK_H - 1);
-      g.fillStyle = "#1b1c1f";
+      g.fillStyle = "#0e0f12";
       g.fillRect(0, (i + 1) * TRACK_H - 1, width, 1);
       if (t.kind === "group") {
-        // a group holds no events: its lane says what it does
-        g.fillStyle = "rgba(224,176,64,0.7)";
-        g.font = "11px system-ui, sans-serif";
+        // a group holds no clips: its lane says what it does
+        g.fillStyle = "rgba(233,185,73,0.06)";
+        g.fillRect(0, i * TRACK_H, width, TRACK_H - 1);
+        g.fillStyle = "rgba(233,185,73,0.75)";
+        g.font = "12px system-ui, sans-serif";
         g.textBaseline = "middle";
         g.direction = "rtl";
         g.textAlign = "left";
         const n = p.tracks.filter((x) => x.group === t.id).length;
-        g.fillText(n ? `قروب — ${n} مسارات تمر من هنا؛ مؤثراته وفيدره عليها كلها` : "قروب فاضي — أدخل المسارات فيه من «الخرج» في الإنسبكتور", 12, i * TRACK_H + TRACK_H / 2);
+        g.fillText(n ? `قروب — ${n} مسارات تمر من هنا؛ مؤثراته ومستواه عليها كلها` : "قروب فاضي — أدخل المسارات فيه من «⋯» على رأس المسار", 16, i * TRACK_H + TRACK_H / 2);
         g.direction = "ltr";
       }
     });
     drawGrid(g, p, pps, scroll, width, p.tracks.length * TRACK_H);
     if (p.loop.on) {
       const a = (p.loop.start - scroll) * pps, b = (p.loop.end - scroll) * pps;
-      g.fillStyle = "rgba(122,134,255,0.07)";
+      g.fillStyle = "rgba(47,214,195,0.05)";
       g.fillRect(a, 0, b - a, height);
     }
     // waiting takes first (underneath), then what plays, then what is selected
@@ -135,10 +139,10 @@ export default function Timeline({ onImport, recStart, apiRef, tool }: { onImpor
     if (!c) return;
     const dpr = window.devicePixelRatio || 1;
     c.width = Math.round(width * dpr);
-    c.height = Math.round(26 * dpr);
+    c.height = Math.round(34 * dpr);
     const g = c.getContext("2d")!;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, width, 26);
+    g.clearRect(0, 0, width, 34);
     drawRuler(g, p, pps, scroll, width);
   }, [p, pps, scroll, width]);
 
@@ -163,7 +167,7 @@ export default function Timeline({ onImport, recStart, apiRef, tool }: { onImpor
           rb.style.display = "block";
           rb.style.left = `${(recStart - v.scroll) * v.pps}px`;
           rb.style.width = `${Math.max(2, (pos - recStart) * v.pps)}px`;
-          rb.style.top = `${Math.max(0, ti) * TRACK_H + 1}px`;
+          rb.style.top = `${Math.max(0, ti) * TRACK_H + 6}px`;
         } else rb.style.display = "none";
       }
       for (const el of heads.current?.querySelectorAll<HTMLElement>("[data-m]") ?? []) {
@@ -198,7 +202,7 @@ export default function Timeline({ onImport, recStart, apiRef, tool }: { onImpor
     for (const clip of inTrack) {
       const a = X(clip.start), b = X(clip.start + clip.dur);
       if (x < a - 2 || x > b + 2) continue;
-      const top = y - ti * TRACK_H < 16;
+      const top = y - ti * TRACK_H < 24;
       const wide = b - a > 30;
       if (top && wide && x < a + Math.max(12, clip.fadeIn * view.current.pps + 7)) return { clip, zone: "fadeIn" };
       if (top && wide && x > b - Math.max(12, clip.fadeOut * view.current.pps + 7)) return { clip, zone: "fadeOut" };
@@ -344,7 +348,6 @@ export default function Timeline({ onImport, recStart, apiRef, tool }: { onImpor
     onImport(files, track && track.kind !== "group" ? track.id : null, Math.max(0, snapTime(p, Tm(e.clientX - r.left), pps)));
   };
 
-  const confirmDelete = (id: string) => !p.clips.some((c) => c.trackId === id) || window.confirm("حذف المسار مع كل مقاطعه؟");
   const tb = (cls: string, on: boolean, label: string, title: string, onClick: () => void) => (
     <button type="button" className={`rv-tb ${cls}${on ? " on" : ""}`} title={title} onClick={onClick}>{label}</button>
   );
@@ -352,59 +355,68 @@ export default function Timeline({ onImport, recStart, apiRef, tool }: { onImpor
   return (
     <div className="rv-tl" dir="ltr">
       <div className="rv-tl-corner" dir="rtl">
-        <button type="button" className="rv-chip" onClick={() => store.set((q) => addTrack(q, undefined, { stereo: false }).project)} title="مسار صوت مونو جديد (غيّره لستيريو من زر ○)">＋ مسار</button>
-        <button type="button" className="rv-chip" onClick={() => store.set((q) => {
-          // the selected track and the tracks of the selected events go into the new group
-          const members = [...new Set([st.selTrack, ...q.clips.filter((c) => st.selClips.includes(c.id)).map((c) => c.trackId)])];
-          const made = addGroup(q, members);
-          st.select(st.selClips, made.track.id);
-          return made.project;
-        })} title="قروب: مسار تمر منه مسارات أخرى، فتأخذ كلها مؤثراته وفيدره">＋ قروب</button>
-        <span className="rv-tl-zoom" dir="ltr">
+        <button type="button" className="rv-addtrack" onClick={() => setAdding(!adding)} aria-expanded={adding}>＋ إضافة مسار</button>
+        {adding ? (
+          <div className="rv-pop rv-addmenu" onPointerLeave={() => setAdding(false)}>
+            <button type="button" onClick={() => (store.set((q) => addTrack(q, undefined, { stereo: false }).project), setAdding(false))}><b>مسار صوت</b><small>مونو — للتسجيل بالمايك</small></button>
+            <button type="button" onClick={() => (store.set((q) => addTrack(q, `موسيقى ${q.tracks.length + 1}`, { stereo: true }).project), setAdding(false))}><b>مسار ستيريو</b><small>للموسيقى والملفات الستيريو</small></button>
+            <button type="button" onClick={() => (onPick(), setAdding(false))}><b>استيراد ملف</b><small>صوت أو فيديو من جهازك</small></button>
+            <button type="button" onClick={() => {
+              store.set((q) => {
+                // the selected track and the tracks of the selected clips go into the new group
+                const members = [...new Set([st.selTrack, ...q.clips.filter((c) => st.selClips.includes(c.id)).map((c) => c.trackId)])];
+                const made = addGroup(q, members);
+                st.select(st.selClips, made.track.id);
+                return made.project;
+              });
+              setAdding(false);
+            }}><b>قروب</b><small>يجمع المسار المحدد: مؤثرات واحدة على الكل</small></button>
+          </div>
+        ) : null}
+      </div>
+      <div className="rv-tl-rulerwrap">
+        <canvas ref={ruler} className="rv-tl-ruler" style={{ width, height: 34 }} onPointerDown={onRulerDown} onDoubleClick={() => store.set((q) => ({ ...q, loop: { ...q.loop, on: !q.loop.on } }), { undo: false })} />
+        <div ref={rhead} className="rv-playhead-top" />
+        <span className="rv-tl-zoom">
           <button type="button" onClick={() => zoomAt(1 / 1.4)} title="تصغير (G)">−</button>
           <button type="button" onClick={fit} title="كل المشروع في الشاشة">⤢</button>
           <button type="button" onClick={() => zoomAt(1.4)} title="تكبير (H)">＋</button>
         </span>
       </div>
-      <div className="rv-tl-rulerwrap">
-        <canvas ref={ruler} className="rv-tl-ruler" style={{ width, height: 26 }} onPointerDown={onRulerDown} onDoubleClick={() => store.set((q) => ({ ...q, loop: { ...q.loop, on: !q.loop.on } }), { undo: false })} />
-        <div ref={rhead} className="rv-playhead-top" />
-      </div>
       <div className="rv-tl-body">
         <div className="rv-tl-heads" dir="rtl" ref={heads}>
-          {p.tracks.map((t, i) => (
+          {p.tracks.map((t) => (
             <div key={t.id} className={`rv-th${t.id === st.selTrack ? " sel" : ""}${t.kind === "group" ? " group" : ""}${t.group ? " child" : ""}`} style={{ height: TRACK_H, ["--c" as string]: t.color }} onPointerDown={() => st.select(st.selClips, t.id)}>
-              <span className="rv-th-color" />
+              <span className="rv-th-icon" aria-hidden>
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d={t.kind === "group" ? "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" : t.stereo === false ? "M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3" : "M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"} />
+                </svg>
+              </span>
               <div className="rv-th-main">
                 <div className="rv-th-row">
-                  <span className="rv-th-num">{t.kind === "group" ? "▾" : i + 1}</span>
                   <input className="rv-th-name" value={t.name} onChange={(e) => store.set((q) => patchTrack(q, t.id, { name: e.target.value }), { merge: `n${t.id}` })} aria-label="اسم المسار" />
-                  <span className="rv-th-tools">
-                    {t.kind === "group" ? null : t.group ? (
-                      <button type="button" onClick={() => store.set((q) => setGroup(q, t.id, null))} title="أخرجه من القروب">⤴</button>
-                    ) : groups.length ? (
-                      <button type="button" onClick={() => store.set((q) => setGroup(q, t.id, nearestGroup(q, t.id)))} title="أدخله في القروب">⤵</button>
-                    ) : null}
-                    <button type="button" onClick={() => store.set((q) => moveTrack(q, t.id, -1))} disabled={i === 0} title="للأعلى">▲</button>
-                    <button type="button" onClick={() => store.set((q) => moveTrack(q, t.id, 1))} disabled={i === p.tracks.length - 1} title="للأسفل">▼</button>
-                    <button type="button" onClick={() => (confirmDelete(t.id) ? store.set((q) => removeTrack(q, t.id)) : null)} disabled={t.kind !== "group" && p.tracks.filter((x) => x.kind !== "group").length <= 1} title={t.kind === "group" ? "حذف القروب (مساراته تبقى)" : "حذف المسار"}>✕</button>
-                  </span>
+                  <button type="button" className={`rv-th-fx${t.fx.some((f) => f.on) ? " on" : ""}`} onClick={() => {
+                    st.select(st.selClips, t.id);
+                    st.openPanel("fx");
+                  }} title="مؤثرات المسار">Fx{t.fx.length ? ` ${t.fx.length}` : ""}</button>
+                  <button type="button" className="rv-th-more" onClick={(e) => {
+                    // the menu opens beside the track list, over the lanes: the track it belongs to stays in view
+                    const r = e.currentTarget.getBoundingClientRect();
+                    const list = heads.current?.getBoundingClientRect();
+                    setMenu(menu?.id === t.id ? null : { id: t.id, x: Math.min((list?.right ?? r.right) + 8, window.innerWidth - 292), y: r.top - 8 });
+                  }} title="إعدادات المسار" aria-label="إعدادات المسار">⋯</button>
                 </div>
                 <div className="rv-th-row rv-th-btns" dir="ltr">
                   {tb("m", t.mute, "M", "كتم", () => store.set((q) => patchTrack(q, t.id, { mute: !t.mute })))}
                   {tb("s", t.solo, "S", "منفرد", () => store.set((q) => patchTrack(q, t.id, { solo: !t.solo })))}
                   {t.kind === "group" ? null : tb("r", t.arm, "●", "جاهز للتسجيل: يسجّل هنا والمسارات الثانية تشتغل", () => store.set((q) => armTrack(q, t.id), { undo: false }))}
-                  {tb("w", t.stereo !== false, t.stereo === false ? "○" : "◎", t.stereo === false ? "مونو — اضغط ليصير ستيريو" : "ستيريو — اضغط ليصير مونو", () => store.set((q) => patchTrack(q, t.id, { stereo: t.stereo === false })))}
-                  {tb("e", false, "e", "إعدادات القناة: المؤثرات والإكولايزر", () => {
-                    st.select(st.selClips, t.id);
-                    st.openPanel("fx");
-                  })}
-                  <input className="rv-th-gain" type="range" min={-40} max={6} step={0.5} value={Math.max(-40, t.gain)} onChange={(e) => store.set((q) => patchTrack(q, t.id, { gain: Number(e.target.value) }), { merge: `g${t.id}` })} onDoubleClick={() => store.set((q) => patchTrack(q, t.id, { gain: 0 }))} title={`المستوى ${t.gain.toFixed(1)} dB`} aria-label="مستوى المسار" />
+                  <input className="rv-th-gain" type="range" min={-40} max={6} step={0.5} value={Math.max(-40, t.gain)} onChange={(e) => store.set((q) => patchTrack(q, t.id, { gain: Number(e.target.value) }), { merge: `g${t.id}` })} onDoubleClick={() => store.set((q) => patchTrack(q, t.id, { gain: 0 }))} title={`المستوى ${t.gain.toFixed(1)} dB`} aria-label="مستوى المسار" style={{ ["--fill" as string]: `${((Math.max(-40, t.gain) + 40) / 46) * 100}%` }} />
                 </div>
               </div>
               <span className="rv-th-meter"><i data-m={t.id} data-arm={t.arm ? "1" : undefined} /></span>
             </div>
           ))}
+          <button type="button" className="rv-th-add" onClick={() => store.set((q) => addTrack(q, undefined, { stereo: false }).project)}>＋ مسار جديد</button>
         </div>
         <div className="rv-tl-lanes" ref={wrap} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
           <canvas ref={lanes} style={{ width, height }} onPointerDown={onLaneDown} onPointerMove={onLaneMove} onDoubleClick={(e) => {
@@ -415,12 +427,16 @@ export default function Timeline({ onImport, recStart, apiRef, tool }: { onImpor
               st.openPanel("editor");
             }
           }} />
-          <div ref={recBox} className="rv-recbox" style={{ height: TRACK_H - 3 }} />
+          <div ref={recBox} className="rv-recbox" style={{ height: TRACK_H - 13 }} />
           <div ref={head} className="rv-playhead" style={{ height }} />
           {!p.clips.length ? (
             <div className="rv-tl-hint" dir="rtl">
-              <b>المشروع فاضي</b>
-              <span>اضغط ● في شريط النقل تحت للتسجيل على المسار الجاهز، أو اسحب ملف صوت وأفلته هنا</span>
+              <b>ابدأ مشروعك</b>
+              <span>سجّل بصوتك على المسار الجاهز، أو اسحب ملف صوت وأفلته هنا</span>
+              <div>
+                <button type="button" className="rec" onClick={onRecord}>● ابدأ التسجيل</button>
+                <button type="button" onClick={onPick}>استيراد ملف</button>
+              </div>
             </div>
           ) : null}
         </div>
@@ -431,15 +447,9 @@ export default function Timeline({ onImport, recStart, apiRef, tool }: { onImpor
       }}>
         <div style={{ width: total * pps, height: 1 }} />
       </div>
+      {menu && p.tracks.some((t) => t.id === menu.id) ? <TrackMenu track={p.tracks.find((t) => t.id === menu.id)!} at={menu} onClose={() => setMenu(null)} /> : null}
     </div>
   );
-}
-
-/** The group a track joins from its header button: the nearest one above it, else the first. */
-function nearestGroup(p: Project, id: string): string | null {
-  const i = p.tracks.findIndex((t) => t.id === id);
-  for (let k = i - 1; k >= 0; k--) if (p.tracks[k].kind === "group") return p.tracks[k].id;
-  return p.tracks.find((t) => t.kind === "group")?.id ?? null;
 }
 
 function gridStep(p: Project, pps: number): { minor: number; major: number } {
@@ -463,7 +473,7 @@ function drawGrid(g: CanvasRenderingContext2D, p: Project, pps: number, scroll: 
   for (let t = from; (t - scroll) * pps < w; t += minor) {
     const x = Math.round((t - scroll) * pps);
     const isMajor = Math.abs(t / major - Math.round(t / major)) < 1e-6;
-    g.fillStyle = isMajor ? "rgba(0,0,0,0.42)" : "rgba(0,0,0,0.2)";
+    g.fillStyle = isMajor ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.028)";
     g.fillRect(x, 0, 1, h);
   }
 }
@@ -471,49 +481,63 @@ function drawGrid(g: CanvasRenderingContext2D, p: Project, pps: number, scroll: 
 function drawRuler(g: CanvasRenderingContext2D, p: Project, pps: number, scroll: number, w: number) {
   const { minor, major } = gridStep(p, pps);
   const bar = barSec(p);
+  const H = 34;
   if (p.loop.end > p.loop.start) {
-    // the cycle: the stretch between the left and right locators
+    // the loop: a band along the top of the ruler, bright when it is on
     const a = (p.loop.start - scroll) * pps, b = (p.loop.end - scroll) * pps;
-    g.fillStyle = p.loop.on ? "rgba(122,134,255,0.55)" : "rgba(122,134,255,0.18)";
-    g.fillRect(a, 0, b - a, 26);
+    g.fillStyle = p.loop.on ? "rgba(47,214,195,0.9)" : "rgba(47,214,195,0.25)";
+    g.beginPath();
+    g.roundRect(a, 2, Math.max(2, b - a), 6, 3);
+    g.fill();
   }
-  g.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
-  g.textBaseline = "top";
+  g.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
+  g.textBaseline = "alphabetic";
   const from = Math.floor(scroll / minor) * minor;
   for (let t = from; (t - scroll) * pps < w; t += minor) {
     const x = Math.round((t - scroll) * pps);
     const isMajor = Math.abs(t / major - Math.round(t / major)) < 1e-6;
-    g.fillStyle = isMajor ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.18)";
-    g.fillRect(x, isMajor ? 0 : 19, 1, 26);
+    g.fillStyle = isMajor ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.12)";
+    g.fillRect(x, isMajor ? 14 : 26, 1, H);
     if (isMajor) {
-      g.fillStyle = "#d5d8dd";
-      g.fillText(major >= bar ? String(Math.round(t / bar) + 1) : barsLabel(p, t + 1e-9), x + 4, 3);
-      g.fillStyle = "rgba(160,166,175,0.75)";
-      g.fillText(clockLabel(t, major < 1), x + 4, 14);
+      g.fillStyle = "#c9cdd3";
+      g.fillText(major >= bar ? String(Math.round(t / bar) + 1) : barsLabel(p, t + 1e-9), x + 5, 24);
+      g.fillStyle = "rgba(130,136,146,0.9)";
+      const label = major >= bar ? String(Math.round(t / bar) + 1) : barsLabel(p, t + 1e-9);
+      g.fillText(clockLabel(t, major < 1), x + 9 + g.measureText(label).width, 24);
     }
   }
   for (const m of p.markers) {
     const x = (m.time - scroll) * pps;
-    g.fillStyle = "#e0b040";
-    g.fillRect(x, 0, 2, 26);
-    g.fillRect(x, 0, 7, 7);
+    g.fillStyle = "#e9b949";
+    g.beginPath();
+    g.moveTo(x, 10);
+    g.lineTo(x + 8, 10);
+    g.lineTo(x + 8, 18);
+    g.lineTo(x, 24);
+    g.closePath();
+    g.fill();
   }
 }
 
-/** An event, as the program draws it: a flat block in its track's colour, the wave dark on it; selected, it turns dark with the wave in colour. */
+/**
+ * A clip: a rounded region in its track's colour with the wave drawn darker on it, its name in the corner. Selected,
+ * it gets a white outline and its fade handles; a waiting take is faint.
+ */
 function drawClip(g: CanvasRenderingContext2D, c: Clip, color: string, ti: number, pps: number, scroll: number, w: number, selected: boolean) {
   const x0 = (c.start - scroll) * pps, x1 = (c.start + c.dur - scroll) * pps;
   if (x1 < 0 || x0 > w) return;
-  const y = ti * TRACK_H + 1, h = TRACK_H - 3;
-  const a = Math.max(-2, x0), b = Math.min(w + 2, x1);
+  const y = ti * TRACK_H + 6, h = TRACK_H - 13;
+  const a = Math.max(-8, x0), b = Math.min(w + 8, x1);
+  const R = Math.min(7, Math.max(2, (b - a) / 2));
   g.save();
-  g.globalAlpha = c.muted ? 0.32 : 1;
+  g.globalAlpha = c.muted ? 0.28 : 1;
   g.beginPath();
-  g.rect(a, y, Math.max(2, b - a), h);
-  g.fillStyle = selected ? "#15171a" : hexA(color, 0.78);
+  g.roundRect(a, y, Math.max(3, b - a), h, R);
+  g.fillStyle = hexA(color, selected ? 1 : 0.86);
   g.fill();
   g.clip();
   const s = getSound(c.assetId);
+  const head = 18;
   if (s) {
     // drawn in the screen's own pixels (sharp on a dense display), every column the exact extremes of its samples,
     // and scaled by the clip's level and fades: the picture is what is heard
@@ -527,56 +551,61 @@ function drawClip(g: CanvasRenderingContext2D, c: Clip, color: string, ti: numbe
       return k;
     };
     const rows = s.channels.length;
-    const top0 = y + 13, rowH = (h - 13) / rows;
+    const top0 = y + head, rowH = (h - head - 3) / rows;
     const left = Math.max(0, a), right = Math.min(w, b);
     g.save();
     g.setTransform(1, 0, 0, 1, 0, 0);
-    g.fillStyle = g.strokeStyle = selected ? color : "rgba(10,12,15,0.78)";
     for (let row = 0; row < rows; row++) {
-      // a stereo event shows its two channels, one over the other
+      // a stereo clip shows its two channels, one over the other
+      g.fillStyle = g.strokeStyle = "rgba(8,10,13,0.62)";
       drawWave(g, s.peaks, s.channels, row, SR, { x: left * dpr, y: (top0 + rowH * row) * dpr, w: (right - left) * dpr, h: rowH * dpr }, c.offset + (left - x0) / pps, pps * dpr, level);
-      g.fillStyle = "rgba(0,0,0,0.22)";
-      g.fillRect(left * dpr, Math.round((top0 + rowH * row + rowH / 2) * dpr), (right - left) * dpr, 1);
-      if (row < rows - 1) g.fillRect(left * dpr, Math.round((top0 + rowH * (row + 1)) * dpr), (right - left) * dpr, 1);
-      g.fillStyle = selected ? color : "rgba(10,12,15,0.78)";
+      if (row < rows - 1) {
+        g.fillStyle = "rgba(0,0,0,0.18)";
+        g.fillRect(left * dpr, Math.round((top0 + rowH * (row + 1)) * dpr), (right - left) * dpr, 1);
+      }
     }
     g.restore();
   }
-  // fades: the wave already follows them; a thin line shows the slope
-  g.strokeStyle = selected ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.55)";
-  g.lineWidth = 1;
+  // fades: the wave already follows them; a soft line shows the slope
+  g.strokeStyle = "rgba(0,0,0,0.5)";
+  g.lineWidth = 1.2;
   if (c.fadeIn > 0) {
     g.beginPath();
     g.moveTo(x0, y + h);
-    g.lineTo(x0 + c.fadeIn * pps, y + 12);
+    g.lineTo(x0 + c.fadeIn * pps, y + head);
     g.stroke();
   }
   if (c.fadeOut > 0) {
     g.beginPath();
-    g.moveTo(x1 - c.fadeOut * pps, y + 12);
+    g.moveTo(x1 - c.fadeOut * pps, y + head);
     g.lineTo(x1, y + h);
     g.stroke();
   }
-  if (b - a > 34) {
-    g.fillStyle = selected ? hexA(color, 0.9) : "rgba(0,0,0,0.32)";
-    g.fillRect(a, y, b - a, 12);
-    g.fillStyle = selected ? "#0c0e11" : "#f2f4f7";
-    g.font = "10.5px system-ui, sans-serif";
+  if (b - a > 36) {
+    g.fillStyle = "rgba(8,10,13,0.86)";
+    g.font = "600 11px system-ui, sans-serif";
     g.textBaseline = "middle";
     g.direction = "rtl";
     g.textAlign = "left";
-    g.fillText(`${c.take ? "◈ " : ""}${c.name}`, Math.max(a, 0) + 5, y + 6.5, b - Math.max(a, 0) - 10);
+    g.fillText(`${c.take ? "◈ " : ""}${c.name}`, Math.max(a, 0) + 8, y + 10, b - Math.max(a, 0) - 16);
+    g.direction = "ltr";
     if (selected) {
       // the fade handles at the top corners
       g.fillStyle = "#ffffff";
-      g.fillRect(x0 + c.fadeIn * pps + 1, y + 1, 5, 5);
-      g.fillRect(x1 - c.fadeOut * pps - 6, y + 1, 5, 5);
+      g.beginPath();
+      g.arc(x0 + c.fadeIn * pps + 7, y + 9, 3.5, 0, 7);
+      g.arc(x1 - c.fadeOut * pps - 7, y + 9, 3.5, 0, 7);
+      g.fill();
     }
   }
   g.restore();
-  g.strokeStyle = selected ? "#ffffff" : "rgba(0,0,0,0.55)";
-  g.lineWidth = 1;
-  g.strokeRect(Math.round(a) + 0.5, y + 0.5, Math.max(2, Math.round(b - a) - 1), h - 1);
+  if (selected) {
+    g.strokeStyle = "#ffffff";
+    g.lineWidth = 2;
+    g.beginPath();
+    g.roundRect(a + 1, y + 1, Math.max(3, b - a) - 2, h - 2, R);
+    g.stroke();
+  }
 }
 
 function hexA(hex: string, a: number) {
