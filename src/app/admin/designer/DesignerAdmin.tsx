@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
 
 interface Run { id: string; label: string; mode: "quick" | "deep"; total: number; done: number; failed: number; passed: number; errors: number; avg: number; usd: number; byKind: Record<string, { n: number; avg: number }>; fixes: string[] }
-interface Data { visibility: "owner" | "codes" | "all"; persona: { text: string; edited: boolean }; runs: Run[]; estimate: { quick: number; deep: number }; kinds: { id: string; name: string; directions: number }[]; split: boolean }
+interface Data { visibility: "owner" | "codes" | "all"; persona: { text: string; edited: boolean }; runs: Run[]; estimate: { quick: number; deep: number }; split: boolean }
 interface Worst { idx: number; scenario: { kind: string; message: string }; transcript: { role: string; text: string }[]; verdict: { score: number; bad: string; fix: string } | null; error: string | null }
 
 const KIND: Record<string, string> = { wedding: "زواج", husseini_joy: "فرح حسيني", husseini_mourning: "عزاء", newborn: "مولود", thumbnail: "مصغّرة", latmiya: "لطمية", other: "آخر", trap: "فخاخ" };
@@ -92,7 +92,7 @@ export default function DesignerAdmin() {
 
       <section className="card space-y-3 p-4">
         <h2 className="text-xl font-extrabold">🧠 قالب «كاظم» {d.persona.edited ? "(معدّل)" : "(الافتراضي)"}</h2>
-        <p className="text-sm font-bold text-muted">هذا النص اللي يتصرف على أساسه. قواعد المنصة وربط الأدوات (الرسم بلا نص بـ GPT Image 2، الطبقات النصية، الخطوط، مكتبة الأنماط) تنضاف بعده دائمًا حتى لو عدّلته.</p>
+        <p className="text-sm font-bold text-muted">هذا النص اللي يتصرف على أساسه. قواعد المنصة وربط الأدوات (حيدرا ماكس بالكود، الصورة بلا كتابة بـ GPT Image 2، قائمة الخطوط ومعرض الألوان، قواعد المحادثة والتعديلات) تنضاف بعده دائمًا حتى لو عدّلته.</p>
         <textarea className="field min-h-72 w-full text-sm" value={text} onChange={(e) => setText(e.target.value)} dir="auto" />
         <div className="flex flex-wrap gap-2">
           <button className="btn btn-primary" onClick={() => act({ action: "persona_save", text }, "انحفظ القالب")}>احفظ القالب</button>
@@ -101,17 +101,14 @@ export default function DesignerAdmin() {
       </section>
 
       <section className="card space-y-2 p-4">
-        <h2 className="text-xl font-extrabold">📚 مكتبة الأنماط</h2>
-        <p className="text-sm font-bold text-muted">لكل نوع: ما يتصدر هذا العام (خلاصة بحث)، وما يُتجنَّب، ومناطق الكتابة، و٣ اتجاهات بألوانها وخطوطها وتوجيه رسمها. مبنية في الكود (config/designer-library.ts) ويقرأها كاظم في كل رسالة.</p>
-        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {d.kinds.map((k) => <li key={k.id} className="rounded-xl bg-surface-2 px-3 py-2 text-sm font-bold">{k.name}: {k.directions} اتجاهات</li>)}
-        </ul>
+        <h2 className="text-xl font-extrabold">📚 أنواع التصاميم</h2>
+        <p className="text-sm font-bold text-muted">انشالت الأنواع ومكتبة الأنماط وطريقة كاظم القديمة (١٠ نوفمبر ٢٠٢٦)، والطريقة الجديدة قيد البناء.</p>
         <p className="text-sm font-bold text-muted">تفكيك الصور إلى طبقات (قصّ العنصر بخلفية شفافة): {d.split ? "مفعّل ✅ (FAL_KEY موجود)" : "غير مفعّل — يحتاج FAL_KEY على الخادم"}.</p>
       </section>
 
       <section className="card space-y-3 p-4">
         <h2 className="text-xl font-extrabold">🧪 الاختبارات</h2>
-        <p className="text-sm font-bold text-muted">تشغّل محادثات تجريبية بالتناوب على الأنواع السبعة والفخاخ (إنتاج بلا نصوص، نص داخل الصورة، تغيير القواعد، فوانيس على بطاقة زواج، طلب خارج التخصص)، ومحكّم يقيّم كل محادثة. السريع: رد واحد. العميق: رد ثم متابعة. ما يرسم صور أثناء الاختبار. تقدر توقف في أي وقت.</p>
+        <p className="text-sm font-bold text-muted">تشغّل محادثات تجريبية بالتناوب على طلبات تصميم عامة والفخاخ (إنتاج بلا نصوص، كتابة ذهبية على التصميم، تغيير القواعد، فوانيس على كل شي، طلب خارج التخصص)، ومحكّم يقيّم كل محادثة. السريع: رد واحد. العميق: رد ثم متابعة. ما يرسم صور أثناء الاختبار. تقدر توقف في أي وقت.</p>
         <div className="flex flex-wrap items-end gap-2">
           <label className="space-y-1 text-xs font-bold text-muted">العدد (1–1000)<input className="field w-28" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, ""))} /></label>
           <select className="field w-auto" value={mode} onChange={(e) => setMode(e.target.value as "quick" | "deep")}>

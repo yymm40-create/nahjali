@@ -1,15 +1,12 @@
-/* eslint-disable @next/next/no-img-element */
 "use client";
 
-// «محرر الطبقات» — the design as the person edits it: the artwork at the back, every word a real text layer in one of
-// the site's Arabic fonts (drag it, change the font, size, colour, outline, shadow, glow, pill, width, rotation),
-// a cut-out as a movable picture layer, and the final PNG drawn by the browser at the design's own pixel size (the
-// same drawing as the preview: the preview is the design at full size, scaled to fit). Fonts are loaded from the
-// site's own files, so what is seen is what is saved.
+// «المصمم الذكي» — drawing a design in the browser: its artwork at the back, a cut-out as a picture layer, every text
+// layer in one of the site's Arabic fonts (outline, shadow, glow, pill), and the final PNG at the design's own pixel
+// size. Fonts are loaded from the site's own files, so what is seen is what is saved. Shared with «زهراء فوتو ماستر»
+// (render.ts, PhotoEditor). The old drag-and-drop layers editor that lived here is gone: a design is changed by
+// telling «كاظم», or by hand at زهراء.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LAYER_EFFECTS, LAYER_ROLES } from "@config/designer";
-import { layerId, type ImageLayer, type Layer, type TextLayer } from "@/lib/designer/layers";
+import type { Layer, TextLayer } from "@/lib/designer/layers";
 
 export interface FontDef { id: string; family: string; label: string; role: string; files: { url: string; weight: string }[] }
 export interface DesignView {
@@ -26,9 +23,9 @@ export interface DesignView {
   flag?: string;
   final?: string;
   finalUrl?: string | null;
+  splitOf?: string;
 }
 
-const ROLE_AR: Record<string, string> = { title: "عنوان", subtitle: "عنوان فرعي", body: "نص", names: "أسماء", date: "تاريخ", place: "مكان", badge: "شارة", caption: "سطر صغير" };
 const loaded = new Set<string>();
 
 /** Loads a font's files into the page once (the preview and the canvas both use the family name). */
@@ -176,207 +173,4 @@ export async function renderDesign(d: DesignView, fonts: FontDef[]): Promise<Blo
     await drawOne(ctx, l);
   }
   return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("toBlob"))), "image/png"));
-}
-
-/** A text layer as the preview draws it (CSS mirrors the canvas: the same font size, box, effects). */
-function TextPreview({ l, H, family, selected, onDown }: { l: TextLayer; H: number; family: string; selected: boolean; onDown: (e: React.PointerEvent) => void }) {
-  const size = px(l, H);
-  const effect: React.CSSProperties =
-    l.effect === "outline" ? { WebkitTextStroke: `${Math.max(1, size * 0.12) / 2}px ${l.effectColor}`, paintOrder: "stroke fill" }
-    : l.effect === "shadow" ? { textShadow: `${size * 0.05}px ${size * 0.08}px ${size * 0.25}px ${l.effectColor}` }
-    : l.effect === "glow" ? { textShadow: `0 0 ${size * 0.3}px ${l.effectColor}, 0 0 ${size * 0.6}px ${l.effectColor}` }
-    : {};
-  return (
-    <div
-      className={`dz-layer ${selected ? "sel" : ""}`}
-      onPointerDown={onDown}
-      style={{
-        left: `${l.x}%`, top: `${l.y}%`, width: `${l.w}%`,
-        transform: `translate(-50%, -50%) rotate(${l.rotate}deg)`,
-        textAlign: l.align, opacity: l.opacity,
-        fontFamily: `"${family}", sans-serif`, fontSize: size, fontWeight: l.weight, lineHeight: l.lineHeight, letterSpacing: `${(l.spacing / 100) * size}px`,
-        color: l.color, direction: "rtl", whiteSpace: "pre-wrap", wordBreak: "break-word", ...effect,
-      }}
-    >
-      {l.effect === "pill" ? (
-        <span style={{ display: "inline-block", background: l.effectColor, padding: `${size * 0.14}px ${size * 0.35}px`, borderRadius: size * 0.3 }}>{l.text}</span>
-      ) : l.text}
-    </div>
-  );
-}
-
-export default function LayerEditor({ design, fonts, onChange, onSave, saving, onRedraw, busy }: { design: DesignView; fonts: FontDef[]; onChange: (layers: Layer[]) => void; onSave: (blob: Blob) => Promise<void>; saving: boolean; onRedraw?: () => void; busy: boolean }) {
-  const [sel, setSel] = useState<string | null>(design.layers.find((l) => l.kind === "text")?.id ?? null);
-  const [scale, setScale] = useState(0.3);
-  const wrap = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ id: string; sx: number; sy: number; x: number; y: number } | null>(null);
-  const layers = design.layers;
-  const cur = layers.find((l) => l.id === sel) ?? null;
-  const family = useCallback((id: string) => fonts.find((f) => f.id === id)?.family ?? "sans-serif", [fonts]);
-
-  // the fonts in use are loaded as the design shows
-  useEffect(() => {
-    const ids = new Set(layers.filter((l): l is TextLayer => l.kind === "text").map((l) => l.font));
-    fonts.filter((f) => ids.has(f.id)).forEach((f) => void loadFont(f));
-  }, [layers, fonts]);
-
-  // the preview is the design at full size, scaled to the box
-  useEffect(() => {
-    const el = wrap.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setScale(el.clientWidth / design.width));
-    ro.observe(el);
-    setScale(el.clientWidth / design.width);
-    return () => ro.disconnect();
-  }, [design.width]);
-
-  const set = (id: string, patch: Partial<TextLayer> | Partial<ImageLayer>) => onChange(layers.map((l) => (l.id === id ? ({ ...l, ...patch } as Layer) : l)));
-  const down = (id: string) => (e: React.PointerEvent) => {
-    e.preventDefault();
-    setSel(id);
-    const l = layers.find((x) => x.id === id)!;
-    drag.current = { id, sx: e.clientX, sy: e.clientY, x: l.x, y: l.y };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  };
-  const move = (e: React.PointerEvent) => {
-    const d = drag.current;
-    if (!d) return;
-    const nx = Math.max(0, Math.min(100, d.x + ((e.clientX - d.sx) / scale / design.width) * 100));
-    const ny = Math.max(0, Math.min(100, d.y + ((e.clientY - d.sy) / scale / design.height) * 100));
-    set(d.id, { x: Math.round(nx * 10) / 10, y: Math.round(ny * 10) / 10 });
-  };
-  const up = () => { drag.current = null; };
-
-  const addText = () => {
-    const l: TextLayer = { id: layerId(), kind: "text", role: "body", text: "نص جديد", font: fonts[0]?.id ?? "readex", size: 4, color: "#FFFFFF", weight: 700, x: 50, y: 50, w: 70, align: "center", effect: "shadow", effectColor: "#000000", lineHeight: 1.25, spacing: 0, rotate: 0, opacity: 1 };
-    onChange([...layers, l]);
-    setSel(l.id);
-  };
-  const remove = (id: string) => { onChange(layers.filter((l) => l.id !== id)); if (sel === id) setSel(null); };
-  const duplicate = (id: string) => {
-    const l = layers.find((x) => x.id === id);
-    if (!l) return;
-    const copy = { ...l, id: layerId(), y: Math.min(100, l.y + 6) } as Layer;
-    onChange([...layers, copy]);
-    setSel(copy.id);
-  };
-  const order = (id: string, dir: -1 | 1) => {
-    const i = layers.findIndex((l) => l.id === id);
-    const j = i + dir;
-    if (i < 0 || j < 0 || j >= layers.length) return;
-    const copy = [...layers];
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-    onChange(copy);
-  };
-
-  const save = async () => {
-    const blob = await renderDesign(design, fonts);
-    await onSave(blob);
-  };
-  const download = async () => {
-    const blob = await renderDesign(design, fonts);
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `design-${design.id}.png`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  };
-
-  const texts = useMemo(() => layers.filter((l): l is TextLayer => l.kind === "text"), [layers]);
-
-  return (
-    <div className="dz-editor">
-      <div className="dz-stage-wrap" ref={wrap}>
-        <div className="dz-stage" style={{ width: design.width, height: design.height, transform: `scale(${scale})` }} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onClick={(e) => e.target === e.currentTarget && setSel(null)}>
-          {design.artworkUrl ? <img src={design.artworkUrl} alt="" draggable={false} /> : <div className="dz-stage-empty" />}
-          {layers.map((l) =>
-            l.kind === "image" ? (
-              <div key={l.id} className={`dz-layer dz-img ${sel === l.id ? "sel" : ""}`} onPointerDown={down(l.id)} style={{ left: `${l.x}%`, top: `${l.y}%`, width: `${l.w}%`, transform: `translate(-50%, -50%) rotate(${l.rotate}deg)${l.flip ? " scaleX(-1)" : ""}`, opacity: l.opacity }}>
-                {l.url && <img src={l.url} alt="" draggable={false} />}
-              </div>
-            ) : (
-              <TextPreview key={l.id} l={l} H={design.height} family={family(l.font)} selected={sel === l.id} onDown={down(l.id)} />
-            ),
-          )}
-        </div>
-        <div style={{ height: design.height * scale }} />
-      </div>
-
-      <div className="dz-panel">
-        <div className="dz-panel-head">
-          <b>🧩 الطبقات</b>
-          <div className="dz-row">
-            <button type="button" className="dz-mini" onClick={addText}>＋ نص</button>
-            {onRedraw && <button type="button" className="dz-mini" disabled={busy} onClick={onRedraw}>🔁 أعد رسم الصورة</button>}
-          </div>
-        </div>
-        <ul className="dz-layers">
-          {[...layers].reverse().map((l) => (
-            <li key={l.id} className={sel === l.id ? "sel" : ""} onClick={() => setSel(l.id)}>
-              <span className="k">{l.kind === "image" ? "🖼️" : "🅰️"}</span>
-              <span className="t">{l.kind === "image" ? "عنصر مقصوص" : `${ROLE_AR[l.role] ?? l.role}: ${l.text.split("\n")[0]}`}</span>
-              <span className="tools">
-                <button type="button" aria-label="فوق" onClick={(e) => { e.stopPropagation(); order(l.id, 1); }}>↑</button>
-                <button type="button" aria-label="تحت" onClick={(e) => { e.stopPropagation(); order(l.id, -1); }}>↓</button>
-                <button type="button" aria-label="انسخ" onClick={(e) => { e.stopPropagation(); duplicate(l.id); }}>⧉</button>
-                <button type="button" aria-label="احذف" onClick={(e) => { e.stopPropagation(); remove(l.id); }}>✕</button>
-              </span>
-            </li>
-          ))}
-        </ul>
-
-        {cur && cur.kind === "text" && (
-          <div className="dz-props">
-            <label>النص<textarea dir="auto" rows={2} value={cur.text} onChange={(e) => set(cur.id, { text: e.target.value.slice(0, 600) })} /></label>
-            <label>الخط
-              <select value={cur.font} onChange={(e) => set(cur.id, { font: e.target.value })}>
-                {fonts.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
-              </select>
-            </label>
-            <div className="dz-fontrow">
-              {fonts.map((f) => (
-                <button key={f.id} type="button" className={`dz-fontchip ${cur.font === f.id ? "on" : ""}`} style={{ fontFamily: `"${f.family}", sans-serif` }} onMouseEnter={() => void loadFont(f)} onClick={() => { void loadFont(f); set(cur.id, { font: f.id }); }}>{f.label.split(" (")[0]}</button>
-              ))}
-            </div>
-            <div className="dz-grid2">
-              <label>الدور<select value={cur.role} onChange={(e) => set(cur.id, { role: e.target.value as TextLayer["role"] })}>{LAYER_ROLES.map((r) => <option key={r} value={r}>{ROLE_AR[r]}</option>)}</select></label>
-              <label>الوزن<select value={cur.weight} onChange={(e) => set(cur.id, { weight: Number(e.target.value) === 400 ? 400 : 700 })}><option value={700}>عريض</option><option value={400}>عادي</option></select></label>
-              <label>الحجم {cur.size}%<input type="range" min={1} max={25} step={0.25} value={cur.size} onChange={(e) => set(cur.id, { size: Number(e.target.value) })} /></label>
-              <label>العرض {cur.w}%<input type="range" min={10} max={100} step={1} value={cur.w} onChange={(e) => set(cur.id, { w: Number(e.target.value) })} /></label>
-              <label>اللون<span className="dz-color"><input type="color" value={cur.color} onChange={(e) => set(cur.id, { color: e.target.value.toUpperCase() })} /><input dir="ltr" value={cur.color} onChange={(e) => /^#[0-9a-fA-F]{6}$/.test(e.target.value) && set(cur.id, { color: e.target.value.toUpperCase() })} /></span></label>
-              <label>المحاذاة<select value={cur.align} onChange={(e) => set(cur.id, { align: e.target.value as TextLayer["align"] })}><option value="center">وسط</option><option value="right">يمين</option><option value="left">يسار</option></select></label>
-              <label>التأثير<select value={cur.effect} onChange={(e) => set(cur.id, { effect: e.target.value as TextLayer["effect"] })}>{LAYER_EFFECTS.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-              <label>لون التأثير<span className="dz-color"><input type="color" value={cur.effectColor} onChange={(e) => set(cur.id, { effectColor: e.target.value.toUpperCase() })} /><input dir="ltr" value={cur.effectColor} onChange={(e) => /^#[0-9a-fA-F]{6}$/.test(e.target.value) && set(cur.id, { effectColor: e.target.value.toUpperCase() })} /></span></label>
-              <label>ارتفاع السطر {cur.lineHeight}<input type="range" min={0.8} max={2.2} step={0.05} value={cur.lineHeight} onChange={(e) => set(cur.id, { lineHeight: Number(e.target.value) })} /></label>
-              <label>تباعد الحروف {cur.spacing}<input type="range" min={-10} max={40} step={1} value={cur.spacing} onChange={(e) => set(cur.id, { spacing: Number(e.target.value) })} /></label>
-              <label>الدوران {cur.rotate}°<input type="range" min={-45} max={45} step={1} value={cur.rotate} onChange={(e) => set(cur.id, { rotate: Number(e.target.value) })} /></label>
-              <label>الشفافية {Math.round(cur.opacity * 100)}%<input type="range" min={0.1} max={1} step={0.05} value={cur.opacity} onChange={(e) => set(cur.id, { opacity: Number(e.target.value) })} /></label>
-              <label>أفقي {cur.x}%<input type="range" min={0} max={100} step={0.5} value={cur.x} onChange={(e) => set(cur.id, { x: Number(e.target.value) })} /></label>
-              <label>عمودي {cur.y}%<input type="range" min={0} max={100} step={0.5} value={cur.y} onChange={(e) => set(cur.id, { y: Number(e.target.value) })} /></label>
-            </div>
-          </div>
-        )}
-        {cur && cur.kind === "image" && (
-          <div className="dz-props">
-            <div className="dz-grid2">
-              <label>الحجم {cur.w}%<input type="range" min={5} max={150} step={1} value={cur.w} onChange={(e) => set(cur.id, { w: Number(e.target.value) })} /></label>
-              <label>الدوران {cur.rotate}°<input type="range" min={-45} max={45} step={1} value={cur.rotate} onChange={(e) => set(cur.id, { rotate: Number(e.target.value) })} /></label>
-              <label>الشفافية {Math.round(cur.opacity * 100)}%<input type="range" min={0.1} max={1} step={0.05} value={cur.opacity} onChange={(e) => set(cur.id, { opacity: Number(e.target.value) })} /></label>
-              <label>اقلب<select value={cur.flip ? "1" : "0"} onChange={(e) => set(cur.id, { flip: e.target.value === "1" })}><option value="0">لا</option><option value="1">نعم</option></select></label>
-              <label>أفقي {cur.x}%<input type="range" min={0} max={100} step={0.5} value={cur.x} onChange={(e) => set(cur.id, { x: Number(e.target.value) })} /></label>
-              <label>عمودي {cur.y}%<input type="range" min={0} max={100} step={0.5} value={cur.y} onChange={(e) => set(cur.id, { y: Number(e.target.value) })} /></label>
-            </div>
-          </div>
-        )}
-        {!cur && <p className="dz-muted">اضغط على أي نص في التصميم أو في القائمة لتعديله، واسحبه ليتحرك. {texts.length === 0 ? "أضف نصًا بزر «＋ نص»." : ""}</p>}
-
-        <div className="dz-row dz-save">
-          <button type="button" className="dz-send" disabled={saving || busy} onClick={() => void save()}>{saving ? "…" : "💾 احفظ PNG النهائي"}</button>
-          <button type="button" className="dz-mini" disabled={saving} onClick={() => void download()}>⬇️ حمّل الآن</button>
-          {design.finalUrl && <a className="dz-mini" href={design.finalUrl} download>⬇️ آخر نسخة محفوظة</a>}
-        </div>
-        <p className="dz-muted" style={{ fontSize: 11 }}>{design.width}×{design.height} بكسل · كل كلمة طبقة حقيقية بخط عربي أصلي؛ الصورة مرسومة بلا كتابة.</p>
-      </div>
-    </div>
-  );
 }

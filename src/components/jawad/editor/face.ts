@@ -98,3 +98,15 @@ export async function facesIn(images: ImageBitmap[]): Promise<(FaceBox | null)[]
     return best ? { x: (best.originX + best.width / 2) / b.width, y: (best.originY + best.height / 2) / b.height, w: best.width / b.width, h: best.height / b.height } : null;
   });
 }
+
+/** The biggest face in a picture (pixels of that picture), or null — «كاظم»'s ready designs frame a person by his face. */
+export async function faceInPicture(pic: ImageBitmap): Promise<{ x: number; y: number; w: number; h: number } | null> {
+  try {
+    const det = await detector();
+    const r = det.detect(pic);
+    const best = r.detections.map((d) => d.boundingBox).filter((b): b is NonNullable<typeof b> => !!b).sort((a, b) => b.width * b.height - a.width * a.height)[0];
+    return best ? { x: best.originX, y: best.originY, w: best.width, h: best.height } : null;
+  } catch {
+    return null;
+  }
+}

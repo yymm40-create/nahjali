@@ -68,7 +68,7 @@ export default async function JawadHome() {
     ]);
     const credits = settings ?? DEFAULT_CREDIT_SETTINGS;
     const tools: LandingTool[] = unifiedStudioNavigation(rt.sections)
-      .filter((s) => s.enabled && s.implementation !== "islamic")
+      .filter((s) => s.enabled && s.implementation !== "islamic" && s.implementation !== "photo")
       .map((s) => {
         const t = TOOL[s.implementation];
         return t ? { href: s.path, name: s.name, ...t } : null;
