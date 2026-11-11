@@ -11,7 +11,7 @@ import type { AdContext } from "@/lib/track-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { grantCoins } from "@/lib/coins";
 import { cleanPhone, type Bank } from "@config/course";
-import { CREDITS, packOf } from "@config/credits";
+import { activeCode, codeMark, CREDITS, discounted, packOf, type CreditSettings } from "@config/credits";
 import { loadSettings as loadCourseSettings } from "@/lib/course/settings";
 import { addInvoice, getInvoice, invoicePaid, paylinkEnabled } from "./paylink";
 import * as moyasar from "./moyasar";
@@ -96,7 +96,7 @@ const wrap = (e: { message?: string } | null) => {
  * «ادفع الآن»: the order for a package and the bank data to transfer to (the same bank data as the course, set in /admin/course).
  * `b.source` is where the visitor came from as the page knows it; `ad` what the request itself carries (Meta's cookies, ip, ua).
  */
-export async function startCreditOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown }, ad?: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null): Promise<{ order: CreditOrder; bank: Bank }> {
+export async function startCreditOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown; code?: unknown }, ad?: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null): Promise<{ order: CreditOrder; bank: Bank }> {
   const [s, course] = await Promise.all([loadCreditSettings(), loadCourseSettings()]);
   const pack = packOf(s, b.pack);
   if (!pack) throw new UserError("هذي الباقة غير متاحة؛ حدّث الصفحة.", 409);
@@ -113,7 +113,8 @@ export async function startCreditOrder(user: { id: string; email?: string | null
   const at = new Date().toISOString();
   const same = open.find((o) => o.status === "started" && o.packId === pack.id);
   const source = cleanSource(b.source, ad);
-  const fields = { email: user.email ?? "", name, phone, pack_name: pack.name, price_sar: pack.price, credit_sar: pack.credit, updated_at: at };
+  const p = await priced(s, pack, user.id, b.code);
+  const fields = { email: user.email ?? "", name, phone, pack_name: p.name, price_sar: p.price, credit_sar: p.credit, updated_at: at };
   const withSource = (on: boolean) => (on && source ? { ...fields, source } : fields);
   if (same) {
     const { data, error: e2 } = await saveOrder((on) => db().from("credit_orders").update(withSource(on)).eq("id", same.id).eq("status", "started").select("*").single());
@@ -124,6 +125,19 @@ export async function startCreditOrder(user: { id: string; email?: string | null
   const { data, error: e3 } = await saveOrder((on) => db().from("credit_orders").insert({ user_id: user.id, pack_id: pack.id, ...withSource(on) }).select("*").single());
   wrap(e3);
   return { order: view(data!), bank };
+}
+
+/**
+ * The price with a discount code (none typed: the package's own). A code that is wrong, over, or already used by this account is
+ * refused in words — the buyer typed it and expects it. The code goes into the package name («تجربة · كود X −15٪»).
+ */
+async function priced(s: CreditSettings, pack: { name: string; price: number; credit: number }, userId: string, raw: unknown): Promise<{ name: string; price: number; credit: number }> {
+  if (raw === undefined || raw === null || String(raw).trim() === "") return pack;
+  const c = activeCode(s, raw);
+  if (!c) throw new UserError("كود الخصم غير صحيح أو انتهى وقته.", 400);
+  const { count } = await db().from("credit_orders").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "confirmed").like("pack_name", `%${codeMark(c.code)}%`);
+  if ((count ?? 0) > 0) throw new UserError("استخدمت هذا الكود من قبل؛ ينفع مرة وحدة لكل حساب.", 409);
+  return { name: `${pack.name} · ${codeMark(c.code)} −${c.pct}٪`, price: discounted(pack.price, c.pct), credit: pack.credit };
 }
 
 /** The name on the bank transfer («اسم الدافع»), kept in the order's note beside the Telegram message so the owner can match the money. */
@@ -203,7 +217,7 @@ function reportPurchase(o: CreditOrder): void {
 }
 
 /** The order behind a card payment (Paylink or Moyasar): the package, the name and number checked, the open-orders limit, saved as «started». */
-async function newCardOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown }, ad: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null | undefined) {
+async function newCardOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown; code?: unknown }, ad: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null | undefined) {
   const s = await loadCreditSettings();
   const pack = packOf(s, b.pack);
   if (!pack) throw new UserError("هذي الباقة غير متاحة؛ حدّث الصفحة.", 409);
@@ -214,17 +228,18 @@ async function newCardOrder(user: { id: string; email?: string | null }, b: { pa
   const { count } = await db().from("credit_orders").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "started").gte("created_at", new Date(Date.now() - 3600_000).toISOString());
   if ((count ?? 0) >= CREDITS.maxOpen) throw new UserError("عندك طلبات شحن مفتوحة كثيرة؛ انتظر قليلًا أو راسلنا.", 429);
   const source = cleanSource(b.source, ad);
-  const fields = { email: user.email ?? "", name, phone, pack_name: pack.name, price_sar: pack.price, credit_sar: pack.credit };
+  const p = await priced(s, pack, user.id, b.code);
+  const fields = { email: user.email ?? "", name, phone, pack_name: p.name, price_sar: p.price, credit_sar: p.credit };
   const { data, error } = await saveOrder((on) => db().from("credit_orders").insert({ user_id: user.id, pack_id: pack.id, ...(on && source ? { ...fields, source } : fields) }).select("*").single());
   wrap(error);
-  return { order: view(data!), pack, name, phone };
+  return { order: view(data!), pack: { ...pack, name: p.name, price: p.price }, name, phone };
 }
 
 /**
  * «ادفع بالبطاقة» (Paylink): the same order as the bank one, plus an invoice on Paylink's page (card, mada, Apple Pay, STC Pay).
  * Paylink's transaction number is kept in `note`, so the return can read the invoice and settle only what Paylink says is paid.
  */
-export async function startPaylinkOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown }, ad: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null | undefined, origin: string, debug = false): Promise<{ order: CreditOrder; url: string }> {
+export async function startPaylinkOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown; code?: unknown }, ad: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null | undefined, origin: string, debug = false): Promise<{ order: CreditOrder; url: string }> {
   if (!paylinkEnabled()) throw new UserError("الدفع بالبطاقة غير متاح الحين؛ استخدم التحويل البنكي.", 503);
   const { order, pack, name, phone } = await newCardOrder(user, b, ad);
   try {
@@ -273,7 +288,7 @@ export async function settlePaylinkOrder(orderId: string): Promise<{ order: Cred
  * «ادفع بالبطاقة» (Moyasar): the same order, plus an invoice on Moyasar's hosted page (card, mada). Moyasar's invoice id is kept
  * in `note`, so the return and the webhook read that invoice and settle only what Moyasar says is paid.
  */
-export async function startMoyasarOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown }, ad: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null | undefined, origin: string, debug = false): Promise<{ order: CreditOrder; url: string }> {
+export async function startMoyasarOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown; code?: unknown }, ad: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null | undefined, origin: string, debug = false): Promise<{ order: CreditOrder; url: string }> {
   if (!moyasar.moyasarEnabled()) throw new UserError("الدفع بالبطاقة غير متاح الحين؛ استخدم التحويل البنكي.", 503);
   const { order, pack } = await newCardOrder(user, b, ad);
   try {

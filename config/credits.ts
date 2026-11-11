@@ -30,6 +30,48 @@ export interface CreditSettings {
   whatsapp: string;
   /** built-in packages the owner deleted on purpose (they are not added back) */
   removed?: string[];
+  /** «كود خصم» on a top-up: the owner's codes (each a percent off the price, until a moment); never sent to the browser */
+  codes?: TopupCode[];
+}
+
+/**
+ * «كود خصم الشحن» (the owner, 12 November 2026: «عطهم خصم ١٥٪ إذا سجّلوا خلال ٢٤ ساعة»): a code takes `pct` percent off what is
+ * paid for a top-up, while the balance stays the package's full one. It works until `until`, once per account (a confirmed order
+ * carries the code in its package name). The price is whole riyals (the orders keep riyals), rounded DOWN — in the buyer's favour.
+ */
+export interface TopupCode {
+  code: string;
+  /** percent off, 1–90 */
+  pct: number;
+  /** ISO moment it stops working */
+  until: string;
+}
+export const TOPUP_CODE_RE = /^[A-Z0-9_-]{3,24}$/;
+export const cleanCode = (raw: unknown) => String(raw ?? "").trim().toUpperCase().replace(/\s+/g, "");
+/** The price after a code: whole riyals, rounded down, at least one. */
+export const discounted = (price: number, pct: number) => Math.max(1, Math.floor((price * (100 - pct)) / 100 + 1e-9));
+/** The words a code leaves in the order's package name (how «once per account» is checked). */
+export const codeMark = (code: string) => `كود ${code}`;
+/** The code that works now for what the person typed, or null. */
+export function activeCode(s: Pick<CreditSettings, "codes">, raw: unknown, now = Date.now()): TopupCode | null {
+  const code = cleanCode(raw);
+  if (!TOPUP_CODE_RE.test(code)) return null;
+  const c = (s.codes ?? []).find((x) => x.code === code);
+  return c && Date.parse(c.until) > now ? c : null;
+}
+function readCodes(v: unknown): TopupCode[] {
+  const out: TopupCode[] = [];
+  for (const x of Array.isArray(v) ? v : []) {
+    if (!x || typeof x !== "object") continue;
+    const o = x as Record<string, unknown>;
+    const code = cleanCode(o.code);
+    const pct = Math.round(Number(o.pct));
+    const until = typeof o.until === "string" && Number.isFinite(Date.parse(o.until)) ? new Date(o.until).toISOString() : "";
+    if (!TOPUP_CODE_RE.test(code) || !(pct >= 1 && pct <= 90) || !until || out.some((c) => c.code === code)) continue;
+    out.push({ code, pct, until });
+    if (out.length >= 30) break;
+  }
+  return out;
 }
 
 /**
@@ -125,7 +167,7 @@ export function readCreditSettings(raw: unknown): CreditSettings {
   }
   const list = packs.length ? packs : DEFAULT_PACKS;
   const featured = typeof o.featured === "string" && list.some((p) => p.id === o.featured) ? o.featured : list[Math.min(2, list.length - 1)].id;
-  return { packs: list, featured, whatsapp: cleanPhone(o.whatsapp) ?? "", removed };
+  return { packs: list, featured, whatsapp: cleanPhone(o.whatsapp) ?? "", removed, codes: readCodes(o.codes) };
 }
 
 /**
