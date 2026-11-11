@@ -15,6 +15,7 @@ import { StudioCtx, type PanelId, type Studio as StudioApi } from "./ctx";
 import { decodeFile, Engine, getSound, putSound } from "./engine";
 import { saveProject, Store, useProject } from "./store";
 import Timeline, { type TimelineApi } from "./Timeline";
+import FloatWindow from "./FloatWindow";
 import MixerPanel from "./panels/MixerPanel";
 import EditorPanel from "./panels/EditorPanel";
 import EqPanel from "./panels/EqPanel";
@@ -27,14 +28,16 @@ import VoicePanel from "./panels/VoicePanel";
 import ExportPanel from "./panels/ExportPanel";
 import MaxPanel from "./panels/MaxPanel";
 import LatencyDialog, { loadLatency } from "./LatencyDialog";
+import { CHOIRS } from "@config/ridha-choirs";
+import { buildChoir } from "@/lib/ridha/choir";
 
-/** The dock: five doors. Each opens one panel; a door with several tools shows them as tabs inside. */
-const DOCK: { id: string; name: string; icon: string; tabs: { id: PanelId; name: string }[] }[] = [
-  { id: "fx", name: "المؤثرات", icon: "M4 6h16M4 12h16M4 18h16M8 4v4M15 10v4M10 16v4", tabs: [{ id: "fx", name: "السلسلة والجاهز" }, { id: "eq", name: "الإكولايزر" }] },
-  { id: "clip", name: "المقطع", icon: "M6 6a2.5 2.5 0 1 0 0 .01M6 18a2.5 2.5 0 1 0 0 .01M8 8l12 10M8 16L20 6", tabs: [{ id: "editor", name: "تحرير" }, { id: "clean", name: "تنظيف" }, { id: "tune", name: "أوتوتيون ونغمة" }, { id: "voice", name: "تغيير الصوت" }] },
-  { id: "mixer", name: "الميكسر", icon: "M6 4v16M12 4v16M18 4v16M4 9h4M10 15h4M16 7h4", tabs: [{ id: "mixer", name: "الميكسر" }] },
-  { id: "create", name: "هارموني وتوزيع", icon: "M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z", tabs: [{ id: "harmony", name: "هارموني 3D" }, { id: "arrange", name: "التوزيع السريع" }] },
-  { id: "max", name: "الرضا ماكس", icon: "M12 3l2.2 5.3L20 9l-4.3 3.9L17 19l-5-3-5 3 1.3-6.1L4 9l5.8-.7z", tabs: [{ id: "max", name: "الرضا ماكس" }] },
+/** The dock: five doors. Each opens a floating window; a door with several tools shows them as tabs in the window's bar. */
+const DOCK: { id: string; name: string; icon: string; size: { w: number; h: number }; tabs: { id: PanelId; name: string }[] }[] = [
+  { id: "fx", size: { w: 860, h: 440 }, name: "المؤثرات", icon: "M4 6h16M4 12h16M4 18h16M8 4v4M15 10v4M10 16v4", tabs: [{ id: "fx", name: "السلسلة والجاهز" }, { id: "eq", name: "الإكولايزر" }] },
+  { id: "clip", size: { w: 920, h: 480 }, name: "المقطع", icon: "M6 6a2.5 2.5 0 1 0 0 .01M6 18a2.5 2.5 0 1 0 0 .01M8 8l12 10M8 16L20 6", tabs: [{ id: "editor", name: "تحرير" }, { id: "clean", name: "تنظيف" }, { id: "tune", name: "أوتوتيون ونغمة" }, { id: "voice", name: "تغيير الصوت" }] },
+  { id: "mixer", size: { w: 1100, h: 440 }, name: "الميكسر", icon: "M6 4v16M12 4v16M18 4v16M4 9h4M10 15h4M16 7h4", tabs: [{ id: "mixer", name: "الميكسر" }] },
+  { id: "create", size: { w: 1040, h: 500 }, name: "هارموني وتوزيع", icon: "M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z", tabs: [{ id: "harmony", name: "هارموني 3D" }, { id: "arrange", name: "التوزيع السريع" }] },
+  { id: "max", size: { w: 460, h: 520 }, name: "الرضا ماكس", icon: "M12 3l2.2 5.3L20 9l-4.3 3.9L17 19l-5-3-5 3 1.3-6.1L4 9l5.8-.7z", tabs: [{ id: "max", name: "الرضا ماكس" }] },
 ];
 
 const Icon = ({ d, size = 15, fill }: { d: string; size?: number; fill?: boolean }) => (
@@ -42,6 +45,9 @@ const Icon = ({ d, size = 15, fill }: { d: string; size?: number; fill?: boolean
     <path d={d} />
   </svg>
 );
+
+/** The files of a drop that carry sound: audio, or a video whose sound is taken. */
+export const soundFiles = (list: FileList) => [...list].filter((f) => f.type.startsWith("audio/") || f.type.startsWith("video/") || /\.(wav|mp3|m4a|aac|ogg|flac|opus|webm|mp4|mov|aif|aiff)$/i.test(f.name));
 
 interface Job {
   title: string;
@@ -55,11 +61,15 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
   const project = useProject(store);
   const [selClips, setSelClips] = useState<string[]>([]);
   const [selTrack, setSelTrack] = useState(initial.tracks[0]?.id ?? "");
-  const [panel, setPanel] = useState<PanelId>("mixer");
-  // the tools start closed: the first thing seen is the tracks
-  const [lower, setLower] = useState(false);
+  // the open tool windows, the front one last, and the tab each one shows
+  const [wins, setWins] = useState<string[]>([]);
+  const [tabOf, setTabOf] = useState<Record<string, PanelId>>({});
+  /** Opens a tool's window, or brings it to the front. */
+  const focusWin = useCallback((gid: string) => setWins((w) => [...w.filter((x) => x !== gid), gid]), []);
   const [prefs, setPrefs] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [dropping, setDropping] = useState(false);
+  const [choirOpen, setChoirOpen] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const [toastText, setToast] = useState("");
   const [, bump] = useState(0);
@@ -165,23 +175,18 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
         const s = putSound(channels, files[i].name.replace(/\.[^.]+$/, ""));
         const dur = channels[0].length / SR;
         store.set((p) => {
-          // the first file goes where it was dropped; each further file gets a track of its own
+          // every file becomes a track of its own, named after it — unless it was dropped on a track that is still empty
           let q = p;
-          let tid = i === 0 ? trackId : null;
-          if (!tid || q.clips.some((c) => c.trackId === tid && c.start < at + dur && c.start + c.dur > at)) {
-            const empty = q.tracks.find((t) => t.kind !== "group" && !q.clips.some((c) => c.trackId === t.id));
-            if (i === 0 && empty && !trackId) tid = empty.id;
-            else {
-              const made = addTrack(q, s.name.slice(0, 24), { stereo: channels.length > 1 });
-              q = made.project;
-              tid = made.track.id;
-            }
+          let tid = i === 0 && trackId && !q.clips.some((c) => c.trackId === trackId) ? trackId : null;
+          if (tid) q = { ...q, tracks: q.tracks.map((t) => (t.id === tid ? { ...t, stereo: channels.length > 1 } : t)) };
+          else {
+            const made = addTrack(q, s.name.slice(0, 28), { stereo: channels.length > 1 });
+            q = made.project;
+            tid = made.track.id;
           }
-          // an empty track takes the shape of what lands on it: a stereo file makes it stereo, a mono one mono
-          if (!q.clips.some((c) => c.trackId === tid)) q = { ...q, tracks: q.tracks.map((t) => (t.id === tid ? { ...t, stereo: channels.length > 1 } : t)) };
-          const r = addClip(q, { trackId: tid!, assetId: s.id, start: at, dur, name: s.name });
+          const r = addClip(q, { trackId: tid, assetId: s.id, start: at, dur, name: s.name });
           setSelClips([r.clip.id]);
-          setSelTrack(tid!);
+          setSelTrack(tid);
           return r.project;
         });
       }
@@ -194,12 +199,10 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
     input.accept = "audio/*,video/mp4,video/quicktime,video/webm,.wav,.mp3,.m4a,.aac,.ogg,.flac,.opus";
     input.multiple = true;
     input.onchange = () => {
-      const q = store.get();
-      const free = q.tracks.some((t) => t.id === selTrack && t.kind !== "group") && !q.clips.some((c) => c.trackId === selTrack);
-      if (input.files?.length) void importFiles([...input.files], free ? selTrack : null, engine.position());
+      if (input.files?.length) void importFiles([...input.files], null, engine.position());
     };
     input.click();
-  }, [engine, importFiles, selTrack, store]);
+  }, [engine, importFiles]);
 
   // ── transport ──
 
@@ -318,10 +321,7 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
         KeyM: () => store.set((p) => addMarker(p, engine.position())),
         KeyC: () => toggle("metronome"),
         KeyJ: () => toggle("snap"),
-        F3: () => {
-          setPanel("mixer");
-          setLower(true);
-        },
+        F3: () => focusWin("mixer"),
         Delete: remove,
         Backspace: remove,
         Home: () => engine.seek(0),
@@ -346,14 +346,18 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [duplicate, engine, paste, remove, selClips, split, store, togglePlay, toggleRecord]);
+  }, [duplicate, engine, focusWin, paste, remove, selClips, split, store, togglePlay, toggleRecord]);
 
   const openPanel = useCallback((p: PanelId) => {
     // exporting is an act, not a place to stay: it opens as a dialog
     if (p === "export") return setExportOpen(true);
-    setPanel(p);
-    setLower(true);
-  }, []);
+    const g = DOCK.find((d) => d.tabs.some((t) => t.id === p));
+    if (!g) return;
+    setTabOf((m) => ({ ...m, [g.id]: p }));
+    focusWin(g.id);
+  }, [focusWin]);
+  const frontGroup = DOCK.find((d) => d.id === wins[wins.length - 1]);
+  const panel: PanelId = frontGroup ? tabOf[frontGroup.id] ?? frontGroup.tabs[0].id : "mixer";
   const api: StudioApi = useMemo(
     () => ({ engine, store, project, selClips, selTrack, select, clip, track, panel, openPanel, work, toast, clipSound, applyToClip }),
     [engine, store, project, selClips, selTrack, select, clip, track, panel, openPanel, work, toast, clipSound, applyToClip],
@@ -361,12 +365,24 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
 
   const takes = clip ? takesOf(project, clip) : [];
   const set = (patch: Partial<Project>) => store.set((p) => ({ ...p, ...patch }), { undo: false });
-  const group = DOCK.find((g) => g.tabs.some((t) => t.id === panel)) ?? DOCK[0];
   const dockHint = (id: string) => (id === "fx" ? (selTrack === "master" ? "الماستر" : track?.name ?? "") : id === "clip" ? clip?.name ?? "اختر مقطعًا" : "");
 
   return (
     <StudioCtx.Provider value={api}>
-      <div className={`rv rv-studio${lower ? " rv-open" : ""}`}>
+      <div className={`rv rv-studio${dropping ? " rv-dropping" : ""}`} onDragOver={(e) => {
+        // a file dragged in from the computer can be let go anywhere: it becomes a new track
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        if (!dropping) setDropping(true);
+      }} onDragLeave={(e) => {
+        if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false);
+      }} onDrop={(e) => {
+        e.preventDefault();
+        setDropping(false);
+        const files = soundFiles(e.dataTransfer.files);
+        if (files.length) void importFiles(files, null, engine.position());
+        else if (e.dataTransfer.files.length) toast("هذا الملف ليس صوتًا ولا فيديو أقدر آخذ صوته.");
+      }}>
         {/* ── one bar on top: the project, the transport, the two big actions ── */}
         <header className="rv-top">
           <div className="rv-top-a">
@@ -425,7 +441,7 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
 
         {/* ── the tracks: the whole screen is theirs ── */}
         <div className="rv-work">
-          <Timeline onImport={importFiles} onPick={pickFiles} onRecord={() => void toggleRecord()} recStart={recStart} apiRef={tl} tool="select" />
+          <Timeline onImport={importFiles} onPick={pickFiles} onRecord={() => void toggleRecord()} onChoir={() => setChoirOpen(true)} recStart={recStart} apiRef={tl} tool="select" />
           {clip ? (
             <div className="rv-selbar" dir="rtl" role="toolbar" aria-label="المقطع المحدد">
               <b title={clip.name}>{clip.name}</b>
@@ -454,41 +470,38 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
           ) : null}
         </div>
 
-        {/* ── the tools: closed until asked for, then for the selected track or clip ── */}
-        {lower ? (
-          <section className="rv-panel">
-            <div className="rv-panel-bar">
-              <b>{group.name}</b>
-              {dockHint(group.id) ? <span className="rv-muted">{dockHint(group.id)}</span> : null}
-              {group.tabs.length > 1 ? (
+        {/* ── the tools: windows floating over the tracks, opened from the dock and left open as long as wanted ── */}
+        {wins.map((gid, i) => {
+          const g = DOCK.find((d) => d.id === gid)!;
+          const tab = tabOf[gid] ?? g.tabs[0].id;
+          return (
+            <FloatWindow key={gid} id={gid} title={g.name} hint={dockHint(gid)} size={g.size} order={i} top={i === wins.length - 1} onFocus={() => focusWin(gid)} onClose={() => setWins((w) => w.filter((x) => x !== gid))}
+              tabs={g.tabs.length > 1 ? (
                 <span className="rv-subtabs">
-                  {group.tabs.map((t) => <button key={t.id} type="button" className={panel === t.id ? "on" : ""} onClick={() => setPanel(t.id)}>{t.name}</button>)}
+                  {g.tabs.map((t) => <button key={t.id} type="button" className={tab === t.id ? "on" : ""} onClick={() => setTabOf((m) => ({ ...m, [gid]: t.id }))}>{t.name}</button>)}
                 </span>
-              ) : null}
-              <span className="rv-grow" />
-              <button type="button" className="rv-ib" onClick={() => setLower(false)} title="إغلاق اللوحة"><Icon d="M6 9l6 6 6-6" /></button>
-            </div>
-            <div className="rv-panel-body">
-              {panel === "mixer" ? <MixerPanel /> : null}
-              {panel === "editor" ? <EditorPanel /> : null}
-              {panel === "eq" ? <EqPanel /> : null}
-              {panel === "fx" ? <FxPanel /> : null}
-              {panel === "tune" ? <TunePanel /> : null}
-              {panel === "clean" ? <CleanPanel /> : null}
-              {panel === "harmony" ? <HarmonyPanel /> : null}
-              {panel === "arrange" ? <ArrangePanel /> : null}
-              {panel === "voice" ? <VoicePanel /> : null}
-              {panel === "max" ? <MaxPanel /> : null}
-            </div>
-          </section>
-        ) : null}
+              ) : null}>
+              {tab === "mixer" ? <MixerPanel /> : null}
+              {tab === "editor" ? <EditorPanel /> : null}
+              {tab === "eq" ? <EqPanel /> : null}
+              {tab === "fx" ? <FxPanel /> : null}
+              {tab === "tune" ? <TunePanel /> : null}
+              {tab === "clean" ? <CleanPanel /> : null}
+              {tab === "harmony" ? <HarmonyPanel /> : null}
+              {tab === "arrange" ? <ArrangePanel /> : null}
+              {tab === "voice" ? <VoicePanel /> : null}
+              {tab === "max" ? <MaxPanel /> : null}
+            </FloatWindow>
+          );
+        })}
         <nav className="rv-dock" aria-label="أدوات الاستوديو">
           {DOCK.map((g) => {
-            const on = lower && group.id === g.id;
+            const on = wins.includes(g.id);
             return (
               <button key={g.id} type="button" className={`${on ? "on" : ""}${g.id === "max" ? " max" : ""}`} onClick={() => {
-                if (on) setLower(false);
-                else openPanel(g.tabs.some((t) => t.id === panel) ? panel : g.tabs[0].id);
+                // a press opens the window, or brings it to the front; a press on the front window closes it
+                if (wins[wins.length - 1] === g.id) setWins((w) => w.filter((x) => x !== g.id));
+                else focusWin(g.id);
               }}>
                 <Icon d={g.icon} size={16} />
                 <span>{g.name}</span>
@@ -507,6 +520,33 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
                 <button type="button" className="rv-ib" onClick={() => setExportOpen(false)} title="إغلاق"><Icon d="M6 6l12 12M18 6L6 18" /></button>
               </div>
               <ExportPanel />
+            </div>
+          </div>
+        ) : null}
+        {choirOpen ? (
+          <div className="rv-dialog" role="dialog" aria-label="كورال" onPointerDown={(e) => e.target === e.currentTarget && setChoirOpen(false)}>
+            <div className="rv-dialog-card rv-dialog-wide">
+              <div className="rv-panel-bar">
+                <b>اختر الكورال</b>
+                <span className="rv-muted">يجهّز لك المسارات بأدوارها؛ تسجّل كل مسار بدوره</span>
+                <span className="rv-grow" />
+                <button type="button" className="rv-ib" onClick={() => setChoirOpen(false)} title="إغلاق"><Icon d="M6 6l12 12M18 6L6 18" /></button>
+              </div>
+              <div className="rv-choirs">
+                {CHOIRS.map((c) => (
+                  <button key={c.id} type="button" className="rv-card" onClick={() => {
+                    const made = buildChoir(store.get(), c);
+                    store.set(made.project);
+                    setSelTrack(made.first);
+                    setChoirOpen(false);
+                    toast(`«${c.name}»: ${c.parts.length} مسارات جاهزة داخل قروب — سجّل كل مسار بدوره (● على المسار ثم زر التسجيل)`);
+                  }}>
+                    <b>{c.name} <small>· {c.parts.length} مسارات</small></b>
+                    <small>{c.hint}</small>
+                    <ol>{c.parts.map((x) => <li key={x.name}><b>{x.name}:</b> {x.sing}</li>)}</ol>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         ) : null}
