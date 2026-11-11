@@ -18,6 +18,7 @@ import { editOf, photoKeys, readProgram, type DesignEdit } from "./program";
 import { findContentFont, FONT_PIN, fontBlock } from "@config/content-fonts";
 import { darkToLight, findPalette } from "@config/content-palettes";
 import { templateById, viewUrl } from "@config/designer-majlis";
+import { isAdmin } from "@config/site";
 import { MAJLIS_FONTS, majlisPhotos, majlisProgram } from "./majlis";
 import { cutPeople } from "./majlis-cut";
 
@@ -131,7 +132,7 @@ export async function codeBrief(userId: string, chatId: string, o: { email?: str
   if (!chat) throw new Error("chat not found");
   const p = chat.pending;
   if (!p) return null;
-  if (p.majlis) return majlisBrief(userId, chat, o.origin ?? "");
+  if (p.majlis) return majlisBrief(userId, chat, o.origin ?? "", isAdmin(o.email));
   const { list } = await attachmentsOf(userId, p.refs);
   const images = list.filter((a) => a.kind === "image");
   const place = new Set(p.place ?? []);
@@ -169,11 +170,11 @@ export async function codeBrief(userId: string, chatId: string, o: { email?: str
  * A ready majlis design: the template's own program («حيدرا ماكس»'s engine draws it exactly as picked), its empty
  * design, its frames' mask and the person's photos to place, and the picked design to compare with.
  */
-async function majlisBrief(userId: string, chat: Chat, origin: string) {
+async function majlisBrief(userId: string, chat: Chat, origin: string, owner: boolean) {
   let p = chat.pending!;
   // the person chose to remove the photos' background: «حيدرا ماكس» cuts each person out first (once)
   if (p.majlis!.cut && !p.majlis!.cutDone) {
-    const cut = await cutPeople(userId, p.majlis!.people.map((x) => x.photo));
+    const cut = await cutPeople(userId, p.majlis!.people.map((x) => x.photo), owner);
     const majlis = { ...p.majlis!, cutDone: true, people: p.majlis!.people.map((x, i) => ({ ...x, photo: cut[i] })) };
     p = { ...p, refs: cut, place: cut, majlis };
     await saveChat(userId, chat.id, { messages: chat.messages, pending: p });
