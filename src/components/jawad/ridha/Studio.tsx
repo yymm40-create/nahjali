@@ -1,20 +1,20 @@
 "use client";
 
-// «الرضا فويس» — the studio, laid out as a recording program is (the project window of Cubase is the model): a
-// toolbar on top with the editing tools and the snap; an info line that spells out the selected clip in numbers; the
-// inspector of the selected track on one side; the track list and its events in the middle; a lower zone for the
-// mixing console and the tools; and the transport bar along the bottom. It owns the engine and the project's store,
-// saves a moment after every change, and gives every panel the same few verbs.
+// «الرضا فويس» — the studio. THE TRACKS ARE THE SCREEN: one bar on top (the project, the transport, import and
+// export), then the track list and its clips filling everything, and a slim dock at the bottom whose five buttons
+// open a panel only when asked — effects of the selected track, the selected clip's tools, the mixer, harmony and
+// arrangement, and «الرضا ماكس». What belongs to a selected clip floats over the tracks as a small bar; what is set
+// once (snap, count-in, latency) sits behind one settings button. It owns the engine and the project's store, saves
+// a moment after every change, and gives every panel the same few verbs.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RIDHA } from "@config/ridha";
-import { addClip, addMarker, addRecording, addTrack, armTrack, chooseTake, clipOf, deleteClips, duplicateClips, patchClip, replaceSound, setFades, splitClip, takesOf, trackOf } from "@/lib/ridha/ops";
+import { addClip, addMarker, addRecording, addTrack, armTrack, chooseTake, clipOf, deleteClips, duplicateClips, patchClip, replaceSound, splitClip, takesOf, trackOf } from "@/lib/ridha/ops";
 import { barsLabel, clockLabel, SR, type Clip, type Project } from "@/lib/ridha/model";
 import { StudioCtx, type PanelId, type Studio as StudioApi } from "./ctx";
 import { decodeFile, Engine, getSound, putSound } from "./engine";
 import { saveProject, Store, useProject } from "./store";
-import Timeline, { type TimelineApi, type Tool } from "./Timeline";
-import Inspector from "./Inspector";
+import Timeline, { type TimelineApi } from "./Timeline";
 import MixerPanel from "./panels/MixerPanel";
 import EditorPanel from "./panels/EditorPanel";
 import EqPanel from "./panels/EqPanel";
@@ -28,25 +28,13 @@ import ExportPanel from "./panels/ExportPanel";
 import MaxPanel from "./panels/MaxPanel";
 import LatencyDialog, { loadLatency } from "./LatencyDialog";
 
-const PANELS: { id: PanelId; name: string }[] = [
-  { id: "mixer", name: "الميكسر" },
-  { id: "editor", name: "المحرر" },
-  { id: "clean", name: "التنظيف" },
-  { id: "eq", name: "الإكولايزر" },
-  { id: "fx", name: "المؤثرات" },
-  { id: "tune", name: "الأوتوتيون والنغمة" },
-  { id: "harmony", name: "هارموني 3D" },
-  { id: "arrange", name: "التوزيع السريع" },
-  { id: "voice", name: "تغيير الصوت" },
-  { id: "export", name: "التصدير" },
-  { id: "max", name: "الرضا ماكس" },
-];
-
-const TOOLS: { id: Tool; name: string; key: string; path: string }[] = [
-  { id: "select", name: "تحديد وتحريك", key: "1", path: "M5 3l14 8-6 2-2 6z" },
-  { id: "split", name: "مقص: اضغط على المقطع ليُقص هناك", key: "2", path: "M6 6a2.5 2.5 0 1 0 0 .01M6 18a2.5 2.5 0 1 0 0 .01M8 8l12 10M8 16L20 6" },
-  { id: "erase", name: "ممحاة: اضغط على المقطع ليُحذف", key: "3", path: "M4 16l9-10 7 6-7 8H7zM10 20h10" },
-  { id: "mute", name: "كتم: اضغط على المقطع ليُكتم أو يُفتح", key: "4", path: "M5 5l14 14M19 5L5 19" },
+/** The dock: five doors. Each opens one panel; a door with several tools shows them as tabs inside. */
+const DOCK: { id: string; name: string; icon: string; tabs: { id: PanelId; name: string }[] }[] = [
+  { id: "fx", name: "المؤثرات", icon: "M4 6h16M4 12h16M4 18h16M8 4v4M15 10v4M10 16v4", tabs: [{ id: "fx", name: "السلسلة والجاهز" }, { id: "eq", name: "الإكولايزر" }] },
+  { id: "clip", name: "المقطع", icon: "M6 6a2.5 2.5 0 1 0 0 .01M6 18a2.5 2.5 0 1 0 0 .01M8 8l12 10M8 16L20 6", tabs: [{ id: "editor", name: "تحرير" }, { id: "clean", name: "تنظيف" }, { id: "tune", name: "أوتوتيون ونغمة" }, { id: "voice", name: "تغيير الصوت" }] },
+  { id: "mixer", name: "الميكسر", icon: "M6 4v16M12 4v16M18 4v16M4 9h4M10 15h4M16 7h4", tabs: [{ id: "mixer", name: "الميكسر" }] },
+  { id: "create", name: "هارموني وتوزيع", icon: "M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z", tabs: [{ id: "harmony", name: "هارموني 3D" }, { id: "arrange", name: "التوزيع السريع" }] },
+  { id: "max", name: "الرضا ماكس", icon: "M12 3l2.2 5.3L20 9l-4.3 3.9L17 19l-5-3-5 3 1.3-6.1L4 9l5.8-.7z", tabs: [{ id: "max", name: "الرضا ماكس" }] },
 ];
 
 const Icon = ({ d, size = 15, fill }: { d: string; size?: number; fill?: boolean }) => (
@@ -68,9 +56,10 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
   const [selClips, setSelClips] = useState<string[]>([]);
   const [selTrack, setSelTrack] = useState(initial.tracks[0]?.id ?? "");
   const [panel, setPanel] = useState<PanelId>("mixer");
-  const [lower, setLower] = useState(true);
-  const [left, setLeft] = useState(() => typeof window === "undefined" || window.innerWidth > 1000);
-  const [tool, setTool] = useState<Tool>("select");
+  // the tools start closed: the first thing seen is the tracks
+  const [lower, setLower] = useState(false);
+  const [prefs, setPrefs] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const [toastText, setToast] = useState("");
   const [, bump] = useState(0);
@@ -264,12 +253,6 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
     else engine.play();
   }, [engine, stopRec]);
 
-  const stopAll = useCallback(() => {
-    if (engine.recording) return stopRec();
-    if (engine.playing) engine.stop();
-    else engine.seek(0);
-  }, [engine, stopRec]);
-
   // ── clip verbs ──
 
   const split = useCallback(() => {
@@ -335,10 +318,6 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
         KeyM: () => store.set((p) => addMarker(p, engine.position())),
         KeyC: () => toggle("metronome"),
         KeyJ: () => toggle("snap"),
-        Digit1: () => setTool("select"),
-        Digit2: () => setTool("split"),
-        Digit3: () => setTool("erase"),
-        Digit4: () => setTool("mute"),
         F3: () => {
           setPanel("mixer");
           setLower(true);
@@ -353,7 +332,7 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
         KeyG: () => tl.current?.zoom(1 / 1.4),
         Escape: () => {
           setSelClips([]);
-          setTool("select");
+          setPrefs(false);
         },
       };
       if (mod && k === "c") {
@@ -370,6 +349,8 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
   }, [duplicate, engine, paste, remove, selClips, split, store, togglePlay, toggleRecord]);
 
   const openPanel = useCallback((p: PanelId) => {
+    // exporting is an act, not a place to stay: it opens as a dialog
+    if (p === "export") return setExportOpen(true);
     setPanel(p);
     setLower(true);
   }, []);
@@ -380,155 +361,155 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
 
   const takes = clip ? takesOf(project, clip) : [];
   const set = (patch: Partial<Project>) => store.set((p) => ({ ...p, ...patch }), { undo: false });
-  const sound = clip ? getSound(clip.assetId) : null;
-  const room = clip && sound ? sound.channels[0].length / SR - clip.offset : 0;
-  /** A number field of the info line: typed, then committed on Enter or on leaving the field. */
-  const num = (label: string, value: number, onSet: (v: number) => void, unit = "ث", digits = 3) => (
-    <label className="rv-info-f">
-      <span>{label}</span>
-      <input key={`${clip?.id}:${label}:${value.toFixed(digits)}`} dir="ltr" defaultValue={value.toFixed(digits)} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} onBlur={(e) => {
-        const v = Number(e.target.value);
-        if (Number.isFinite(v) && Math.abs(v - value) > 1e-4) onSet(v);
-      }} />
-      <i>{unit}</i>
-    </label>
-  );
+  const group = DOCK.find((g) => g.tabs.some((t) => t.id === panel)) ?? DOCK[0];
+  const dockHint = (id: string) => (id === "fx" ? (selTrack === "master" ? "الماستر" : track?.name ?? "") : id === "clip" ? clip?.name ?? "اختر مقطعًا" : "");
 
   return (
     <StudioCtx.Provider value={api}>
-      <div className={`rv rv-studio${lower ? "" : " rv-no-lower"}${left ? "" : " rv-no-left"}`}>
-        {/* ── toolbar ── */}
-        <header className="rv-bar rv-toolbar">
-          <button type="button" className="rv-tbtn" onClick={onExit} title="مشاريعي"><Icon d="M9 6l6 6-6 6" /></button>
-          <Logo />
-          <input className="rv-name" value={project.name} onChange={(e) => store.set((p) => ({ ...p, name: e.target.value }), { merge: "name" })} aria-label="اسم المشروع" />
-          <span className={`rv-saved ${saved}`} title={saved === "error" ? "تعذّر الحفظ على الجهاز (المساحة ممتلئة؟)" : "يُحفظ على هذا الجهاز تلقائيًا"}>{saved === "saved" ? "محفوظ" : saved === "saving" ? "يحفظ…" : "لم يُحفظ"}</span>
-          <span className="rv-sep" />
-          <button type="button" className="rv-tbtn" onClick={() => store.undo()} disabled={!store.canUndo} title="تراجع (⌘Z)"><Icon d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3" /></button>
-          <button type="button" className="rv-tbtn" onClick={() => store.redo()} disabled={!store.canRedo} title="إعادة (⇧⌘Z)"><Icon d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3" /></button>
-          <span className="rv-sep" />
-          <span className="rv-tools" role="radiogroup" aria-label="أدوات التحرير" dir="ltr">
-            {TOOLS.map((t) => (
-              <button key={t.id} type="button" role="radio" aria-checked={tool === t.id} className={`rv-tbtn${tool === t.id ? " on" : ""}`} onClick={() => setTool(t.id)} title={`${t.name} (${t.key})`}><Icon d={t.path} /></button>
-            ))}
-          </span>
-          <span className="rv-sep" />
-          <button type="button" className={`rv-tbtn rv-tbtn-w${project.snap ? " on" : ""}`} onClick={() => set({ snap: !project.snap })} title="الالتصاق بالشبكة (J)"><Icon d="M6 3v8a6 6 0 0 0 12 0V3M6 7h4M14 7h4" /> شبكة</button>
-          <button type="button" className="rv-tbtn rv-tbtn-w" onClick={split} title="قص عند المؤشر (S)">قص</button>
-          <button type="button" className="rv-tbtn rv-tbtn-w" onClick={duplicate} disabled={!clip} title="تكرار (⌘D)">تكرار</button>
-          <button type="button" className="rv-tbtn rv-tbtn-w" onClick={() => store.set((p) => addMarker(p, engine.position()))} title="علامة عند المؤشر (M)">علامة</button>
-          <span className="rv-grow" />
-          <button type="button" className={`rv-tbtn${left ? " on" : ""}`} onClick={() => setLeft(!left)} title="إظهار/إخفاء الإنسبكتور"><Icon d="M4 5h16v14H4zM9 5v14" /></button>
-          <button type="button" className={`rv-tbtn${lower ? " on" : ""}`} onClick={() => setLower(!lower)} title="إظهار/إخفاء المنطقة السفلية (F3 للميكسر)"><Icon d="M4 5h16v14H4zM4 14h16" /></button>
-          <span className="rv-sep" />
-          <button type="button" className="rv-tbtn rv-tbtn-w" onClick={pickFiles} title="أضف ملف صوت أو فيديو (يؤخذ صوته)">استيراد</button>
-          <button type="button" className="rv-tbtn rv-tbtn-w rv-tbtn-gold" onClick={() => openPanel("export")}>تصدير</button>
+      <div className={`rv rv-studio${lower ? " rv-open" : ""}`}>
+        {/* ── one bar on top: the project, the transport, the two big actions ── */}
+        <header className="rv-top">
+          <div className="rv-top-a">
+            <button type="button" className="rv-ib" onClick={onExit} title="مشاريعي"><Icon d="M9 6l6 6-6 6" /></button>
+            <Logo />
+            <input className="rv-name" value={project.name} onChange={(e) => store.set((p) => ({ ...p, name: e.target.value }), { merge: "name" })} aria-label="اسم المشروع" />
+            <span className={`rv-saved ${saved}`} title={saved === "error" ? "تعذّر الحفظ على الجهاز (المساحة ممتلئة؟)" : "يُحفظ على هذا الجهاز تلقائيًا"}>{saved === "saved" ? "محفوظ" : saved === "saving" ? "يحفظ…" : "لم يُحفظ"}</span>
+          </div>
+
+          <div className="rv-transport" dir="ltr">
+            <button type="button" className="rv-ib" onClick={() => engine.seek(0)} title="للبداية (Home)"><Icon d="M6 5h2v14H6zM20 5v14L9 12z" fill /></button>
+            <button type="button" className={`rv-tr-play${engine.playing && !engine.recording ? " on" : ""}`} onClick={togglePlay} title="تشغيل / إيقاف (مسافة)"><Icon d={engine.playing ? "M7 5h4v14H7zM13 5h4v14h-4z" : "M8 5v14l11-7z"} fill size={20} /></button>
+            <button type="button" className={`rv-tr-rec${engine.recording ? " on" : ""}`} onClick={() => void toggleRecord()} title="تسجيل على المسار الجاهز، والباقي يشتغل (R)"><i /></button>
+            <div className="rv-lcd">
+              <span ref={barsEl} className="rv-time-bars">1.1.1</span>
+              <span ref={clockEl} className="rv-time-clock">0:00.000</span>
+            </div>
+            <label className="rv-bpm" title="السرعة (ضربة في الدقيقة)">
+              <input type="number" min={30} max={240} step={1} value={Math.round(project.bpm * 10) / 10} onChange={(e) => store.set((p) => ({ ...p, bpm: Math.max(30, Math.min(240, Number(e.target.value) || p.bpm)) }), { merge: "bpm" })} />
+              <small>BPM</small>
+            </label>
+            <select className="rv-sig" value={project.beats} onChange={(e) => store.set((p) => ({ ...p, beats: Number(e.target.value) }))} title="الميزان" aria-label="الميزان">
+              <option value={2}>2/4</option>
+              <option value={3}>3/4</option>
+              <option value={4}>4/4</option>
+              <option value={6}>6/8</option>
+            </select>
+            <button type="button" className={`rv-ib${project.loop.on ? " on" : ""}`} onClick={() => set({ loop: { ...project.loop, on: !project.loop.on } })} title="تكرار المنطقة (L) — اسحب على المسطرة لتحديدها"><Icon d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3" /></button>
+            <button type="button" className={`rv-ib${project.metronome ? " on" : ""}`} onClick={() => set({ metronome: !project.metronome })} title="المترونوم (C)"><Icon d="M8 3h8l4 18H4zM12 15l6-9" /></button>
+            <button type="button" className={`rv-ib${prefs ? " on" : ""}`} onClick={() => setPrefs(!prefs)} title="إعدادات التسجيل والشبكة" aria-expanded={prefs}><Icon d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4" /></button>
+            {prefs ? (
+              <div className="rv-pop rv-prefs" dir="rtl" onPointerLeave={() => setPrefs(false)}>
+                <label className="rv-check"><input type="checkbox" checked={project.snap} onChange={() => set({ snap: !project.snap })} />المقاطع تلتصق بالشبكة عند السحب</label>
+                <label className="rv-check"><input type="checkbox" checked={project.countIn} onChange={() => set({ countIn: !project.countIn })} />عدّ بار كامل قبل ما يبدأ التسجيل</label>
+                <label className="rv-check"><input type="checkbox" checked={monitor} disabled={!engine.hasMic} onChange={() => {
+                  engine.setMonitor(!monitor);
+                  setMonitor(!monitor);
+                }} />اسمع نفسي وأنا أسجّل (بالسماعات فقط)</label>
+                <button type="button" className="rv-pop-btn" onClick={() => {
+                  setLatencyOpen(true);
+                  setPrefs(false);
+                }}>معايرة التأخير (سماعات البلوتوث)</button>
+                <button type="button" className="rv-pop-btn" onClick={() => store.set((p) => addMarker(p, engine.position()))}>علامة عند المؤشر (M)</button>
+                <small className="rv-muted">اختصارات: مسافة تشغيل · R تسجيل · S قص · L تكرار · ⌘Z تراجع · ⌘D تكرار المقطع · H و G تكبير وتصغير</small>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rv-top-b">
+            <button type="button" className="rv-ib" onClick={() => store.undo()} disabled={!store.canUndo} title="تراجع (⌘Z)"><Icon d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3" /></button>
+            <button type="button" className="rv-ib" onClick={() => store.redo()} disabled={!store.canRedo} title="إعادة (⇧⌘Z)"><Icon d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3" /></button>
+            <button type="button" className="rv-topbtn" onClick={pickFiles} title="أضف ملف صوت أو فيديو (يؤخذ صوته)">استيراد</button>
+            <button type="button" className="rv-topbtn primary" onClick={() => setExportOpen(true)}>تصدير</button>
+          </div>
         </header>
 
-        {/* ── info line: the selected clip, in numbers ── */}
-        <div className="rv-bar rv-info">
+        {/* ── the tracks: the whole screen is theirs ── */}
+        <div className="rv-work">
+          <Timeline onImport={importFiles} onPick={pickFiles} onRecord={() => void toggleRecord()} recStart={recStart} apiRef={tl} tool="select" />
           {clip ? (
-            <>
-              <label className="rv-info-f rv-info-name">
-                <span>المقطع</span>
-                <input value={clip.name} onChange={(e) => store.set((p) => patchClip(p, clip.id, { name: e.target.value }), { merge: `cn${clip.id}` })} />
-              </label>
-              {num("البداية", clip.start, (v) => store.set((p) => patchClip(p, clip.id, { start: Math.max(0, v) })))}
-              {num("النهاية", clip.start + clip.dur, (v) => store.set((p) => patchClip(p, clip.id, { dur: Math.max(0.02, Math.min(v - clip.start, room || clip.dur)) })))}
-              {num("الطول", clip.dur, (v) => store.set((p) => patchClip(p, clip.id, { dur: Math.max(0.02, Math.min(v, room || clip.dur)) })))}
-              {num("المستوى", clip.gain, (v) => store.set((p) => patchClip(p, clip.id, { gain: Math.max(-60, Math.min(24, v)) })), "dB", 1)}
-              {num("دخول", clip.fadeIn, (v) => store.set((p) => setFades(p, clip.id, v, clip.fadeOut)))}
-              {num("خروج", clip.fadeOut, (v) => store.set((p) => setFades(p, clip.id, clip.fadeIn, v)))}
-              <label className="rv-info-f rv-info-check">
-                <span>كتم</span>
-                <input type="checkbox" checked={clip.muted} onChange={() => store.set((p) => patchClip(p, clip.id, { muted: !clip.muted }))} />
-              </label>
-              <span className="rv-info-ro rv-clipinfo">{clip.name} · {sound ? (sound.channels.length > 1 ? "ستيريو" : "مونو") : "الصوت مفقود"} · 48 kHz</span>
+            <div className="rv-selbar" dir="rtl" role="toolbar" aria-label="المقطع المحدد">
+              <b title={clip.name}>{clip.name}</b>
+              <button type="button" onClick={split} title="قص عند المؤشر (S)">قص</button>
+              <button type="button" onClick={duplicate} title="تكرار (⌘D)">تكرار</button>
+              <button type="button" onClick={() => store.set((p) => patchClip(p, clip.id, { muted: !clip.muted }))}>{clip.muted ? "تشغيل" : "كتم"}</button>
+              <i />
+              <button type="button" onClick={() => openPanel("editor")}>تحرير</button>
+              <button type="button" onClick={() => openPanel("clean")}>تنظيف</button>
+              <button type="button" onClick={() => openPanel("tune")}>أوتوتيون</button>
               {takes.length > 1 ? (
-                <span className="rv-takes">
+                <>
+                  <i />
                   <span>التيكات</span>
                   {takes.map((t, i) => (
-                    <button key={t.id} type="button" className={!t.muted ? "on" : ""} onClick={() => {
+                    <button key={t.id} type="button" className={`take${!t.muted ? " on" : ""}`} onClick={() => {
                       store.set((p) => chooseTake(p, t.id));
                       setSelClips([t.id]);
                     }}>{i + 1}</button>
                   ))}
-                </span>
+                </>
               ) : null}
-              <button type="button" className="rv-tbtn rv-tbtn-w" onClick={remove} title="حذف (Delete)">حذف</button>
-            </>
-          ) : (
-            <span className="rv-info-ro">لا مقطع محدد — اضغط على مقطع لتظهر أرقامه هنا (البداية، الطول، المستوى، التدرّج)، ونقرتان تفتحانه في المحرر</span>
-          )}
+              <i />
+              <button type="button" className="danger" onClick={remove} title="حذف (Delete)">حذف</button>
+            </div>
+          ) : null}
         </div>
 
-        {/* ── the project: inspector | tracks and events ── */}
-        <div className="rv-work">
-          {left ? <Inspector /> : null}
-          <Timeline onImport={importFiles} recStart={recStart} apiRef={tl} tool={tool} />
-        </div>
-
-        {/* ── lower zone ── */}
-        <nav className="rv-tabs" aria-label="المنطقة السفلية">
-          {PANELS.map((t) => (
-            <button key={t.id} type="button" className={panel === t.id && lower ? "on" : ""} onClick={() => {
-              if (panel === t.id) setLower(!lower);
-              else openPanel(t.id);
-            }}>{t.name}</button>
-          ))}
-        </nav>
+        {/* ── the tools: closed until asked for, then for the selected track or clip ── */}
         {lower ? (
           <section className="rv-panel">
-            {panel === "mixer" ? <MixerPanel /> : null}
-            {panel === "editor" ? <EditorPanel /> : null}
-            {panel === "eq" ? <EqPanel /> : null}
-            {panel === "fx" ? <FxPanel /> : null}
-            {panel === "tune" ? <TunePanel /> : null}
-            {panel === "clean" ? <CleanPanel /> : null}
-            {panel === "harmony" ? <HarmonyPanel /> : null}
-            {panel === "arrange" ? <ArrangePanel /> : null}
-            {panel === "voice" ? <VoicePanel /> : null}
-            {panel === "export" ? <ExportPanel /> : null}
-            {panel === "max" ? <MaxPanel /> : null}
+            <div className="rv-panel-bar">
+              <b>{group.name}</b>
+              {dockHint(group.id) ? <span className="rv-muted">{dockHint(group.id)}</span> : null}
+              {group.tabs.length > 1 ? (
+                <span className="rv-subtabs">
+                  {group.tabs.map((t) => <button key={t.id} type="button" className={panel === t.id ? "on" : ""} onClick={() => setPanel(t.id)}>{t.name}</button>)}
+                </span>
+              ) : null}
+              <span className="rv-grow" />
+              <button type="button" className="rv-ib" onClick={() => setLower(false)} title="إغلاق اللوحة"><Icon d="M6 9l6 6 6-6" /></button>
+            </div>
+            <div className="rv-panel-body">
+              {panel === "mixer" ? <MixerPanel /> : null}
+              {panel === "editor" ? <EditorPanel /> : null}
+              {panel === "eq" ? <EqPanel /> : null}
+              {panel === "fx" ? <FxPanel /> : null}
+              {panel === "tune" ? <TunePanel /> : null}
+              {panel === "clean" ? <CleanPanel /> : null}
+              {panel === "harmony" ? <HarmonyPanel /> : null}
+              {panel === "arrange" ? <ArrangePanel /> : null}
+              {panel === "voice" ? <VoicePanel /> : null}
+              {panel === "max" ? <MaxPanel /> : null}
+            </div>
           </section>
         ) : null}
+        <nav className="rv-dock" aria-label="أدوات الاستوديو">
+          {DOCK.map((g) => {
+            const on = lower && group.id === g.id;
+            return (
+              <button key={g.id} type="button" className={`${on ? "on" : ""}${g.id === "max" ? " max" : ""}`} onClick={() => {
+                if (on) setLower(false);
+                else openPanel(g.tabs.some((t) => t.id === panel) ? panel : g.tabs[0].id);
+              }}>
+                <Icon d={g.icon} size={16} />
+                <span>{g.name}</span>
+                {dockHint(g.id) ? <small>{dockHint(g.id)}</small> : null}
+              </button>
+            );
+          })}
+        </nav>
 
-        {/* ── transport bar ── */}
-        <footer className="rv-bar rv-transport" dir="ltr">
-          <div className="rv-loc" title="منطقة التكرار: اسحب على المسطرة لتحديدها">
-            <span>L</span><b>{barsLabel(project, project.loop.start)}</b>
-            <span>R</span><b>{barsLabel(project, project.loop.end)}</b>
+        {exportOpen ? (
+          <div className="rv-dialog" role="dialog" aria-label="التصدير" onPointerDown={(e) => e.target === e.currentTarget && setExportOpen(false)}>
+            <div className="rv-dialog-card rv-dialog-wide">
+              <div className="rv-panel-bar">
+                <b>تصدير المشروع</b>
+                <span className="rv-grow" />
+                <button type="button" className="rv-ib" onClick={() => setExportOpen(false)} title="إغلاق"><Icon d="M6 6l12 12M18 6L6 18" /></button>
+              </div>
+              <ExportPanel />
+            </div>
           </div>
-          <button type="button" className={`rv-tbtn${project.loop.on ? " on violet" : ""}`} onClick={() => set({ loop: { ...project.loop, on: !project.loop.on } })} title="تكرار المنطقة (L)"><Icon d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3" /></button>
-          <span className="rv-sep" />
-          <button type="button" className="rv-tr" onClick={() => engine.seek(0)} title="للبداية (Home)"><Icon d="M6 5h2v14H6zM20 5v14L9 12z" fill /></button>
-          <button type="button" className="rv-tr" onClick={stopAll} title="إيقاف"><Icon d="M6 6h12v12H6z" fill /></button>
-          <button type="button" className={`rv-tr rv-tr-play${engine.playing && !engine.recording ? " on" : ""}`} onClick={togglePlay} title="تشغيل / إيقاف (مسافة)"><Icon d={engine.playing ? "M6 5h4v14H6zM14 5h4v14h-4z" : "M7 4v16l13-8z"} fill size={17} /></button>
-          <button type="button" className={`rv-tr rv-tr-rec${engine.recording ? " on" : ""}`} onClick={() => void toggleRecord()} title="تسجيل على المسار الجاهز، والباقي يشتغل (R)"><Icon d="M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14z" fill size={17} /></button>
-          <span className="rv-sep" />
-          <div className="rv-time"><span ref={barsEl} className="rv-time-bars">1.1.1</span><small>بار</small></div>
-          <div className="rv-time"><span ref={clockEl} className="rv-time-clock">0:00.000</span><small>وقت</small></div>
-          <span className="rv-sep" />
-          <label className="rv-bpm" title="السرعة (ضربة في الدقيقة)">
-            <input type="number" min={30} max={240} step={1} value={Math.round(project.bpm * 10) / 10} onChange={(e) => store.set((p) => ({ ...p, bpm: Math.max(30, Math.min(240, Number(e.target.value) || p.bpm)) }), { merge: "bpm" })} />
-            <small>BPM</small>
-          </label>
-          <select className="rv-sig" value={project.beats} onChange={(e) => store.set((p) => ({ ...p, beats: Number(e.target.value) }))} title="الميزان" aria-label="الميزان">
-            <option value={2}>2/4</option>
-            <option value={3}>3/4</option>
-            <option value={4}>4/4</option>
-            <option value={6}>6/8</option>
-          </select>
-          <button type="button" className={`rv-tbtn${project.metronome ? " on" : ""}`} onClick={() => set({ metronome: !project.metronome })} title="المترونوم (C)"><Icon d="M8 3h8l4 18H4zM12 15l6-9" /></button>
-          <button type="button" className={`rv-tbtn rv-tbtn-w${project.countIn ? " on" : ""}`} onClick={() => set({ countIn: !project.countIn })} title="عدّ بار قبل التسجيل">عدّ</button>
-          <span className="rv-grow" />
-          <button type="button" className={`rv-tbtn rv-tbtn-w${monitor ? " on" : ""}`} dir="rtl" disabled={!engine.hasMic} onClick={() => {
-            engine.setMonitor(!monitor);
-            setMonitor(!monitor);
-          }} title="اسمع نفسك وأنت تسجل — بالسماعات فقط">اسمع نفسي</button>
-          <button type="button" className="rv-tbtn rv-tbtn-w" dir="rtl" onClick={() => setLatencyOpen(true)} title="لضبط مكان التسجيل بدقة، خصوصًا مع سماعات البلوتوث">معايرة التأخير</button>
-        </footer>
-
+        ) : null}
         {latencyOpen ? <LatencyDialog engine={engine} onClose={() => setLatencyOpen(false)} /> : null}
         {job ? (
           <div className="rv-job" role="status">
