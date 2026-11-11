@@ -8,7 +8,7 @@ import { harmonyWhen, planHarmony, planTune } from "@/lib/ridha/dsp/tune";
 import { changeSpeed, shiftAll } from "@/lib/ridha/dsp/stretch";
 import { cleanVoice, deEss, detectHum, gate, noiseProfile, reduceNoise, removeClicks, removeHum } from "@/lib/ridha/dsp/clean";
 import { limit, loudness, normalizeLoudness, peakDb } from "@/lib/ridha/dsp/loudness";
-import { encodeWav, makePeaks } from "@/lib/ridha/dsp/wav";
+import { encodeWav, makePeaks, rangeOf } from "@/lib/ridha/dsp/wav";
 
 const SR = 48000;
 /** A voice-like tone: a fundamental with falling overtones, its note given per sample in Hz. */
@@ -233,8 +233,35 @@ describe("الرضا فويس: loudness and files", () => {
       expect(v.getUint16(34, true)).toBe(depth);
     }
     const p = makePeaks([x]);
-    expect(p.max.length).toBe(Math.ceil(x.length / 256));
-    expect(Math.max(...p.max)).toBeGreaterThan(0.3);
+    expect(p.levels[0].max[0].length).toBe(Math.ceil(x.length / 32));
+    expect(Math.max(...p.levels[1].max[0])).toBeGreaterThan(0.3);
+  });
+  it("answers the exact extremes of any stretch of a sound, however long or short, per channel", () => {
+    const n = SR * 3 + 1234;
+    const a = noise(n, 0.5), b = noise(n, 0.2);
+    // one sample that a careless outline would miss
+    a[70001] = 0.97;
+    b[12345] = -0.91;
+    const p = makePeaks([a, b]);
+    const out = new Float32Array(2);
+    const brute = (x: Float32Array, from: number, to: number) => {
+      let lo = Infinity, hi = -Infinity;
+      for (let i = from; i < to; i++) {
+        if (x[i] < lo) lo = x[i];
+        if (x[i] > hi) hi = x[i];
+      }
+      return [lo, hi];
+    };
+    for (const [from, to] of [[0, n], [1, 2], [31, 33], [69990, 70010], [70001, 70002], [100, 100000], [12000, 12400], [4097, 131071], [n - 5, n]]) {
+      for (const c of [0, 1]) {
+        const want = brute(c ? b : a, from, to);
+        rangeOf(p, [a, b], c, from, to, out);
+        expect([out[0], out[1]]).toEqual(want);
+      }
+    }
+    expect(rangeOf(p, [a, b], 0, 69000, 71000, out)[1]).toBeCloseTo(0.97);
+    expect(rangeOf(p, [a, b], 1, 0, 50000, out)[0]).toBeCloseTo(-0.91);
+    expect(Array.from(rangeOf(p, [a, b], 0, 500, 500, out))).toEqual([0, 0]);
   });
 });
 

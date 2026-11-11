@@ -8,7 +8,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { addGroup, armTrack, addTrack, deleteClips, moveClip, moveTrack, patchClip, patchTrack, removeTrack, setFades, setGroup, splitClip, trimClip } from "@/lib/ridha/ops";
-import { barSec, beatSec, clockLabel, projectEnd, snapTime, SR, type Clip, type Project } from "@/lib/ridha/model";
+import { barSec, barsLabel, beatSec, clockLabel, projectEnd, snapTime, SR, type Clip, type Project } from "@/lib/ridha/model";
+import { drawWave } from "@/lib/ridha/dsp/wav";
 import { getSound, soundDur } from "./engine";
 import { useStudio } from "./ctx";
 import { meterPos } from "./ui";
@@ -69,7 +70,8 @@ export default function Timeline({ onImport, recStart, apiRef, tool }: { onImpor
     const v = view.current;
     const x = atX ?? v.width / 2;
     const t = x / v.pps + v.scroll;
-    const next = Math.max(6, Math.min(1600, v.pps * factor));
+    // from the whole project on one screen down to four pixels a sample
+    const next = Math.max(6, Math.min(SR * 4, v.pps * factor));
     setPps(next);
     setScroll(Math.max(0, t - x / next));
   }, []);
@@ -442,6 +444,13 @@ function nearestGroup(p: Project, id: string): string | null {
 
 function gridStep(p: Project, pps: number): { minor: number; major: number } {
   const beat = beatSec(p), bar = barSec(p);
+  // deep in: sixteenths of a beat, then tenths of that, down to single milliseconds
+  if (pps * beat > 60 * 16) {
+    let minor = beat / 16;
+    while (pps * minor > 600) minor /= 10;
+    return { minor, major: minor * 4 };
+  }
+  if (pps * beat > 60 * 4) return { minor: beat / 4, major: beat };
   if (pps * beat > 60) return { minor: beat, major: bar };
   if (pps * bar > 50) return { minor: bar, major: bar * 4 };
   if (pps * bar * 4 > 50) return { minor: bar * 4, major: bar * 16 };
@@ -478,9 +487,9 @@ function drawRuler(g: CanvasRenderingContext2D, p: Project, pps: number, scroll:
     g.fillRect(x, isMajor ? 0 : 19, 1, 26);
     if (isMajor) {
       g.fillStyle = "#d5d8dd";
-      g.fillText(String(Math.round(t / bar) + 1), x + 4, 3);
+      g.fillText(major >= bar ? String(Math.round(t / bar) + 1) : barsLabel(p, t + 1e-9), x + 4, 3);
       g.fillStyle = "rgba(160,166,175,0.75)";
-      g.fillText(clockLabel(t, false), x + 4, 14);
+      g.fillText(clockLabel(t, major < 1), x + 4, 14);
     }
   }
   for (const m of p.markers) {
@@ -506,63 +515,47 @@ function drawClip(g: CanvasRenderingContext2D, c: Clip, color: string, ti: numbe
   g.clip();
   const s = getSound(c.assetId);
   if (s) {
-    const stereo = s.channels.length > 1;
+    // drawn in the screen's own pixels (sharp on a dense display), every column the exact extremes of its samples,
+    // and scaled by the clip's level and fades: the picture is what is heard
+    const dpr = g.getTransform().a;
     const gain = 10 ** (c.gain / 20);
-    g.fillStyle = selected ? color : "rgba(10,12,15,0.72)";
-    const spp = SR / pps;
-    // a stereo event shows its two channels, one over the other
-    const rows = stereo ? 2 : 1;
+    const end = c.offset + c.dur;
+    const level = (t: number) => {
+      let k = gain;
+      if (c.fadeIn > 0 && t - c.offset < c.fadeIn) k *= Math.max(0, (t - c.offset) / c.fadeIn);
+      if (c.fadeOut > 0 && end - t < c.fadeOut) k *= Math.max(0, (end - t) / c.fadeOut);
+      return k;
+    };
+    const rows = s.channels.length;
     const top0 = y + 13, rowH = (h - 13) / rows;
+    const left = Math.max(0, a), right = Math.min(w, b);
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.fillStyle = g.strokeStyle = selected ? color : "rgba(10,12,15,0.78)";
     for (let row = 0; row < rows; row++) {
-      const ch = s.channels[row];
-      const mid = top0 + rowH * row + rowH / 2, amp = rowH / 2 - 1;
-      for (let x = Math.max(0, Math.floor(a)); x < Math.min(w, b); x++) {
-        const t = (x - x0) / pps + c.offset;
-        let lo = 0, hi = 0;
-        if (stereo || spp < s.peaks.block) {
-          const i0 = Math.floor(t * SR), i1 = Math.min(ch.length, Math.ceil(i0 + spp) + 1);
-          const step = Math.max(1, Math.floor((i1 - i0) / 64));
-          lo = 1;
-          hi = -1;
-          for (let i = Math.max(0, i0); i < i1; i += step) {
-            if (ch[i] < lo) lo = ch[i];
-            if (ch[i] > hi) hi = ch[i];
-          }
-          if (lo > hi) lo = hi = 0;
-        } else {
-          const b0 = Math.floor((t * SR) / s.peaks.block), b1 = Math.min(s.peaks.min.length, Math.ceil((t * SR + spp) / s.peaks.block));
-          for (let i = Math.max(0, b0); i < b1; i++) {
-            if (s.peaks.min[i] < lo) lo = s.peaks.min[i];
-            if (s.peaks.max[i] > hi) hi = s.peaks.max[i];
-          }
-        }
-        const topY = mid - Math.min(1, hi * gain) * amp, bot = mid - Math.max(-1, lo * gain) * amp;
-        g.fillRect(x, topY, 1, Math.max(1, bot - topY));
-      }
-      if (row === 0 && stereo) {
-        g.fillStyle = "rgba(0,0,0,0.25)";
-        g.fillRect(a, top0 + rowH, b - a, 1);
-        g.fillStyle = selected ? color : "rgba(10,12,15,0.72)";
-      }
+      // a stereo event shows its two channels, one over the other
+      drawWave(g, s.peaks, s.channels, row, SR, { x: left * dpr, y: (top0 + rowH * row) * dpr, w: (right - left) * dpr, h: rowH * dpr }, c.offset + (left - x0) / pps, pps * dpr, level);
+      g.fillStyle = "rgba(0,0,0,0.22)";
+      g.fillRect(left * dpr, Math.round((top0 + rowH * row + rowH / 2) * dpr), (right - left) * dpr, 1);
+      if (row < rows - 1) g.fillRect(left * dpr, Math.round((top0 + rowH * (row + 1)) * dpr), (right - left) * dpr, 1);
+      g.fillStyle = selected ? color : "rgba(10,12,15,0.78)";
     }
+    g.restore();
   }
-  // fades, drawn as the darkened corners they silence
-  g.fillStyle = "rgba(0,0,0,0.5)";
+  // fades: the wave already follows them; a thin line shows the slope
+  g.strokeStyle = selected ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.55)";
+  g.lineWidth = 1;
   if (c.fadeIn > 0) {
     g.beginPath();
-    g.moveTo(x0, y);
-    g.lineTo(x0 + c.fadeIn * pps, y);
-    g.lineTo(x0, y + h);
-    g.closePath();
-    g.fill();
+    g.moveTo(x0, y + h);
+    g.lineTo(x0 + c.fadeIn * pps, y + 12);
+    g.stroke();
   }
   if (c.fadeOut > 0) {
     g.beginPath();
-    g.moveTo(x1, y);
-    g.lineTo(x1 - c.fadeOut * pps, y);
+    g.moveTo(x1 - c.fadeOut * pps, y + 12);
     g.lineTo(x1, y + h);
-    g.closePath();
-    g.fill();
+    g.stroke();
   }
   if (b - a > 34) {
     g.fillStyle = selected ? hexA(color, 0.9) : "rgba(0,0,0,0.32)";

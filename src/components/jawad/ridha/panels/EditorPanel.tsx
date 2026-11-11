@@ -9,6 +9,7 @@ import { dbToGain } from "@/lib/ridha/dsp/biquad";
 import { FFT, hann } from "@/lib/ridha/dsp/fft";
 import { loudness, normalizeLoudness, normalizePeak, peakDb } from "@/lib/ridha/dsp/loudness";
 import { changeSpeed, shiftAll } from "@/lib/ridha/dsp/stretch";
+import { drawWave, makePeaks } from "@/lib/ridha/dsp/wav";
 import { clockLabel, SR } from "@/lib/ridha/model";
 import { patchClip } from "@/lib/ridha/ops";
 import { useStudio } from "../ctx";
@@ -28,6 +29,8 @@ export default function EditorPanel() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const H = 190;
   const sound = useMemo(() => (clip ? st.clipSound(clip) : null), [clip, st]);
+  // the clip's outline is worked out once, not at every redraw of a selection being dragged
+  const peaks = useMemo(() => (sound ? makePeaks(sound) : null), [sound]);
   const clipId = clip?.id;
   const [seenClip, setSeenClip] = useState(clipId);
   if (seenClip !== clipId) {
@@ -56,21 +59,18 @@ export default function EditorPanel() {
     const x = sound[0];
     const n = x.length;
     if (view === "wave") {
-      g.fillStyle = "rgba(255,255,255,0.08)";
-      g.fillRect(0, H / 2, w, 1);
-      g.fillStyle = "#2fd6c3";
-      const per = n / w;
-      for (let px = 0; px < w; px++) {
-        let lo = 1, hi = -1;
-        const a = Math.floor(px * per), b = Math.min(n, Math.ceil((px + 1) * per) + 1);
-        const step = Math.max(1, Math.floor((b - a) / 400));
-        for (let i = a; i < b; i += step) {
-          if (x[i] < lo) lo = x[i];
-          if (x[i] > hi) hi = x[i];
-        }
-        if (lo > hi) continue;
-        g.fillRect(px, H / 2 - hi * (H / 2 - 6), 1, Math.max(1, (hi - lo) * (H / 2 - 6)));
+      // every column the exact extremes of its samples, each channel in its own row
+      if (!peaks) return;
+      const rowH = H / sound.length;
+      g.save();
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      for (let row = 0; row < sound.length; row++) {
+        g.fillStyle = "rgba(255,255,255,0.1)";
+        g.fillRect(0, Math.round((rowH * row + rowH / 2) * dpr), w * dpr, 1);
+        g.fillStyle = g.strokeStyle = "#3fc7b7";
+        drawWave(g, peaks, sound, row, SR, { x: 0, y: (rowH * row + 3) * dpr, w: w * dpr, h: (rowH - 6) * dpr }, 0, (w * dpr) / (n / SR), () => 1);
       }
+      g.restore();
     } else {
       // the spectrum over time: low notes at the bottom, loud = bright
       const N = 1024;
@@ -109,7 +109,7 @@ export default function EditorPanel() {
       g.fillRect(a, 0, 1.5, H);
       g.fillRect(b - 1.5, 0, 1.5, H);
     }
-  }, [sound, view, w, range]);
+  }, [sound, peaks, view, w, range]);
 
   if (!clip || !sound) return <Empty icon="" title="اختر مقطعًا">اضغط على مقطع في الخط الزمني (أو نقرتين عليه) ليفتح هنا للتحرير الدقيق.</Empty>;
 
