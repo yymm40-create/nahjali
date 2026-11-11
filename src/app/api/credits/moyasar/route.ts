@@ -14,11 +14,11 @@ export const POST = handle(async (req: Request) => {
   // not open to everyone yet: only the owners test it
   const { owner } = await jawadSession();
   if (!CARD_PAYMENT_PUBLIC && !owner) throw new UserError("الدفع بالبطاقة يتفعّل قريبًا إن شاء الله؛ استخدم التحويل البنكي.", 403);
-  const b = (await req.json().catch(() => ({}))) as { pack?: unknown; source?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { pack?: unknown; source?: unknown; code?: unknown };
   // the name and WhatsApp number come from the account («الحساب الشخصي»), never from the payment form
   const contact = contactOf(user);
   if (!contactComplete(contact)) throw new UserError("كمّل اسمك ورقم جوالك في حسابك الشخصي أولًا.", 409);
   const ad = adContext(req);
   const origin = new URL(req.url).origin;
-  return NextResponse.json(await startMoyasarOrder({ id: user.id, email: user.email }, { pack: b.pack, name: contact.name, phone: contact.phone, source: b.source ?? ad.source }, ad, origin, owner));
+  return NextResponse.json(await startMoyasarOrder({ id: user.id, email: user.email }, { pack: b.pack, name: contact.name, phone: contact.phone, source: b.source ?? ad.source, code: b.code }, ad, origin, owner));
 });
