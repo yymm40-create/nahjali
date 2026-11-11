@@ -2,7 +2,23 @@
 
 // «الرضا فويس» — the small controls every panel is built from.
 
-import { useCallback, useRef, type ReactNode } from "react";
+import { useCallback, useRef, useSyncExternalStore, type ReactNode } from "react";
+
+/** A phone: a narrow screen, or a short one held sideways. The studio lays itself out for a thumb then. */
+const PHONE = "(max-width: 720px), (max-height: 520px) and (pointer: coarse)";
+/** A finger instead of a mouse (a tablet too): every control gets a bigger place to land. */
+const TOUCH = "(pointer: coarse)";
+
+function useMedia(query: string): boolean {
+  const watch = useCallback((cb: () => void) => {
+    const m = window.matchMedia(query);
+    m.addEventListener("change", cb);
+    return () => m.removeEventListener("change", cb);
+  }, [query]);
+  return useSyncExternalStore(watch, () => window.matchMedia(query).matches, () => false);
+}
+export const usePhone = () => useMedia(PHONE);
+export const useTouch = () => useMedia(TOUCH);
 import type { ParamSpec } from "@/lib/ridha/model";
 
 export const fmt = (v: number, unit?: string) => {

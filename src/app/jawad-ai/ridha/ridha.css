@@ -492,16 +492,17 @@
   .rv-top { grid-template-columns: auto 1fr auto; gap: 6px; }
   .rv-name, .rv-saved, .rv-top .rv-logo-text { display: none; }
 }
-@media (max-width: 720px) {
-  .rv-studio { grid-template-rows: auto minmax(0, 1fr) 48px; }
-  .rv-top { grid-template-columns: 1fr auto; padding: 6px 8px; row-gap: 6px; }
-  .rv-transport { grid-column: 1 / -1; grid-row: 2; justify-content: center; flex-wrap: wrap; }
-  .rv-tl { --heads: 168px; }
-  .rv-th-icon, .rv-th-meter { display: none; }
-  .rv-th-gain { display: none; }
-  .rv-strip-master { position: static; box-shadow: none; }
-  .rv-dock button small { display: none; }
-  .rv-panel { height: min(52dvh, 420px); }
+@media (max-width: 560px) {
+  /* the front page on a phone: two starts a row, everything else one under the other */
+  .rv-home { padding: 18px 14px 48px; }
+  .rv-home-in { gap: 20px; }
+  .rv-logo-big .rv-logo-text b { font-size: 26px; }
+  .rv-hero p { font-size: 13.5px; }
+  .rv-starts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .rv-starts .rv-card { padding: 12px; min-height: 96px; }
+  .rv-projects, .rv-feats { grid-template-columns: minmax(0, 1fr); }
+  .rv-proj { padding: 14px; }
+  .rv-proj-del { width: 36px; height: 36px; top: 6px; inset-inline-end: 6px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .rv *, .rv *::before, .rv *::after { animation: none !important; transition: none !important; }
@@ -535,10 +536,159 @@
 .rv-win-grip { position: absolute; right: 0; bottom: 0; width: 20px; height: 20px; cursor: nwse-resize; touch-action: none; background: linear-gradient(135deg, transparent 52%, var(--rv-faint) 52%, var(--rv-faint) 60%, transparent 60%, transparent 70%, var(--rv-faint) 70%, var(--rv-faint) 78%, transparent 78%); border-bottom-right-radius: 14px; }
 .rv-win .rv-mixer { min-height: 100%; }
 .rv-win .rv-eq { min-height: 0; }
-@media (max-width: 720px) {
-  /* a phone has no room for windows: the front one is a sheet along the bottom */
-  .rv-win { left: 0 !important; right: 0 !important; top: auto !important; bottom: 48px !important; width: auto !important; height: 54dvh !important; border-radius: 14px 14px 0 0; display: none; }
-  .rv-win.top { display: flex; }
-  .rv-win.folded { height: auto !important; }
-  .rv-win-grip { display: none; }
-}
+
+/* a press outside an open menu closes it (a finger never «leaves» a menu the way a mouse does) */
+.rv-scrim { position: fixed; inset: 0; z-index: 29; }
+
+/* ───────── a finger instead of a mouse: every control gets a bigger place to land ───────── */
+
+.rv-touch { touch-action: manipulation; }
+.rv-touch .rv-ib { width: 42px; height: 42px; }
+.rv-touch .rv-btn { height: 42px; padding: 0 18px; }
+.rv-touch .rv-btn-sm { height: 36px; padding: 0 14px; font-size: 12.5px; }
+.rv-touch .rv-seg button, .rv-touch .rv-subtabs button { height: 36px; padding: 0 13px; }
+.rv-touch .rv-seg-sm button { height: 34px; }
+.rv-touch .rv-pills button { height: 36px; padding: 0 14px; font-size: 12.5px; }
+.rv-touch .rv-pop-btn { height: 44px; }
+.rv-touch .rv-pop-actions button { height: 40px; padding: 0 14px; font-size: 13px; }
+.rv-touch .rv-swatches { gap: 9px; flex-wrap: nowrap; }
+.rv-touch .rv-swatches button { width: 26px; height: 26px; flex: none; }
+.rv-touch .rv-check { min-height: 40px; font-size: 13.5px; }
+.rv-touch .rv-check input { width: 20px; height: 20px; }
+.rv-touch .rv-mini { width: 38px; height: 38px; font-size: 13px; }
+.rv-touch .rv-power { width: 44px; height: 26px; border-radius: 13px; }
+.rv-touch .rv-power::after { width: 20px; height: 20px; }
+.rv-touch .rv-power.on::after { inset-inline-start: 21px; }
+.rv-touch .rv-tb { width: 36px; height: 32px; font-size: 13px; }
+.rv-touch .rv-th-fx { height: 28px; padding: 0 10px; }
+.rv-touch .rv-th-more { width: 34px; height: 32px; }
+.rv-touch .rv-win-b { width: 38px; height: 38px; }
+.rv-touch .rv-win-grip { width: 30px; height: 30px; }
+.rv-touch .rv-fader { width: 36px; background: linear-gradient(90deg, transparent 16px, var(--rv-well) 16px, var(--rv-well) 20px, transparent 20px); }
+.rv-touch .rv-fader-cap { height: 26px; margin-bottom: -13px; }
+.rv-touch .rv-fader-cap::after { top: 12px; }
+.rv-touch .rv-grid-row button { height: 36px; }
+.rv-touch .rv-fx-add button { height: 42px; }
+.rv-touch .rv-card { padding: 12px 14px; }
+.rv-touch .rv-selbar button { height: 40px; padding: 0 14px; font-size: 13.5px; }
+.rv-touch .rv-selbar button.take { width: 38px; }
+.rv-touch .rv-tl-zoom button { width: 36px; height: 26px; }
+.rv-touch input[type="range"] { height: 30px; }
+.rv-touch input[type="range"]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; }
+.rv-touch input[type="range"]::-moz-range-track, .rv-touch input[type="range"]::-moz-range-progress { height: 6px; border-radius: 3px; }
+.rv-touch input[type="range"]::-webkit-slider-thumb { width: 22px; height: 22px; margin-top: -8px; }
+.rv-touch input[type="range"]::-moz-range-thumb { width: 22px; height: 22px; }
+.rv-touch select { height: 40px; }
+/* a field smaller than 16px makes the phone's browser zoom the whole page when it is touched */
+.rv-touch input:not([type="range"]):not([type="checkbox"]), .rv-touch select, .rv-touch textarea { font-size: 16px; }
+
+/* ───────── the phone: the whole screen, a slim bar on top, the transport under the thumb ───────── */
+
+.rv-phone { --mbar: calc(64px + env(safe-area-inset-bottom, 0px)); }
+.rv-studio.rv-phone { position: fixed; top: 0; left: 0; right: 0; height: 100dvh; min-height: 0; z-index: 70; grid-template-rows: 50px minmax(0, 1fr) var(--mbar); overscroll-behavior: contain; }
+.rv-phone .rv-top { grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; padding: 0 6px; }
+.rv-phone .rv-top .rv-logo { display: none; }
+.rv-phone .rv-top .rv-lcd { justify-self: center; }
+.rv-phone .rv-top-b { gap: 2px; }
+.rv-phone .rv-lcd { flex-direction: row; align-items: baseline; gap: 8px; min-width: 0; height: 36px; margin: 0; padding: 0 12px; align-items: center; }
+.rv-phone .rv-time-bars { font-size: 15px; }
+.rv-phone .rv-time-clock { font-size: 11.5px; }
+.rv-phone .rv-topbtn { height: 38px; padding: 0 16px; margin-inline-start: 4px; }
+
+.rv-mbar { display: flex; align-items: center; justify-content: space-between; gap: 2px; padding: 0 10px env(safe-area-inset-bottom, 0px); background: var(--rv-surface); border-top: 1px solid var(--rv-line); position: relative; z-index: 20; }
+.rv-mbar .rv-ib { width: 44px; height: 44px; border-radius: 12px; }
+.rv-mbar .rv-ib svg { width: 19px; height: 19px; }
+.rv-mbar .rv-tr-play { width: 48px; height: 48px; }
+.rv-mbar .rv-tr-rec { width: 58px; height: 58px; background: var(--rv-rec); box-shadow: 0 0 0 4px rgba(255, 77, 90, 0.18); }
+.rv-mbar .rv-tr-rec i { width: 22px; height: 22px; background: #fff; }
+.rv-mbar .rv-tr-rec.on i { border-radius: 5px; transform: scale(0.8); }
+.rv-mb-tools { background: var(--rv-raise); color: var(--rv-ink); }
+
+/* the tracks: a header is the track's face — icon, effects, name; a tap on it opens its sheet */
+.rv-phone .rv-tl { --heads: 92px; grid-template-rows: 34px minmax(0, 1fr) 0; }
+.rv-phone .rv-tl-hbar { display: none; }
+.rv-phone .rv-tl-corner { padding: 0 6px; }
+.rv-phone .rv-addtrack { height: 26px; width: 100%; padding: 0 6px; }
+.rv-phone .rv-tl-zoom button:not(.fit) { display: none; }
+.rv-phone .rv-tl-body { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.rv-th-m { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr); align-content: center; align-items: center; gap: 5px 6px; padding: 0 9px 0 5px; cursor: pointer; }
+.rv-th-m .rv-th-icon { width: 34px; height: 34px; position: relative; }
+.rv-th-m.muted .rv-th-icon svg, .rv-th-m.muted .rv-th-mname { opacity: 0.4; }
+.rv-th-m .rv-th-fx { justify-self: start; padding: 0 8px; }
+.rv-th-mname { grid-column: 1 / -1; font-size: 11.5px; font-weight: 600; line-height: 1.2; color: var(--c); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-th-icon em { position: absolute; font-style: normal; display: grid; place-items: center; box-shadow: 0 0 0 2px var(--rv-surface); }
+.rv-th-icon em.arm { top: -3px; inset-inline-end: -3px; width: 11px; height: 11px; border-radius: 50%; background: var(--rv-rec); }
+.rv-th-icon em.solo, .rv-th-icon em.mute { bottom: -4px; inset-inline-start: -4px; width: 15px; height: 15px; border-radius: 5px; font-size: 9px; font-weight: 800; }
+.rv-th-icon em.solo { background: #5db8ff; color: #06243a; }
+.rv-th-icon em.mute { background: var(--rv-gold); color: #2a1e04; }
+.rv-th-m .rv-th-meter { position: absolute; inset-inline-end: 2px; top: 9px; bottom: 9px; height: auto; width: 3px; }
+.rv-phone .rv-th-add { width: calc(100% - 12px); margin: 10px 6px; height: 44px; font-size: 18px; }
+.rv-phone .rv-tl-hint b { font-size: 16px; }
+.rv-phone .rv-tl-hint span { font-size: 12.5px; }
+.rv-phone .rv-tl-hint div { flex-direction: column; width: min(240px, 100%); }
+.rv-phone .rv-tl-hint button { height: 46px; }
+.rv-phone .rv-selbar { bottom: 10px; max-width: calc(100% - 12px); border-radius: 16px; }
+.rv-phone .rv-selbar b { display: none; }
+.rv-phone .rv-toast { bottom: calc(var(--mbar) + 12px); max-width: calc(100vw - 24px); width: max-content; }
+
+/* menus and settings rise from the bottom as sheets */
+.rv-phone .rv-scrim { z-index: 48; background: rgba(0, 0, 0, 0.55); }
+.rv-phone .rv-pop { position: fixed; left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 86dvh; overflow-y: auto; z-index: 50; gap: 14px; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); border-radius: 20px 20px 0 0; border-width: 1px 0 0; overscroll-behavior: contain; }
+.rv-phone .rv-pop::before { content: ""; width: 38px; height: 4px; border-radius: 2px; background: var(--rv-line2); align-self: center; margin: -8px 0 -4px; flex: none; }
+.rv-phone .rv-pop-row { font-size: 13.5px; min-height: 40px; }
+.rv-phone .rv-addmenu { gap: 4px; }
+.rv-phone .rv-addmenu button { padding: 12px; }
+.rv-phone .rv-addmenu b { font-size: 14.5px; }
+.rv-phone .rv-addmenu small { font-size: 12.5px; }
+.rv-sheet-head { display: flex; align-items: center; gap: 8px; }
+.rv-sheet-name { flex: 1; min-width: 0; height: 44px; padding: 0 12px; border-radius: 12px; background: var(--rv-well); border: 1px solid var(--rv-line); font-weight: 600; outline: none; }
+.rv-sheet-name:focus { border-color: var(--rv-teal); }
+.rv-sheet-head .rv-sheet-name { border-inline-start: 4px solid var(--c, var(--rv-line)); }
+.rv-sheet-big { display: flex; gap: 8px; }
+.rv-sheet-big button { flex: 1; height: 62px; border-radius: 14px; background: var(--rv-raise2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
+.rv-sheet-big b { font-size: 17px; font-weight: 700; line-height: 1.2; }
+.rv-sheet-big small { font-size: 11px; color: var(--rv-mut); }
+.rv-sheet-big .m.on { background: var(--rv-gold); color: #2a1e04; }
+.rv-sheet-big .s.on { background: #5db8ff; color: #06243a; }
+.rv-sheet-big .r b { color: var(--rv-rec); }
+.rv-sheet-big .r.on { background: var(--rv-rec); color: #fff; }
+.rv-sheet-big .r.on b { color: #fff; }
+.rv-sheet-big .fx.on { background: var(--rv-teal-soft); color: var(--rv-teal); }
+.rv-sheet-big .on small { color: inherit; opacity: 0.8; }
+.rv-tools section { display: flex; flex-direction: column; gap: 8px; }
+.rv-tools section > b { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--rv-mut); }
+.rv-tools section > b small { font-weight: 400; color: var(--rv-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-tools section > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.rv-tools section button { height: 50px; border-radius: 14px; background: var(--rv-raise2); font-size: 14px; font-weight: 600; }
+.rv-tools section button:only-child { grid-column: 1 / -1; }
+.rv-tools section button.max { background: var(--rv-gold-soft); color: var(--rv-gold); }
+
+/* a phone has no room for windows: the tool in front is a sheet over the bottom bar's shoulder, the tracks still showing above it */
+.rv-phone .rv-win { left: 0 !important; right: 0 !important; top: auto !important; bottom: var(--mbar) !important; width: auto !important; min-width: 0; height: 58dvh !important; border-radius: 18px 18px 0 0; border-width: 1px 0 0; display: none; }
+.rv-phone .rv-win.top { display: flex; }
+.rv-phone .rv-win.large { top: 0 !important; height: auto !important; border-radius: 0; }
+.rv-phone .rv-win.folded { height: auto !important; }
+.rv-phone .rv-win-grip { display: none; }
+.rv-phone .rv-win-bar { flex-wrap: wrap; gap: 4px 8px; overflow: visible; white-space: normal; touch-action: pan-x; cursor: default; padding: 6px 6px 6px 14px; }
+.rv-phone .rv-win-bar .rv-muted { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-phone .rv-win-bar .rv-muted + .rv-subtabs + .rv-grow, .rv-phone .rv-win-bar .rv-muted ~ .rv-grow { display: none; }
+.rv-phone .rv-win-bar .rv-subtabs { order: 9; flex-basis: 100%; overflow-x: auto; scrollbar-width: none; margin-bottom: 2px; }
+.rv-phone .rv-win-bar .rv-subtabs button { flex: 1; }
+.rv-phone .rv-win-body { padding: 12px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.rv-phone .rv-panel-head { gap: 8px; }
+.rv-phone .rv-slider { min-width: 0; flex: 1 1 140px; }
+.rv-phone .rv-fx-group > div, .rv-phone .rv-fx-add, .rv-phone .rv-uses, .rv-phone .rv-formats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.rv-phone .rv-strip-master { position: static; box-shadow: none; }
+.rv-phone .rv-harmony-stage canvas { max-width: 100%; height: auto; }
+.rv-phone .rv-clipname { width: 100%; }
+.rv-phone .rv-max-form input { height: 46px; border-radius: 23px; }
+.rv-phone .rv-max-msg { max-width: 94%; }
+
+/* dialogs are sheets too */
+.rv-phone .rv-dialog { position: fixed; z-index: 55; place-items: end stretch; padding: 0; }
+.rv-phone .rv-dialog-card { width: 100%; max-height: 92dvh; border-radius: 20px 20px 0 0; border-width: 1px 0 0; padding: 16px 16px calc(18px + env(safe-area-inset-bottom, 0px)); }
+.rv-phone .rv-dialog-wide .rv-panel-bar { flex-wrap: wrap; }
+.rv-phone .rv-choirs { grid-template-columns: minmax(0, 1fr); }
+.rv-phone .rv-bigstat { flex-wrap: wrap; }
+.rv-phone .rv-job { position: fixed; z-index: 60; }
+.rv-phone.rv-dropping::after { font-size: 15px; }

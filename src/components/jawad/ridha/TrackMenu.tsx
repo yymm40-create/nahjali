@@ -2,15 +2,16 @@
 
 // «الرضا فويس» — a track's settings, opened from the «⋯» on its header: what is set once and then left alone
 // (channels, place, output, colour, order) lives here, so the header itself stays to the few controls that are
-// touched all the time — name, mute, solo, record, level, effects.
+// touched all the time — name, mute, solo, record, level, effects. On a phone the header is only the track's icon
+// and name, so this opens as a sheet from the bottom and carries those few controls too, large enough for a thumb.
 
 import { useEffect, useRef } from "react";
 import { TRACK_COLORS, type Track } from "@/lib/ridha/model";
-import { addGroup, moveTrack, patchTrack, removeTrack, setGroup } from "@/lib/ridha/ops";
+import { addGroup, armTrack, moveTrack, patchTrack, removeTrack, setGroup } from "@/lib/ridha/ops";
 import { useStudio } from "./ctx";
 import { Seg, Slider } from "./ui";
 
-export default function TrackMenu({ track: t, at, onClose }: { track: Track; at: { x: number; y: number }; onClose(): void }) {
+export default function TrackMenu({ track: t, at, sheet, onClose }: { track: Track; at: { x: number; y: number }; sheet?: boolean; onClose(): void }) {
   const st = useStudio();
   const { project: p, store } = st;
   const box = useRef<HTMLDivElement>(null);
@@ -33,8 +34,29 @@ export default function TrackMenu({ track: t, at, onClose }: { track: Track; at:
 
   const lone = t.kind !== "group" && p.tracks.filter((x) => x.kind !== "group").length <= 1;
   return (
-    <div ref={box} className="rv-pop rv-trackmenu" style={{ left: at.x, top: Math.min(at.y, window.innerHeight - 430) }} dir="rtl" role="dialog" aria-label={`إعدادات ${t.name}`}>
-      <b className="rv-pop-title">{t.kind === "group" ? "قروب" : "مسار"}: {t.name}</b>
+    <>
+    {sheet ? <div className="rv-scrim" /> : null}
+    <div ref={box} className={`rv-pop rv-trackmenu${sheet ? " rv-sheet" : ""}`} style={sheet ? { ["--c" as string]: t.color } : { left: at.x, top: Math.min(at.y, window.innerHeight - 430) }} dir="rtl" role="dialog" aria-label={`إعدادات ${t.name}`}>
+      {sheet ? (
+        <>
+          <div className="rv-sheet-head">
+            <input className="rv-sheet-name" value={t.name} onChange={(e) => set({ name: e.target.value }, "n")} aria-label="اسم المسار" />
+            <button type="button" className="rv-ib" onClick={onClose} aria-label="إغلاق">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          </div>
+          <div className="rv-sheet-big" dir="ltr">
+            <button type="button" className={`m${t.mute ? " on" : ""}`} onClick={() => set({ mute: !t.mute })}><b>M</b><small>كتم</small></button>
+            <button type="button" className={`s${t.solo ? " on" : ""}`} onClick={() => set({ solo: !t.solo })}><b>S</b><small>منفرد</small></button>
+            {t.kind === "group" ? null : <button type="button" className={`r${t.arm ? " on" : ""}`} onClick={() => store.set((q) => armTrack(q, t.id), { undo: false })}><b>●</b><small>{t.arm ? "يسجّل هنا" : "سجّل هنا"}</small></button>}
+            <button type="button" className={t.fx.some((f) => f.on) ? "fx on" : "fx"} onClick={() => {
+              st.openPanel("fx");
+              onClose();
+            }}><b>Fx</b><small>{t.fx.length ? `${t.fx.length} مؤثرات` : "المؤثرات"}</small></button>
+          </div>
+          <Slider label="المستوى" value={Math.max(-40, t.gain)} min={-40} max={6} step={0.5} unit="dB" def={0} onChange={(v) => set({ gain: v }, "g")} />
+        </>
+      ) : <b className="rv-pop-title">{t.kind === "group" ? "قروب" : "مسار"}: {t.name}</b>}
       <label className="rv-pop-row">
         <span>القنوات</span>
         <Seg small value={t.stereo === false ? "mono" : "stereo"} options={[{ value: "mono", label: "مونو", title: "قناة واحدة: للصوت البشري" }, { value: "stereo", label: "ستيريو", title: "قناتان: للموسيقى والتسجيل الستيريو" }]} onChange={(v) => set({ stereo: v === "stereo" })} />
@@ -80,5 +102,6 @@ export default function TrackMenu({ track: t, at, onClose }: { track: Track; at:
         }}>{t.kind === "group" ? "حذف القروب" : "حذف المسار"}</button>
       </div>
     </div>
+    </>
   );
 }
