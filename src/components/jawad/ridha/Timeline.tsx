@@ -52,6 +52,8 @@ export default function Timeline({ onImport, onPick, onRecord, onChoir, recStart
   const view = useRef({ pps, scroll, width, th });
   // two fingers on the lanes are zooming: the one-finger gesture under them stands still
   const pinching = useRef(false);
+  // how many zooms have begun: a finger that was down through one of them is not a tap when it lifts
+  const pinches = useRef(0);
   const pRef = useRef(p);
   // handlers and the frame loop read the latest view and project from here
   useLayoutEffect(() => {
@@ -254,21 +256,21 @@ export default function Timeline({ onImport, onPick, onRecord, onChoir, recStart
     }
     el.setPointerCapture(e.pointerId);
     const gesture = `g${Date.now()}`;
-    let moved = false, pinched = false;
+    let moved = false;
+    const zooms = pinches.current;
     /** Follows this one pointer until it lifts (`act`) or the browser takes the gesture away (a vertical scroll). */
     const follow = (move: (ev: PointerEvent) => void, act: () => void) => {
       const id = e.pointerId;
       const onMove = (ev: PointerEvent) => {
         if (ev.pointerId !== id) return;
-        if (pinching.current) pinched = true;
-        else move(ev);
+        if (!pinching.current) move(ev);
       };
       const end = (ev: PointerEvent) => {
         if (ev.pointerId !== id) return;
         el.removeEventListener("pointermove", onMove);
         el.removeEventListener("pointerup", end);
         el.removeEventListener("pointercancel", end);
-        if (ev.type === "pointerup" && !pinched && !pinching.current) act();
+        if (ev.type === "pointerup" && zooms === pinches.current && !pinching.current) act();
       };
       el.addEventListener("pointermove", onMove);
       el.addEventListener("pointerup", end);
@@ -371,6 +373,7 @@ export default function Timeline({ onImport, onPick, onRecord, onChoir, recStart
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pts.size === 2) {
         pinching.current = true;
+        pinches.current++;
         last = gap();
       }
     };
@@ -631,7 +634,7 @@ function drawRuler(g: CanvasRenderingContext2D, p: Project, pps: number, scroll:
 /**
  * A clip: a rounded region tinted dark with its track's colour, and the wave drawn on it in that colour at full
  * brightness — the shape of the sound is the first thing seen. Its name sits on a brighter strip along the top.
- * A quiet recording is drawn taller than it is (up to four times) so its shape is never a thin line; the clip's own
+ * A quiet recording is drawn taller than it is (up to eight times) so its shape is never a thin line; the clip's own
  * level and fades still show. Selected, it is brighter, outlined in white and shows its handles; a waiting take is faint.
  */
 function drawClip(g: CanvasRenderingContext2D, c: Clip, color: string, ti: number, th: number, pps: number, scroll: number, w: number, selected: boolean) {
@@ -656,7 +659,7 @@ function drawClip(g: CanvasRenderingContext2D, c: Clip, color: string, ti: numbe
     // scaled by the clip's level and fades
     const dpr = g.getTransform().a;
     const peak = peakOf(s.peaks);
-    const gain = 10 ** (c.gain / 20) * (peak > 0 ? Math.min(4, Math.max(1, 0.92 / peak)) : 1);
+    const gain = 10 ** (c.gain / 20) * (peak > 0 ? Math.min(8, Math.max(1, 0.92 / peak)) : 1);
     const end = c.offset + c.dur;
     const level = (t: number) => {
       let k = gain;
@@ -701,7 +704,9 @@ function drawClip(g: CanvasRenderingContext2D, c: Clip, color: string, ti: numbe
     g.textBaseline = "middle";
     g.direction = "rtl";
     g.textAlign = "left";
-    g.fillText(`${c.take ? "◈ " : ""}${c.name}`, Math.max(a, 0) + 8, y + 10, b - Math.max(a, 0) - 16);
+    // selected, the name steps aside for the fade handle in its corner
+    const pad = selected && x0 >= -8 ? 18 : 8;
+    g.fillText(`${c.take ? "◈ " : ""}${c.name}`, Math.max(a, 0) + pad, y + 10, b - Math.max(a, 0) - pad - 16);
     g.direction = "ltr";
     if (selected) {
       // the fade handles at the top corners, and a grip on each edge for trimming

@@ -551,8 +551,8 @@
 .rv-touch .rv-pills button { height: 36px; padding: 0 14px; font-size: 12.5px; }
 .rv-touch .rv-pop-btn { height: 44px; }
 .rv-touch .rv-pop-actions button { height: 40px; padding: 0 14px; font-size: 13px; }
-.rv-touch .rv-swatches { gap: 10px; }
-.rv-touch .rv-swatches button { width: 30px; height: 30px; }
+.rv-touch .rv-swatches { gap: 9px; flex-wrap: nowrap; }
+.rv-touch .rv-swatches button { width: 26px; height: 26px; flex: none; }
 .rv-touch .rv-check { min-height: 40px; font-size: 13.5px; }
 .rv-touch .rv-check input { width: 20px; height: 20px; }
 .rv-touch .rv-mini { width: 38px; height: 38px; font-size: 13px; }
@@ -586,7 +586,9 @@
 
 .rv-phone { --mbar: calc(64px + env(safe-area-inset-bottom, 0px)); }
 .rv-studio.rv-phone { position: fixed; top: 0; left: 0; right: 0; height: 100dvh; min-height: 0; z-index: 70; grid-template-rows: 50px minmax(0, 1fr) var(--mbar); overscroll-behavior: contain; }
-.rv-phone .rv-top { grid-template-columns: 1fr auto 1fr; gap: 6px; padding: 0 6px; }
+.rv-phone .rv-top { grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; padding: 0 6px; }
+.rv-phone .rv-top .rv-logo { display: none; }
+.rv-phone .rv-top .rv-lcd { justify-self: center; }
 .rv-phone .rv-top-b { gap: 2px; }
 .rv-phone .rv-lcd { flex-direction: row; align-items: baseline; gap: 8px; min-width: 0; height: 36px; margin: 0; padding: 0 12px; align-items: center; }
 .rv-phone .rv-time-bars { font-size: 15px; }
