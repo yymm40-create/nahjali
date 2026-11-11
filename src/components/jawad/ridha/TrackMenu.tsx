@@ -6,8 +6,9 @@
 // and name, so this opens as a sheet from the bottom and carries those few controls too, large enough for a thumb.
 
 import { useEffect, useRef } from "react";
-import { TRACK_COLORS, type Track } from "@/lib/ridha/model";
-import { addGroup, armTrack, moveTrack, patchTrack, removeTrack, setGroup } from "@/lib/ridha/ops";
+import { SR, TRACK_COLORS, type Track } from "@/lib/ridha/model";
+import { addClip, addGroup, addTrack, armTrack, moveTrack, patchTrack, removeTrack, setGroup } from "@/lib/ridha/ops";
+import { putSound, renderProject } from "./engine";
 import { useStudio } from "./ctx";
 import { Seg, Slider } from "./ui";
 
@@ -31,6 +32,29 @@ export default function TrackMenu({ track: t, at, sheet, onClose }: { track: Tra
       window.removeEventListener("keydown", esc);
     };
   }, [onClose]);
+
+  // «دمج»: the track (or the whole group) played through its effects into ONE clip on a new track, the original
+  // muted and kept — what the big workstations call bounce in place. Lighter on a slow device, and a finished sound.
+  const mine = t.kind === "group" ? p.tracks.filter((x) => x.group === t.id).map((x) => x.id) : [t.id];
+  const sung = p.clips.filter((c) => mine.includes(c.trackId) && !c.muted);
+  const bounce = async () => {
+    if (!sung.length) return;
+    onClose();
+    const from = Math.min(...sung.map((c) => c.start)), to = Math.max(...sung.map((c) => c.start + c.dur));
+    const out = await st.work(`دمج «${t.name}»`, async (say) => {
+      say(0.3, "تشغيل المسار بمؤثراته");
+      // the master is left out: it will shape the bounced track again like every other
+      return renderProject({ ...p, master: { gain: 0, fx: [] } }, { from, to, onlyTrack: t.id });
+    });
+    if (!out) return;
+    const s = putSound(out, `${t.name} · مدموج`);
+    store.set((q) => {
+      const made = addTrack(q, s.name.slice(0, 28), { stereo: true, color: t.color });
+      const r = addClip(made.project, { trackId: made.track.id, assetId: s.id, start: from, dur: out[0].length / SR, name: s.name });
+      return patchTrack(r.project, t.id, { mute: true });
+    });
+    st.toast(`«${t.name}» صار مقطعًا واحدًا بمؤثراته على مسار جديد، والأصل مكتوم ومحفوظ — التراجع بـ ⌘Z`);
+  };
 
   const lone = t.kind !== "group" && p.tracks.filter((x) => x.kind !== "group").length <= 1;
   return (
@@ -92,6 +116,7 @@ export default function TrackMenu({ track: t, at, sheet, onClose }: { track: Tra
           {TRACK_COLORS.map((c) => <button key={c} type="button" className={t.color === c ? "on" : ""} style={{ background: c }} onClick={() => set({ color: c })} aria-label={`لون ${c}`} />)}
         </span>
       </label>
+      {sung.length ? <button type="button" className="rv-pop-btn" onClick={() => void bounce()} title="يشغّل المسار بمؤثراته ويحفظه مقطعًا واحدًا على مسار جديد، ويكتم الأصل">ادمجه بمؤثراته في مقطع واحد</button> : null}
       <div className="rv-pop-actions">
         <button type="button" disabled={i === 0} onClick={() => store.set((q) => moveTrack(q, t.id, -1))}>▲ للأعلى</button>
         <button type="button" disabled={i === p.tracks.length - 1} onClick={() => store.set((q) => moveTrack(q, t.id, 1))}>▼ للأسفل</button>

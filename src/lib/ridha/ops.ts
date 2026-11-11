@@ -83,6 +83,25 @@ export function addRecording(p: Project, trackId: string, assetId: string, start
   return addClip(base, { trackId, assetId, start, dur, name, take });
 }
 
+/**
+ * A recording punched into the stretch a…b of a track: whatever lies there is first cut at a and at b, so only the
+ * stretch itself becomes takes with the new recording and the rest of the old performance plays on untouched.
+ */
+export function punchRecording(p: Project, trackId: string, assetId: string, a: number, b: number, name: string): { project: Project; clip: Clip } {
+  let q = p;
+  for (const t of [a, b]) {
+    const cut = q.clips.filter((c) => c.trackId === trackId && t > c.start + MIN && t < c.start + c.dur - MIN);
+    // a set of takes is cut together by cutting one of them
+    const seen = new Set<string>();
+    for (const c of cut) {
+      if (c.take && seen.has(c.take)) continue;
+      if (c.take) seen.add(c.take);
+      q = splitClip(q, c.id, t);
+    }
+  }
+  return addRecording(q, trackId, assetId, a, b - a, name);
+}
+
 /** The takes that belong with a clip (itself included), oldest first. */
 export const takesOf = (p: Project, c: Clip) => (c.take ? p.clips.filter((x) => x.take === c.take) : [c]);
 
@@ -114,6 +133,38 @@ export function splitClip(p: Project, clipId: string, t: number): Project {
     out.push({ ...x, id: uid(), start: t, offset: x.offset + cut, dur: x.dur - cut, fadeIn: 0, take: right });
   }
   return { ...p, clips: out };
+}
+
+/**
+ * A clip cut down to the stretches where there is sound (`regions`, seconds from the clip's own start): the silences
+ * between them are gone. With `close`, the pieces are pulled together leaving `gap` seconds between them, and what
+ * follows on the same track moves earlier by what was removed (so a talk gets shorter, not full of holes).
+ */
+export function stripSilence(p: Project, clipId: string, regions: { a: number; b: number }[], close = false, gap = 0.15): { project: Project; ids: string[] } {
+  const c = clipOf(p, clipId);
+  const keep = regions.map((r) => ({ a: Math.max(0, r.a), b: Math.min(c?.dur ?? 0, r.b) })).filter((r) => r.b - r.a > MIN);
+  if (!c || !keep.length) return { project: p, ids: [] };
+  const edge = 0.012;
+  let at = c.start;
+  const pieces: Clip[] = keep.map((r, i) => {
+    const dur = r.b - r.a;
+    const start = close ? at : c.start + r.a;
+    at = start + dur + gap;
+    return {
+      ...c, id: uid(), start, offset: c.offset + r.a, dur, take: undefined,
+      fadeIn: i === 0 && r.a < MIN ? c.fadeIn : Math.min(edge, dur / 2),
+      fadeOut: i === keep.length - 1 && c.dur - r.b < MIN ? c.fadeOut : Math.min(edge, dur / 2),
+    };
+  });
+  const last = pieces[pieces.length - 1];
+  const saved = close ? c.start + c.dur - (last.start + last.dur) : 0;
+  const clips: Clip[] = [];
+  for (const x of p.clips) {
+    if (x.id === c.id) clips.push(...pieces);
+    else if (saved > 0 && x.trackId === c.trackId && x.start >= c.start + c.dur - MIN) clips.push({ ...x, start: Math.max(0, x.start - saved) });
+    else clips.push(x);
+  }
+  return { project: { ...p, clips }, ids: pieces.map((x) => x.id) };
 }
 
 export const deleteClips = (p: Project, ids: string[]): Project => ({ ...p, clips: p.clips.filter((c) => !ids.includes(c.id)) });

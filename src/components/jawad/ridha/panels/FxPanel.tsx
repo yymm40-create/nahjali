@@ -6,10 +6,32 @@
 
 import { useState } from "react";
 import { CHAIN_PRESETS, FX_PRESETS, type ChainPreset } from "@config/ridha";
-import { FX_ORDER, FX_SPECS, type FxKind } from "@/lib/ridha/model";
+import { FX_ORDER, FX_SPECS, uid, type Fx, type FxKind } from "@/lib/ridha/model";
 import { addFx, moveFx, patchFx, removeFx, setChain, setFxParam } from "@/lib/ridha/ops";
 import { useStudio } from "../ctx";
 import { Btn, Empty, ParamControl } from "../ui";
+
+/** «سلاسلي»: chains the person built and saved under a name, kept on this device for every project. */
+interface Mine {
+  id: string;
+  name: string;
+  fx: Fx[];
+  sends: { reverb: number; delay: number };
+}
+const MINE = "ridha.chains";
+function loadMine(): Mine[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(MINE) ?? "[]");
+    return Array.isArray(v) ? (v as Mine[]).filter((m) => m && typeof m.name === "string" && Array.isArray(m.fx)) : [];
+  } catch {
+    return [];
+  }
+}
+function saveMine(list: Mine[]) {
+  try {
+    localStorage.setItem(MINE, JSON.stringify(list));
+  } catch {}
+}
 
 /** The track the effect panels work on: the selected one, or the master when «master» was chosen. */
 export function useTarget() {
@@ -41,6 +63,24 @@ export default function FxPanel() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const groups = [...new Set(CHAIN_PRESETS.map((c) => c.group))];
+  const [mine, setMine] = useState<Mine[]>(loadMine);
+  const keepMine = (list: Mine[]) => {
+    setMine(list);
+    saveMine(list);
+  };
+  const saveChain = () => {
+    const name = window.prompt("اسم السلسلة (تلقاها بعدين في «سلاسلي» في كل مشاريعك):", st.track && where !== "master" ? st.track.name : "سلسلتي")?.trim();
+    if (!name) return;
+    const sends = where === "master" || !st.track ? { reverb: 0, delay: 0 } : { reverb: st.track.sendReverb, delay: st.track.sendDelay };
+    keepMine([{ id: uid(), name: name.slice(0, 40), fx, sends }, ...mine.filter((m) => m.name !== name)].slice(0, 40));
+    st.toast(`انحفظت «${name}» في سلاسلي`);
+  };
+  const applyMine = (m: Mine) => {
+    // fresh ids each time: the same chain can sit on several tracks
+    store.set((p) => setChain(p, where, m.fx.map((x) => ({ ...x, id: uid(), p: { ...x.p }, bands: x.bands?.map((b) => ({ ...b })) })), m.sends));
+    setOpenId(null);
+    st.toast(`«${m.name}» على ${where === "master" ? "الماستر" : st.track?.name ?? ""}`);
+  };
 
   const apply = (c: ChainPreset) => {
     store.set((p) => {
@@ -61,6 +101,22 @@ export default function FxPanel() {
           <b>تأثيرات جاهزة</b>
           <TargetPicker />
         </div>
+        {mine.length ? (
+          <div className="rv-fx-group rv-fx-mine">
+            <span>سلاسلي</span>
+            <div>
+              {mine.map((m) => (
+                <span key={m.id} className="rv-card">
+                  <button type="button" onClick={() => applyMine(m)} title="طبّقها على المسار المختار">
+                    <b>{m.name}</b>
+                    <small>{m.fx.map((x) => FX_SPECS[x.kind]?.name ?? x.kind).join(" · ") || "فاضية"}</small>
+                  </button>
+                  <button type="button" className="rv-mini" onClick={() => window.confirm(`حذف «${m.name}» من سلاسلي؟`) && keepMine(mine.filter((x) => x.id !== m.id))} title="حذف من سلاسلي" aria-label={`حذف ${m.name}`}>✕</button>
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {groups.map((g) => (
           <div key={g} className="rv-fx-group">
             <span>{g}</span>
@@ -82,6 +138,7 @@ export default function FxPanel() {
           <b>سلسلة المؤثرات</b>
           <span className="rv-muted">الصوت يمر عليها بالترتيب من فوق لتحت</span>
           <span className="rv-grow" />
+          {fx.length ? <Btn small kind="ghost" onClick={saveChain} title="احفظ هذه السلسلة باسم، وتلقاها في «سلاسلي» في كل مشاريعك">احفظها</Btn> : null}
           {fx.length ? <Btn small kind="ghost" onClick={() => store.set((p) => setChain(p, where, []))}>تفريغ</Btn> : null}
           <Btn small kind="main" onClick={() => setAdding(!adding)}>＋ مؤثر</Btn>
         </div>

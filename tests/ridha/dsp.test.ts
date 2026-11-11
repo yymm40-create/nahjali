@@ -746,3 +746,132 @@ describe("الرضا فويس: choirs", () => {
     expect(new Set(CHOIRS.map((c) => c.id)).size).toBe(CHOIRS.length);
   });
 });
+
+describe("الرضا فويس: the level tools, the punch and the master", () => {
+  // a quiet phrase, a second of room hiss, a loud phrase
+  const talk = () => {
+    const x = new Float32Array(3 * SR);
+    x.set(voice(1, () => 180, 0.04), 0);
+    x.set(voice(1, () => 200, 0.32), 2 * SR);
+    for (let i = 0; i < x.length; i++) x[i] += rand() * 0.0006;
+    return x;
+  };
+
+  it("finds where somebody speaks and the silences between", async () => {
+    const { findSound, gapsOf } = await import("@/lib/ridha/dsp/level");
+    const regions = findSound([talk()], SR, { minSilence: 0.4, relDb: -36 });
+    expect(regions).toHaveLength(2);
+    expect(regions[0].a).toBeLessThan(0.05);
+    expect(regions[0].b).toBeGreaterThan(0.95);
+    expect(regions[0].b).toBeLessThan(1.25);
+    expect(regions[1].a).toBeGreaterThan(1.75);
+    expect(regions[1].a).toBeLessThan(2.05);
+    const gaps = gapsOf(regions, 3);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0].b - gaps[0].a).toBeGreaterThan(0.6);
+    // a pause shorter than the limit stays inside the phrase
+    expect(findSound([talk()], SR, { minSilence: 1.5, relDb: -36 })).toHaveLength(1);
+  });
+
+  it("rides a voice's level: the quiet phrase comes up, the loud one down, the silence stays silent", async () => {
+    const { rideLevel } = await import("@/lib/ridha/dsp/level");
+    const x = talk();
+    const { channels, report } = rideLevel([x], SR, { range: 8, speed: 0.2 });
+    const y = channels[0];
+    const quiet = rms(y, Math.round(0.3 * SR), Math.round(0.7 * SR)) / rms(x, Math.round(0.3 * SR), Math.round(0.7 * SR));
+    const loud = rms(y, Math.round(2.3 * SR), Math.round(2.7 * SR)) / rms(x, Math.round(2.3 * SR), Math.round(2.7 * SR));
+    expect(quiet).toBeGreaterThan(1.5);
+    expect(loud).toBeLessThan(0.7);
+    expect(report.after).toBeLessThan(report.before - 6);
+    expect(report.up).toBeLessThanOrEqual(8.01);
+    expect(report.down).toBeLessThanOrEqual(8.01);
+    // the hiss between the phrases is not pumped past what the phrases themselves got
+    expect(rms(y, Math.round(1.4 * SR), Math.round(1.6 * SR))).toBeLessThan(rms(x, Math.round(1.4 * SR), Math.round(1.6 * SR)) * 2.6);
+    // silence in, the same silence out
+    const hush = new Float32Array(SR);
+    expect(rideLevel([hush], SR).channels[0]).toBe(hush);
+  });
+
+  it("dips music under a voice and brings it back", async () => {
+    const { duckGain, applyGain } = await import("@/lib/ridha/dsp/level");
+    const g = duckGain(5 * SR, SR, [{ a: 1.5, b: 2.5 }], { depthDb: -12, down: 0.3, hold: 0.5, up: 0.8 });
+    expect(g[0]).toBeCloseTo(1, 5);
+    expect(g[Math.round(1.1 * SR)]).toBeCloseTo(1, 5);
+    expect(g[Math.round(1.35 * SR)]).toBeLessThan(1);
+    expect(g[Math.round(1.35 * SR)]).toBeGreaterThan(0.26);
+    expect(g[Math.round(1.5 * SR)]).toBeCloseTo(10 ** (-12 / 20), 3);
+    expect(g[Math.round(2.9 * SR)]).toBeCloseTo(10 ** (-12 / 20), 3);
+    expect(g[Math.round(3.4 * SR)]).toBeGreaterThan(0.3);
+    expect(g[Math.round(4 * SR)]).toBeCloseTo(1, 5);
+    const music = new Float32Array(5 * SR).fill(0.5);
+    expect(applyGain([music], g)[0][2 * SR]).toBeCloseTo(0.5 * 10 ** (-12 / 20), 3);
+  });
+
+  it("cuts a clip down to its phrases, in place or pulled together", async () => {
+    const { makeProject } = await import("@/lib/ridha/model");
+    const { addClip, stripSilence } = await import("@/lib/ridha/ops");
+    const base = makeProject("t");
+    const tid = base.tracks[0].id;
+    const a = addClip(base, { trackId: tid, assetId: "s", start: 10, dur: 3, name: "كلام" });
+    const b = addClip(a.project, { trackId: tid, assetId: "s2", start: 14, dur: 2, name: "بعده" });
+    const regions = [{ a: 0, b: 1 }, { a: 2, b: 3 }];
+    const kept = stripSilence(b.project, a.clip.id, regions);
+    expect(kept.ids).toHaveLength(2);
+    const [p1, p2] = kept.ids.map((id) => kept.project.clips.find((c) => c.id === id)!);
+    expect([p1.start, p1.offset, p1.dur]).toEqual([10, 0, 1]);
+    expect([p2.start, p2.offset, p2.dur]).toEqual([12, 2, 1]);
+    expect(kept.project.clips.find((c) => c.id === b.clip.id)!.start).toBe(14);
+    const closed = stripSilence(b.project, a.clip.id, regions, true, 0.2);
+    const q2 = closed.project.clips.find((c) => c.id === closed.ids[1])!;
+    expect(q2.start).toBeCloseTo(11.2, 6);
+    // what follows on the track moves earlier by what was removed
+    expect(closed.project.clips.find((c) => c.id === b.clip.id)!.start).toBeCloseTo(14 - 0.8, 6);
+    expect(stripSilence(b.project, a.clip.id, []).project).toBe(b.project);
+  });
+
+  it("punches a new take into a stretch and leaves the rest of the old one playing", async () => {
+    const { makeProject } = await import("@/lib/ridha/model");
+    const { addClip, punchRecording, takesOf } = await import("@/lib/ridha/ops");
+    const base = makeProject("t");
+    const tid = base.tracks[0].id;
+    const old = addClip(base, { trackId: tid, assetId: "old", start: 0, dur: 10, name: "قديم" });
+    const r = punchRecording(old.project, tid, "new", 4, 6, "جديد");
+    const clips = r.project.clips.filter((c) => c.trackId === tid).sort((x, y) => x.start - y.start || Number(x.muted) - Number(y.muted));
+    expect(clips).toHaveLength(4);
+    const playing = clips.filter((c) => !c.muted).map((c) => [c.assetId, c.start, c.dur]);
+    expect(playing).toEqual([["old", 0, 4], ["new", 4, 2], ["old", 6, 4]]);
+    const waiting = clips.find((c) => c.muted)!;
+    expect([waiting.assetId, waiting.start, waiting.dur, waiting.offset]).toEqual(["old", 4, 2, 4]);
+    // the old middle and the new take are takes of each other
+    expect(takesOf(r.project, r.clip).map((c) => c.assetId).sort()).toEqual(["new", "old"]);
+  });
+
+  it("builds a master by style and strength, and matches a reference's tone", async () => {
+    const { buildMaster, MASTER_STYLES, matchTone, toneOf, TONE_FREQS } = await import("@/lib/ridha/master");
+    for (const s of MASTER_STYLES) {
+      const fx = buildMaster(s.id, 3);
+      expect(fx[0].kind).toBe("eq");
+      expect(fx[fx.length - 1].kind).toBe("limiter");
+      expect(fx.some((f) => f.kind === "comp")).toBe(true);
+      expect(fx[0].bands!.slice(1, 7).map((b) => b.freq)).toEqual(TONE_FREQS);
+    }
+    const soft = buildMaster("loud", 1), hard = buildMaster("loud", 5);
+    const lim = (fx: typeof soft) => fx[fx.length - 1].p.threshold;
+    expect(lim(hard)).toBeLessThan(lim(soft) - 3);
+    expect(Math.abs(hard[0].bands![6].gain)).toBeGreaterThan(Math.abs(soft[0].bands![6].gain));
+    // a matched reference is added on top of the style
+    const plain = buildMaster("balanced", 3), matched = buildMaster("balanced", 3, [0, 0, 0, 0, 0, 3]);
+    expect(matched[0].bands![6].gain - plain[0].bands![6].gain).toBeCloseTo(3, 5);
+
+    const noise = new Float32Array(4 * SR);
+    for (let i = 0; i < noise.length; i++) noise[i] = rand() * 0.2;
+    const bright = filter(noise, biquad("highshelf", SR, 7000, 0.7, 8));
+    const same = matchTone(toneOf([noise], SR), toneOf([noise], SR));
+    expect(same.every((g) => g === 0)).toBe(true);
+    const need = matchTone(toneOf([noise], SR), toneOf([bright], SR), 1, 9);
+    expect(need[5]).toBeGreaterThan(4);
+    expect(need[5] - need[1]).toBeGreaterThan(5);
+    // the other way round the top comes down
+    expect(matchTone(toneOf([bright], SR), toneOf([noise], SR), 1, 9)[5]).toBeLessThan(-4);
+  });
+});
