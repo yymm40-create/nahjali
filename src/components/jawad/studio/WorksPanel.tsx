@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { generatorById } from "@config/jawad/generators";
+import { CONSENT_KEY } from "@config/jawad/voice-tools";
 import { isStem, SMART_SPLIT_ID, STEM_LABEL } from "@config/jawad/smart-split";
 import { isOpenStatus, stageLabel, type FilmItemView, type JobView, type OutputView, type WorkItem, type WorksFilter } from "@/lib/jawad/labels";
 import SmartCoin from "@/components/SmartCoin";
@@ -62,7 +63,8 @@ function settingChips(j: JobView) {
   const out: string[] = [];
   for (const o of def?.options ?? []) {
     const v = j.settings[o.key];
-    if (v === undefined) continue;
+    // (the permission line of «غيّر الصوت» / «حرّك الشفايف» is not a setting of the work)
+    if (v === undefined || o.key === CONSENT_KEY) continue;
     if (o.kind === "choice") {
       const known = o.values.find((x) => x.value === v)?.label;
       // A voice from the person's library or ElevenLabs' list (its name lives on the server)

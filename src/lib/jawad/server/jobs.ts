@@ -41,6 +41,8 @@ import { kling4EditRequest, kling4Request } from "./kling4";
 import { falImages, falSubmit, falTask } from "./providers/fal";
 import { runImageTool } from "./image-tools";
 import { isImageTool } from "@config/jawad/image-tools";
+import { isVoiceTool, LIPSYNC_ID, VOICE_CHANGE_ID } from "@config/jawad/voice-tools";
+import { asyncVoiceTool, runVoiceChange, submitVoiceTool, voiceToolState, type VoiceToolInputs } from "./voice-tools";
 import sharp from "sharp";
 import { prepareEdit, type EditInputs } from "./smart-edit";
 import { elevenMusic, elevenMusicWithReference, elevenSoundEffect, elevenSpeech } from "./providers/elevenlabs";
@@ -76,7 +78,7 @@ export interface JobRow {
    * modelPrompt: the prompt as the model receives it (each «@name» written the model's way, or Arabic words written
    * phonetically by «النطق الدقيق»), when it differs. diction: the words whose pronunciation was set.
    */
-  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; signupFreeImage?: boolean; /** fal: the endpoint a video was sent to (text- or image-to-video) */ falModel?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; /** the Claude model the person chose (config/claude-models.ts): «النطق الدقيق» runs on it, never dearer than its fixed price */ claude?: string; film?: { projectId: string; assetId?: string; genId?: string; title?: string } };
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; signupFreeImage?: boolean; /** fal: the endpoint a video was sent to (text- or image-to-video) */ falModel?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; /** the Claude model the person chose (config/claude-models.ts): «النطق الدقيق» runs on it, never dearer than its fixed price */ claude?: string; film?: { projectId: string; assetId?: string; genId?: string; title?: string }; /** «أدوات الصوت»: what a dub or a lip sync keeps until it is saved */ voiceTool?: VoiceToolInputs };
   refs: { uploadId: string; kind: string; role: RefRole; name?: string }[];
   price_coins: number;
   price_breakdown: { label: string; centi: number }[];
@@ -293,12 +295,16 @@ export async function createJob(user: { id: string; email?: string | null }, own
   if (def.options.some((o) => o.kind === "choice" && o.picker === "voice")) {
     const v = await resolveVoice(user.id, String(e.settings.voice));
     if (!v.ok) return { kind: "issues", issues: [{ field: "voice", message: v.reason }] };
+    if (def.id === VOICE_CHANGE_ID && v.provider !== "elevenlabs") return { kind: "issues", issues: [{ field: "voice", message: "«غيّر الصوت» يشتغل بأصوات ElevenLabs؛ اختر صوتًا منها أو من أصواتك فيها." }] };
   }
   // «الفصل الذكي»: the dialogue comes from the video's own sound, so the video must have one
   const splitVideo = e.mode.id === SMART_SPLIT_MODE ? found.rows.find((r) => r.kind === "video") : undefined;
   if (splitVideo && e.settings.dialogue === true && !(await videoHasSound(splitVideo.storage_path))) {
     return { kind: "issues", issues: [{ field: "dialogue", message: "هذا الفيديو بلا صوت، فلا يوجد حوار لفصله. ألغِ «الحوار» أو اختر فيديو فيه صوت." }] };
   }
+  // «دبلجة» / «غيّر الصوت» of a video: the words are in its sound, so the video must have one (checked before any charge)
+  const toolVideo = isVoiceTool(def.id) && def.id !== LIPSYNC_ID ? found.rows.find((r) => r.kind === "video") : undefined;
+  if (toolVideo && !(await videoHasSound(toolVideo.storage_path))) return { kind: "issues", issues: [{ field: "refs", message: "هذا الفيديو بلا صوت، فما فيه كلام نشتغل عليه. اختر فيديو فيه صوت." }] };
   if (!e.price.ok) return { kind: "issues", issues: [{ field: "price", message: e.price.reason }] };
   // The user confirms the exact amount: any difference (a price changed since the page loaded) is asked again
   // «أول تجربة مجانية»: set only by the server after it checked the offer and that this is the account's first attempt
@@ -401,6 +407,7 @@ export async function runJob(jobId: string) {
     });
     // ModelArk's videos are tasks followed later; its pictures (Seedream) answer at once like the others
     if (def.provider.id === "byteplus-modelark" && def.output === "video") await submitVideo(job, def, rows);
+    else if (asyncVoiceTool(def.id)) await submitVoiceToolJob(job, rows);
     else if (FAL_REQUESTS[def.id]) await submitFalMapped(job, def, rows, FAL_REQUESTS[def.id]);
     else if (def.provider.id === "fal" && def.output === "video") await submitFalVideo(job, def, rows);
     else if (def.provider.id === "realface") await submitRealFace(job, def, rows);
@@ -478,7 +485,8 @@ async function saveOutput(job: JobRow, idx: number, file: Buffer, mime: string, 
   const { error } = await db()
     .from("jawad_outputs")
     .upsert(
-      { job_id: job.id, user_id: job.user_id, kind: job.output_kind, idx, storage_path: path, mime, bytes: file.length, width: dims.width ?? null, height: dims.height ?? null, duration_ms: dims.durationMs ?? null },
+      // (a sound tool may give a video too: «دبلجة», «غيّر الصوت» and «حرّك الشفايف»)
+      { job_id: job.id, user_id: job.user_id, kind: /^(image|video|audio)\//.test(mime) ? (mime.split("/")[0] as OutputRow["kind"]) : job.output_kind, idx, storage_path: path, mime, bytes: file.length, width: dims.width ?? null, height: dims.height ?? null, duration_ms: dims.durationMs ?? null },
       { onConflict: "job_id,idx" },
     );
   if (error) throw new Error(`output row: ${error.message}`);
@@ -492,6 +500,13 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
 
   // «أدوات الصورة»: one picture edited (a part painted over, expanded, or upscaled)
   if (isImageTool(def.id)) return runImageToolJob(job, refs);
+  // «غيّر الصوت»: the same words in another voice (and, for a video, the video with it)
+  if (def.id === VOICE_CHANGE_ID) {
+    const r = await runVoiceChange(job, refs, download);
+    await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
+    for (const [i, f] of r.files.entries()) await saveOutput(job, i, f.bytes, f.mime, f.ext, f);
+    return void (await finishJob(job, "succeeded", { costUsd: r.costUsd, units: r.units }));
+  }
   // the pictures sold per image (Google's Nano Banana family on fal, Seedream on ModelArk)
   if (def.output === "image" && def.provider.id !== "openai") return runSimpleImage(job, def, refs);
 
@@ -847,7 +862,7 @@ function videoRate(job: JobRow) {
 async function reconcileUnknown(job: JobRow) {
   const sent = new Date(job.submitted_at ?? job.created_at).getTime();
   // fal's queue cannot be searched: after a while the job is given up (and refunded)
-  if (["fal", "realface"].includes(generatorById(job.generator_id)?.provider.id ?? "")) {
+  if (["fal", "realface"].includes(generatorById(job.generator_id)?.provider.id ?? "") || isVoiceTool(job.generator_id)) {
     if (Date.now() - sent > UNKNOWN_GIVE_UP_MS) await finishJob(job, "failed", { message: "لم يتأكد وصول الطلب إلى المزوّد، ولم يُخصم منك شيء. جرّب مرة ثانية.", detail: "fal submission unknown" });
     return;
   }
@@ -912,6 +927,7 @@ export async function advanceJob(job: JobRow, o: { force?: boolean } = {}) {
   if (!job.provider_task_id) return;
   if (job.status === "saving" && !leaseOver) return;
   if (!o.force && Date.now() - new Date(job.updated_at).getTime() < 6000) return;
+  if (def && isVoiceTool(def.id)) return advanceVoiceTool(job);
   const fal = def?.provider.id === "fal";
   const realFace = def?.provider.id === "realface";
   const task: ArkTask | null = realFace
@@ -952,6 +968,56 @@ export async function advanceJob(job: JobRow, o: { force?: boolean } = {}) {
   }
   if (task.status !== job.provider_status || o.force) {
     await db().from("jawad_jobs").update({ provider_status: task.status }).eq("id", job.id).in("status", ["running"]);
+  }
+}
+
+// ───────────────────────────── «أدوات الصوت»: دبلجة · حرّك الشفايف (followed after sending) ─────────────────────────────
+
+async function submitVoiceToolJob(job: JobRow, refs: UploadRow[]) {
+  const { taskId, keep } = await submitVoiceTool(job, refs, download);
+  await db()
+    .from("jawad_jobs")
+    .update({ provider_task_id: taskId, submit_state: "accepted", status: "running", provider_status: "queued", lease_until: null, inputs: { ...job.inputs, voiceTool: keep } })
+    .eq("id", job.id);
+  await event(job.id, "submitted", { task: taskId });
+  // a short one is often ready within a few minutes: keep watching while this request is alive
+  const until = Date.now() + WATCH_MS;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 10_000));
+    const fresh = await loadJob(job.id);
+    if (!fresh || !OPEN.includes(fresh.status)) return;
+    await advanceJob(fresh, { force: true });
+  }
+}
+
+/** Reads a dub's or a lip sync's real state; a finished one is saved by one worker (like saveVideo). */
+async function advanceVoiceTool(job: JobRow) {
+  const sent = new Date(job.submitted_at ?? job.created_at).getTime();
+  const state = await voiceToolState({ generator_id: job.generator_id, provider_task_id: job.provider_task_id!, inputs: job.inputs }, download).catch((e) => {
+    console.error("jawad voice tool check failed", job.id, e);
+    return null;
+  });
+  if (!state || state.status === "running") {
+    if (Date.now() - sent > VIDEO_STALE_MS) await finishJob(job, "failed", { message: "انتهى وقت التوليد. لم يُخصم منك شيء.", detail: state ? "stale while running" : "stale; task unreadable" });
+    else if (state && job.provider_status !== "running") await db().from("jawad_jobs").update({ provider_status: "running" }).eq("id", job.id).eq("status", "running");
+    return;
+  }
+  if (state.status === "failed") return void (await finishJob(job, "failed", { message: TASK_END_MESSAGE.failed, detail: state.error }));
+  const claim = { status: "saving", lease_until: later(LEASE_MS), provider_status: "succeeded" };
+  const first = await db().from("jawad_jobs").update(claim).eq("id", job.id).eq("status", "running").select("*");
+  const retry = first.data?.length ? null : await db().from("jawad_jobs").update(claim).eq("id", job.id).eq("status", "saving").lt("lease_until", now()).select("*");
+  const claimed = (first.data?.[0] ?? retry?.data?.[0] ?? null) as JobRow | null;
+  if (!claimed) return;
+  try {
+    const files = await state.files();
+    for (const [i, f] of files.entries()) await saveOutput(claimed, i, f.bytes, f.mime, f.ext, f);
+    await finishJob(claimed, "succeeded", { costUsd: state.costUsd, units: state.units });
+  } catch (e) {
+    const attempts = (claimed.inputs.saveAttempts ?? 0) + 1;
+    console.error("jawad voice tool save failed", job.id, e);
+    await event(job.id, "save_failed", { attempt: attempts, error: String(e instanceof Error ? e.message : e).slice(0, 300) });
+    if (attempts >= MAX_SAVE_ATTEMPTS) await finishJob(claimed, "failed", { message: "اكتملت النتيجة لكن تعذّر حفظها. لم يُخصم منك شيء.", detail: String(e instanceof Error ? e.message : e) });
+    else await db().from("jawad_jobs").update({ status: "running", lease_until: null, inputs: { ...claimed.inputs, saveAttempts: attempts } }).eq("id", job.id);
   }
 }
 
