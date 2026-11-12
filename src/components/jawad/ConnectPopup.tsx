@@ -13,7 +13,7 @@ import "@/app/jawad-ai/connect/connect.css";
 
 const KEY = "jw-connect-ad-1";
 const PACKS_KEY = "jw-subscribe-popup";
-const QUIET = ["/jawad-ai/connect", "/jawad-ai/login", "/jawad-ai/username", "/jawad-ai/admin", "/jawad-ai/credits", "/jawad-ai/course", "/jawad-ai/learn"];
+const QUIET = ["/jawad-ai/connect", "/jawad-ai/login", "/jawad-ai/username", "/jawad-ai/admin", "/jawad-ai/credits", "/jawad-ai/course", "/jawad-ai/learn", "/jawad-ai/pay"];
 
 export default function ConnectPopup({ packsFirst }: { packsFirst: boolean }) {
   const path = usePathname();
