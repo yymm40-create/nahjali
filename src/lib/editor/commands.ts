@@ -195,6 +195,8 @@ export interface Applied {
   label: string;
   /** clips to select afterwards */
   select?: string[];
+  /** several commands as one change: each one's name, in order («سجل التغييرات» lists them under حيدرا ماكس's turn) */
+  steps?: string[];
 }
 
 const fail = (m: string): never => {
@@ -1325,6 +1327,7 @@ function cutOut(c: Clip, a: number, b: number, assets: Map<string, AssetInfo>): 
 export function applyAll(timeline: Timeline, cmds: Command[], assets: Map<string, AssetInfo>, label?: string): Applied {
   let t = timeline;
   let last: Applied | null = null;
+  const steps: string[] = [];
   // "$2" in a later command means the clip the 2nd command made (for scripts written before the ids exist)
   const made = new Map<string, string>();
   const resolve = (v: unknown): unknown =>
@@ -1334,7 +1337,8 @@ export function applyAll(timeline: Timeline, cmds: Command[], assets: Map<string
     const r = apply(t, c, assets);
     last = r;
     t = r.timeline;
+    if (r.label) steps.push(r.label);
     if (r.select?.[0]) made.set(`$${i + 1}`, r.select[0]);
   }
-  return { timeline: t, label: label ?? last?.label ?? "", select: last?.select };
+  return { timeline: t, label: label ?? last?.label ?? "", select: last?.select, steps };
 }

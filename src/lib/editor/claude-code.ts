@@ -19,6 +19,8 @@ import { lookParts, readLook } from "./assistant";
 import { readTimeline } from "./model";
 import { claudeCharged, type Who } from "./pricing";
 import { assetViews, stillOpen, type EditorProject } from "./server";
+import { standingRules } from "./changes";
+import { rulesNote } from "./changes-core";
 
 const db = () => createAdminClient();
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
@@ -51,15 +53,17 @@ const reviewSchema = (kind: ProgramKind) => ({
   },
 });
 
-async function ask<T>(who: Who, model: unknown, kind: ProgramKind, label: string, parts: ClaudePart[], schema: object, maxTokens: number) {
+/** `rules`: the page's copy of «تعليماتي الدايمة» (the kept ones win), in the turn note — a cut or a look follows them too. */
+async function ask<T>(who: Who, model: unknown, kind: ProgramKind, label: string, parts: ClaudePart[], schema: object, maxTokens: number, rules?: unknown) {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
   const deadline = AbortSignal.timeout(300_000);
+  const turnNote = rulesNote(await standingRules(who.id, rules)) || undefined;
   return claudeCharged(
     who,
     model,
     label,
     () =>
-      callClaudeJson<T>({ system: SYSTEM[kind], turns: [{ role: "user", content: parts }], schema, maxTokens, effort: "medium", fallback: true, signal: deadline }).catch((e) => {
+      callClaudeJson<T>({ system: SYSTEM[kind], turns: [{ role: "user", content: parts }], turnNote, schema, maxTokens, effort: "medium", fallback: true, signal: deadline }).catch((e) => {
         console.error("claude code", label, e);
         if (deadline.aborted) throw new UserError("خدمة الذكاء الاصطناعي تأخرت. أعد الطلب.", 504);
         throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يكمل الشغل بالكود الحين. جرّب مرة ثانية.", who.email), 502);
@@ -110,7 +114,7 @@ ${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the sandbox or 
 Write the COMPLETE program.`,
     },
   ];
-  const r = await ask<{ code: string; notes: string }>(who, b.model, "edit", previous ? "حيدرا ماكس · تصليح التقطيع" : "حيدرا ماكس · برنامج التقطيع", parts, WRITE_SCHEMA, 32_000);
+  const r = await ask<{ code: string; notes: string }>(who, b.model, "edit", previous ? "حيدرا ماكس · تصليح التقطيع" : "حيدرا ماكس · برنامج التقطيع", parts, WRITE_SCHEMA, 32_000, b.rules);
   const chk = checkProgram("edit", r.data.code);
   return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), facts, coins: r.coins, model: r.model };
 }
@@ -140,7 +144,7 @@ THE TIMELINE AFTER (the same shape):
 ${JSON.stringify(after.facts)}`,
     },
   ];
-  const r = await ask<Record<string, unknown>>(who, b.model, "edit", `حيدرا ماكس · مراجعة التقطيع ${round}`, parts, reviewSchema("edit"), 32_000);
+  const r = await ask<Record<string, unknown>>(who, b.model, "edit", `حيدرا ماكس · مراجعة التقطيع ${round}`, parts, reviewSchema("edit"), 32_000, b.rules);
   const review = readReview("edit", r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkProgram("edit", r.data.code) : null;
   return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };
@@ -188,7 +192,7 @@ Write the COMPLETE program.`,
     },
     ...looks.flatMap((l, i): ClaudePart[] => [{ type: "text", text: clipLine(tl, l.clipId, i) }, ...lookParts(l)]),
   ];
-  const r = await ask<{ code: string; notes: string }>(who, b.model, "grade", previous ? "حيدرا ماكس · تصليح التلوين" : "حيدرا ماكس · برنامج التلوين", parts, WRITE_SCHEMA, 24_000);
+  const r = await ask<{ code: string; notes: string }>(who, b.model, "grade", previous ? "حيدرا ماكس · تصليح التلوين" : "حيدرا ماكس · برنامج التلوين", parts, WRITE_SCHEMA, 24_000, b.rules);
   const chk = checkProgram("grade", r.data.code);
   return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), coins: r.coins, model: r.model };
 }
@@ -215,7 +219,7 @@ ${code}`,
     },
     ...looks.flatMap((l, i): ClaudePart[] => [{ type: "text", text: clipLine(tl, l.clipId, i) }, ...lookParts(l)]),
   ];
-  const r = await ask<Record<string, unknown>>(who, b.model, "grade", `حيدرا ماكس · مراجعة التلوين ${round}`, parts, reviewSchema("grade"), 24_000);
+  const r = await ask<Record<string, unknown>>(who, b.model, "grade", `حيدرا ماكس · مراجعة التلوين ${round}`, parts, reviewSchema("grade"), 24_000, b.rules);
   const review = readReview("grade", r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkProgram("grade", r.data.code) : null;
   return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };

@@ -35,6 +35,8 @@ import { sajjadBrief } from "@/lib/film/sajjad";
 import { checkDesign, deliveryText, DESIGN_SCHEMA, DESIGN_SYSTEM, designPrompt, RESEARCH_SYSTEM, researchPrompt, type HookDesign, type HookInputs } from "./hook-design";
 import { claudeCharged, type Who } from "./pricing";
 import { assetInfo, assetViews, stillOpen, type EditorProject } from "./server";
+import { standingRules } from "./changes";
+import { rulesNote } from "./changes-core";
 
 const db = () => createAdminClient();
 
@@ -277,7 +279,7 @@ interface Answer {
 const SPOKEN = "\n\n(The person said this by voice and your reply will be read aloud to them: answer in one to three short, natural spoken sentences in their dialect, no lists, no markdown, no emoji; do the commands as usual.)";
 
 /** One request: the person's words (and the last few exchanges) → a reply and checked commands. */
-export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown; watch?: unknown; spoken?: unknown; refs?: unknown; refLooks?: unknown; face?: unknown; model?: unknown }, origin: string | null = null) {
+export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown; watch?: unknown; spoken?: unknown; refs?: unknown; refLooks?: unknown; face?: unknown; model?: unknown; rules?: unknown }, origin: string | null = null) {
   stillOpen(p);
   const message = String(b.message ?? "").trim().slice(0, 2000);
   if (!message) throw new UserError("اكتب وش تبي.", 400);
@@ -402,9 +404,11 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     last.content = [...(typeof last.content === "string" ? [{ type: "text", text: last.content } as ClaudePart] : last.content), { type: "text", text: listened.block }];
   }
 
+  // «تعليماتي الدايمة»: the person's own style, in this turn's note (nothing when they wrote none)
+  const turnNote = rulesNote(await standingRules(who.id, b.rules)) || undefined;
   let usd = mem.usd + listened.usd;
   const ask = async (msgs: ClaudeTurn[]) => {
-    const r = await callClaudeJson<Answer>({ system: aboutMotion ? SYSTEM_MOTION : SYSTEM, turns: msgs, schema: SCHEMA, maxTokens: 16000, effort: "medium", fallback: true, leader: isLeader(who.email), timeoutMs: 420_000 });
+    const r = await callClaudeJson<Answer>({ system: aboutMotion ? SYSTEM_MOTION : SYSTEM, turns: msgs, turnNote, schema: SCHEMA, maxTokens: 16000, effort: "medium", fallback: true, leader: isLeader(who.email), timeoutMs: 420_000 });
     usd += claudeCost(r.usage);
     return r;
   };
