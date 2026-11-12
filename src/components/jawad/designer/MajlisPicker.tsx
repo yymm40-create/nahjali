@@ -66,7 +66,12 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const total = kh + rd;
-  const list = useMemo(() => templatesFor(kh, rd), [kh, rd]);
+  // «قوالب المصممين»: the designers' approved templates join the list
+  const [extra, setExtra] = useState<MajlisTemplate[]>([]);
+  useEffect(() => {
+    api<{ approved: MajlisTemplate[] }>("/api/designer/templates").then((r) => setExtra(r.approved ?? [])).catch(() => null);
+  }, []);
+  const list = useMemo(() => templatesFor(kh, rd, extra), [kh, rd, extra]);
   // the people in the order of the frames: the khateebs first (the bigger frame), then the radoods
   const roles = useMemo(() => [...Array(kh).fill("kh"), ...Array(rd).fill("rd")] as ("kh" | "rd")[], [kh, rd]);
   const files = useRef<(HTMLInputElement | null)[]>([]);
@@ -94,7 +99,7 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
   async function submit() {
     if (!tpl) return;
     if (cut === null) { setErr("اختر: تفرّغ خلفية الصور أو تخليها بخلفيتها."); return; }
-    const order: MajlisOrder = { templateId: tpl.id, fields, people: roles.map((role, i) => ({ role, name: (names[i] ?? "").trim(), photo: photos[i]?.id ?? "" })), cut, ...(logo ? { logo: logo.id } : {}) };
+    const order: MajlisOrder = { templateId: tpl.id, ...(tpl.source === "user" ? { template: tpl } : {}), fields, people: roles.map((role, i) => ({ role, name: (names[i] ?? "").trim(), photo: photos[i]?.id ?? "" })), cut, ...(logo ? { logo: logo.id } : {}) };
     setErr("");
     setBusy(maker === "code" ? "أرسل الطلب لحيدرا ماكس…" : "جواد يسوي التصميم (دقيقة إلى دقيقتين)…");
     try {
@@ -137,7 +142,7 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
             {list.map((t) => (
               <button type="button" key={t.id} className={`mj-card ${tpl?.id === t.id ? "on" : ""}`} onClick={() => setTpl(t)} title={t.title}>
                 <img src={viewUrl(t.id)} alt={t.title} loading="lazy" />
-                <span>{t.kind === "people" ? "بأشخاص · " : ""}{t.id.slice(1)} · {t.title}</span>
+                <span>{t.source === "user" ? "🧩 " : t.kind === "people" ? "بأشخاص · " : ""}{t.source === "user" ? "" : `${t.id.slice(1)} · `}{t.title}</span>
               </button>
             ))}
           </div>

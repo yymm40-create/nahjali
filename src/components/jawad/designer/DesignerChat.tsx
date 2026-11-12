@@ -22,6 +22,7 @@ import { FontList, PaletteGrid } from "./Pickers";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { renderDesign, type DesignView, type FontDef } from "./LayerEditor";
 import MajlisPicker, { type MajlisDone } from "./MajlisPicker";
+import TemplateMaker from "./TemplateMaker";
 import { downloadPrint, downloadSize, printDpi, PRINTS, SIZES } from "./exports";
 import { drawWithCode, pngBody, smallJpeg, type DrawEdit, type DrawTemplate } from "@/components/claude-code/draw";
 
@@ -201,6 +202,8 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   const [editFrom, setEditFrom] = useState<number | null>(null);
   /** «دعوة مجلس من تصميم جاهز»: the picker is open */
   const [majlis, setMajlis] = useState(false);
+  /** «قوالب المصممين»: a designer uploads a template (the owner approves it here too) */
+  const [maker, setMaker] = useState(false);
   /** one drawing loop per conversation (opening it again must not start a second, paid one) */
   const drawingFor = useRef<string | null>(null);
   useEffect(() => setVerbose(store.get(VERBOSE_KEY) === "1"), []);
@@ -500,7 +503,8 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
               <div className="dz-title">{name}</div>
               <div className="dz-muted" style={{ fontSize: 12 }}>تكلّم مع {persona} · حيدرا ماكس يصمم والكلام بخطك، وأي كلمة تتعدّل بطلب</div>
             </div>
-            {!loginHref && <button type="button" className="dz-mini mj-open" disabled={!!busy} onClick={() => { fresh(); setMajlis(true); }}>🕯️ دعوة مجلس</button>}
+            {!loginHref && <button type="button" className="dz-mini mj-open" disabled={!!busy} onClick={() => { fresh(); setMaker(false); setMajlis(true); }}>🕯️ دعوة مجلس</button>}
+            {!loginHref && <button type="button" className="dz-mini" disabled={!!busy} onClick={() => { fresh(); setMajlis(false); setMaker(true); }} title="للمصممين: ارفع قالبك وحدّد مكان الصور والكلام">🧩 ارفع قالبك</button>}
           </header>
 
           {!loginHref && decisions.length > 0 && (
@@ -519,6 +523,8 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                 <p>سجّل دخولك عشان تتكلم مع {persona}.</p>
                 <div className="dz-actions"><Link className="dz-mini" href={loginHref}>تسجيل الدخول</Link></div>
               </div>
+            ) : maker ? (
+              <TemplateMaker onClose={() => setMaker(false)} />
             ) : majlis ? (
               <MajlisPicker chatId={chatId} onClose={() => setMajlis(false)} onDone={(r) => void majlisDone(r)} />
             ) : msgs.length === 0 ? (

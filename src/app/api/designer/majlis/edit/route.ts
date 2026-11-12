@@ -5,7 +5,7 @@ import { requireDesignerUser } from "@/lib/designer/access";
 import { getChat, lastDesignAt, saveChat, type PendingDesign, type Turn } from "@/lib/designer/chats";
 import { readProgram } from "@/lib/designer/program";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isMajlisMaker, readOrder, templateById } from "@config/designer-majlis";
+import { isMajlisMaker, readOrder, templateOf } from "@config/designer-majlis";
 import type { Design } from "@/lib/designer/layers";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +31,7 @@ export const POST = handle(async (req: Request) => {
   const { data } = await createAdminClient().from("designer_files").select("meta").eq("id", prev.artwork).eq("user_id", user.id).maybeSingle();
   const meta = (data?.meta ?? {}) as Record<string, unknown>;
   const order = readOrder(meta.majlis);
-  const t = order ? templateById(order.templateId) : null;
+  const t = order ? templateOf(order) : null;
   if (!order || !t) throw new UserError("ما لقينا طلب هذا التصميم؛ اطلبه من جديد من «دعوة مجلس».", 409);
   const maker = isMajlisMaker(meta.maker) ? meta.maker : "code";
   const program = readProgram(meta.program);
