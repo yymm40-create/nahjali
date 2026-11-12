@@ -18,16 +18,25 @@ export interface Who {
 }
 
 /** The owner's per-unit prices that make a picture (the hook drawn by GPT Image 2) carry GPT Image 2's profit. */
-const PRICE_KIND: Partial<Record<LimitKey, PriceKind>> = { editor_price_hook: "image", editor_price_upscale: "video", editor_price_matte: "video" };
+const PRICE_KIND: Partial<Record<LimitKey, PriceKind>> = { editor_price_hook: "image", editor_price_upscale: "video", editor_price_matte: "video", editor_price_translate: "claude" };
+
+/**
+ * What a paid call will take, before it runs (the page shows it for a yes): `coins` the person pays (0 for the owner, or
+ * while coins aren't required), `value` its worth at the price, `cost` the owner's cost in halalas.
+ */
+export async function priceOf(who: Who, price: Extract<LimitKey, `editor_price_${string}`>, units: number) {
+  const cost = (await getLimit(price)) * units;
+  const value = sellKind(Math.ceil(cost), PRICE_KIND[price] ?? "other");
+  const coins = who.owner || !(await coinsRequired()) ? 0 : value;
+  return { cost, value, coins };
+}
 
 /**
  * Runs a paid call: its price (coins × units) is held first and given back if the call throws. Free when the owner
  * asks, when coins aren't required, or when the price is 0.
  */
 export async function charged<T>(who: Who, price: Extract<LimitKey, `editor_price_${string}`>, units: number, label: string, run: () => Promise<T>) {
-  const cost = (await getLimit(price)) * units;
-  const value = sellKind(Math.ceil(cost), PRICE_KIND[price] ?? "other");
-  const coins = who.owner || !(await coinsRequired()) ? 0 : value;
+  const { cost, value, coins } = await priceOf(who, price, units);
   const ref = `editor:${price}:${crypto.randomUUID()}`;
   // free for this account: written down with its value (code monitoring)
   if (!coins && value > 0) await logFree(who.id, ref, label, value);

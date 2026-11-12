@@ -5,6 +5,8 @@
 // it is). A shot change is a jump in both, much bigger than the usual change between neighbouring samples (motion,
 // a pan, someone walking past), so the threshold adapts to the clip: a jump has to stand out from its surroundings.
 
+import { rampTimeline, type Timed } from "./ramp";
+
 export const FEATURE_GRID = 8;
 const BINS = 8; // per channel
 
@@ -105,11 +107,11 @@ export function sharpenCut(times: number[], feats: Float32Array[]): number | nul
 }
 
 /** Where a clip is cut on the timeline for changes found in its source (seconds), inside the clip and not at its edges. */
-export function cutsOnTimeline(clip: { start: number; in: number; out: number; speed: number }, sourceSec: number[], edgeMs = 300) {
+export function cutsOnTimeline(clip: Timed, sourceSec: number[], edgeMs = 300) {
   return [...new Set(
     sourceSec
       .map((s) => s * 1000)
       .filter((ms) => ms > clip.in + edgeMs && ms < clip.out - edgeMs)
-      .map((ms) => Math.round(clip.start + (ms - clip.in) / (clip.speed || 1))),
+      .map((ms) => Math.round(rampTimeline(clip, ms))),
   )].sort((a, b) => a - b);
 }

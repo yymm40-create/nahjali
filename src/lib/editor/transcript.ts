@@ -4,7 +4,8 @@
 // follows every cut, move and speed. Words chosen in the text become timeline spans cut out of every track
 // (remove_ranges), one undo.
 
-import { clipEnd, type Clip, type Timeline, type Track } from "./model";
+import { clipEnd, timelineTime, type Clip, type Timeline, type Track } from "./model";
+import type { Timed } from "./ramp";
 
 /** One spoken word of a file: from `s` to `e` (source ms). */
 export interface TWord {
@@ -40,11 +41,8 @@ export interface Line {
 /** The key that names a file's word across edits (the file and the word's start). */
 export const wordKey = (assetId: string, s: number) => `${assetId}:${Math.round(s)}`;
 
-/**
- * Where on the timeline a clip plays its source moment `src` (ms): the other way of `sourceTime`.
- * NOTE: when the speed curves («منحنى السرعة», model.timelineTime) are in main, this calls that instead.
- */
-export const timelineAt = (c: Pick<Clip, "start" | "in" | "speed">, src: number) => c.start + (src - c.in) / (c.speed || 1);
+/** Where on the timeline a clip plays its source moment `src` (ms): the other way of `sourceTime`, speed curves included. */
+export const timelineAt = (c: Timed, src: number) => timelineTime(c, src);
 
 // ───────────────────────────── kept transcripts ─────────────────────────────
 

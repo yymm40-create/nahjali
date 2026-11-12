@@ -6,7 +6,8 @@ import MotionLab, { type FilmPlacer, type LabSource, type LabView } from "./Moti
 import type { FootageSource } from "./lab-footage";
 import { NEW_TITLE, readTabs, storeOf, tabsKey, type Tab } from "./lab-tabs";
 import { chatParam, conversationList, MAIN, MAIN_TITLE, mainRow, mergeStream, routeOf, saysEnough, timeOf, type ChatRow } from "./haidara-chats";
-import { clipEnd, duration, findClip, mainTrack, ratioOf, type Timeline } from "@/lib/editor/model";
+import { clipEnd, duration, findClip, mainTrack, ratioOf, timelineTime, type Timeline } from "@/lib/editor/model";
+import { rampKey } from "@/lib/editor/ramp";
 import { framesOf } from "./media";
 import { watchClip, watchFilm } from "./watch";
 import { rememberBackdrops } from "./backdrop-memory";
@@ -108,8 +109,8 @@ async function quietParts(tl: Timeline, assets: Map<string, EditorAsset>) {
         if (quiet && start < 0) start = k;
         if (!quiet && start >= 0) {
           if (k - start >= PEAK_RATE / 2) {
-            const s = ((start / PEAK_RATE) * 1000 - c.in) / c.speed + c.start;
-            const e = ((k / PEAK_RATE) * 1000 - c.in) / c.speed + c.start;
+            const s = timelineTime(c, (start / PEAK_RATE) * 1000);
+            const e = timelineTime(c, (k / PEAK_RATE) * 1000);
             ranges.push([Math.round(s), Math.round(Math.min(e, clipEnd(c)))]);
           }
           start = -1;
@@ -342,7 +343,7 @@ function Conversation({
         const n = a.kind === "image" ? 1 : Math.min(6, Math.max(2, Math.round((c.out - c.in) / 2000)));
         const src = await framesOf(a.url, a.kind, c.in, c.out, n);
         // the moments on the timeline (what the person sees)
-        frames = await Promise.all(src.map(async (x) => ({ t: Math.round(c.start + (x.t - c.in) / c.speed), data: x.data, scope: await scopeOfJpeg(x.data) })));
+        frames = await Promise.all(src.map(async (x) => ({ t: Math.round(timelineTime(c, x.t)), data: x.data, scope: await scopeOfJpeg(x.data) })));
         seenFrames.current.set(key, frames);
       } catch {
         return null;
@@ -409,11 +410,11 @@ function Conversation({
     const a = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
     if (!f || !a?.url || a.kind !== "video") return null;
     const c = f.clip;
-    const key = `${c.id}:${c.in}:${c.out}:${c.start}:${c.speed}`;
+    const key = `${c.id}:${c.in}:${c.out}:${c.start}:${c.speed}:${c.ramp ? rampKey(c.ramp) : ""}`;
     const kept = watched.current.get(key);
     if (kept) return kept;
     try {
-      const w = await watchClip(a.url, { id: c.id, start: c.start, in: c.in, out: c.out, speed: c.speed || 1 }, setBusy, signal);
+      const w = await watchClip(a.url, { id: c.id, start: c.start, in: c.in, out: c.out, speed: c.speed || 1, ramp: c.ramp ?? null }, setBusy, signal);
       if (w.sheets.length) watched.current.set(key, w);
       return w.sheets.length ? w : null;
     } catch {

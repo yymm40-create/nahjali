@@ -54,7 +54,7 @@ describe("«كاظم»'s ready majlis designs", () => {
   it("has the designs with people: their empty base, the man's face to stand in, the title layer and the band", () => {
     expect(MAJLIS_PEOPLE.length).toBeGreaterThanOrEqual(18);
     for (const t of MAJLIS_PEOPLE) {
-      for (const f of [`${t.id}.jpg`, `${t.id}_base.jpg`, ...(t.titleLayer ? [`${t.id}_title.png`] : [])]) expect(existsSync(path.join(PUB, f)), f).toBe(true);
+      for (const f of [`${t.id}.jpg`, `${t.id}_base.jpg`, `${t.id}_pose.jpg`, ...(t.titleLayer ? [`${t.id}_title.png`] : [])]) expect(existsSync(path.join(PUB, f)), f).toBe(true);
       for (const s of t.slots) if (s.shape === "person") expect(s.face).toHaveLength(4);
       expect(t.band).toHaveLength(2);
       const o = readOrder({ templateId: t.id, fields: { host: "م", night: "ل", date: "د", time: "٨", place: "ق" }, people: t.slots.map((_, i) => ({ role: i ? "rd" : "kh", name: "س", photo: "u" + i })), cut: true })!;

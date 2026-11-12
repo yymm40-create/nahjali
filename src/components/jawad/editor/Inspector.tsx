@@ -4,6 +4,7 @@ import LabPiece from "./LabPiece";
 import MotionPanel from "./MotionPanel";
 import CropPanel from "./CropPanel";
 import ReframeBox from "./ReframeBox";
+import SpeedRamp from "./SpeedRamp";
 import type { LabSource } from "./MotionLab";
 import { useEffect, useState } from "react";
 import { setStemQuality, stemQuality, type StemQuality } from "./make";
@@ -23,6 +24,7 @@ import {
   RATIOS,
   ratioOf,
   sourceTime,
+  timelineTime,
   transformAt,
   type Anim,
   type AnimKind,
@@ -384,7 +386,7 @@ export default function Inspector({
       const peaks = await peaksOf(a.id, a.url);
       const r = peaks ? detectBeats(peaks, clip.in, clip.out) : null;
       if (!r || !r.beats.length) return flash("ما قدرنا نلقى إيقاعًا واضحًا في هذا الصوت.", true);
-      const marks = r.beats.map((s) => Math.round(clip.start + (s - clip.in) / clip.speed)).filter((m) => m >= clip.start && m < clipEnd(clip));
+      const marks = r.beats.map((s) => Math.round(timelineTime(clip, s))).filter((m) => m >= clip.start && m < clipEnd(clip));
       run({ type: "set_markers", markers: marks, mode: "add" });
       flash(`الإيقاع ${r.bpm} ضربة في الدقيقة: ${marks.length} علامة؛ القص والسحب يلتصقون عليها.`);
     } finally {
@@ -536,13 +538,14 @@ export default function Inspector({
               <span className="text-xs text-jw-muted">السرعة — مثل يوتيوب: الصوت يحتفظ بطبقته ونبرته، بدون صوت «سناجب» ولا ثقل</span>
               <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="السرعة">
                 {SPEEDS.map((s) => (
-                  <button key={s} type="button" role="radio" aria-checked={clip.speed === s} disabled={locked} onClick={() => run({ type: "update_clip", clipId: clip.id, patch: { speed: s } })} dir="ltr" className={`jw-chip !px-2.5 !py-1 !text-xs ${clip.speed === s ? "!border-jw-accent !text-jw-ink" : ""}`}>
+                  <button key={s} type="button" role="radio" aria-checked={!clip.ramp && clip.speed === s} disabled={locked} onClick={() => run({ type: "update_clip", clipId: clip.id, patch: { speed: s } })} dir="ltr" className={`jw-chip !px-2.5 !py-1 !text-xs ${!clip.ramp && clip.speed === s ? "!border-jw-accent !text-jw-ink" : ""}`}>
                     {s === 1 ? "عادي" : `×${s}`}
                   </button>
                 ))}
               </div>
               <Slider label="مخصص" value={clip.speed} min={0.25} max={4} step={0.05} disabled={locked} ltr onChange={(v) => set({ speed: Math.round(v * 100) / 100 }, "speed")} format={(v) => `×${v.toFixed(2)}`} />
-              <p className="text-[11px] text-jw-faint">طول المقطع على التايملاين يصير {formatTime(clipLength(clip))}.</p>
+              <p className="text-[11px] text-jw-faint">طول المقطع على التايملاين يصير {formatTime(clipLength(clip))}.{clip.ramp ? " (السرعة الثابتة تشيل المنحنى)" : ""}</p>
+              {!clip.seq && <SpeedRamp clip={clip} locked={locked} run={run} />}
             </div>
           )}
           {sound && soundButtons}

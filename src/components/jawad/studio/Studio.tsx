@@ -33,9 +33,13 @@ import RefsStrip from "./RefsStrip";
 import type { WorkSource } from "./RefAdder";
 import { probeFile, putWithProgress } from "./upload";
 import WorksPanel from "./WorksPanel";
+import CompareGenerators from "./CompareGenerators";
+import { DEFAULT_VIEW, worksQuery, type WorksView } from "@/lib/jawad/works-organise";
 import StylePicker from "./StylePicker";
 import MorePrompts from "./MorePrompts";
 import ReadyApps from "./ReadyApps";
+import GalleryStrip from "../gallery/GalleryStrip";
+import { buildTryDraft, type GalleryCard } from "@config/jawad/gallery";
 import { composeReady, composerSideOf, fitSettings, type ReadyApp, type ReadyValues } from "@config/jawad/ready-apps";
 import { findStyle } from "@config/film-styles";
 import { refKindOfTag, takeCreativeUse } from "@/lib/jawad/creative-use";
@@ -190,6 +194,9 @@ export default function Studio({ section, studioSections, generators, directorGe
   const [worksLoading, setWorksLoading] = useState(false);
   const [worksError, setWorksError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
+  // «ترتيب أعمالي»: search, sort, a folder, the favourites (the server lists by them; the panel also filters what it has)
+  const [view, setView] = useState<WorksView>(DEFAULT_VIEW);
+  const viewRef = useRef(view);
 
   // Submitting
   const [submitting, setSubmitting] = useState(false);
@@ -460,9 +467,12 @@ export default function Studio({ section, studioSections, generators, directorGe
     if (!user || !allowed) return;
     setWorksLoading(true);
     setWorksError(null);
+    const asked = viewRef.current;
     try {
-      const { ok, body } = await call<{ items: WorkItem[]; next: string | null }>(`/api/jawad/works?filter=${f}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+      const { ok, body } = await call<{ items: WorkItem[]; next: string | null }>(`/api/jawad/works?filter=${f}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}${worksQuery(asked)}`);
       if (!ok) throw new Error(body.error ?? "تعذّر تحميل الأعمال.");
+      // a newer search or folder was asked meanwhile: its own answer fills the list
+      if (asked !== viewRef.current) return;
       setItems((cur) => (cursor ? [...cur, ...body.items.filter((n) => !cur.some((c) => c.id === n.id))] : [...cur.filter((c) => c.type === "job" && c.id.startsWith("temp-")), ...body.items]));
       setNext(body.next);
     } catch (e) {
@@ -477,6 +487,12 @@ export default function Studio({ section, studioSections, generators, directorGe
     setItems((cur) => cur.filter((c) => c.type === "job" && c.id.startsWith("temp-")));
     setNext(null);
     loadWorks(f, null);
+  }
+  function changeView(v: WorksView) {
+    viewRef.current = v;
+    setView(v);
+    setNext(null);
+    loadWorks(filter, null);
   }
 
   // Poll unfinished jobs (their state lives on the server: a refresh or a new sign-in picks it up again)
@@ -500,7 +516,8 @@ export default function Studio({ section, studioSections, generators, directorGe
           const finished = body.jobs.filter((j) => j.status === "succeeded" || j.status === "failed").length;
           for (const j of body.jobs) if (j.status === "succeeded") track("studio.job_ok");
           if (finished && document.hidden) notifyDone(finished, body.jobs.some((j) => j.status === "failed"));
-          setItems((cur) => cur.map((it) => (it.type === "job" && byId.has(it.id) ? byId.get(it.id)! : it)));
+          // (the work's folder and ⭐ stay: the jobs' answer doesn't carry them)
+          setItems((cur) => cur.map((it) => (it.type === "job" && byId.has(it.id) ? { ...it, ...byId.get(it.id)! } : it)));
           announceBalance(body.balance);
         }
       } catch {
@@ -981,6 +998,59 @@ export default function Studio({ section, studioSections, generators, directorGe
         (add.length ? ` أضف ${add.map((s) => s.what).join(" و")} من «المراجع» (ياخذ اسم ${add.map((s) => `@${s.name}`).join(" و")} تلقائيًا)، ثم اضغط «توليد».` : " راجع البرومبت واضغط «توليد».")
     );
   }
+  // ── «معرض الناس»: «جرّبه» fills the form with a work's kind, generator (or one of the same kind), shape, style and
+  // prompt — never its references: the person's own pictures take the names the prompt mentions ──
+  function applyGallery(item: Pick<GalleryCard, "id" | "kind" | "title" | "generatorId" | "generatorName" | "prompt" | "settings" | "styleId" | "refStyle" | "refNames">) {
+    const t = buildTryDraft(item, generators);
+    if (!t) return setNotice(`ما فيه مولّد ${item.kind === "video" ? "فيديو" : "صور"} متاح لحسابك الحين.`);
+    const gid = t.generatorId;
+    setDraft((d) => ({
+      ...d,
+      generatorId: gid,
+      prompt: t.prompt,
+      instructions: "",
+      settings: { ...d.settings, [gid]: t.settings },
+      refStyle: { ...d.refStyle, [gid]: t.refStyle },
+      refs: t.refs,
+      styleId: t.styleId,
+      extra: [],
+      mainRefs: null,
+      wantNames: t.wantNames,
+    }));
+    setReadySide(null);
+    setBeforeDirector(null);
+    setTouched(true);
+    setTab("settings");
+    const gname = generators.find((g) => g.id === gid)?.name ?? generatorById(gid)?.name ?? gid;
+    setNotice(
+      `جهّزنا ${item.title ? `«${item.title}»` : "العمل"} من معرض الناس على ${gname}` +
+        (t.fellBack ? ` (مولّده «${item.generatorName}» مو متاح لحسابك، فاخترنا واحد من نفس النوع).` : " بنفس الإعدادات.") +
+        (t.wantNames.length ? ` أضف صورك أنت بالترتيب: ${t.wantNames.map((w) => `@${w.name}`).join("، ")}، وبتاخذ هالأسماء تلقائيًا.` : " عدّل اللي تبيه واضغط «توليد».")
+    );
+  }
+  // opened from the gallery or a shared work's page (?gallery=<id>): the work is read from the server once the draft is restored
+  const galleryTaken = useRef(false);
+  useEffect(() => {
+    if (!hydrated || galleryTaken.current) return;
+    const id = new URLSearchParams(window.location.search).get("gallery");
+    if (!id) return;
+    galleryTaken.current = true;
+    try {
+      window.history.replaceState(null, "", window.location.pathname);
+    } catch {
+      // the address keeps ?gallery=; it was already taken
+    }
+    call<{ item: GalleryCard }>(`/api/jawad/gallery/${encodeURIComponent(id)}`)
+      .then(({ ok, body }) => {
+        if (!ok || !body.item) return setNotice(body.error ?? "هذا العمل ما عاد موجود في المعرض.");
+        track("studio.gallery_try");
+        applyGallery(body.item);
+      })
+      .catch(() => setNotice("انقطع الاتصال، ما قدرنا نجيب العمل من المعرض."));
+    // applyGallery reads this render's generators only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
+
   const composerPersons = draft.refs.flatMap((r) => (r.kind === "image" && r.status === "ready" && r.url ? [{ name: r.name, url: r.url }] : []));
   const composerResults = items.flatMap((it) => (it.type === "job" && it.status === "succeeded" ? it.outputs.filter((o) => o.kind === "image" && o.url).map((o) => ({ id: o.id, url: o.url! })) : [])).slice(0, 8);
 
@@ -1028,6 +1098,28 @@ export default function Studio({ section, studioSections, generators, directorGe
             </div>}
             <SectionHint kind={def.output} />
             <GeneratorCard gen={gen} owner={owner} onOpen={() => setPicker(true)} />
+            <CompareGenerators
+              kind={def.output}
+              generators={generators}
+              currentId={def.id}
+              prices={prices}
+              owner={owner}
+              atCost={atCost}
+              balance={balance}
+              blockedReason={!user ? "سجّل الدخول أولًا." : !allowed ? "المنصة مغلقة لحسابك حاليًا." : busyUploads ? "انتظر حتى يكتمل رفع المراجع وفحصها." : directing ? "انتظر حتى ينتهي «المخرج الخارق» من كتابة البرومبت." : submitting ? "انتظر حتى يبدأ التوليد." : null}
+              prompt={draft.prompt}
+              instructions={draft.instructions}
+              settings={ev.settings}
+              saved={draft.settings}
+              refStyle={refStyle}
+              refs={draft.refs}
+              styleId={draft.styleId ?? ""}
+              model={claude.id}
+              hasExtra={extras.length > 0}
+              items={items}
+              onJobs={(jobs) => setItems((cur) => [...jobs.filter((j) => filter === "all" || filter === j.outputKind), ...cur.filter((c) => !jobs.some((j) => j.id === c.id))])}
+              onPick={(id) => (switchGenerator(id), setTab("settings"))}
+            />
             {def.output === "image" && (
               <ClaudeCodeCard<JobView>
                 prompt={draft.prompt}
@@ -1077,6 +1169,7 @@ export default function Studio({ section, studioSections, generators, directorGe
             />
             {def.output !== "audio" && <StylePicker value={draft.styleId ?? ""} onChange={(id) => (setDraft((d) => ({ ...d, styleId: id })), setTouched(true), id && track("studio.style"))} />}
             <ReadyApps generators={generators} owner={owner} onUse={applyReady} />
+            <GalleryStrip signedIn={Boolean(user)} onTry={applyGallery} />
             <PromptBox
               def={def}
               ev={ev}
@@ -1173,6 +1266,9 @@ export default function Studio({ section, studioSections, generators, directorGe
             items={items}
             filter={filter}
             onFilter={changeFilter}
+            view={view}
+            onView={changeView}
+            onMarked={(type, id, mark) => setItems((cur) => cur.map((it) => (it.type === type && it.id === id ? { ...it, ...mark } : it)))}
             loading={worksLoading}
             hasMore={Boolean(next)}
             onMore={() => next && loadWorks(filter, next)}

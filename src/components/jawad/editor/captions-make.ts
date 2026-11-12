@@ -7,6 +7,7 @@ import { postJson } from "@/lib/fetch";
 import { putWithProgress } from "../studio/upload";
 import { extractSound, onTimeline, phrases, verses, type CaptionItem, type SpokenWord } from "./captions";
 import type { EditorAsset } from "./types";
+import { translatedLines, type CaptionLine, type TranslateLang } from "@/lib/editor/caption-translate";
 
 export type CaptionSource = { clip: Clip; asset: EditorAsset };
 
@@ -64,4 +65,27 @@ export async function poemCaptions(projectId: string, s: CaptionSource, poem: st
   const items = verses(poem, timed) ?? phrases(timed, 8);
   if (!items.length) throw new Error("ما قدرنا نطابق الأبيات؛ تأكد إنها نفس الكلام المقروء.");
   return items;
+}
+
+/** «ترجم الكابشن»: what translating these lines costs (halalas; 0 = free for this account). */
+export async function translateQuote(projectId: string, lines: CaptionLine[], to: TranslateLang): Promise<number> {
+  const r = await postJson<{ coins: number }>(`/api/jawad/editor/projects/${projectId}`, { action: "translate_captions", quote: true, to, lines: lines.map(({ start, end, body }) => ({ start, end, body })) });
+  return r.coins;
+}
+
+/**
+ * «ترجم الكابشن»: the lines translated at the price agreed. A price that went up comes back as `{ price }` to be asked
+ * again (a lower one is simply taken); any other failure throws with the reason (and the coins were given back).
+ */
+export async function translateRun(projectId: string, lines: CaptionLine[], to: TranslateLang, coins: number): Promise<{ lines: CaptionLine[] } | { price: number }> {
+  const res = await fetch(`/api/jawad/editor/projects/${projectId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "translate_captions", to, expectedCoins: coins, lines: lines.map(({ start, end, body }) => ({ start, end, body })) }),
+  }).catch(() => null);
+  if (!res) throw new Error("ما وصلنا للخادم؛ تأكد من النت وجرّب مرة ثانية (ما انخصم شي).");
+  const r = (await res.json().catch(() => ({}))) as { texts?: string[]; code?: string; coins?: number; error?: string };
+  if (res.status === 409 && r.code === "price_changed" && typeof r.coins === "number") return { price: r.coins };
+  if (!res.ok || !Array.isArray(r.texts)) throw new Error(r.error ?? `تعذّرت الترجمة (${res.status}).`);
+  return { lines: translatedLines(lines, r.texts) };
 }

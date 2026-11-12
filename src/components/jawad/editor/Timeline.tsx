@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { clipEnd, clipLength, duration, formatTime, mainTrack, trackEnd, TRACK_COLORS, TRANSITIONS, type Clip, type Timeline as TL, type Track } from "@/lib/editor/model";
+import { clipEnd, clipLength, duration, formatTime, mainTrack, timelineTime, trackEnd, TRACK_COLORS, TRANSITIONS, type Clip, type Timeline as TL, type Track } from "@/lib/editor/model";
 import type { Command } from "@/lib/editor/commands";
 import { freeSlot, movedLabel, nearestPoint } from "@/lib/editor/snap";
 import Icon from "../Icon";
@@ -405,8 +405,8 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       trackId: track.id,
       start: c.start,
       end: clipEnd(c),
-      lo: media != null ? Math.max(0, c.start - c.in / c.speed) : 0,
-      hi: media != null ? c.start + (media - c.in) / c.speed : Infinity,
+      lo: media != null ? Math.max(0, timelineTime(c, 0)) : 0,
+      hi: media != null ? timelineTime(c, media) : Infinity,
       ghostStart: c.start,
       ghostEnd: clipEnd(c),
       ghostTrack: track.id,
@@ -727,14 +727,14 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       >
         {!pro && track.color && <span className="pointer-events-none absolute inset-0 border-s-4" style={{ borderColor: track.color, background: `${track.color}33` }} />}
         <span className={`pointer-events-none absolute truncate font-medium ${pro ? "inset-x-0 top-0 h-[14px] bg-black/35 px-1.5 py-0 text-[10px] leading-[14px]" : compact ? "inset-x-0 top-0 bg-gradient-to-b from-black/60 to-transparent px-1.5 py-0.5" : `start-1 top-1 max-w-[calc(100%-8px)] rounded bg-black/55 px-1.5 text-[10px] leading-4 backdrop-blur-[2px] ${lanePx(end - start) < 36 ? "hidden" : ""}`}`} dir="auto">
-          {c.text ? c.text.body : nestName ? `🎞 ${nestName}` : compact ? formatTime(clipLength(c)) : (a?.name ?? "")} {c.speed !== 1 && <b>×{c.speed}</b>}
+          {c.text ? c.text.body : nestName ? `🎞 ${nestName}` : compact ? formatTime(clipLength(c)) : (a?.name ?? "")} {c.ramp ? <b title="منحنى السرعة">↝</b> : c.speed !== 1 && <b>×{c.speed}</b>}
         </span>
         {!compact && lanePx(end - start) > 60 && (
           <span className="pointer-events-none absolute bottom-0 left-1 text-[10px] text-white/80">{formatTime(clipLength(c))}</span>
         )}
         {/* motion points */}
         {c.keys.map((key) => {
-          const x = lanePx(c.start + (key.t - c.in) / c.speed - start);
+          const x = lanePx(timelineTime(c, key.t) - start);
           return x >= 0 && x <= lanePx(end - start) ? (
             <span key={key.t} className="pointer-events-none absolute bottom-0.5 h-2 w-2 -translate-x-1/2 rotate-45 border border-black/50 bg-jw-warn" style={{ left: x }} />
           ) : null;
