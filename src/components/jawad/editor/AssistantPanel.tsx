@@ -36,6 +36,8 @@ import { faceOnFrame, type FaceBox } from "@/lib/editor/talk-motion";
 import { faceIn } from "./face";
 import { reframeCandidates, reframeClips, reframeShape, stillThere } from "./reframe-run";
 import { askShorts } from "./shorts-ask";
+import { defaultSound, multicamCameras, planMulticam } from "./multicam-run";
+import { MULTICAM } from "@/lib/editor/multicam";
 import Icon from "../Icon";
 import { blobBase64, canTalk, hear, hush, record, SILENT_PEAK, REPLY_VOICE_KEY, replyVoice, say, wavOf, type RecordingHandle } from "./talk";
 import { useUploads } from "./useUploads";
@@ -696,6 +698,18 @@ function Conversation({
             setFocus(true);
             trackUse("editor.motion_lab");
             piece.start({ brief: q.prompt, seconds: Number(q.seconds) || 15, clipId: onClip, auto: saysEnough(message) });
+          } else if (q.kind === "multicam") {
+            // «بدّل الكاميرات تلقائياً»: each camera's microphone read here (free), the cuts as one undo
+            const ids = (q.clipId ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+            const cams = multicamCameras(tlRef.current, assets, ids, true);
+            if (cams.length < 2) throw new Error("ما لقيت كاميرتين متزامنتين؛ اختر الكاميرات واضغط «🎯 زامن الصوت» أول.");
+            trackUse("editor.multicam");
+            const secs = Number(q.seconds) || 0;
+            const minShotMs = secs > 0 ? Math.round(Math.min(MULTICAM.minShotRange[1], Math.max(MULTICAM.minShotRange[0], secs * 1000))) : MULTICAM.minShotMs;
+            const wide = q.text && cams.some((c) => c.clip.id === q.text.trim()) ? q.text.trim() : null;
+            const r = await planMulticam(cams, { minShotMs, wide, faces: false, sound: defaultSound(tlRef.current, cams, assets) }, (text) => setBusy(text), signal);
+            run(r.command, { label: `بدّل الكاميرات (${r.shots.length} لقطة)` });
+            setMsgs((m) => [...m, { role: "assistant", text: `بدّلت بين الكاميرات: ${r.notes.join(" ")} تقدر تبدّل زاوية أي لقطة من إعداداتها.` }]);
           } else if (q.kind === "reframe") {
             // «اتبع الوجه»: the shape first (when he named another), then each wide video follows its face (read here, free)
             const shape = (["9:16", "1:1", "4:5"] as const).find((r) => r === q.aspect);

@@ -17,7 +17,7 @@ import SequenceTabs from "./SequenceTabs";
 import { DEFAULT_LAYOUT, firstRect, onScreen, PANELS, readLayout, saveLayout, type Layout, type PanelId, type Rect } from "./layout";
 import { ATTRS, copyClips, pasteable, type Attr } from "./clipboard";
 import { gradeView, setGradeView } from "./grade-gl";
-import { allTracks, flatten, clipEnd, duration, findClip, formatTime, mainTrack, type AssetInfo, type Clip, type Timeline as TL, type TrackKind } from "@/lib/editor/model";
+import { allTracks, flatten, clipEnd, duration, findClip, formatTime, mainTrack, type AssetInfo, type CaptionStyle, type Clip, type Timeline as TL, type TrackKind } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
 import Icon, { type IconName } from "../Icon";
 import AssistantPanel from "./AssistantPanel";
@@ -39,7 +39,12 @@ import CaptionsPanel from "./CaptionsPanel";
 import TranscriptPanel from "./TranscriptPanel";
 import ShortsPanel from "./ShortsPanel";
 import { askShorts } from "./shorts-ask";
+import TemplatesPanel from "./TemplatesPanel";
+import type { Template } from "@/lib/editor/templates";
 import { planSync } from "./sync";
+import { defaultSound, multicamCameras, planMulticam } from "./multicam-run";
+import { nextAngle } from "./MulticamBox";
+import { MULTICAM } from "@/lib/editor/multicam";
 import ExportPanel from "./ExportPanel";
 import ChangeLog from "./ChangeLog";
 import type { PageActor } from "@/lib/editor/changes-core";
@@ -162,6 +167,7 @@ const RAIL: { id: string; label: string; icon: string; tab?: InspectorTab; hint:
   { id: "captions", label: "كابشن", icon: "type", hint: "كابشن تلقائي، مزامنة قصيدة، SRT" },
   { id: "transcript", label: "النص", icon: "book", hint: "عدّل من الكلام: احذف كلمات من النص تنحذف من الفيديو، وشيل الحشو" },
   { id: "shorts", label: "مقاطع قصيرة", icon: "scissors", hint: "طلّع ريلز من فيديو طويل، وابحث عن أي كلمة قلتها في مقاطعك" },
+  { id: "templates", label: "قوالب", icon: "grid", hint: "قوالب مونتاج جاهزة: حط مقاطعك في خاناتها وغيّر كلامها" },
   { id: "styles", label: "أساليب", icon: "sparkles", hint: "أساليب مونتاج جاهزة بضغطة" },
   { id: "project", label: "المشروع", icon: "ratio", hint: "المقاس، الخلفية، المغناطيس" },
   { id: "haidara", label: "حيدرا ماكس", icon: "sparkles", hint: "حيدرا ماكس: قل له وش تبي ويعدّل المونتاج" },
@@ -193,6 +199,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const openTranscript = () => {
     setCaptioning(false);
     setShortsOpen(false);
+    setTemplatesOpen(false);
     setTranscriptOpen(true);
   };
   // «مقاطع قصيرة» / «ابحث في الكلام»: the same right column (opened through askShorts, which picks its tab)
@@ -200,8 +207,23 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const openShorts = () => {
     setCaptioning(false);
     setTranscriptOpen(false);
+    setTemplatesOpen(false);
     setShortsOpen(true);
   };
+  // «قوالب المونتاج»: the same right column (a template picked in the launcher opens it by itself)
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [startTemplate, setStartTemplate] = useState<Template | null>(null);
+  const [captionStyle0, setCaptionStyle0] = useState<CaptionStyle | null>(null);
+  const openTemplates = () => {
+    setCaptioning(false);
+    setTranscriptOpen(false);
+    setShortsOpen(false);
+    setTemplatesOpen(true);
+  };
+  // files sent up from the templates window: they stay in the library and go into its slots
+  const tplWaits = useRef(new Map<string, (a: EditorAsset) => void>());
+  // a number for each batch of files sent up (their placements share it)
+  const uploadSeq = useRef(0);
   // «سجل التغييرات» (the top bar, the «تعديل» menu, and حيدرا ماكس's window)
   const [logOpen, setLogOpen] = useState(false);
   // Claude: open beside the work from the start on a computer; on a phone it opens over it when asked
@@ -991,6 +1013,13 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           void upscaleWhole(a, target === "1080p" ? "1080p" : "4k", name.join(":"));
           return;
         }
+        // «قوالب المونتاج»: a file for a slot stays in the library; the window puts it in its slot
+        if (place?.group.startsWith("tpl:")) {
+          const w = tplWaits.current.get(place.group.slice(4));
+          tplWaits.current.delete(place.group.slice(4));
+          w?.(a);
+          return;
+        }
         // «مختبر الموشن»: a picture attached in its conversation stays in the library (the lab is told it is up)
         if (place?.group.startsWith("lib:")) {
           const w = labWaits.current.get(place.group.slice(4));
@@ -1049,7 +1078,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [dropAsk, setDropAsk] = useState<{ files: File[]; at: number; trackId: string | null } | null>(null);
   const dropFiles = (files: File[], at: number, trackId: string | null, mode?: "stack" | "line") => {
     if (files.length > 1 && !mode) return setDropAsk({ files, at, trackId });
-    const group = Math.random().toString(36).slice(2);
+    // (a counter, not Math.random: the React compiler reads this as possibly running while drawing)
+    const group = `drop-${++uploadSeq.current}`;
     uploads.add(files, files.map((_, i) => ({ at, trackId, mode: mode ?? "one", group, first: i === 0 })));
     flash(files.length > 1 ? `نرفع ${files.length} ملفات وننزّلها في التايملاين…` : "نرفع الملف وننزّله في مكانه…");
   };
@@ -1082,6 +1112,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       return () => clearTimeout(t);
     }
     const t = setTimeout(() => {
+      // «قوالب المونتاج»: a template picked in the launcher opens on its slots
+      if (k.template) {
+        setStartTemplate(k.template);
+        setTemplatesOpen(true);
+      }
       if (k.assets.length) {
         addAssets(k.assets);
         const group = `kit-${project.id}`;
@@ -1145,6 +1180,24 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       flash(e instanceof Error ? e.message : "تعذّرت المزامنة.", true);
     } finally {
       setSyncing(false);
+    }
+  };
+  // «بدّل الكاميرات تلقائياً» from the right-click menu: the usual settings (2 s shots, no wide camera), progress in the bar
+  const [switching, setSwitching] = useState(false);
+  const autoSwitch = async (ids: string[]) => {
+    if (switching) return;
+    const map = new Map(assets.map((x) => [x.id, x]));
+    const cams = multicamCameras(tlRef.current, map, ids);
+    if (cams.length < 2) return flash("اختر كاميرتين أو أكثر (مقاطع فيديو متزامنة).", true);
+    track("editor.multicam");
+    setSwitching(true);
+    try {
+      const r = await planMulticam(cams, { minShotMs: MULTICAM.minShotMs, wide: null, faces: false, sound: defaultSound(tlRef.current, cams, map) }, (text) => flash(text));
+      if (run(r.command, { label: `بدّل الكاميرات (${r.shots.length} لقطة)` })) flash(`بدّلت بين الكاميرات: ${r.notes.join(" ")} للكاميرا الواسعة وطول اللقطة: إعدادات المشروع.`);
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "تعذّر التبديل.", true);
+    } finally {
+      setSwitching(false);
     }
   };
   const dropAsset = (id: string, at: number, trackId: string | null) => {
@@ -1488,6 +1541,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       ...(f?.clip.seq ? [{ label: "افتح التسلسل المتداخل", onClick: () => run({ type: "seq_open", id: f.clip.seq! }) }] : []),
       { label: "تقسيم عند المؤشر", keys: "S", onClick: split, disabled: !can },
       ...(ids.length > 1 ? [{ label: syncing ? "أزامن الصوت…" : `🎯 زامن الصوت (${ids.length} مقاطع)`, onClick: () => void syncClips(ids), disabled: !can || syncing }] : []),
+      ...(ids.length > 1 ? [{ label: switching ? "أبدّل الكاميرات…" : `🎬 بدّل الكاميرات تلقائيًا (${ids.length})`, onClick: () => void autoSwitch(ids), disabled: !can || switching }] : []),
+      ...(f?.clip.angle && nextAngle(tlRef.current, f.clip.id) ? [{ label: "🎬 بدّل الزاوية", onClick: () => run({ type: "multicam_angle", clipId: f.clip.id, cam: nextAngle(tlRef.current, f.clip.id)! }), disabled: !can }] : []),
       ...(video ? [{ label: "فصل صوت الفيديو لمسار", onClick: () => run({ type: "extract_audio", clipId: m.clipId! }), disabled: !can }] : []),
       ...(a && a.kind !== "image" && a.hasAudio ? [{ label: "فصل الكلام والموسيقى والمؤثرات", onClick: () => void separateClip(m.clipId!).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true)), disabled: !can }] : []),
       ...(f && !f.clip.text && f.track.kind === "video" ? [{ label: "التلوين", onClick: () => { setWantTab("color"); pick([m.clipId!]); } }] : []),
@@ -1666,6 +1721,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     if (a.open === "captions") setCaptioning(true);
     else if (a.open === "transcript") openTranscript();
     else if (a.open === "shorts" || a.open === "search") askShorts({ tab: a.open });
+    else if (a.open === "templates") openTemplates();
     else if (a.open === "shortcuts") setKeysOpen("page");
     else if (a.open === "layout") setLayoutOpen(true);
     else if (a.open === "log") setLogOpen(true);
@@ -1744,7 +1800,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     <nav className={`${RAIL_NAV[variant]} ${variant === "side" ? "lg:order-last" : ""}`} aria-label="أقسام المحرر">
       {RAIL.filter((r) => !r.tab || !seen.kind || rail !== "inspector" || TABS_OF[seen.kind].includes(r.tab)).map((r, i) => {
             const label = r.id === "edit" && seen.kind && rail === "inspector" ? EDIT_LABEL[seen.kind] : r.label;
-            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.id === "haidara" ? assisting : r.id === "transcript" ? transcriptOpen && !captioning : r.id === "shorts" ? shortsOpen && !captioning : r.tab ? rail === "inspector" && tab === r.tab : false;
+            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.id === "haidara" ? assisting : r.id === "transcript" ? transcriptOpen && !captioning : r.id === "shorts" ? shortsOpen && !captioning : r.id === "templates" ? templatesOpen && !captioning && !transcriptOpen : r.tab ? rail === "inspector" && tab === r.tab : false;
             return (
               <button
                 key={r.id}
@@ -1755,6 +1811,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                   if (r.id === "captions") return setCaptioning(true);
                   if (r.id === "transcript") return openTranscript();
                   if (r.id === "shorts") return openShorts();
+                  if (r.id === "templates") return openTemplates();
                   if (r.id === "haidara") return openClaude();
                   if (r.tab) {
                     openTab(r.tab);
@@ -1803,6 +1860,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         return openTranscript();
       case "shorts":
         return askShorts({ tab: "shorts" });
+      case "templates":
+        return openTemplates();
       case "claude":
         return openClaude(true);
       case "ask":
@@ -2241,7 +2300,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
         {/* «كاب كت»: the right column — an option that needs its own window opens here (the captions, the export) */}
         {wide && !big && !colorRoom && (
-          <div ref={setRightEl} className={`cut-right jw-glass-lg my-2 min-h-0 w-[min(380px,30vw)] shrink-0 flex-col overflow-hidden rounded-2xl ${captioning || transcriptOpen || shortsOpen || exporting || logOpen ? "flex" : "hidden"}`} style={{ order: 1 }} />
+          <div ref={setRightEl} className={`cut-right jw-glass-lg my-2 min-h-0 w-[min(380px,30vw)] shrink-0 flex-col overflow-hidden rounded-2xl ${captioning || transcriptOpen || shortsOpen || templatesOpen || exporting || logOpen ? "flex" : "hidden"}`} style={{ order: 1 }} />
         )}
 
         {/* the rail of sections at the side (the blue and nature looks) */}
@@ -2386,9 +2445,33 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           if (files.length && !readOnly) dropFiles(files, at(), null);
         }}
       />
-      <CaptionsPanel dock={rightEl} open={captioning} onClose={() => setCaptioning(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} />
+      <CaptionsPanel dock={rightEl} open={captioning} onClose={() => setCaptioning(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} style0={captionStyle0} />
       <ShortsPanel dock={rightEl} open={shortsOpen && !captioning} onOpen={openShorts} onClose={() => setShortsOpen(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} player={player} readOnly={readOnly} />
       <TranscriptPanel dock={rightEl} open={transcriptOpen && !captioning} onClose={() => setTranscriptOpen(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} player={player} readOnly={readOnly} />
+      <TemplatesPanel
+        dock={rightEl}
+        open={templatesOpen && !captioning && !transcriptOpen}
+        onClose={() => setTemplatesOpen(false)}
+        tl={tl}
+        assets={assets}
+        thumbs={thumbs}
+        run={run}
+        flash={flash}
+        readOnly={readOnly}
+        start={startTemplate}
+        upload={(files, each) => {
+          const places = files.map((_, i) => {
+            const key = String(++uploadSeq.current);
+            tplWaits.current.set(key, (a) => each(a, i));
+            return { at: 0, trackId: null, mode: "one" as const, group: `tpl:${key}`, first: i === 0 };
+          });
+          uploads.add(files, places);
+        }}
+        onCaptions={(style) => {
+          setCaptionStyle0(style);
+          setCaptioning(true);
+        }}
+      />
       <ChangeLog dock={rightEl} open={logOpen} onClose={() => setLogOpen(false)} projectId={project.id} flush={flush} onRestore={restoreTo} readOnly={readOnly} />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       <ExportPanel

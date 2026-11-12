@@ -49,6 +49,11 @@ export const FEATURES = [
   { id: "studio.camera_move", section: "studio", label: "«🎥 حركة الكاميرا» (اختيار حركة)" },
   { id: "studio.compare_run", section: "studio", label: "«قارن المولّدات» (تشغيل مقارنة)" },
   { id: "studio.compare_pick", section: "studio", label: "«كمّل بهذا» من المقارنة" },
+  { id: "studio.image_tools", section: "studio", label: "فتح «🖼️ أدوات الصورة»" },
+  { id: "studio.inpaint", section: "studio", label: "«امسح بالفرشاة · عدّل هالجزء» (إرسال)" },
+  { id: "studio.smart_select", section: "studio", label: "«✨ تحديد ذكي» في أدوات الصورة" },
+  { id: "studio.outpaint", section: "studio", label: "«وسّع الصورة» (إرسال)" },
+  { id: "studio.upscale", section: "studio", label: "«ارفع دقة الصورة» (إرسال)" },
 
   // «حيدرة كت» (/jawad-ai/editor)
   { id: "editor.open", section: "editor", label: "فتح مشروع في حيدرة كت" },
@@ -70,6 +75,11 @@ export const FEATURES = [
   { id: "editor.key", section: "editor", label: "الكي (كروما / لوما)" },
   { id: "editor.beat", section: "editor", label: "علامات الإيقاع" },
   { id: "editor.sync", section: "editor", label: "«زامن الصوت»" },
+  { id: "editor.multicam", section: "editor", label: "«بدّل الكاميرات تلقائياً» (مالتي كام)" },
+  { id: "editor.multicam_angle", section: "editor", label: "«بدّل الزاوية» على لقطة من الكاميرات" },
+  { id: "editor.templates", section: "editor", label: "فتح «قوالب المونتاج»" },
+  { id: "editor.template_use", section: "editor", label: "«قوالب المونتاج»: بناء مشروع من قالب" },
+  { id: "editor.template_save", section: "editor", label: "«احفظ كقالب»" },
   { id: "editor.motion_track", section: "editor", label: "«مسار الموشن» (عنصر موشن)" },
   { id: "editor.motion_lab", section: "editor", label: "«مختبر الموشن»" },
   { id: "editor.depth", section: "editor", label: "«موشن العمق» (ورا الشخص / تتبّع الوجه)" },
@@ -123,7 +133,7 @@ export const FUNNELS: Record<UseSection, { label: string; any: FeatureId[] }[]> 
     { label: "كتبوا برومبت", any: ["studio.prompt"] },
     { label: "ضغطوا «توليد»", any: ["studio.generate"] },
     { label: "نجح توليدهم", any: ["studio.job_ok"] },
-    { label: "نزّلوا النتيجة أو استخدموها", any: ["studio.download", "studio.use_as_ref", "studio.share_link", "studio.share_permanent", "studio.gallery_publish", "studio.variation", "studio.smart_edit", "studio.compose_person"] },
+    { label: "نزّلوا النتيجة أو استخدموها", any: ["studio.download", "studio.use_as_ref", "studio.share_link", "studio.share_permanent", "studio.gallery_publish", "studio.variation", "studio.smart_edit", "studio.compose_person", "studio.inpaint", "studio.outpaint", "studio.upscale"] },
   ],
   editor: [
     { label: "فتحوا حيدرة كت", any: ["editor.open"] },

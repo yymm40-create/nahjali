@@ -33,6 +33,8 @@ import RefsStrip from "./RefsStrip";
 import type { WorkSource } from "./RefAdder";
 import { probeFile, putWithProgress } from "./upload";
 import WorksPanel from "./WorksPanel";
+import ImageTools, { type ImageSource } from "./ImageTools";
+import { isImageTool } from "@config/jawad/image-tools";
 import CompareGenerators from "./CompareGenerators";
 import { DEFAULT_VIEW, worksQuery, type WorksView } from "@/lib/jawad/works-organise";
 import StylePicker from "./StylePicker";
@@ -155,10 +157,14 @@ function withRoles(refs: RefItem[], style: RefStyle): RefItem[] {
   });
 }
 
-export default function Studio({ section, studioSections, generators, directorGenerators, prices: initialPrices, user, owner, allowed, balance: initialBalance, initialWorks, pricing, freeImageAvailable }: StudioProps) {
+export default function Studio({ section, studioSections, generators: allGenerators, directorGenerators, prices: initialPrices, user, owner, allowed, balance: initialBalance, initialWorks, pricing, freeImageAvailable }: StudioProps) {
   // the riyal pricing in force (rate, step, margins), so the prices here match the server's to the halala
   setPricing(pricing);
   const router = useRouter();
+  // «🖼️ أدوات الصورة» are generators too (the same job, price and refund) but open only on a picture, never from the list
+  const generators = useMemo(() => allGenerators.filter((g) => !isImageTool(g.id)), [allGenerators]);
+  const imageTools = useMemo(() => allGenerators.filter((g) => isImageTool(g.id)), [allGenerators]);
+  const [imageTool, setImageTool] = useState<ImageSource | null>(null);
   const unified = studioSections.length > 1;
   const key = draftKey(user?.id, unified ? "studio" : section.id);
   const first = generators[0]?.id ?? "";
@@ -812,6 +818,9 @@ export default function Studio({ section, studioSections, generators, directorGe
 
   async function reuse(j: JobView) {
     track("studio.reuse");
+    // a job of «أدوات الصورة»: its tool opens again on the same picture
+    const toolPicture = isImageTool(j.generatorId) ? j.refs.find((r) => r.kind === "image") : undefined;
+    if (toolPicture && imageTools.some((g) => g.id === j.generatorId)) return setImageTool({ uploadId: toolPicture.uploadId, url: null, width: null, height: null, tool: isImageTool(j.generatorId) ? j.generatorId : undefined });
     if (!generators.some((g) => g.id === j.generatorId)) {
       setNotice("مولد هذا العمل غير متاح الآن؛ حمّلنا البرومبت فقط.");
       setDraft((d) => ({ ...d, prompt: j.prompt, instructions: j.instructions }));
@@ -874,7 +883,7 @@ export default function Studio({ section, studioSections, generators, directorGe
   /** «نسخة ثانية»: the same prompt, settings and references, generated again (a new result, same price). */
   async function variation(j: JobView) {
     if (!user || !allowed) return setNotice("سجّل الدخول للتوليد.");
-    if (!generators.some((g) => g.id === j.generatorId)) return setNotice("مولد هذا العمل غير متاح الآن.");
+    if (!allGenerators.some((g) => g.id === j.generatorId)) return setNotice("مولد هذا العمل غير متاح الآن.");
     track("studio.variation");
     setNotice("");
     const tempId = `temp-${uid()}`;
@@ -1167,6 +1176,14 @@ export default function Studio({ section, studioSections, generators, directorGe
               onRemove={removeRef}
               onRole={(id, role) => updateRef(id, { role })}
             />
+            {user && allowed && imageTools.length > 0 && def.output === "image" && (() => {
+              const pic = draft.refs.find((r) => r.kind === "image" && r.status === "ready" && r.uploadId && /^image\/(png|jpeg|webp)$/.test(r.mime));
+              return pic ? (
+                <button type="button" className="jw-btn !min-h-9 w-full gap-1.5 text-xs !border-jw-accent/50 text-jw-accent" onClick={() => (track("studio.image_tools"), setImageTool({ uploadId: pic.uploadId!, url: pic.url, width: pic.width, height: pic.height }))}>
+                  <Icon name="wand" size={14} /> أدوات الصورة على «@{pic.name}»: امسح جزء، وسّعها، ارفع دقتها
+                </button>
+              ) : null;
+            })()}
             {def.output !== "audio" && <StylePicker value={draft.styleId ?? ""} onChange={(id) => (setDraft((d) => ({ ...d, styleId: id })), setTouched(true), id && track("studio.style"))} />}
             <ReadyApps generators={generators} owner={owner} onUse={applyReady} />
             <GalleryStrip signedIn={Boolean(user)} onTry={applyGallery} />
@@ -1287,6 +1304,7 @@ export default function Studio({ section, studioSections, generators, directorGe
               announceBalance(balance);
               setTab("works");
             }}
+            onImageTool={user && allowed && imageTools.length ? (o) => (track("studio.image_tools"), setImageTool({ outputId: o.id, url: o.url, width: o.width, height: o.height })) : undefined}
           />
         </div>
       </div>
@@ -1362,6 +1380,22 @@ export default function Studio({ section, studioSections, generators, directorGe
           </div>
         )}
       </Dialog>
+      {imageTools.length > 0 && (
+        <ImageTools
+          open={Boolean(imageTool)}
+          onClose={() => setImageTool(null)}
+          source={imageTool}
+          tools={imageTools}
+          prices={prices}
+          owner={owner}
+          balance={balance}
+          onCreated={(j) => {
+            setImageTool(null);
+            setItems((cur) => (filter === "all" || filter === "image" ? [j, ...cur.filter((c) => c.id !== j.id)] : cur));
+            setTab("works");
+          }}
+        />
+      )}
     </div>
   );
 }
