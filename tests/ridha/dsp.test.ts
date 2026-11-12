@@ -846,21 +846,38 @@ describe("الرضا فويس: the level tools, the punch and the master", () =>
     expect(takesOf(r.project, r.clip).map((c) => c.assetId).sort()).toEqual(["new", "old"]);
   });
 
-  it("builds a master by style and strength, and matches a reference's tone", async () => {
-    const { buildMaster, MASTER_STYLES, matchTone, toneOf, TONE_FREQS } = await import("@/lib/ridha/master");
+  it("builds eight masters, each at a strength from 0 to 100 in eleven steps, and matches a reference's tone", async () => {
+    const { buildMaster, MASTER_STYLES, matchTone, toneOf, TONE_FREQS, STRENGTHS, strengthOf } = await import("@/lib/ridha/master");
+    expect(MASTER_STYLES).toHaveLength(8);
+    expect(new Set(MASTER_STYLES.map((s) => s.id)).size).toBe(8);
+    expect(STRENGTHS).toEqual([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
     for (const s of MASTER_STYLES) {
-      const fx = buildMaster(s.id, 3);
+      const fx = buildMaster(s.id, 50);
       expect(fx[0].kind).toBe("eq");
       expect(fx[fx.length - 1].kind).toBe("limiter");
       expect(fx.some((f) => f.kind === "comp")).toBe(true);
       expect(fx[0].bands!.slice(1, 7).map((b) => b.freq)).toEqual(TONE_FREQS);
+      // at 0 the mix is left alone: a flat equalizer and only the ceiling
+      const none = buildMaster(s.id, 0);
+      expect(none.map((f) => f.kind)).toEqual(["eq", "limiter"]);
+      expect(none[0].bands!.every((b) => b.gain === 0 && (b.type === "highpass" || b.type === "lowpass" ? !b.on : true))).toBe(true);
     }
-    const soft = buildMaster("loud", 1), hard = buildMaster("loud", 5);
-    const lim = (fx: typeof soft) => fx[fx.length - 1].p.threshold;
-    expect(lim(hard)).toBeLessThan(lim(soft) - 3);
-    expect(Math.abs(hard[0].bands![6].gain)).toBeGreaterThan(Math.abs(soft[0].bands![6].gain));
+    // no two masters are the same
+    const sig = MASTER_STYLES.map((s) => JSON.stringify(buildMaster(s.id, 50).map((f) => [f.kind, f.p, f.bands?.map((b) => b.gain)])));
+    expect(new Set(sig).size).toBe(8);
+    const lim = (fx: ReturnType<typeof buildMaster>) => fx[fx.length - 1].p.threshold;
+    const soft = buildMaster("fire", 10), mid = buildMaster("fire", 50), hard = buildMaster("fire", 100);
+    expect(lim(hard)).toBeLessThan(lim(mid));
+    expect(lim(mid)).toBeLessThan(lim(soft));
+    expect(hard[0].bands![1].gain).toBeGreaterThan(mid[0].bands![1].gain);
+    expect(mid[0].bands![1].gain).toBeGreaterThan(soft[0].bands![1].gain);
+    // a project saved with the old 1–5 strength reads it on the new scale
+    expect([strengthOf(1), strengthOf(3), strengthOf(5), strengthOf(undefined), strengthOf(73), strengthOf(0)]).toEqual([20, 60, 100, 50, 70, 0]);
+    // tape warms, the wide and the cinematic ones add a faint room
+    expect(buildMaster("tape", 50).some((f) => f.kind === "dist")).toBe(true);
+    expect(buildMaster("spatial", 50).some((f) => f.kind === "reverb")).toBe(true);
     // a matched reference is added on top of the style
-    const plain = buildMaster("balanced", 3), matched = buildMaster("balanced", 3, [0, 0, 0, 0, 0, 3]);
+    const plain = buildMaster("universal", 50), matched = buildMaster("universal", 50, [0, 0, 0, 0, 0, 3]);
     expect(matched[0].bands![6].gain - plain[0].bands![6].gain).toBeCloseTo(3, 5);
 
     const noise = new Float32Array(4 * SR);

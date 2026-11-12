@@ -1,13 +1,14 @@
 "use client";
 
-// «الرضا فويس» — the master in one press: a style, how hard it is pushed, heard at once on the whole mix and
+// «الرضا فويس» — the master in one press, run on the person's own device: one of eight ready masters, how hard it is
+// pushed (0–100 in eleven steps, BandLab's way), heard at once on the whole mix and
 // compared with the mix as it was; and a reference — a song the person admires — whose tone and loudness are measured
 // beside the mix's, the difference added to the master's equalizer. What is built is the studio's own effects on the
 // master chain, so every knob can still be opened from «المؤثرات».
 
 import { useState } from "react";
 import { loudness, peakDb } from "@/lib/ridha/dsp/loudness";
-import { buildMaster, MASTER_STYLES, masterStyle, matchTone, TONE_NAMES, toneOf } from "@/lib/ridha/master";
+import { buildMaster, DEFAULT_STRENGTH, MASTER_STYLES, masterStyle, matchTone, STRENGTHS, strengthOf, TONE_NAMES, toneOf } from "@/lib/ridha/master";
 import { makeFx, SR, type Project } from "@/lib/ridha/model";
 import { setChain } from "@/lib/ridha/ops";
 import { decodeFile, renderProject } from "../engine";
@@ -22,7 +23,7 @@ interface Heard {
 // the reference outlives the window being closed (it is a measurement, not part of the project)
 let reference: (Heard & { name: string }) | null = null;
 
-const LEVELS = [1, 2, 3, 4, 5].map((v) => ({ value: v, label: String(v), title: v === 1 ? "لمسة خفيفة" : v === 3 ? "الستايل كما هو" : v === 5 ? "أقصى دفع" : undefined }));
+const feel = (v: number) => (v === 0 ? "بدون — القمم فقط" : v <= 20 ? "لمسة خفيفة" : v < 50 ? "أخف" : v === 50 ? "الستايل كما هو" : v < 90 ? "أقوى" : "أقصى دفع");
 
 export default function MasterPanel() {
   const st = useStudio();
@@ -30,12 +31,12 @@ export default function MasterPanel() {
   const m = project.mastering;
   const [ref, setRef] = useState(reference);
   const [mix, setMix] = useState<Heard | null>(null);
-  const [level, setLevel] = useState(m?.level ?? 3);
+  const [level, setLevel] = useState(strengthOf(m?.level ?? DEFAULT_STRENGTH));
 
   if (!project.clips.length) return <Empty icon="" title="ما في مكس بعد">سجّل أو استورد صوتًا أولًا، ثم ارجع للماستر.</Empty>;
 
   const put = (style: string, lv: number, match?: number[], refName?: string) => {
-    store.set((p) => ({ ...setChain(p, "master", buildMaster(style, lv, match)), mastering: { style, level: lv, match, ref: match ? refName : undefined } }));
+    store.set((p) => ({ ...setChain(p, "master", buildMaster(style, lv, match)), mastering: { style, level: lv, match, ref: match ? refName : undefined } }), { merge: `master-${style}` });
     setMix(null);
   };
   const off = () => {
@@ -86,7 +87,7 @@ export default function MasterPanel() {
       return matchTone(toneOf(await measure(project, true), SR), ref.tone);
     });
     if (!res) return;
-    put(m?.style ?? "balanced", m?.level ?? level, res, ref.name);
+    put(m?.style ?? "universal", m ? strengthOf(m.level) : level, res, ref.name);
     st.toast(`نبرة «${ref.name}» أضيفت لإكولايزر الماستر — التراجع بـ ⌘Z`);
   };
 
@@ -95,7 +96,7 @@ export default function MasterPanel() {
       <div className="rv-master-main">
         <div className="rv-panel-head">
           <b>ماستر بضغطة</b>
-          <span className="rv-muted">على المكس كله · تسمعه فورًا · كل شيء على الجهاز</span>
+          <span className="rv-muted">ضغطة على نوع = يتطبق على المشروع كامل · تسمعه فورًا · يشتغل على جهازك نفسه</span>
           <span className="rv-grow" />
           {m ? <Seg small value={bypassed ? "off" : "on"} options={[{ value: "off", label: "قبل" }, { value: "on", label: "بعد" }]} onChange={(v) => bypass(v === "off")} /> : null}
         </div>
@@ -108,12 +109,18 @@ export default function MasterPanel() {
           ))}
         </div>
         <div className="rv-master-level">
-          <span>القوة</span>
-          <Seg value={level} options={LEVELS} onChange={(v) => {
+          <span className="rv-master-level-top">
+            <span>الشدة</span>
+            <b dir="ltr">{level}</b>
+            <span className="rv-muted">{m ? `${masterStyle(m.style).name} · ${feel(level)}` : "اختر نوع ماستر من فوق"}</span>
+          </span>
+          <input type="range" min={0} max={100} step={10} value={level} list="rv-strengths" aria-label="شدة الماستر" style={{ ["--fill" as string]: `${level}%` }} onChange={(e) => {
+            const v = Number(e.target.value);
             setLevel(v);
             if (m) put(m.style, v, m.match, m.ref);
           }} />
-          <span className="rv-muted">{m ? `${masterStyle(m.style).name} · ${level === 1 ? "لمسة خفيفة" : level === 5 ? "أقصى دفع" : level === 3 ? "كما هو" : level < 3 ? "أخف" : "أقوى"}` : "اختر ستايل من فوق"}</span>
+          <datalist id="rv-strengths">{STRENGTHS.map((v) => <option key={v} value={v} />)}</datalist>
+          <span className="rv-master-ticks" dir="ltr">{STRENGTHS.map((v) => <i key={v} className={v === level ? "on" : ""}>{v}</i>)}</span>
         </div>
         <div className="rv-clean-go">
           <Btn onClick={() => void check()}>قِس المكس</Btn>
