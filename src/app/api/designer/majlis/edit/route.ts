@@ -52,8 +52,9 @@ export const POST = handle(async (req: Request) => {
     keep: null,
     maker: "code",
     place: order.people.map((p) => p.photo),
-    // the photos placed before stay (already cut out when that was asked)
-    majlis: { ...order, ...(order.cut ? { cutDone: true } : {}) },
+    // the same photos and the same background choice: cut out again when they were cut in the page (only the
+    // server's cut is kept as photos of their own — `cutDone` says so)
+    majlis: order,
     majlisMaker: maker,
     majlisEdit: { said, prev: prev.artwork, ...(maker === "code" && program ? { code: program.code, fonts: program.fonts } : {}) },
   };
