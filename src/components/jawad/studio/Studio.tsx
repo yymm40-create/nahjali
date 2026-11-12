@@ -36,6 +36,8 @@ import WorksPanel from "./WorksPanel";
 import StylePicker from "./StylePicker";
 import MorePrompts from "./MorePrompts";
 import ReadyApps from "./ReadyApps";
+import GalleryStrip from "../gallery/GalleryStrip";
+import { buildTryDraft, type GalleryCard } from "@config/jawad/gallery";
 import { composeReady, composerSideOf, fitSettings, type ReadyApp, type ReadyValues } from "@config/jawad/ready-apps";
 import { findStyle } from "@config/film-styles";
 import { refKindOfTag, takeCreativeUse } from "@/lib/jawad/creative-use";
@@ -981,6 +983,59 @@ export default function Studio({ section, studioSections, generators, directorGe
         (add.length ? ` أضف ${add.map((s) => s.what).join(" و")} من «المراجع» (ياخذ اسم ${add.map((s) => `@${s.name}`).join(" و")} تلقائيًا)، ثم اضغط «توليد».` : " راجع البرومبت واضغط «توليد».")
     );
   }
+  // ── «معرض الناس»: «جرّبه» fills the form with a work's kind, generator (or one of the same kind), shape, style and
+  // prompt — never its references: the person's own pictures take the names the prompt mentions ──
+  function applyGallery(item: Pick<GalleryCard, "id" | "kind" | "title" | "generatorId" | "generatorName" | "prompt" | "settings" | "styleId" | "refStyle" | "refNames">) {
+    const t = buildTryDraft(item, generators);
+    if (!t) return setNotice(`ما فيه مولّد ${item.kind === "video" ? "فيديو" : "صور"} متاح لحسابك الحين.`);
+    const gid = t.generatorId;
+    setDraft((d) => ({
+      ...d,
+      generatorId: gid,
+      prompt: t.prompt,
+      instructions: "",
+      settings: { ...d.settings, [gid]: t.settings },
+      refStyle: { ...d.refStyle, [gid]: t.refStyle },
+      refs: t.refs,
+      styleId: t.styleId,
+      extra: [],
+      mainRefs: null,
+      wantNames: t.wantNames,
+    }));
+    setReadySide(null);
+    setBeforeDirector(null);
+    setTouched(true);
+    setTab("settings");
+    const gname = generators.find((g) => g.id === gid)?.name ?? generatorById(gid)?.name ?? gid;
+    setNotice(
+      `جهّزنا ${item.title ? `«${item.title}»` : "العمل"} من معرض الناس على ${gname}` +
+        (t.fellBack ? ` (مولّده «${item.generatorName}» مو متاح لحسابك، فاخترنا واحد من نفس النوع).` : " بنفس الإعدادات.") +
+        (t.wantNames.length ? ` أضف صورك أنت بالترتيب: ${t.wantNames.map((w) => `@${w.name}`).join("، ")}، وبتاخذ هالأسماء تلقائيًا.` : " عدّل اللي تبيه واضغط «توليد».")
+    );
+  }
+  // opened from the gallery or a shared work's page (?gallery=<id>): the work is read from the server once the draft is restored
+  const galleryTaken = useRef(false);
+  useEffect(() => {
+    if (!hydrated || galleryTaken.current) return;
+    const id = new URLSearchParams(window.location.search).get("gallery");
+    if (!id) return;
+    galleryTaken.current = true;
+    try {
+      window.history.replaceState(null, "", window.location.pathname);
+    } catch {
+      // the address keeps ?gallery=; it was already taken
+    }
+    call<{ item: GalleryCard }>(`/api/jawad/gallery/${encodeURIComponent(id)}`)
+      .then(({ ok, body }) => {
+        if (!ok || !body.item) return setNotice(body.error ?? "هذا العمل ما عاد موجود في المعرض.");
+        track("studio.gallery_try");
+        applyGallery(body.item);
+      })
+      .catch(() => setNotice("انقطع الاتصال، ما قدرنا نجيب العمل من المعرض."));
+    // applyGallery reads this render's generators only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
+
   const composerPersons = draft.refs.flatMap((r) => (r.kind === "image" && r.status === "ready" && r.url ? [{ name: r.name, url: r.url }] : []));
   const composerResults = items.flatMap((it) => (it.type === "job" && it.status === "succeeded" ? it.outputs.filter((o) => o.kind === "image" && o.url).map((o) => ({ id: o.id, url: o.url! })) : [])).slice(0, 8);
 
@@ -1077,6 +1132,7 @@ export default function Studio({ section, studioSections, generators, directorGe
             />
             {def.output !== "audio" && <StylePicker value={draft.styleId ?? ""} onChange={(id) => (setDraft((d) => ({ ...d, styleId: id })), setTouched(true), id && track("studio.style"))} />}
             <ReadyApps generators={generators} owner={owner} onUse={applyReady} />
+            <GalleryStrip signedIn={Boolean(user)} onTry={applyGallery} />
             <PromptBox
               def={def}
               ev={ev}
