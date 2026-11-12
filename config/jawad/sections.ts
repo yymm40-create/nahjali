@@ -61,8 +61,8 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
   // open to everyone: the ready kids' booklet, or tables designed with «عباس» أو «زينب» (src/app/jawad-ai/booklet)
   { id: "booklet", name: "كتيب الجداول الذكي", icon: "book", implementation: "booklet", sort: 55, enabled: true },
   { id: "kharq", name: "محمد الخارق", icon: "sparkles", implementation: "kharq", sort: 97, enabled: false },
-  // in its private trial: the page opens for the owner; for everyone once the owner turns the section on (src/app/jawad-ai/ridha)
-  { id: "ridha", name: "الرضا فويس", icon: "mic", implementation: "ridha", sort: 42, enabled: false },
+  // open to everyone (the owner's order of 12 November 2026: «افتح الرضا فويس للجميع»); the owner can still hide it from the dashboard
+  { id: "ridha", name: "الرضا فويس", icon: "mic", implementation: "ridha", sort: 42, enabled: true },
 ];
 
 /** Paths under /jawad-ai that a section id may not take. */

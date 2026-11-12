@@ -10,8 +10,8 @@ export const metadata = { title: RIDHA.name };
 
 /**
  * «الرضا فويس»: the sound studio. Everything in it runs on the person's device (no sound is uploaded; only the
- * conversation with «الرضا ماكس» uses the balance), so it has no permission of its own: the owner always; everyone else once the owner turns the section on
- * from the dashboard (it starts off, in its private trial).
+ * conversation with «الرضا ماكس» uses the balance), so it has no permission of its own: open to every signed-in person
+ * (the owner's order of 12 November 2026); if the owner hides the section from the dashboard, only the owner sees it.
  */
 export default async function RidhaPage() {
   const [{ user, owner }, rt] = await Promise.all([jawadSession(), loadRuntime()]);
