@@ -1,3 +1,4 @@
+import UsePing from "@/components/mahdi/UsePing";
 import { redirect } from "next/navigation";
 import GymShell from "@/components/mahdi/health/GymShell";
 import HealthProvider from "@/components/mahdi/health/HealthProvider";
@@ -19,6 +20,7 @@ export default async function GymLayout({ children }: { children: React.ReactNod
   return (
     <MahdiProvider initial={snapshot}>
       <HealthProvider>
+        <UsePing />
         <GymShell>{children}</GymShell>
       </HealthProvider>
     </MahdiProvider>

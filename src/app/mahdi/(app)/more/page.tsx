@@ -16,6 +16,7 @@ import type { Profile, Shrine } from "@/lib/mahdi/types";
 import Avatar from "@/components/mahdi/Avatar";
 import { FeedbackCard } from "@/components/mahdi/Feedback";
 import InstallCard from "@/components/mahdi/InstallCard";
+import MetricsLink from "@/components/mahdi/MetricsLink";
 import UsernameForm from "@/components/mahdi/UsernameForm";
 import Icon from "@/components/mahdi/Icon";
 import { ShrinePicker, ThemePicker } from "@/components/mahdi/LookPickers";
@@ -114,6 +115,7 @@ export default function MorePage() {
       <BookletCard />
       <FeedbackCard place="more" />
       <InstallCard />
+      <MetricsLink />
 
       <section className="m-card space-y-5 p-5">
         <h2 className="font-semibold">{t.more.profile}</h2>
