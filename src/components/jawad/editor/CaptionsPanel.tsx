@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CAPTION_STYLES, clipLength, formatTime, type CaptionStyle, type Timeline } from "@/lib/editor/model";
 import DockFrame from "./DockFrame";
 import Icon from "../Icon";
@@ -8,6 +8,7 @@ import { parseSRT, toSRT } from "./captions";
 import { captionSources, poemCaptions, spokenCaptions } from "./captions-make";
 import type { Run } from "./Inspector";
 import type { EditorAsset } from "./types";
+import { track } from "@/lib/feature-track";
 
 type Tab = "auto" | "poem" | "srt";
 const LANGS = [
@@ -27,6 +28,9 @@ export default function CaptionsPanel({ dock, open, onClose, projectId, tl, asse
   const [poemClip, setPoemClip] = useState<string>("");
   const [skip, setSkip] = useState<string[]>([]);
   const srtInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (open) track("editor.captions");
+  }, [open]);
 
   // clips we can hear (their sound is what gets written)
   const sources = captionSources(tl, assets);

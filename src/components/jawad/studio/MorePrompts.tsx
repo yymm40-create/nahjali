@@ -5,6 +5,7 @@
 // them, with their references, in order.
 
 import { MAX_PROMPTS, type ExtraPrompt } from "./types";
+import { track } from "@/lib/feature-track";
 
 function RefChips({ all, value, onChange }: { all: string[]; value: string[] | null; onChange: (v: string[] | null) => void }) {
   if (!all.length) return <p className="text-[11px] text-jw-faint">ما فيه مراجع فوق؛ أضف مراجع إذا تبي تحددها لكل برومبت.</p>;
@@ -55,7 +56,7 @@ export default function MorePrompts({ refs, extra, mainRefs, onChange }: { refs:
         </div>
       ))}
       {extra.length < MAX_PROMPTS - 1 && (
-        <button type="button" className="jw-btn !min-h-9 w-full text-xs" onClick={() => onChange([...extra, { prompt: "", refs: null }], mainRefs)}>
+        <button type="button" className="jw-btn !min-h-9 w-full text-xs" onClick={() => (track("studio.extra_prompt"), onChange([...extra, { prompt: "", refs: null }], mainRefs))}>
           ➕ أضف برومبت {extra.length ? "ثالث" : "ثاني"} (يتولّد معه بنفس الوقت)
         </button>
       )}

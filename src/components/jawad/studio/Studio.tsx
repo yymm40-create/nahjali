@@ -41,6 +41,7 @@ import { refMeta, type Draft, type RefItem, type StudioProps, type UploadView } 
 import Coined from "@/components/Coined";
 import { useAtCost } from "@/components/usePerks";
 import ClaudeCodeCard from "@/components/claude-code/ClaudeCodeCard";
+import { track } from "@/lib/feature-track";
 
 /** The person is on another tab: the title changes until they come back, and a system notification when allowed. */
 function notifyDone(count: number, anyFailed: boolean) {
@@ -174,6 +175,8 @@ export default function Studio({ section, studioSections, generators, directorGe
     const t = setTimeout(() => setDirectorOpen(true), 0);
     return () => clearTimeout(t);
   }, []);
+  // «استخدام المزايا»: the studio was opened
+  useEffect(() => track("studio.open"), []);
   const [notice, setNotice] = useState("");
   const [touched, setTouched] = useState(false);
   const files = useRef(new Map<string, File>());
@@ -348,6 +351,7 @@ export default function Studio({ section, studioSections, generators, directorGe
   }
 
   function switchOutput(output: OutputKind) {
+    track(`studio.kind.${output}`);
     const next = generators.find((generator) => generatorById(generator.id)?.output === output);
     if (!next) return setNotice(`لا يوجد مولّد ${output === "image" ? "صور" : output === "video" ? "فيديو" : "صوت"} متاح لحسابك الآن.`);
     switchGenerator(next.id);
@@ -384,6 +388,7 @@ export default function Studio({ section, studioSections, generators, directorGe
 
   function addFiles(kind: RefKind, list: File[], role?: RefRole) {
     if (!def) return;
+    track("studio.ref_add");
     // The new references and their files; each upload starts on its own (never from inside a state update,
     // which may run later). Their names and roles are given in the (pure) update below.
     const added = list.map((file) => ({
@@ -489,6 +494,7 @@ export default function Studio({ section, studioSections, generators, directorGe
           setOffline(false);
           const byId = new Map(body.jobs.map((j) => [j.id, j]));
           const finished = body.jobs.filter((j) => j.status === "succeeded" || j.status === "failed").length;
+          for (const j of body.jobs) if (j.status === "succeeded") track("studio.job_ok");
           if (finished && document.hidden) notifyDone(finished, body.jobs.some((j) => j.status === "failed"));
           setItems((cur) => cur.map((it) => (it.type === "job" && byId.has(it.id) ? byId.get(it.id)! : it)));
           announceBalance(body.balance);
@@ -556,6 +562,7 @@ export default function Studio({ section, studioSections, generators, directorGe
     if (!library?.active) return "«المكتبة» مقفلة.";
     if (!ev?.refKinds.image?.allowed) return ev?.refKinds.image?.reason ?? "هذا المولد لا يقبل صورًا مرجعية.";
     if (draft.refs.some((r) => sameName(r.name, it.name))) return `يوجد مرجع آخر باسم «@${it.name}»؛ غيّر اسمه أولًا.`;
+    track("studio.ref_add");
     setDraft((d) => ({ ...d, refs: [...d.refs, libraryRef(it, refStyle === "frames" ? role ?? nextFrameRole(d.refs) : "reference")] }));
     return null;
   }
@@ -581,6 +588,7 @@ export default function Studio({ section, studioSections, generators, directorGe
     : null;
   const price = plan ? (plan.every((x) => x.ev.price.ok) ? plan.reduce((t, x) => t + (x.ev.price.ok ? x.ev.price.coins : 0), 0) : null) : ev?.price.ok ? ev.price.coins : null;
   async function submitAll() {
+    track("studio.generate");
     if (!plan) return price != null && submit(price);
     for (const x of plan) if (x.ev.price.ok) await submit(x.ev.price.coins, { prompt: x.prompt, refs: x.refs });
   }
@@ -616,6 +624,7 @@ export default function Studio({ section, studioSections, generators, directorGe
 
   async function runDirector(expectedCoins: number) {
     if (!def || directing) return;
+    track("studio.director_boost");
     setDirecting(true);
     setNotice("");
     const original = draft.prompt;
@@ -781,6 +790,7 @@ export default function Studio({ section, studioSections, generators, directorGe
   }, [draft.prompt, freeImageAvailable, hydrated, router, submitting]);
 
   async function reuse(j: JobView) {
+    track("studio.reuse");
     if (!generators.some((g) => g.id === j.generatorId)) {
       setNotice("مولد هذا العمل غير متاح الآن؛ حمّلنا البرومبت فقط.");
       setDraft((d) => ({ ...d, prompt: j.prompt, instructions: j.instructions }));
@@ -816,6 +826,7 @@ export default function Studio({ section, studioSections, generators, directorGe
   async function addFromWork(source: WorkSource, role?: RefRole): Promise<string | null> {
     const { ok, body } = await postJson<{ upload: UploadView }>("/api/jawad/uploads/from-output", source);
     if (!ok) return body.error ?? "تعذّر إضافته كمرجع.";
+    track("studio.ref_add");
     setDraft((d) => ({ ...d, refs: [...d.refs, fromView(body.upload, refStyle === "frames" && body.upload.kind === "image" ? role ?? nextFrameRole(d.refs) : "reference", nextName(body.upload.kind, d.refs, d.wantNames))] }));
     return null;
   }
@@ -832,6 +843,7 @@ export default function Studio({ section, studioSections, generators, directorGe
   }
 
   async function useAsRef(o: OutputView) {
+    track("studio.use_as_ref");
     const err = await addFromWork({ outputId: o.id });
     if (err) return setNotice(err);
     setNotice("أضفناه إلى المراجع.");
@@ -842,6 +854,7 @@ export default function Studio({ section, studioSections, generators, directorGe
   async function variation(j: JobView) {
     if (!user || !allowed) return setNotice("سجّل الدخول للتوليد.");
     if (!generators.some((g) => g.id === j.generatorId)) return setNotice("مولد هذا العمل غير متاح الآن.");
+    track("studio.variation");
     setNotice("");
     const tempId = `temp-${uid()}`;
     const temp: JobView = { ...j, id: tempId, createdAt: new Date().toISOString(), finishedAt: null, status: "validating", providerStatus: null, progress: null, error: null, cancellable: false, outputs: [], chargeState: "none" };
@@ -984,6 +997,7 @@ export default function Studio({ section, studioSections, generators, directorGe
                 sectionId={activeSection.id}
                 disabledReason={!user ? "سجّل الدخول للرسم بـ حيدرا ماكس." : !allowed ? "المنصة مغلقة لحسابك." : null}
                 onSaved={(job) => {
+                  track("studio.claude_draw");
                   setItems((cur) => (filter === "all" || filter === "image" ? [job, ...cur.filter((c) => c.id !== job.id)] : cur));
                   setTab("works");
                 }}
@@ -1015,7 +1029,7 @@ export default function Studio({ section, studioSections, generators, directorGe
               onRemove={removeRef}
               onRole={(id, role) => updateRef(id, { role })}
             />
-            {def.output !== "audio" && <StylePicker value={draft.styleId ?? ""} onChange={(id) => (setDraft((d) => ({ ...d, styleId: id })), setTouched(true))} />}
+            {def.output !== "audio" && <StylePicker value={draft.styleId ?? ""} onChange={(id) => (setDraft((d) => ({ ...d, styleId: id })), setTouched(true), id && track("studio.style"))} />}
             <PromptBox
               def={def}
               ev={ev}
@@ -1032,7 +1046,7 @@ export default function Studio({ section, studioSections, generators, directorGe
               }}
               onInstructions={(instructions) => setDraft((d) => ({ ...d, instructions }))}
               touched={touched}
-              onTouched={() => setTouched(true)}
+              onTouched={() => (setTouched(true), draft.prompt.trim() && track("studio.prompt"))}
               locked={directing ? "«المخرج الخارق» يكتب البرومبت…" : null}
               onSubmit={() => {
                 if (user && price != null && !blockers.length && !submitting) void submitAll();
@@ -1138,6 +1152,7 @@ export default function Studio({ section, studioSections, generators, directorGe
         <AssistantChat
           open={chatOpen}
           onOpen={() => {
+            track("studio.assistant");
             setDirectorOpen(false);
             setChatOpen(true);
           }}
@@ -1146,7 +1161,7 @@ export default function Studio({ section, studioSections, generators, directorGe
           getDraft={assistantDraft}
           onApply={applyAssistant}
           generatorName={(id) => generators.find((g) => g.id === id)?.name ?? id}
-          onThumbnail={(t) => setComposer(t)}
+          onThumbnail={(t) => (track("studio.compose_person"), setComposer(t))}
           canAttach
           storage={user.id}
         />
@@ -1155,6 +1170,7 @@ export default function Studio({ section, studioSections, generators, directorGe
         <DirectorChat
           open={directorOpen}
           onOpen={() => {
+            track("studio.director_chat");
             setChatOpen(false);
             setDirectorOpen(true);
           }}
@@ -1178,7 +1194,7 @@ export default function Studio({ section, studioSections, generators, directorGe
         />
       )}
 
-      <GeneratorPicker open={picker} onClose={() => setPicker(false)} generators={unified ? generators.filter((g) => generatorById(g.id)?.output === def.output) : generators} current={gen.id} onPick={switchGenerator} owner={owner} title={unified ? `اختر مولّد ${def.output === "image" ? "الصور" : def.output === "video" ? "الفيديو" : "الصوت"}` : undefined} />
+      <GeneratorPicker open={picker} onClose={() => setPicker(false)} generators={unified ? generators.filter((g) => generatorById(g.id)?.output === def.output) : generators} current={gen.id} onPick={(id) => (track("studio.generator"), switchGenerator(id))} owner={owner} title={unified ? `اختر مولّد ${def.output === "image" ? "الصور" : def.output === "video" ? "الفيديو" : "الصوت"}` : undefined} />
 
       <Dialog open={Boolean(confirm)} onClose={() => setConfirm(null)} title="تغيّر السعر">
         {confirm && (

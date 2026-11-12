@@ -14,6 +14,7 @@ import Icon from "../Icon";
 import LocalTime from "../LocalTime";
 import LoginLink from "../LoginLink";
 import Riyal from "@/components/Riyal";
+import { track } from "@/lib/feature-track";
 
 const FILTERS: { key: WorksFilter; label: string; icon: string }[] = [
   { key: "all", label: "الكل", icon: "grid" },
@@ -294,6 +295,7 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
   const [details, setDetails] = useState(false);
   const [copied, setCopied] = useState(false);
   const copyLink = async (url: string) => {
+    track("studio.share_link");
     try {
       await navigator.clipboard.writeText(new URL(url, window.location.origin).href);
       setCopied(true);
@@ -306,6 +308,7 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
   const [opening, setOpening] = useState(false);
   // a video: cut out the pieces to fix in «حيدرة كت» (red track) and get them made again there (green track)
   const startEdit = async () => {
+    track("studio.smart_edit");
     if (j.outputKind !== "video") return setEditing(true);
     setOpening(true);
     const href = await smartEditInEditor(j.id, j.outputs[0]?.id);
@@ -467,7 +470,7 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
           )}
           {j.status === "succeeded" &&
             outs.map((o, i) => (
-              <a key={o.id} href={o.downloadUrl} className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" download>
+              <a key={o.id} href={o.downloadUrl} className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" download onClick={() => track("studio.download")}>
                 <Icon name="download" size={14} /> تنزيل{stemLabel(o) && outs.length > 1 ? ` ${stemLabel(o)}` : outs.length > 1 ? ` ${i + 1}` : ""}
               </a>
             ))}
@@ -476,6 +479,7 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
               type="button"
               className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs"
               onClick={() => {
+                track("studio.download");
                 // one click, every file (a moment apart so the browser accepts them all)
                 outs.forEach((o, i) => setTimeout(() => { const a = document.createElement("a"); a.href = o.downloadUrl; a.download = ""; a.click(); }, i * 400));
               }}
@@ -498,7 +502,7 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
             </button>
           )}
           {tracks.length > 0 && (
-            <button type="button" className="jw-btn !min-h-8 !px-2 text-xs !border-jw-accent/50 text-jw-accent" onClick={() => setWatching(true)}>
+            <button type="button" className="jw-btn !min-h-8 !px-2 text-xs !border-jw-accent/50 text-jw-accent" onClick={() => (track("studio.sound_on_video"), setWatching(true))}>
               <Icon name="play" size={14} /> شاهد مع الفيديو
             </button>
           )}
@@ -591,7 +595,7 @@ function Viewer({ job, index, onIndex }: { job: JobView; index: number; onIndex:
           <button type="button" className="jw-btn jw-btn-icon" disabled={index >= job.outputs.length - 1} onClick={() => onIndex(index + 1)} aria-label="التالية"><Icon name="chevronLeft" /></button>
         </div>
         <span className="text-xs text-jw-muted" dir="ltr">{o.width && o.height ? `${o.width}×${o.height}` : ""}</span>
-        <a href={o.downloadUrl} className="jw-btn jw-btn-primary" download><Icon name="download" size={16} /> تنزيل</a>
+        <a href={o.downloadUrl} className="jw-btn jw-btn-primary" download onClick={() => track("studio.download")}><Icon name="download" size={16} /> تنزيل</a>
       </div>
     </div>
   );

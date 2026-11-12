@@ -48,6 +48,7 @@ import { useClaudeModel } from "@/components/robots/claude-model";
 import { codeEdit, codeGrade, type CodeDeps } from "./claude-code";
 import { cleanVoice } from "@/components/claude-code/clean-voice";
 import type { AssetInfo } from "@/lib/editor/model";
+import { track as trackUse } from "@/lib/feature-track";
 
 interface Msg {
   role: "user" | "assistant";
@@ -486,6 +487,7 @@ function Conversation({
   const talkFace = async (message: string): Promise<{ face: FaceBox; timeline: Timeline | null } | null> => {
     const talky = !!styleInText(message)?.talk || /على\s*كلام|موشن على|talk\)/.test(message);
     if (!talky) return null;
+    trackUse("editor.talk_reel");
     const main = mainTrack(tlRef.current);
     const first = main?.clips.find((c) => !c.text && c.assetId && assets.get(c.assetId)?.kind === "video");
     const a = first?.assetId ? assets.get(first.assetId) : null;
@@ -515,6 +517,7 @@ function Conversation({
     const lab = labRef.current;
     if (lab && routeOf(message, { focus, lab: lab.hasPiece || lab.search, pending: pending.length, search: lab.search }) === "lab") {
       if (lab.busy) return null;
+      trackUse("editor.motion_lab");
       setText("");
       setFocus(true);
       await lab.send(message);
@@ -525,6 +528,7 @@ function Conversation({
       return null;
     }
     sendingRef.current = true;
+    trackUse("editor.haidara_msg");
     abortRef.current = new AbortController();
     setCanStop(true);
     try {
@@ -682,6 +686,7 @@ function Conversation({
             const usable = (id: string | null | undefined) => (id && labDeps?.footageClips.some((c) => c.clipId === id) ? id : null);
             const onClip = (q.clipId && findClip(tlRef.current, q.clipId) ? usable(q.clipId) : null) ?? (selected.length === 1 ? usable(selected[0]) : null);
             setFocus(true);
+            trackUse("editor.motion_lab");
             piece.start({ brief: q.prompt, seconds: Number(q.seconds) || 15, clipId: onClip, auto: saysEnough(message) });
           } else if (q.kind === "watch") {
             // «👁️»: he needs to see the clip whole — it is watched, and he is asked again with it, by itself
@@ -791,6 +796,7 @@ function Conversation({
       setTalk(null);
       return;
     }
+    trackUse("editor.haidara_talk");
     talkRef.current = true;
     try {
       while (talkRef.current) {
@@ -1188,7 +1194,7 @@ function Conversation({
 
           <MediaStrip assets={assets} picked={pending} onPick={attach} disabled={readOnly} />
         </div>
-        <StylePicker open={gallery} disabled={readOnly || !!busy} onClose={() => setGallery(false)} onSend={(words) => void send(words)} />
+        <StylePicker open={gallery} disabled={readOnly || !!busy} onClose={() => setGallery(false)} onSend={(words) => (trackUse("editor.motion_styles"), void send(words))} />
       </div>
     );
   };

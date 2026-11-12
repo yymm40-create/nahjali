@@ -13,6 +13,7 @@ import type { EditorAsset } from "./types";
 import FontPicker from "./FontPicker";
 import type { Run } from "./Inspector";
 import type { PlayerLike } from "./Timeline";
+import { track as trackUse } from "@/lib/feature-track";
 
 type Tab = "el" | "type" | "look";
 const TABS: { id: Tab; label: string }[] = [
@@ -40,6 +41,7 @@ export default function MotionPanel({ clip, motion: m, locked, run, player, tl, 
   // «تتبّع الوجه»: the face read off the video under the element (in the browser), then kept on the element
   const readFace = async () => {
     if (!tl || !assets) return;
+    trackUse("editor.depth");
     setReading(true);
     try {
       const track = await readFaceTrack(tl, clip, assets);
@@ -224,7 +226,7 @@ export default function MotionPanel({ clip, motion: m, locked, run, player, tl, 
             <Range label="الحجم" value={Math.round(m.size * 100)} min={50} max={200} disabled={locked} onChange={(v) => set({ size: v / 100 }, "size")} unit="%" />
           </div>
           {m.kind !== "ribbon" && (
-            <button type="button" className="jw-btn jw-btn-quiet w-full text-xs" disabled={locked} onClick={() => run({ type: "behind_person", clipId: clip.id })} title="ننسخ الفيديو اللي تحته بنفس ثوانيه ونشيل خلفيته في مسار فوقه، فيصير الشخص قدّام العنصر">
+            <button type="button" className="jw-btn jw-btn-quiet w-full text-xs" disabled={locked} onClick={() => (trackUse("editor.depth"), run({ type: "behind_person", clipId: clip.id }))} title="ننسخ الفيديو اللي تحته بنفس ثوانيه ونشيل خلفيته في مسار فوقه، فيصير الشخص قدّام العنصر">
               🧍 حطّه ورا الشخص
             </button>
           )}
