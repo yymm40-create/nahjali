@@ -98,6 +98,8 @@ export interface DrawTemplate {
   /** the people's photos (photo numbers) and the shape (width ÷ height) of the frame each goes in: each is cut around
    * his face first — the whole face with the hair, then as much of the chest as the frame holds (the owner's rule) */
   faces?: { photo: number; aspect: number; place?: number[]; cut?: boolean }[];
+  /** «فرّغ الخلفية» with the photos as they were uploaded: «حيدرا ماكس» cuts the people out here, in the page */
+  cutHere?: boolean;
 }
 
 /** A working canvas (a plain one: an iPhone's older Safari has no OffscreenCanvas for 2D). */
@@ -265,6 +267,11 @@ async function drawTemplate(o: DrawOptions, t: DrawTemplate): Promise<DrawResult
     const i = f.photo - 1;
     if (!bms[i]) continue;
     // the person's choice: cut out (his edge cleaned) or with his own background
+    if (f.cut && t.cutHere) {
+      o.onStep({ text: "✂️ حيدرا ماكس يفرّغ خلفية الصورة هنا في الصفحة…" });
+      const { cutInPage } = await import("./person-cut");
+      bms[i] = await cutInPage(bms[i]!);
+    }
     const pic = f.cut ? await cleanEdge(bms[i]!) : bms[i]!;
     if (f.place) bms[i] = await placeByFace(pic, f.place, W, H, !!f.cut);
     else if (f.cut) {

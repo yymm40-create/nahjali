@@ -213,11 +213,19 @@ export async function majlisGpt(userId: string, chatId: string, o: { email?: str
 async function majlisBrief(userId: string, chat: Chat, origin: string, owner: boolean) {
   let p = chat.pending!;
   // the person chose to remove the photos' background: «حيدرا ماكس» cuts each person out first (once)
+  // (when the server's cut can't be reached, «حيدرا ماكس» cuts them in the page instead: `cutHere`)
+  let cutHere = false;
   if (p.majlis!.cut && !p.majlis!.cutDone) {
-    const cut = await cutPeople(userId, p.majlis!.people.map((x) => x.photo), owner);
-    const majlis = { ...p.majlis!, cutDone: true, people: p.majlis!.people.map((x, i) => ({ ...x, photo: cut[i] })) };
-    p = { ...p, refs: cut, place: cut, majlis };
-    await saveChat(userId, chat.id, { messages: chat.messages, pending: p });
+    try {
+      const cut = await cutPeople(userId, p.majlis!.people.map((x) => x.photo), owner);
+      const majlis = { ...p.majlis!, cutDone: true, people: p.majlis!.people.map((x, i) => ({ ...x, photo: cut[i] })) };
+      p = { ...p, refs: cut, place: cut, majlis };
+      await saveChat(userId, chat.id, { messages: chat.messages, pending: p });
+    } catch (e) {
+      if (!(e instanceof UserError) || e.status === 409) throw e;
+      console.error("majlis cut on the server failed; the page cuts", e.message);
+      cutHere = true;
+    }
   }
   const o = p.majlis!;
   const t = templateById(o.templateId);
@@ -229,7 +237,7 @@ async function majlisBrief(userId: string, chat: Chat, origin: string, owner: bo
   const code = majlisProgram(t, o, ph.ids);
   // each person's photo: cut around his face for a frame, or (a design with people) put with his face where the man's was
   const faces = t.slots.map((s, i) => ({ photo: Number(ph.ids.people[i]!.slice(5)), aspect: (s.r[2] * t.size[0]) / (s.r[3] * t.size[1]), cut: o.cut, ...(s.shape === "person" && s.face ? { place: s.face } : {}) }));
-  return { prompt: p.artwork, aspect: t.aspect, refs: [origin + viewUrl(t.id)], photos: ph.urls, picture: false, style: "", template: { code, fonts: { head: MAJLIS_FONTS.head, body: MAJLIS_FONTS.body }, extra: { lalezar: MAJLIS_FONTS.lalezar }, faces } };
+  return { prompt: p.artwork, aspect: t.aspect, refs: [origin + viewUrl(t.id)], photos: ph.urls, picture: false, style: "", template: { code, fonts: { head: MAJLIS_FONTS.head, body: MAJLIS_FONTS.body }, extra: { lalezar: MAJLIS_FONTS.lalezar }, faces, ...(cutHere ? { cutHere: true } : {}) } };
 }
 
 /**
