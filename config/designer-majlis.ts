@@ -64,6 +64,8 @@ export const viewUrl = (id: string) => (isUser(id) ? `/api/designer/templates/${
 /** a designer's template («قوالب المصممين») is served by the site from the designer's upload */
 const isUser = (id: string) => /^u[0-9a-f]{8,32}$/.test(id);
 export const baseUrl = (id: string) => (isUser(id) ? `/api/designer/templates/${id}/image` : `${MAJLIS.dir}/${id}_base.jpg`);
+/** a design with people: the picked design with the men's heads blurred away — it shows GPT only how they stand */
+export const poseUrl = (id: string) => `${MAJLIS.dir}/${id}_pose.jpg`;
 export const maskUrl = (id: string) => `${MAJLIS.dir}/${id}_mask.png`;
 export const titleUrl = (id: string) => `${MAJLIS.dir}/${id}_title.png`;
 

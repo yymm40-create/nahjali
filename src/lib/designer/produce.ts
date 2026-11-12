@@ -17,7 +17,7 @@ import { readLayers, type Design } from "./layers";
 import { editOf, photoKeys, readProgram, type DesignEdit } from "./program";
 import { findContentFont, FONT_PIN, fontBlock } from "@config/content-fonts";
 import { darkToLight, findPalette } from "@config/content-palettes";
-import { baseUrl, isMajlisMaker, readOrder, templateOf, viewUrl, type MajlisMaker, type MajlisOrder } from "@config/designer-majlis";
+import { baseUrl, isMajlisMaker, poseUrl, readOrder, templateOf, viewUrl, type MajlisMaker, type MajlisOrder } from "@config/designer-majlis";
 import { GPT_IMAGE_26_ID } from "@config/jawad/generators";
 import { isAdmin } from "@config/site";
 import { MAJLIS_FONTS, majlisGptPrompt, majlisPhotos, majlisProgram } from "./majlis";
@@ -194,12 +194,25 @@ export async function majlisGpt(userId: string, chatId: string, o: { email?: str
       if (!prev) throw new UserError("ما لقينا التصميم اللي تبي تعدّله.", 409);
       const ref1 = await deskReference(userId, prev, `majlis-edit-${t.id}`);
       refs = [{ uploadId: ref1, name: "ref1" }];
-      prompt = `Edit the attached design ref1. Change ONLY this, exactly as asked (the person's words, in Arabic): «${edit.said}». Keep everything else EXACTLY as it is in ref1: the layout, the people and their faces, every other word, the colours, the light. Every Arabic word stays written exactly, letters joined right to left; no new words unless asked.`;
+      // a design with people: the picked design with the men's heads blurred goes too (ref2), so «مثل الأصلية» — how
+      // the men stand, where they look — can be copied from it without copying who they are
+      const pose = t.kind === "people" ? await fetch(o.origin + poseUrl(t.id)).then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null) : null;
+      if (pose) refs.push({ uploadId: await deskReference(userId, Buffer.from(pose), `majlis-${t.id}-pose`), name: "ref2" });
+      prompt = `Edit the attached design ref1. Change ONLY this, exactly as asked (the person's words, in Arabic): «${edit.said}».${pose ? " ref2 is ONLY a guide to the poses of the original design the person picked (its men's heads are blurred on purpose): when the words speak of the original («الأصلية», «الصورة الأساسية», «نفس التصميم»), copy from ref2 only the men's poses — the way their bodies and heads are turned, where they look, how they stand to each other. NEVER copy the men of ref2 themselves: the faces, hair and beards stay those of the men in ref1." : ""} Keep everything else EXACTLY as it is in ref1: the layout, the people and their faces, every other word, the colours, the light. Every Arabic word stays written exactly, letters joined right to left; no new words unless asked.`;
     } else {
+      // ref1: the empty design (no men, no sample photos); a design with people also sends ref2, the picked design with
+      // the men's heads blurred (it shows only how they stand); then the person's photos
       const res = await fetch(o.origin + baseUrl(t.id));
       if (!res.ok) throw new UserError("ما قدرنا نفتح التصميم المختار.", 502);
       const ref1 = await deskReference(userId, Buffer.from(await res.arrayBuffer()), `majlis-${t.id}`);
-      refs = [{ uploadId: ref1, name: "ref1" }, ...p.majlis.people.map((x, i) => ({ uploadId: x.photo, name: `ref${i + 2}` }))];
+      refs = [{ uploadId: ref1, name: "ref1" }];
+      if (t.kind === "people") {
+        const pose = await fetch(o.origin + poseUrl(t.id));
+        if (!pose.ok) throw new UserError("ما قدرنا نفتح التصميم المختار.", 502);
+        refs.push({ uploadId: await deskReference(userId, Buffer.from(await pose.arrayBuffer()), `majlis-${t.id}-pose`), name: "ref2" });
+      }
+      const first = refs.length + 1;
+      refs.push(...p.majlis.people.map((x, i) => ({ uploadId: x.photo, name: `ref${first + i}` })));
       prompt = majlisGptPrompt(t, p.majlis);
     }
     const r = await deskImage(who, { key: `mj-${randomUUID().replace(/-/g, "")}`, kind: "image", generatorId: maker === "gpt2" ? "openai-gpt-image-2" : GPT_IMAGE_26_ID, ...(maker === "gpt2" ? {} : { variant: maker }), prompt, aspect: "2:3", resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });

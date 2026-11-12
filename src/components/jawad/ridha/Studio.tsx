@@ -36,6 +36,7 @@ import MaxPanel from "./panels/MaxPanel";
 import SmartPanel from "./panels/SmartPanel";
 import MasterPanel from "./panels/MasterPanel";
 import LyricsPanel from "./panels/LyricsPanel";
+import LatmaPanel from "./panels/LatmaPanel";
 import LatencyDialog, { loadLatency } from "./LatencyDialog";
 import { CHOIRS } from "@config/ridha-choirs";
 import { buildChoir } from "@/lib/ridha/choir";
@@ -45,7 +46,7 @@ const DOCK: { id: string; name: string; icon: string; size: { w: number; h: numb
   { id: "fx", size: { w: 860, h: 440 }, name: "المؤثرات", icon: "M4 6h16M4 12h16M4 18h16M8 4v4M15 10v4M10 16v4", tabs: [{ id: "fx", name: "السلسلة والجاهز" }, { id: "eq", name: "الإكولايزر" }] },
   { id: "clip", size: { w: 920, h: 480 }, name: "المقطع", icon: "M6 6a2.5 2.5 0 1 0 0 .01M6 18a2.5 2.5 0 1 0 0 .01M8 8l12 10M8 16L20 6", tabs: [{ id: "editor", name: "تحرير" }, { id: "clean", name: "تنظيف" }, { id: "smart", name: "أدوات ذكية" }, { id: "tune", name: "أوتوتيون ونغمة" }, { id: "voice", name: "تغيير الصوت" }] },
   { id: "mixer", size: { w: 1100, h: 440 }, name: "الميكسر", icon: "M6 4v16M12 4v16M18 4v16M4 9h4M10 15h4M16 7h4", tabs: [{ id: "mixer", name: "الميكسر" }, { id: "master", name: "الماستر" }] },
-  { id: "create", size: { w: 1040, h: 500 }, name: "هارموني وتوزيع", icon: "M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z", tabs: [{ id: "harmony", name: "هارموني 3D" }, { id: "arrange", name: "التوزيع السريع" }] },
+  { id: "create", size: { w: 1040, h: 500 }, name: "هارموني وتوزيع", icon: "M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z", tabs: [{ id: "harmony", name: "هارموني 3D" }, { id: "arrange", name: "التوزيع السريع" }, { id: "latma", name: "تركيب اللطمة" }] },
   { id: "lyrics", size: { w: 420, h: 520 }, name: "الكلمات", icon: "M5 5h14M5 10h14M5 15h9M5 20h6", tabs: [{ id: "lyrics", name: "الكلمات" }] },
   { id: "max", size: { w: 460, h: 520 }, name: "الرضا ماكس", icon: "M12 3l2.2 5.3L20 9l-4.3 3.9L17 19l-5-3-5 3 1.3-6.1L4 9l5.8-.7z", tabs: [{ id: "max", name: "الرضا ماكس" }] },
 ];
@@ -570,6 +571,7 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
               {tab === "clean" ? <CleanPanel /> : null}
               {tab === "harmony" ? <HarmonyPanel /> : null}
               {tab === "arrange" ? <ArrangePanel /> : null}
+              {tab === "latma" ? <LatmaPanel /> : null}
               {tab === "voice" ? <VoicePanel /> : null}
               {tab === "smart" ? <SmartPanel /> : null}
               {tab === "master" ? <MasterPanel /> : null}

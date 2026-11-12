@@ -106,8 +106,8 @@ export default function ArrangePanel() {
       } else said.push(`الإيقاع «${rhythmById(pattern).name}»: الأشيع في ${kind === "aza" ? "إصدارات العزاء" : "المواليد"}.`);
       // the key the person already chose (or confirmed in the tuner) stands; only an unset key is read from the guide
       const key = project.key ?? (g.key && g.voiced > 0.2 ? { tonic: g.key.tonic, scale: g.key.scale.id } : null);
-      if (key) said.push(`النغمة ${NOTE_NAMES[Math.floor(key.tonic)]}${key.tonic % 1 ? "½" : ""} · ${scaleById(key.scale).name}${project.key ? " (كما اخترتها)" : ""}: الأرضية على القرار وخامسته.`);
-      else said.push("ما قدرت أحدد النغمة من القايد: الأرضية على «لا» — غيّر القرار من لوحة الأوتوتيون ثم حدّث الأرضية.");
+      if (key) said.push(`النغمة ${NOTE_NAMES[Math.floor(key.tonic)]}${key.tonic % 1 ? "½" : ""} · ${scaleById(key.scale).name}${project.key ? " (كما اخترتها)" : ""}: الأرضية على طبقة الاستقرار وخامستها.`);
+      else said.push("ما قدرت أحدد النغمة من القايد: الأرضية على «لا» — غيّر طبقة الاستقرار من لوحة الأوتوتيون ثم حدّث الأرضية.");
       // the room: as long as the reference rings, or the kind's measured usual
       const preset = chainById(kind === "aza" ? "radood" : "mawlid")!;
       const ring = ref?.h.ringMs || MEASURED[kind].ringMs;
@@ -192,7 +192,7 @@ export default function ArrangePanel() {
         </div>
         <Seg small value={padSpec.kind} options={PAD_KINDS.map((k) => ({ value: k.id, label: k.name, title: k.hint }))} onChange={(k) => updatePad({ ...padSpec, kind: k })} />
         <label className="rv-inline">
-          القرار
+          طبقة الاستقرار
           <select value={((padSpec.root % 12) + 12) % 12} onChange={(e) => updatePad({ ...padSpec, root: padRoot(Number(e.target.value)) })}>
             {NOTE_NAMES.map((n, i) => <option key={n} value={i}>{n}</option>)}
           </select>

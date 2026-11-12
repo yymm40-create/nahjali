@@ -70,6 +70,7 @@ export const MOTIONS: { id: HarmonyMotion; name: string; hint: string }[] = [
   { id: "chord", name: "على نغمات الكورد", hint: "ينزل فقط على الأولى والثالثة والخامسة — ما يحتك أبدًا" },
   { id: "lazy", name: "يتحرك بهدوء", hint: "يثبت مكانه إلى أن يبتعد اللحن — صوت الكورال الداخلي" },
   { id: "pedal", name: "قرار ثابت", hint: "نغمة واحدة تحت كل شيء (إيزون)" },
+  { id: "fixed", name: "مسافة ثابتة + تصحيح", hint: "يرفع اللحن مسافة واحدة ثابتة، وإذا طلعت نغمة برّا المقام (نشاز) يزيدها درجة لداخله" },
 ];
 export const WHENS: { id: HarmonyVoice["when"]; name: string }[] = [
   { id: "always", name: "طول الوقت" },
@@ -89,7 +90,21 @@ const pair = (name: string, steps: number, octaves: number, az: number, o: Parti
 ];
 
 type Maker = (high: boolean) => Omit<HarmonyIdea, "experimental">;
+/**
+ * The maqam singer's three tries (the method the engineer علي البقال teaches for كرد، عجم، نهاوند): the line moved by
+ * one fixed distance — a third, a fifth or a seventh — with every note that falls outside the maqam carried one step
+ * in; «one of the three will be right, a hundred percent».
+ */
+const maqamTry = (name: string, steps: number, why: string): Maker => (high) => ({
+  id: `maqam${steps + 1}`, name, icon: "🎼", why,
+  voices: high
+    ? pair(`${name} تحت`, -steps, 0, 55, { motion: "fixed", formant: 0.96, gain: -8, tight: 0.9 })
+    : pair(name, steps, 0, 55, { motion: "fixed", formant: 1.04, gain: -8, tight: 0.9 }),
+});
 const IDEAS: Record<string, Maker> = {
+  maqam3: maqamTry("ثالثة ثابتة", 2, "طريقة المقامات: اللحن كله يرتفع ثالثة ثابتة، وأي نغمة تطلع برّا المقام تنصلح درجة — جرّب الثالثة والخامسة والسابعة، وحدة منها تركب"),
+  maqam5: maqamTry("خامسة ثابتة", 4, "الخامسة الثابتة: أفخم الثلاث وأقلها خطرًا، وتنصلح نغماتها اللي تطلع برّا المقام"),
+  maqam7: maqamTry("سابعة ثابتة", 6, "السابعة الثابتة: لون أغنى وأحدّ — تركب على بعض الألحان أحلى من الثالثة؛ اسمعها قبل الاعتماد"),
   unison: () => ({
     id: "unison", name: "جوقة موحّدة", icon: "👥", why: "ستة أصوات على نفس النغمة حول المستمع — صوت المجلس حين يردّ، ويصلح لكل المقامات",
     voices: [
@@ -226,11 +241,17 @@ const IDEAS: Record<string, Maker> = {
 export function suggestHarmony(range: { low: number; high: number; median: number }, scale: Scale): HarmonyIdea[] {
   const high = range.median >= 62;
   const quarter = hasQuarterTones(scale);
+  // كرد، عجم (ماجور) and نهاوند take the maqam singer's three tries first; حجاز, whose wide step between its second
+  // and third notes makes a moved line fall outside it more often, starts from what always sits — the chord, octaves,
+  // the fifth — with the tries after; a quarter-tone maqam is answered the way its own tradition does
+  const hijaz = scale.id === "hijaz";
   const order = quarter
-    ? ["unison", "ison", "octaves", "fifth", "organum", "halo", "endings", "held", "duo", "sixths", "chord", "calm", "triad", "circle", "gospel", "sevenths"]
+    ? ["unison", "ison", "octaves", "fifth", "maqam5", "organum", "halo", "endings", "held", "duo", "maqam3", "sixths", "chord", "calm", "triad", "circle", "gospel", "sevenths"]
     : scale.id === "chromatic"
       ? ["unison", "octaves", "ison", "fifth", "organum", "halo"]
-      : ["duo", "chord", "endings", "triad", "sixths", "held", "calm", "circle", "gospel", "octaves", "unison", "ison", "fifth", "organum", "sevenths", "halo"];
+      : hijaz
+        ? ["chord", "octaves", "maqam5", "fifth", "ison", "maqam3", "endings", "unison", "maqam7", "duo", "held", "calm", "organum", "triad", "sixths", "circle", "gospel", "sevenths", "halo"]
+        : ["maqam3", "maqam5", "maqam7", "duo", "chord", "endings", "triad", "sixths", "held", "calm", "circle", "gospel", "octaves", "unison", "ison", "fifth", "organum", "sevenths", "halo"];
   return order.map((id, i) => {
     const idea = IDEAS[id](high);
     const thirds = idea.voices.some((x) => x.motion !== "pedal" && [2, 5, 6].includes(Math.abs(x.steps)));
@@ -308,6 +329,8 @@ export function wildHarmony(level: number, range: { low: number; high: number; m
 export function harmonyTips(idea: HarmonyIdea, scale: Scale): string[] {
   const n = idea.voices.length;
   const tips: string[] = [];
+  if (idea.voices.some((x) => x.motion === "fixed")) tips.push("طريقة المقامات: جرّب الثالثة الثابتة ثم الخامسة ثم السابعة على نفس الجملة — غالبًا وحدة منها تركب مية بالمية. النغمة اللي تطلع برّا المقام تنصلح درجة لداخله تلقائيًا، فما يصير نشاز.");
+  if (scale.id === "hijaz") tips.push("الحجاز فيه مسافة واسعة بين درجته الثانية والثالثة، فالمسافة الثابتة تطلع برّاه أكثر من غيره: التصحيح يشتغل، بس اسمع؛ وإذا ما ارتحت خذ «على الكورد دائمًا» أو الخامسة.");
   if (hasQuarterTones(scale)) tips.push(`مقام ${scale.name} فيه أرباع نغمة: هارمونيه الطبيعي يونيسون وقرار ثابت وأوكتاف وخامسة. الثالثات تُسمع نشازًا عند أغلب الناس.`);
   else tips.push("الثالثات والسادسات أدفأ ما يرافق اللحن؛ الخامسات والرابعات المتوازية الطويلة تعطي لونًا قديمًا مهيبًا — جميل لو قصدته، وفارغ لو ما قصدته.");
   tips.push(n > 4 ? "ستاك كبير: كل صوت يكون أوطى من الرئيسي بـ 10–14 dB (مجموعها هو اللي يُسمع). مضبوطة هنا، وفيدر القروب يحكمها كلها." : "الهارموني يجلس تحت الرئيسي بـ 4–8 dB: يُحَسّ أكثر مما يُسمع.");
