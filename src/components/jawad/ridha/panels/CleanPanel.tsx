@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { chainById } from "@config/ridha";
 import { advise, nudgeBands, USES, type Advice, type Use } from "@/lib/ridha/advise";
-import { aiDenoise, cleanVoice, cutRumble, deEss, detectHum, gate, noiseProfile, reduceNoise, reduceReverb, removeClicks, removeHum, type CleanOptions } from "@/lib/ridha/dsp/clean";
+import { aiDenoise, cleanVoice, cutRumble, declip, deEss, detectHum, gate, guardWords, noiseProfile, reduceNoise, reduceReverb, removeClicks, removeHum, softenDistortion, type CleanOptions } from "@/lib/ridha/dsp/clean";
 import { listenTo, TILT_BANDS, type Listening } from "@/lib/ridha/dsp/listen";
 import { normalizeLoudness } from "@/lib/ridha/dsp/loudness";
 import { SR } from "@/lib/ridha/model";
@@ -15,7 +15,7 @@ import { setChain } from "@/lib/ridha/ops";
 import { useStudio } from "../ctx";
 import { Btn, Empty, Slider } from "../ui";
 
-const MANUAL: CleanOptions = { noise: 0.6, ai: false, rumbleHz: 80, hum: true, clicks: true, deEss: 0.5, reverb: 0, gate: false };
+const MANUAL: CleanOptions = { noise: 0.6, ai: false, rumbleHz: 80, hum: true, clicks: true, deEss: 0.5, reverb: 0, gate: false, declip: true, guard: true };
 
 export default function CleanPanel() {
   const st = useStudio();
@@ -30,7 +30,8 @@ export default function CleanPanel() {
   if (!clip) return <Empty icon="" title="اختر مقطعًا لتنظيفه">اضغط على التسجيل في الخط الزمني، ثم ارجع هنا.</Empty>;
   const h = heard?.id === clip.assetId + clip.offset + clip.dur ? heard.h : null;
   const advice: Advice | null = h ? advise(h, use) : null;
-  const active = manual || !advice ? opts : advice.clean;
+  // what the measurements advise, with the two guards on unless the person turned them off by hand
+  const active = manual || !advice ? opts : { ...advice.clean, declip: opts.declip, guard: opts.guard };
 
   const measure = async () => {
     const sound = st.clipSound(clip);
@@ -52,7 +53,7 @@ export default function CleanPanel() {
     const m = h ?? (await measure());
     if (!m) return;
     const adv = advise(m, use);
-    const o = manual ? opts : adv.clean;
+    const o = manual ? opts : { ...adv.clean, declip: opts.declip, guard: opts.guard };
     const res = await st.work("تنظيف احترافي", async (say) => {
       const out: Float32Array[] = [];
       const steps: string[] = [];
@@ -106,6 +107,16 @@ export default function CleanPanel() {
               <small>{u.hint}</small>
             </button>
           ))}
+        </div>
+        <div className="rv-clean-go">
+          <label className="rv-check" title="المنظّف ما يسمح له ياكل اللي واضح فوق ضجيج الغرفة — الحروف والنغمات الممدودة — فالكلام يطلع صح حتى مع التنظيف القوي (مهم للإنشاد)">
+            <input type="checkbox" checked={opts.guard !== false} onChange={(e) => setOpts({ ...opts, guard: e.target.checked })} />
+            حماية الحروف
+          </label>
+          <label className="rv-check" title="إذا كان التسجيل مضروب (مقصوص من قوة الصوت)، يرسم الموجة اللي انقصت ويخفض الصوت ليتسع لها، وينعّم الطنين الخشن">
+            <input type="checkbox" checked={opts.declip !== false} onChange={(e) => setOpts({ ...opts, declip: e.target.checked })} />
+            إصلاح التشويش
+          </label>
         </div>
         <div className="rv-clean-go">
           <Btn kind="main" onClick={() => void run()}>تنظيف احترافي للمقطع</Btn>
@@ -165,7 +176,28 @@ export default function CleanPanel() {
         <div className="rv-panel-head"><b>أداة واحدة فقط</b></div>
         <div className="rv-pills">
           <button type="button" onClick={single("تخفيض الضجيج", async (x, say) => reduceNoise(x, await noiseProfile(x), active.noise || 0.6, -18, say))}>ضجيج ثابت</button>
+          <button type="button" onClick={single("إزالة الضجيج القوي مع حماية الحروف", async (x, say) => {
+            const prof = await noiseProfile(x);
+            const y = await aiDenoise(x, 1, (p) => say(p * 0.6));
+            return guardWords(x, y, prof, (p) => say(0.6 + p * 0.4));
+          })} title="شبكة عصبية للضجيج العالي، ثم يرجّع ما أكلته من الكلام">ضجيج عالي (يحمي الحروف)</button>
           <button type="button" onClick={single("إزالة الضجيج (شبكة عصبية)", (x, say) => aiDenoise(x, 1, say))}>ضجيج متغيّر</button>
+          <button type="button" onClick={async () => {
+            const sound = st.clipSound(clip);
+            if (!sound) return;
+            const res = await st.work("إصلاح التشويش", async () => {
+              let runs = 0;
+              const out = sound.map((ch) => {
+                const r = declip(ch);
+                runs = Math.max(runs, r.report.runs);
+                return softenDistortion(r.out, SR, r.report.runs ? 0.6 : 0.45);
+              });
+              return { out, runs };
+            });
+            if (!res) return;
+            st.applyToClip(clip, res.out, "إصلاح التشويش");
+            setReport([res.runs ? `انرسم ${res.runs} موضع مضروب من جديد وانخفض الصوت ليتسع لها، وتنعّم الطنين الخشن في أعلى المقاطع` : "ما لقيت مواضع مقصوصة؛ تنعّم الطنين الخشن في أعلى المقاطع فقط"]);
+          }} title="للتسجيل المضروب أو «المفقوع» من قوة الصوت (حسينية والـ gain عالي)">تشويش / مضروب</button>
           <button type="button" onClick={single("قص الهدير", (x) => cutRumble(x, SR, active.rumbleHz || 80))}>هدير</button>
           <button type="button" onClick={single("إزالة الطنين", (x) => { const hz = detectHum(x, SR); return hz ? removeHum(x, SR, hz) : x; })}>طنين</button>
           <button type="button" onClick={single("إزالة الطقطقة", (x) => removeClicks(x, SR).out)}>طقطقة</button>
