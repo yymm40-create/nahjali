@@ -40,6 +40,16 @@ export function nearestAspect(w: number, h: number): DesignAspect {
 
 export const splitReady = () => falReady();
 
+const LAYERED_MODEL = "fal-ai/qwen-image-layered";
+
+/** The picture as transparent layers (the first is the background), each at the picture's size. */
+async function layersOf(url: string): Promise<Buffer[]> {
+  const out = await falRun<{ images?: { url?: string }[] }>(LAYERED_MODEL, { image_url: url, num_layers: 5, output_format: "png" }, 200_000);
+  const links = (out.images ?? []).map((i) => i.url).filter((u): u is string => typeof u === "string");
+  if (links.length < 2) throw new ProviderError("rejected", "ما رجع التفكيك بطبقات.", `layers ${links.length}`);
+  return Promise.all(links.map((u) => falFile(u)));
+}
+
 /**
  * Splits the person's uploaded picture: stores it as the design's artwork (background) and its cut-out subject as an
  * image layer; the design is written into the last message that carries one.
@@ -66,6 +76,32 @@ export async function splitUpload(userId: string, chatId: string, uploadId: stri
   // the subject, cut out on a transparent background (a short-lived link of the stored background is what fal reads)
   const { data: signed } = await storage.from(JAWAD_BUCKET).createSignedUrl(art.path, 1800);
   if (!signed?.signedUrl) throw new UserError("ما قدرنا نجهّز الصورة للتفكيك.", 500);
+  // first, the open layering model (Qwen-Image-Layered): the picture split into up to five transparent layers — the
+  // background, then each part (a person, a title, an ornament) on its own, all at the picture's size and place
+  const layered = await layersOf(signed.signedUrl).catch((e) => (console.error("designer split layers", e instanceof ProviderError ? e.detail : e), null));
+  if (layered && layered.length >= 2) {
+    const [bgLayer, ...parts] = layered;
+    const bgFile = await addFile({ userId, chatId, bytes: await sharp(bgLayer).png().toBuffer(), name: `background-${uploadId.slice(0, 8)}`, role: "artwork", width, height, meta: { from: uploadId, split: true, layered: true } });
+    const layersOut: ImageLayer[] = [];
+    for (const [i, part] of parts.entries()) {
+      const full = await sharp(part).metadata();
+      const trimmed = await sharp(part).trim().png().toBuffer({ resolveWithObject: true }).catch(() => null);
+      if (!trimmed || trimmed.info.width < 8 || trimmed.info.height < 8) continue;
+      const at = cutPlace(full, trimmed, { width: full.width ?? width, height: full.height ?? height });
+      const f = await addFile({ userId, chatId, bytes: at.bytes, name: `layer-${i + 1}-${uploadId.slice(0, 8)}`, role: "cutout", width: at.width, height: at.height, meta: { from: uploadId, layer: i + 1 } });
+      layersOut.push({ id: layerId(), kind: "image", fileId: f.id, x: at.x, y: at.y, w: at.w, rotate: 0, opacity: 1, flip: false, clip: false });
+    }
+    if (layersOut.length) {
+      const old = chat.messages[where].design!;
+      const aspect = isDesignAspect(old.aspect) && old.layers.length ? old.aspect : nearestAspect(width, height);
+      const design: Design = { ...old, aspect, width, height, artwork: bgFile.id, layers: [...layersOut, ...old.layers.filter((l) => l.kind === "text")], state: "ready", error: undefined, detail: undefined, splitOf: uploadId };
+      const messages = [...chat.messages];
+      messages[where] = { ...messages[where], design };
+      await saveChat(userId, chatId, { messages });
+      return design;
+    }
+  }
+  // else the subject alone (BiRefNet), over the picture itself
   let cut: Buffer;
   try {
     const out = await falRun<Record<string, unknown>>(MODEL, { image_url: signed.signedUrl, model: "General Use (Heavy)", operating_resolution: "1024x1024", output_format: "png", refine_foreground: true }, 150_000);

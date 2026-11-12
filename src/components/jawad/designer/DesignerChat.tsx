@@ -575,7 +575,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                           {m.design.flag && <p className="dz-flag">⚠️ ملاحظة الفحص الآلي على الصورة: {m.design.flag}. تقدر تعيد رسمها.</p>}
                           {i === lastDesign ? (
                             <>
-                              <DesignDone design={m.design} fonts={fonts} saving={saving} busy={!!busy} photo={!!photo} onSave={saveFinal} onRedraw={() => chatId && void runProduce(chatId, true)} onEdit={() => void toZahraa()} />
+                              <DesignDone chatId={chatId} design={m.design} fonts={fonts} saving={saving} busy={!!busy} photo={!!photo} onSave={saveFinal} onRedraw={() => chatId && void runProduce(chatId, true)} onEdit={() => void toZahraa()} />
                             </>
                           ) : (
                             <p className="dz-muted">تصميم سابق في هذه المحادثة (المحرر يفتح على آخر تصميم).</p>
@@ -638,6 +638,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
  * platform's rule: he writes and edits the words himself, زهراء is the extra road.
  */
 function DesignDone({
+  chatId,
   design,
   fonts,
   saving,
@@ -647,6 +648,7 @@ function DesignDone({
   onRedraw,
   onEdit,
 }: {
+  chatId: string | null;
   design: DesignView;
   fonts: FontDef[];
   saving: boolean;
@@ -663,6 +665,18 @@ function DesignDone({
     setExporting(id);
     try {
       await fn()(await renderDesign(design, fonts), id);
+    } finally {
+      setExporting(null);
+    }
+  }
+  /** The title as a vector drawing (GPT Image 2.6's SVG), downloaded. */
+  async function titleSvg() {
+    setExporting("svg");
+    try {
+      const r = await postJson<{ url: string | null }>("/api/designer/svg", { chatId });
+      if (r.url) window.open(r.url, "_blank", "noopener");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "تعذّر رسم SVG.");
     } finally {
       setExporting(null);
     }
@@ -704,6 +718,9 @@ function DesignDone({
               {exporting === s.id ? "…" : s.label}
             </button>
           ))}
+          <button type="button" className="dz-mini" disabled={busy || !!exporting} onClick={() => void titleSvg()} title="العنوان والزخرفة رسم متجه (SVG) بـ GPT Image 2.6 — يكبر لأي مقاس بدون تشويش، للبنرات والطباعة الكبيرة">
+            {exporting === "svg" ? "…" : "✒️ العنوان SVG"}
+          </button>
           {PRINTS.map((p) => (
             <button key={p.id} type="button" className="dz-mini" disabled={busy || !!exporting} onClick={() => void exportAs(p.id, () => downloadPrint)} title={`PDF بهامش قص ٣ مم — دقة تقريبية ${printDpi([design.width, design.height], p.id)} نقطة/إنش`}>
               {exporting === p.id ? "…" : `🖨️ ${p.label}`}
