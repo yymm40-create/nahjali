@@ -33,6 +33,8 @@ import RefsStrip from "./RefsStrip";
 import type { WorkSource } from "./RefAdder";
 import { probeFile, putWithProgress } from "./upload";
 import WorksPanel from "./WorksPanel";
+import CompareGenerators from "./CompareGenerators";
+import { DEFAULT_VIEW, worksQuery, type WorksView } from "@/lib/jawad/works-organise";
 import StylePicker from "./StylePicker";
 import MorePrompts from "./MorePrompts";
 import ReadyApps from "./ReadyApps";
@@ -192,6 +194,9 @@ export default function Studio({ section, studioSections, generators, directorGe
   const [worksLoading, setWorksLoading] = useState(false);
   const [worksError, setWorksError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
+  // «ترتيب أعمالي»: search, sort, a folder, the favourites (the server lists by them; the panel also filters what it has)
+  const [view, setView] = useState<WorksView>(DEFAULT_VIEW);
+  const viewRef = useRef(view);
 
   // Submitting
   const [submitting, setSubmitting] = useState(false);
@@ -462,9 +467,12 @@ export default function Studio({ section, studioSections, generators, directorGe
     if (!user || !allowed) return;
     setWorksLoading(true);
     setWorksError(null);
+    const asked = viewRef.current;
     try {
-      const { ok, body } = await call<{ items: WorkItem[]; next: string | null }>(`/api/jawad/works?filter=${f}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+      const { ok, body } = await call<{ items: WorkItem[]; next: string | null }>(`/api/jawad/works?filter=${f}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}${worksQuery(asked)}`);
       if (!ok) throw new Error(body.error ?? "تعذّر تحميل الأعمال.");
+      // a newer search or folder was asked meanwhile: its own answer fills the list
+      if (asked !== viewRef.current) return;
       setItems((cur) => (cursor ? [...cur, ...body.items.filter((n) => !cur.some((c) => c.id === n.id))] : [...cur.filter((c) => c.type === "job" && c.id.startsWith("temp-")), ...body.items]));
       setNext(body.next);
     } catch (e) {
@@ -479,6 +487,12 @@ export default function Studio({ section, studioSections, generators, directorGe
     setItems((cur) => cur.filter((c) => c.type === "job" && c.id.startsWith("temp-")));
     setNext(null);
     loadWorks(f, null);
+  }
+  function changeView(v: WorksView) {
+    viewRef.current = v;
+    setView(v);
+    setNext(null);
+    loadWorks(filter, null);
   }
 
   // Poll unfinished jobs (their state lives on the server: a refresh or a new sign-in picks it up again)
@@ -502,7 +516,8 @@ export default function Studio({ section, studioSections, generators, directorGe
           const finished = body.jobs.filter((j) => j.status === "succeeded" || j.status === "failed").length;
           for (const j of body.jobs) if (j.status === "succeeded") track("studio.job_ok");
           if (finished && document.hidden) notifyDone(finished, body.jobs.some((j) => j.status === "failed"));
-          setItems((cur) => cur.map((it) => (it.type === "job" && byId.has(it.id) ? byId.get(it.id)! : it)));
+          // (the work's folder and ⭐ stay: the jobs' answer doesn't carry them)
+          setItems((cur) => cur.map((it) => (it.type === "job" && byId.has(it.id) ? { ...it, ...byId.get(it.id)! } : it)));
           announceBalance(body.balance);
         }
       } catch {
@@ -1083,6 +1098,28 @@ export default function Studio({ section, studioSections, generators, directorGe
             </div>}
             <SectionHint kind={def.output} />
             <GeneratorCard gen={gen} owner={owner} onOpen={() => setPicker(true)} />
+            <CompareGenerators
+              kind={def.output}
+              generators={generators}
+              currentId={def.id}
+              prices={prices}
+              owner={owner}
+              atCost={atCost}
+              balance={balance}
+              blockedReason={!user ? "سجّل الدخول أولًا." : !allowed ? "المنصة مغلقة لحسابك حاليًا." : busyUploads ? "انتظر حتى يكتمل رفع المراجع وفحصها." : directing ? "انتظر حتى ينتهي «المخرج الخارق» من كتابة البرومبت." : submitting ? "انتظر حتى يبدأ التوليد." : null}
+              prompt={draft.prompt}
+              instructions={draft.instructions}
+              settings={ev.settings}
+              saved={draft.settings}
+              refStyle={refStyle}
+              refs={draft.refs}
+              styleId={draft.styleId ?? ""}
+              model={claude.id}
+              hasExtra={extras.length > 0}
+              items={items}
+              onJobs={(jobs) => setItems((cur) => [...jobs.filter((j) => filter === "all" || filter === j.outputKind), ...cur.filter((c) => !jobs.some((j) => j.id === c.id))])}
+              onPick={(id) => (switchGenerator(id), setTab("settings"))}
+            />
             {def.output === "image" && (
               <ClaudeCodeCard<JobView>
                 prompt={draft.prompt}
@@ -1229,6 +1266,9 @@ export default function Studio({ section, studioSections, generators, directorGe
             items={items}
             filter={filter}
             onFilter={changeFilter}
+            view={view}
+            onView={changeView}
+            onMarked={(type, id, mark) => setItems((cur) => cur.map((it) => (it.type === type && it.id === id ? { ...it, ...mark } : it)))}
             loading={worksLoading}
             hasMore={Boolean(next)}
             onMore={() => next && loadWorks(filter, next)}
