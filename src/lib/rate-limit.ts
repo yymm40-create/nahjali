@@ -22,6 +22,8 @@ export function rulesFor(path: string, method: string): Rule[] {
   if (path === "/api/access/code" && method === "POST") out.push({ key: "code", max: 8, windowMs: 10 * 60_000 });
   // the course's payment: a person starts an order and presses «تم التحويل» a few times, never dozens (each press can buzz the owner's phone)
   if ((path === "/api/course/order" || path === "/api/course/moyasar" || path === "/api/course/code" || path === "/api/course/transferred" || path === "/api/credits/order" || path === "/api/credits/transferred") && method === "POST") out.push({ key: "course", max: 20, windowMs: 10 * 60_000 });
+  // «ادفع بالمبلغ اللي تبيه» (/api/pay) is open without sign-in: each press makes a Moyasar invoice, so a few, never a flood
+  if (path === "/api/pay" && method === "POST") out.push({ key: "pay", max: 15, windowMs: 10 * 60_000 });
   // the password of the hidden «الخطيب الذكي»: a few tries, then a pause
   if (path === "/api/khateeb/enter" && method === "POST") out.push({ key: "khateeb", max: 8, windowMs: 10 * 60_000 });
   // «عباس سبع القنطرة» (the coach of «الصحة العلوية») is free for the person: a conversation, never a flood
