@@ -5,6 +5,7 @@
 import { isMotionKind, motionLabel, MOTION_KINDS, MOTION_MS, newMotion, readMotion, type MotionEl, type MotionKind } from "./motion-elements";
 import { applyLook, LOOKS, MAX_LAYERS, NEUTRAL_GRADE, readGrade, readGrades, type Grade } from "./grade";
 import { cutTimed, isFlat, rampArea, rampName, readRamp, type Ramp, type RampPresetId } from "./ramp";
+import { angleSpan, MULTICAM } from "./multicam";
 import {
   allTracks,
   clipEnd,
@@ -17,6 +18,7 @@ import {
   mainTrack,
   newId,
   pack,
+  readTimeline,
   RATIOS,
   sourceTime,
   timelineTime,
@@ -198,7 +200,22 @@ export type Command =
    * the first and after the last only shifted). Texts and pictures stretch or shrink with it; sounds and videos keep
    * their length and only start at the new moment. Used to fit a motion piece to the real length of its narration.
    */
-  | { type: "retime"; map: [number, number][] };
+  | { type: "retime"; map: [number, number][] }
+  /**
+   * «بدّل الكاميرات تلقائياً»: the synced cameras (`cams`, their clip ids) cut by `shots` (camera index, timeline from/to)
+   * into ordinary clips on one track; each camera's original goes to an «angles» track of its own, hidden and quiet
+   * (the source of «بدّل الزاوية»). `sound`: "follow" = each cut keeps its camera's sound, a camera's index = that
+   * camera's sound all along, "keep" = the sound tracks already there carry it. Run again on the same cameras, the old
+   * cuts are replaced.
+   */
+  | { type: "multicam"; cams: string[]; shots: { cam: number; from: number; to: number }[]; wide?: number | null; sound?: "follow" | "keep" | number }
+  /** «بدّل الزاوية»: a cut shows the same moment from another synced camera (`cam`: that camera's original clip id) */
+  | { type: "multicam_angle"; clipId: string; cam: string }
+  /**
+   * «قوالب المونتاج»: the open timeline becomes a ready template filled with the person's files (built by
+   * lib/editor/templates.ts); the project's other timelines stay. Put {"type":"seq_new"} before it to keep what is there.
+   */
+  | { type: "use_template"; name: string; timeline: Timeline };
 
 export class CommandError extends Error {}
 
@@ -1370,6 +1387,129 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       t.markers = t.markers.map(at).sort((a, b) => a - b);
       if (!moved) fail("ما تغيّر شي في التوقيت.");
       return { timeline: t, label: "ضبطت التوقيت على الصوت" };
+    }
+
+    case "multicam": {
+      const ids = [...new Set(Array.isArray(cmd.cams) ? cmd.cams.map(String) : [])];
+      if (ids.length < 2) fail("اختر كاميرتين على الأقل (مقاطع فيديو متزامنة).");
+      if (ids.length > MULTICAM.maxCams) fail(`أكثر شي ${MULTICAM.maxCams} كاميرات.`);
+      const cams = ids.map((id) => owned(t, id));
+      for (const f of cams) {
+        const a = f.clip.assetId ? assets.get(f.clip.assetId) : null;
+        if (f.track.kind !== "video" || f.track.role || f.clip.text || f.clip.seq || f.clip.motion || !a || a.kind !== "video") fail("الكاميرات لازم تكون مقاطع فيديو.");
+      }
+      const wide = Number.isInteger(cmd.wide) && (cmd.wide as number) >= 0 && (cmd.wide as number) < cams.length ? (cmd.wide as number) : null;
+      const sound = cmd.sound === "keep" ? "keep" : Number.isInteger(cmd.sound) && (cmd.sound as number) >= 0 && (cmd.sound as number) < cams.length ? (cmd.sound as number) : "follow";
+      // the shots: in order, each inside its camera's clip, never overlapping
+      const shots = (Array.isArray(cmd.shots) ? cmd.shots : []).map((s) => ({ cam: Number(s?.cam), from: Math.round(Number(s?.from)), to: Math.round(Number(s?.to)) }));
+      if (!shots.length) fail("ما فيه لقطات.");
+      if (shots.length > LIMITS.clips / 2) fail("اللقطات أكثر من المسموح.");
+      let prevEnd = -Infinity;
+      for (const s of shots) {
+        const c = cams[s.cam]?.clip ?? fail("لقطة من كاميرا مو موجودة.");
+        if (!Number.isFinite(s.from) || !Number.isFinite(s.to) || s.to - s.from < LIMITS.minClipMs) fail("لقطة أقصر من المسموح.");
+        if (s.from < c.start - 2 || s.to > clipEnd(c) + 2) fail("لقطة برا وقت كاميرتها.");
+        if (s.from < prevEnd - 2) fail("اللقطات متداخلة.");
+        prevEnd = s.to;
+      }
+      // a run again on the same cameras: the cuts made from them before go (on whatever track they sit)
+      const camIds = new Set(ids);
+      let reuse: Track | null = null;
+      for (const tr of t.tracks) {
+        if (tr.angles || !tr.clips.some((c) => c.angle && camIds.has(c.angle))) continue;
+        if (tr.locked) fail(`المسار «${tr.name}» مقفول؛ افتح القفل أول.`);
+        tr.clips = tr.clips.filter((c) => !(c.angle && camIds.has(c.angle)));
+        tidy(t, tr);
+        reuse ??= tr;
+      }
+      // each camera alone on an «angles» track: hidden (the cuts show it) and quiet unless its sound carries the video
+      cams.forEach((f, k) => {
+        let tr = f.track;
+        if (!tr.angles || tr.clips.length > 1) {
+          tr.clips = tr.clips.filter((c) => c.id !== f.clip.id);
+          tidy(t, tr);
+          tr = newTrack(t, "video");
+          tr.angles = true;
+          tr.clips = [f.clip];
+          f.track = tr;
+        }
+        tr.name = `كاميرا ${k + 1}${k === wide ? " (واسعة)" : ""}`;
+        tr.hidden = true;
+        tr.muted = sound !== k;
+        tr.color = TRACK_COLORS[(8 + k * 2) % TRACK_COLORS.length];
+      });
+      const made: Clip[] = shots.map((s) => {
+        const orig = cams[s.cam].clip;
+        const c: Clip = { ...structuredClone(orig), id: newId("c"), start: s.from, ...timedFields(cutTimed(orig, s.from, s.to)), angle: orig.id, transition: null, fix: null };
+        if (s.from > orig.start + 1) c.fadeIn = 0;
+        if (s.to < clipEnd(orig) - 1) c.fadeOut = 0;
+        c.volume = sound === "follow" ? orig.volume : 0;
+        return c;
+      });
+      // edge to edge without overlapping (a millisecond of rounding goes to the later shot)
+      for (let i = 1; i < made.length; i++) made[i].start = Math.max(made[i].start, clipEnd(made[i - 1]));
+      if (countClips(t) + made.length > LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
+      const from = made[0].start;
+      const to = clipEnd(made[made.length - 1]);
+      // where they go: the track the old cuts were on, else the main track when it is free there (and its magnet
+      // keeps them in place), else a new picture track right above the main one (under what was drawn over it)
+      const fits = (tr: Track | null | undefined): tr is Track => {
+        if (!tr || tr.angles || tr.locked || tr.role || tr.kind !== "video" || !free(tr, from, to)) return false;
+        if (!magnet(t, tr)) return true;
+        const packed = pack([...tr.clips, ...made].map((c) => ({ ...c })));
+        return made.every((c) => packed.find((x) => x.id === c.id)?.start === c.start);
+      };
+      const main = mainTrack(t);
+      let target: Track;
+      if (fits(reuse)) target = reuse;
+      else if (fits(main)) target = main;
+      else {
+        target = newTrack(t, "video");
+        target.name = "المونتاج";
+        t.tracks = t.tracks.filter((x) => x !== target);
+        const at = main ? t.tracks.indexOf(main) + 1 : 0;
+        t.tracks.splice(at, 0, target);
+      }
+      target.clips = [...target.clips, ...made];
+      tidy(t, target);
+      const shown = new Set(shots.map((s) => s.cam)).size;
+      return { timeline: t, label: `بدّلت الكاميرات تلقائيًا (${made.length} لقطة من ${shown} كاميرات)`, select: [made[0].id] };
+    }
+
+    case "multicam_angle": {
+      const { track, clip } = owned(t, cmd.clipId);
+      if (!clip.angle) fail("هذي مو لقطة من «بدّل الكاميرات».");
+      const span = angleSpan(t, clip) ?? fail("الكاميرا الأصلية لهذي اللقطة انحذفت.");
+      const to = findClip(t, cmd.cam) ?? fail("ما لقينا هذي الكاميرا.");
+      if (!to.track.angles) fail("هذي مو وحدة من الكاميرات المتزامنة.");
+      if (to.clip.id === clip.angle) return { timeline: t, label: "نفس الزاوية", select: [clip.id] };
+      const [a, b] = span;
+      if (a < to.clip.start - 2 || b > clipEnd(to.clip) + 2) fail("هذي الكاميرا ما صوّرت هذي اللحظة كاملة.");
+      const len = clipLength(clip);
+      const src = to.clip;
+      setTimed(clip, cutTimed(src, Math.max(a, src.start), Math.min(b, clipEnd(src))));
+      // never longer than before (a millisecond of rounding), so nothing after it moves
+      while (clipLength(clip) > len && clip.out - clip.in > LIMITS.minClipMs) clip.out -= 1;
+      // the other camera's own look comes with it; the cut keeps its place, its transition and its fades
+      Object.assign(clip, structuredClone({ assetId: src.assetId, transform: src.transform, keys: src.keys, fit: src.fit, crop: src.crop, blend: src.blend, key: src.key, grades: src.grades, color: src.color, bg: src.bg, fx: src.fx, shape: src.shape, sound: src.sound }));
+      clip.volume = clip.volume > 0 ? src.volume : 0;
+      clip.angle = src.id;
+      tidy(t, track);
+      return { timeline: t, label: `بدّلت الزاوية: ${to.track.name}`, select: [clip.id] };
+    }
+
+    case "use_template": {
+      const known = new Set([...assets.keys()]);
+      const made = readTimeline(cmd.timeline, known);
+      if (!made.tracks.some((x) => x.clips.length)) fail("القالب فاضي.");
+      t.width = made.width;
+      t.height = made.height;
+      t.background = made.background;
+      t.magnetic = made.magnetic;
+      t.magnetAll = made.magnetAll;
+      t.markers = made.markers;
+      t.tracks = made.tracks;
+      return { timeline: t, label: `قالب: ${String(cmd.name ?? "").slice(0, 40) || "جاهز"}` };
     }
 
     case "close_gaps": {

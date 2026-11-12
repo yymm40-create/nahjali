@@ -10,10 +10,10 @@ import Icon, { type IconName } from "../Icon";
 import { PAGE_INFO, type MenuGroup, type PageId, type Workspace } from "./workspaces";
 
 /** What an item does: a shortcut's job, a page, or one of the editor's windows. */
-export type MenuAct = { key: ActionId } | { page: PageId } | { open: "captions" | "transcript" | "shortcuts" | "layout" | "log" | "haidara" | "haidaraDock" | "styles" | "project" | "media" };
+export type MenuAct = { key: ActionId } | { page: PageId } | { open: "captions" | "transcript" | "templates" | "shortcuts" | "layout" | "log" | "haidara" | "haidaraDock" | "styles" | "project" | "media" };
 
 const ITEMS: Record<MenuGroup, ([string, MenuAct] | "-")[]> = {
-  file: [["استورد ملفات…", { key: "import" }], ["احفظ", { key: "save" }], "-", ["المشروع (المقاس والخلفية)", { open: "project" }], ["صدّر الفيديو…", { key: "export" }]],
+  file: [["استورد ملفات…", { key: "import" }], ["احفظ", { key: "save" }], "-", ["قوالب المونتاج…", { open: "templates" }], ["المشروع (المقاس والخلفية)", { open: "project" }], ["صدّر الفيديو…", { key: "export" }]],
   edit: [["تراجع", { key: "undo" }], ["إعادة", { key: "redo" }], ["سجل التغييرات…", { open: "log" }], "-", ["قص", { key: "cut" }], ["نسخ", { key: "copy" }], ["لصق", { key: "paste" }], ["لصق السمات", { key: "pasteAttrs" }], ["تكرار", { key: "duplicate" }], "-", ["حذف", { key: "delete" }], ["حذف وسحب اللي بعده (Ripple)", { key: "ripple" }], "-", ["اختر الكل", { key: "selectAll" }], ["شيل الاختيار", { key: "deselect" }], "-", ["الاختصارات…", { open: "shortcuts" }]],
   clip: [["قص عند المؤشر", { key: "split" }], ["قص كل المسارات", { key: "splitAll" }], ["قص البداية لين المؤشر", { key: "trimStart" }], ["قص النهاية من المؤشر", { key: "trimEnd" }], "-", ["أضف انتقال تلاشي", { key: "transition" }], ["الحركة والمكان", { page: "motion" }], ["المؤثرات", { page: "fx" }]],
   timeline: [["قص كل المسارات", { key: "splitAll" }], ["القصّة اللي قبل", { key: "prevEdit" }], ["القصّة اللي بعد", { key: "nextEdit" }], "-", ["كبّر التايملاين", { key: "zoomIn" }], ["صغّر التايملاين", { key: "zoomOut" }], ["كل التايملاين في الشاشة", { key: "zoomFit" }], "-", ["بداية منطقة التصدير (In)", { key: "markIn" }], ["نهاية منطقة التصدير (Out)", { key: "markOut" }], ["شيل منطقة التصدير", { key: "clearRange" }]],

@@ -20,7 +20,7 @@ const LANGS = [
 ] as const;
 
 /** «كابشن»: what is said, written on the video word by word; a poem's verses on its recitation; SRT in and out. */
-export default function CaptionsPanel({ dock, open, onClose, projectId, tl, assets, run, flash }: { /** the editor's right column (a computer) */ dock?: HTMLElement | null; open: boolean; onClose: () => void; projectId: string; tl: Timeline; assets: Map<string, EditorAsset>; run: Run; flash: (t: string, bad?: boolean) => void }) {
+export default function CaptionsPanel({ dock, open, onClose, projectId, tl, assets, run, flash, style0 }: { /** the editor's right column (a computer) */ dock?: HTMLElement | null; open: boolean; onClose: () => void; projectId: string; tl: Timeline; assets: Map<string, EditorAsset>; run: Run; flash: (t: string, bad?: boolean) => void; /** the look to start from (a template's) */ style0?: CaptionStyle | null }) {
   const [tab, setTab] = useState<Tab>("auto");
   const [lang, setLang] = useState<string>("ar");
   const [style, setStyle] = useState<CaptionStyle>("karaoke");
@@ -39,6 +39,15 @@ export default function CaptionsPanel({ dock, open, onClose, projectId, tl, asse
   useEffect(() => {
     if (open) track("editor.captions");
   }, [open]);
+  // a template's captions look, when it opens the window
+  useEffect(() => {
+    if (!open || !style0) return;
+    const t = setTimeout(() => {
+      setStyle(style0);
+      setTab("auto");
+    }, 0);
+    return () => clearTimeout(t);
+  }, [open, style0]);
 
   // clips we can hear (their sound is what gets written)
   const sources = captionSources(tl, assets);
