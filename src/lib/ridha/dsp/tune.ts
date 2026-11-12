@@ -75,7 +75,7 @@ export function planTune(t: PitchTrack, o: TuneOptions): TunePlan {
   return { sung, target, tuned, ratio };
 }
 
-export type HarmonyMotion = "parallel" | "chord" | "lazy" | "pedal";
+export type HarmonyMotion = "parallel" | "chord" | "lazy" | "pedal" | "fixed";
 
 export interface HarmonyLine {
   tonic: number;
@@ -87,7 +87,11 @@ export interface HarmonyLine {
   /**
    * how the voice moves: «parallel» walks with the melody at its interval; «chord» does the same but lands only on
    * the notes of the key's own chord (1-3-5), so it never rubs; «lazy» stays where it is until the melody has moved
-   * well away (the calm inner voice of a choir); «pedal» holds ONE note under everything — the ison of old chant.
+   * well away (the calm inner voice of a choir); «pedal» holds ONE note under everything — the ison of old chant;
+   * «fixed» is the way a maqam singer is taught to harmonise (the method of the engineer علي البقال): the line is
+   * moved by ONE fixed distance — the distance of `steps` measured from the tonic, a third, a fifth or a seventh —
+   * and wherever that lands a note OUTSIDE the scale (which is what makes a harmony «نشاز»), the note is moved one
+   * step further, onto the scale's next note in the same direction.
    */
   motion?: HarmonyMotion;
   /** for «pedal»: which step of the scale is held (0 the tonic, 4 its fifth) */
@@ -132,6 +136,19 @@ export function planHarmony(t: PitchTrack, o: HarmonyLine): Float32Array {
   const pc = o.tonic + o.scale.cents[Math.min(size - 1, Math.max(0, o.pedalStep ?? 0))] / 100;
   const pedal = pc + 12 * Math.round((middle - pc) / 12) + 12 * o.octaves;
 
+  // «fixed»: the distance, in semitones, of `steps` scale steps counted from the tonic (a kurd third is 3, an ajam
+  // third 4), always the same; a note it lands outside the scale is carried one more step in the same direction
+  const n7 = o.scale.cents.length;
+  const fixedSemis = (Math.floor(o.steps / n7) * 1200 + o.scale.cents[((o.steps % n7) + n7) % n7]) / 100 + 12 * o.octaves;
+  const fixedTarget = (from: number) => {
+    const raw = from + fixedSemis;
+    const near = snap(raw, o.tonic, o.scale);
+    if (Math.abs(near.midi - raw) < 0.26) return near.midi;
+    const dir = fixedSemis >= 0 ? 1 : -1;
+    // the scale's next note beyond the raw one, in the direction the voice was moved
+    const beyond = stepFrom(near, (near.midi - raw) * dir > 0 ? 0 : dir, o.tonic, o.scale);
+    return beyond;
+  };
   let glide = 0, held = 0;
   let inNote = false;
   for (let i = 0; i < n; i++) {
@@ -142,7 +159,8 @@ export function planHarmony(t: PitchTrack, o: HarmonyLine): Float32Array {
     }
     const walk = stepFrom(note, o.steps, o.tonic, o.scale) + 12 * o.octaves;
     let target = walk;
-    if (motion === "pedal") target = pedal;
+    if (motion === "fixed") target = fixedTarget(note.midi);
+    else if (motion === "pedal") target = pedal;
     else if (motion === "chord") target = onChord(walk);
     else if (motion === "lazy") {
       // stays put until the melody's own harmony note is more than a whole tone away, or the phrase begins

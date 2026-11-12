@@ -8,7 +8,7 @@ import type { Clip, Project, Track } from "@/lib/ridha/model";
 import type { Engine } from "./engine";
 import type { Store } from "./store";
 
-export type PanelId = "max" | "mixer" | "editor" | "eq" | "fx" | "tune" | "clean" | "harmony" | "arrange" | "voice" | "smart" | "master" | "lyrics" | "export";
+export type PanelId = "max" | "mixer" | "editor" | "eq" | "fx" | "tune" | "clean" | "harmony" | "arrange" | "voice" | "smart" | "master" | "lyrics" | "latma" | "export";
 
 export interface Studio {
   engine: Engine;

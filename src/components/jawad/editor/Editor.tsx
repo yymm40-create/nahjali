@@ -2376,6 +2376,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         onRange={(r) => setRangeIO(r ? { from: r.from, to: r.to } : { from: null, to: null })}
         player={player}
         onExported={() => undefined}
+        onReshape={readOnly ? undefined : (r) => {
+          run({ type: "set_ratio", ratio: r });
+          flash(`صار مقاس المشروع ${r}؛ شيّك على مكان الصور والكتابة قبل التصدير (تقدر ترجع بالتراجع).`);
+        }}
         onUpscaleExport={readOnly ? undefined : (file, target, name) => {
           uploads.add([file], [{ at: 0, trackId: null, mode: "one", group: `expup:${target}:${name}`, first: true }]);
           flash("نرفع الفيديو المصدَّر ونرسله لرفع الدقة…");
