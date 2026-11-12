@@ -117,11 +117,13 @@ export function roomOf(t: MajlisTemplate, w: MajlisTemplate["words"][number]): {
   const [x, y, ww, h] = w.r;
   const r4 = (v: number) => Math.round(v * 10000) / 10000;
   // a GPT design's plate keeps clear of its end ornaments, and a box's words keep clear of its icon (on the left)
+  // a designer's template: each word in the middle of the box he drew for it
+  if (t.source === "user") return { room: r4(ww * 0.94), ax: r4(x + ww / 2), align: "center" };
   if (t.source === "gpt") {
     if (["dateLine", "timeLine", "place", "women"].includes(w.k)) return { room: r4(ww * 0.76), ax: r4(x + ww * 0.56), align: "center" };
     if (w.k !== "hostLine") return { room: r4(ww * 0.84), ax: r4(x + ww / 2), align: "center" };
   }
-  const box = t.source === "gpt" ? w.r : w.box && w.box[2] < 0.75 ? w.box : null;
+  const box = t.source !== "code" ? w.r : w.box && w.box[2] < 0.75 ? w.box : null;
   let lo = box ? box[0] : 0.03, hi = box ? box[0] + box[2] : 0.97;
   const cx = x + ww / 2;
   for (const n of t.words) {

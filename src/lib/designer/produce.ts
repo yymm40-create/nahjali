@@ -17,7 +17,7 @@ import { readLayers, type Design } from "./layers";
 import { editOf, photoKeys, readProgram, type DesignEdit } from "./program";
 import { findContentFont, FONT_PIN, fontBlock } from "@config/content-fonts";
 import { darkToLight, findPalette } from "@config/content-palettes";
-import { baseUrl, isMajlisMaker, readOrder, templateById, viewUrl, type MajlisMaker, type MajlisOrder } from "@config/designer-majlis";
+import { baseUrl, isMajlisMaker, readOrder, templateOf, viewUrl, type MajlisMaker, type MajlisOrder } from "@config/designer-majlis";
 import { GPT_IMAGE_26_ID } from "@config/jawad/generators";
 import { isAdmin } from "@config/site";
 import { MAJLIS_FONTS, majlisGptPrompt, majlisPhotos, majlisProgram } from "./majlis";
@@ -179,7 +179,7 @@ export async function majlisGpt(userId: string, chatId: string, o: { email?: str
   const p = chat.pending;
   const maker = p?.majlisMaker;
   if (!p?.majlis || !maker || maker === "code") throw new UserError("ما فيه تصميم ينتظر الرسم في هذي المحادثة.", 409);
-  const t = templateById(p.majlis.templateId);
+  const t = templateOf(p.majlis);
   if (!t) throw new UserError("ما لقينا التصميم المختار.", 409);
   const at = Math.min(p.at, chat.messages.length - 1);
   const base = chat.messages[at]?.design;
@@ -240,7 +240,7 @@ async function majlisBrief(userId: string, chat: Chat, origin: string, owner: bo
     }
   }
   const o = p.majlis!;
-  const t = templateById(o.templateId);
+  const t = templateOf(o);
   if (!t) throw new UserError("ما لقينا التصميم المختار.", 409);
   const ids = [...o.people.map((x) => x.photo), ...(o.logo ? [o.logo] : [])].filter(Boolean);
   const links = await uploadLinks(userId, ids);

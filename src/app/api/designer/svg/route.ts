@@ -7,7 +7,7 @@ import { getChat, lastDesignAt } from "@/lib/designer/chats";
 import { addFileFromOutput, fileLinks } from "@/lib/designer/files";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { deskImage, DeskError, type DeskWho } from "@/lib/content/jawad";
-import { readOrder, templateById } from "@config/designer-majlis";
+import { readOrder, templateOf } from "@config/designer-majlis";
 import { GPT_IMAGE_26_ID } from "@config/jawad/generators";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +31,7 @@ export const POST = handle(async (req: Request) => {
   const { data } = await createAdminClient().from("designer_files").select("meta").eq("id", d.artwork).eq("user_id", user.id).maybeSingle();
   const meta = (data?.meta ?? {}) as Record<string, unknown>;
   const order = readOrder(meta.majlis);
-  const t = order ? templateById(order.templateId) : null;
+  const t = order ? templateOf(order) : null;
   const title = t?.title ?? "";
   const brief = typeof meta.prompt === "string" ? meta.prompt.slice(0, 1500) : "";
   const prompt = title
