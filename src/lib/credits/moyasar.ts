@@ -40,8 +40,8 @@ export interface InvoiceInput {
   /** in riyals; sent in halalas */
   amount: number;
   description: string;
-  /** where Moyasar POSTs the paid invoice (a notification, not a redirect) */
-  callbackUrl: string;
+  /** where Moyasar POSTs the paid invoice (a notification, not a redirect); none for a plain payment link */
+  callbackUrl?: string;
   /** where the buyer lands after paying */
   successUrl: string;
   /** the page's back button */
@@ -57,7 +57,7 @@ export async function createInvoice(i: InvoiceInput): Promise<{ id: string; url:
     amount: halalas(i.amount),
     currency: "SAR",
     description: i.description,
-    callback_url: i.callbackUrl,
+    ...(i.callbackUrl ? { callback_url: i.callbackUrl } : {}),
     success_url: i.successUrl,
     back_url: i.backUrl,
     // an unpaid page should not stay payable for ever
@@ -83,3 +83,27 @@ export async function getInvoice(id: string): Promise<Invoice> {
 
 /** Is this invoice really paid: the one we made for this order, in riyals, for this price? */
 export const invoicePaid = (inv: Invoice, invoiceId: string, priceSar: number) => inv.status === "paid" && inv.id === invoiceId && inv.currency === "SAR" && inv.amount === halalas(priceSar);
+
+export interface Payment {
+  id: string;
+  /** in halalas */
+  amount: number;
+  currency: string;
+  status: string;
+  /** the invoice it paid, when it came from one */
+  invoiceId: string;
+  description: string;
+}
+
+/** One payment as Moyasar holds it (what Moyasar appends as `id` when it sends the payer back to an invoice's success_url). */
+export async function getPayment(id: string): Promise<Payment> {
+  const r = await call<{ id?: unknown; amount?: unknown; currency?: unknown; status?: unknown; invoice_id?: unknown; description?: unknown }>(`/payments/${encodeURIComponent(id)}`, "GET");
+  return {
+    id: String(r?.id ?? ""),
+    amount: Number(r?.amount ?? NaN),
+    currency: String(r?.currency ?? ""),
+    status: String(r?.status ?? ""),
+    invoiceId: String(r?.invoice_id ?? ""),
+    description: String(r?.description ?? ""),
+  };
+}

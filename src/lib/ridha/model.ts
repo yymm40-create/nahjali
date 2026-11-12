@@ -114,6 +114,12 @@ export interface Project {
     rhythm?: { spec: import("./dsp/rhythm").RhythmSpec; bars: number; clipId: string };
     pad?: { spec: import("./dsp/rhythm").PadSpec; clipId: string };
   };
+  /** recording only inside the loop region: playback starts a bar before it, and what was sung outside it is dropped */
+  punch?: boolean;
+  /** the words being recorded (a poem, a script), kept with the project and read from a window while recording */
+  lyrics?: string;
+  /** the one-press master on the master chain: the style, how hard (1–5), and a matched reference's tone and name */
+  mastering?: { style: string; level: number; match?: number[]; ref?: string };
   createdAt: number;
   updatedAt: number;
 }

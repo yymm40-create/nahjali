@@ -78,6 +78,8 @@ export interface Design {
   art?: string;
   /** a design that splits the person's upload into layers: that upload (so «أعد المحاولة» splits it again) */
   splitOf?: string;
+  /** a ready majlis design («دعوة مجلس»): its template id — a change asked for it edits that same design */
+  majlis?: string;
 }
 
 /** the site's own fonts (the split layers' editor) and «قائمة الخطوط» (what «حيدرا ماكس» writes with) */
@@ -170,6 +172,7 @@ export function readDesign(v: unknown): Design | null {
   if (typeof o.final === "string" && o.final) d.final = o.final;
   if (typeof o.art === "string" && o.art) d.art = o.art;
   if (typeof o.splitOf === "string" && o.splitOf) d.splitOf = o.splitOf.slice(0, 60);
+  if (typeof o.majlis === "string" && o.majlis) d.majlis = o.majlis.slice(0, 20);
   return d;
 }
 

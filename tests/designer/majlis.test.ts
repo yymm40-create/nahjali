@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { MAJLIS_PEOPLE, MAJLIS_TEMPLATES, orderMissing, readOrder, templatesFor } from "@config/designer-majlis";
+import { MAJLIS_PEOPLE, MAJLIS_TEMPLATES, orderMissing, readOrder, readUserTemplate, templateOf, templatesFor } from "@config/designer-majlis";
 import { majlisGptPrompt, majlisPhotos, majlisProgram } from "@/lib/designer/majlis";
 import { checkScene } from "@/lib/editor/scene/contract";
 
@@ -28,6 +28,20 @@ describe("«كاظم»'s ready majlis designs", () => {
         expect(r[1], `${t.id} ${who}`).toBeLessThan(f[1] + f[3] + 0.1);
       }
     }
+  });
+  it("carries a designer's template («قوالب المصممين») in the order, and draws it", () => {
+    const raw = { id: "u0123456789ab", aspect: "4:5", title: "يا زهراء", slots: [{ r: [0.1, 0.2, 0.3, 0.35], shape: "circle" }, { r: [0.6, 0.2, 0.3, 0.35] }], words: [{ k: "kh", r: [0.1, 0.6, 0.3, 0.04] }, { k: "rd", r: [0.6, 0.6, 0.3, 0.04], grad: "gold" }, { k: "dateLine", r: [0.2, 0.8, 0.6, 0.03] }, { k: "evil", r: [0, 0, 1, 1] }] };
+    const t = readUserTemplate(raw)!;
+    expect(t.source).toBe("user");
+    expect(t.words.map((w) => w.k)).toEqual(["kh", "rd", "dateLine"]);
+    expect(readUserTemplate({ ...raw, id: "x1" })).toBeNull();
+    expect(readUserTemplate({ ...raw, words: [] })).toBeNull();
+    const o = readOrder({ templateId: t.id, template: t, fields: { host: "م", night: "ل", date: "د", time: "٨", place: "ق" }, people: [{ role: "kh", name: "أ", photo: "u1" }, { role: "rd", name: "ب", photo: "u2" }], cut: false })!;
+    expect(templateOf(o)?.id).toBe(t.id);
+    expect(templatesFor(1, 1, [t]).at(-1)?.id).toBe(t.id);
+    const ph = majlisPhotos(t, o, (id) => `https://x/${id}`);
+    expect(ph.urls[0]).toContain(`/api/designer/templates/${t.id}/image`);
+    expect(checkScene(majlisProgram(t, o, ph.ids)).ok).toBe(true);
   });
   it("shows the designs that fit the count: the invitations first, then the ones with people", () => {
     const two = templatesFor(1, 1);

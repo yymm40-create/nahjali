@@ -7,6 +7,7 @@
 import { BLEND_MODES, NEW_KEY, type BlendMode, type Clip, type Keyer } from "@/lib/editor/model";
 import type { ClipPatch } from "@/lib/editor/commands";
 import { keyAsk, type KeyOp } from "./KeyStudio";
+import { track } from "@/lib/feature-track";
 
 const FAMILIES: [string, BlendMode[]][] = [
   ["", ["normal"]],
@@ -91,6 +92,7 @@ export function KeyControls({ clip, locked, set }: { clip: Clip; locked: boolean
                 aria-checked={(k?.kind ?? null) === kind}
                 disabled={locked}
                 onClick={() => {
+                  if (kind) track("editor.key");
                   set({ key: kind ? { ...(k ?? NEW_KEY), kind } : null }, "key:kind");
                   // a new chroma key: the screen found by itself
                   if (kind === "chroma" && k?.kind !== "chroma") ask("auto");
