@@ -4,6 +4,7 @@ import LabPiece from "./LabPiece";
 import MotionPanel from "./MotionPanel";
 import CropPanel from "./CropPanel";
 import ReframeBox from "./ReframeBox";
+import MulticamBox, { AngleSwap } from "./MulticamBox";
 import SpeedRamp from "./SpeedRamp";
 import type { LabSource } from "./MotionLab";
 import { useEffect, useState } from "react";
@@ -197,6 +198,7 @@ export default function Inspector({
             <p className="text-[11px] leading-5 text-jw-faint">يثبّت أول مقطع، ويحرّك الباقي لين ينطبق صوتهم عليه.</p>
           </div>
         )}
+        <MulticamBox tl={tl} selected={selected} assets={assets} run={run} readOnly={readOnly} flash={flash} />
         {selected.length > 1 && (() => {
           // the colour grading of the first selected picture, spread onto the others (or a grading copied earlier onto all of them)
           const okIds = new Set(gradeable(tl, selected));
@@ -427,6 +429,7 @@ export default function Inspector({
 
       {current === "basic" && (
         <div className="space-y-3">
+          {clip.angle && <AngleSwap tl={tl} clipId={clip.id} run={run} locked={locked} />}
           {a?.kind === "video" && onSceneCut && <SceneCut clipId={clip.id} locked={locked} run={onSceneCut} />}
           {a?.kind === "video" && a.status === "ready" && onExtend && (
             <div className="space-y-2 rounded-xl border border-cyan-400/35 bg-gradient-to-br from-cyan-400/10 via-jw-surface-2 to-violet-500/10 p-2.5">

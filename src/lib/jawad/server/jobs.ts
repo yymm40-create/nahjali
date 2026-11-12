@@ -41,6 +41,8 @@ import { omni12EditRequest, omni12Request, omniRequest } from "./gemini-omni";
 import { wanRequest } from "./wan";
 import { kling4EditRequest, kling4Request } from "./kling4";
 import { falImages, falSubmit, falTask } from "./providers/fal";
+import { runImageTool } from "./image-tools";
+import { isImageTool } from "@config/jawad/image-tools";
 import sharp from "sharp";
 import { prepareEdit, type EditInputs } from "./smart-edit";
 import { elevenMusic, elevenMusicWithReference, elevenSoundEffect, elevenSpeech } from "./providers/elevenlabs";
@@ -479,6 +481,14 @@ async function runSimpleImage(job: JobRow, def: GeneratorDef, refs: UploadRow[])
   await finishJob(job, "succeeded", { costUsd: def.costUsd({ settings: s, prompt, refs: [] } as never, def.modes[0]) ?? undefined, units: { images: images.length } });
 }
 
+/** «أدوات الصورة» (امسح بالفرشاة · وسّع الصورة · ارفع الدقة): the edited picture kept as a NEW result; the original stays. */
+async function runImageToolJob(job: JobRow, refs: UploadRow[]) {
+  const r = await runImageTool({ id: job.id, userId: job.user_id, generatorId: job.generator_id, settings: job.inputs.settings, prompt: job.prompt }, refs, download);
+  await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
+  for (const [i, im] of r.images.entries()) await saveOutput(job, i, im.bytes, im.mime, im.ext, { width: im.width, height: im.height });
+  await finishJob(job, "succeeded", { costUsd: r.costUsd, units: r.units });
+}
+
 async function saveOutput(job: JobRow, idx: number, file: Buffer, mime: string, ext: string, dims: { width?: number | null; height?: number | null; durationMs?: number | null }, name?: string) {
   const path = `${job.user_id}/outputs/${job.id}/${name ?? idx}.${ext}`;
   const up = await storage.from(JAWAD_BUCKET).upload(path, file, { contentType: mime, upsert: true });
@@ -498,6 +508,8 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   await db().from("jawad_jobs").update({ status: "running", submit_state: "accepted", provider_status: "generating" }).eq("id", job.id);
   await event(job.id, "submitted");
 
+  // «أدوات الصورة»: one picture edited (a part painted over, expanded, or upscaled)
+  if (isImageTool(def.id)) return runImageToolJob(job, refs);
   // the pictures sold per image (Google's Nano Banana family on fal, Seedream on ModelArk)
   if (def.output === "image" && def.provider.id !== "openai") return runSimpleImage(job, def, refs);
 

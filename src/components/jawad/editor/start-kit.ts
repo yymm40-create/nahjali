@@ -2,6 +2,7 @@
 // page moves to the editor; they can't travel in the address) or works of the person's already brought into it.
 
 import type { Timeline } from "@/lib/editor/model";
+import type { Template } from "@/lib/editor/templates";
 import type { EditorAsset } from "./types";
 
 export type StartKit = {
@@ -10,6 +11,8 @@ export type StartKit = {
   assets: EditorAsset[];
   /** «افتح مشروع محفوظ»: a saved project's timeline and its files (each with the id the timeline knows it by) */
   pkg?: { timeline: Timeline; media: { oldId: string; file: File }[] };
+  /** «قوالب المونتاج»: a template picked in the launcher — the editor opens with its slots to fill */
+  template?: Template;
 };
 
 let kit: StartKit | null = null;

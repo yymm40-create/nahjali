@@ -55,6 +55,9 @@ export function context(tl: Timeline, assets: ContextAsset[], transcripts: Map<s
       ...(t.muted ? { muted: true } : {}),
       ...(t.locked ? { locked: true } : {}),
       ...(t.duck ? { duck: true } : {}),
+      ...(t.hidden ? { hidden: true } : {}),
+      // «بدّل الكاميرات»: a synced camera's original (the cuts are made from it; multicam_angle swaps to it)
+      ...(t.angles ? { cameraAngles: true } : {}),
       clips: t.clips.map((c) => ({
         id: c.id,
         ...(c.assetId ? { assetId: c.assetId, name: byId.get(c.assetId)?.name ?? "" } : {}),
@@ -80,6 +83,7 @@ export function context(tl: Timeline, assets: ContextAsset[], transcripts: Map<s
         ...(c.fx.length ? { fx: c.fx } : {}),
         ...(c.anim ? { anim: c.anim } : {}),
         ...(c.sound ? { sound: c.sound } : {}),
+        ...(c.angle ? { fromCamera: c.angle } : {}),
       })),
     })),
     library: assets.filter((a) => a.status === "ready").map((a) => ({ id: a.id, kind: a.kind, name: a.name, durationMs: a.durationMs, ...(a.kind === "video" ? { hasSound: a.hasAudio, size: a.width && a.height ? `${a.width}x${a.height}` : undefined } : {}) })),
