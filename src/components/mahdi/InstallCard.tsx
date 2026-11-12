@@ -10,6 +10,9 @@ interface InstallEvent extends Event {
 
 const noop = () => () => {};
 
+/** The Android app (a wrapper around this site made with PWABuilder, package app.aljawadai.mahdi), installed from the file. */
+export const ANDROID_APK = "/mahdi/android/lajl-almahdi.apk";
+
 /** "Add to home screen": the browser's install prompt where available, instructions on iPhone. */
 export default function InstallCard() {
   const [evt, setEvt] = useState<InstallEvent | null>(null);
@@ -20,6 +23,7 @@ export default function InstallCard() {
     () => true,
   );
   const ios = useSyncExternalStore(noop, () => /iPad|iPhone|iPod/.test(navigator.userAgent), () => false);
+  const android = useSyncExternalStore(noop, () => /Android/i.test(navigator.userAgent), () => false);
 
   useEffect(() => {
     const on = (e: Event) => {
@@ -30,15 +34,20 @@ export default function InstallCard() {
     return () => window.removeEventListener("beforeinstallprompt", on);
   }, []);
 
-  if (standalone || (!evt && !ios)) return null;
+  if (standalone || (!evt && !ios && !android)) return null;
   return (
     <section className="m-card flex flex-wrap items-center gap-3 p-4">
       <Icon name="arrowDown" className="m-gold" />
       <div className="min-w-0 flex-1">
         <p className="font-semibold">{t.install.title}</p>
-        <p className="text-sm m-muted">{ios ? t.install.ios : t.install.body}</p>
+        <p className="text-sm m-muted">{ios ? t.install.ios : android ? t.install.android : t.install.body}</p>
       </div>
-      {evt && (
+      {android && (
+        <a href={ANDROID_APK} download className="m-btn m-btn-primary m-btn-sm">
+          {t.install.androidButton}
+        </a>
+      )}
+      {evt && !android && (
         <button
           type="button"
           className="m-btn m-btn-primary m-btn-sm"

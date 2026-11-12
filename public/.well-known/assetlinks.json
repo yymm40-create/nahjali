@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "app.aljawadai.mahdi",
+        "sha256_cert_fingerprints": ["0C:DE:F4:F7:BA:FB:53:71:32:59:6A:4E:00:2B:20:E2:2D:4F:48:3D:7C:85:01:91:A5:C7:36:A1:33:04:C1:7D"]
+      }
+    }]
