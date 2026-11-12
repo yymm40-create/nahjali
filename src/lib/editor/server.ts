@@ -10,6 +10,7 @@ import { isSeriesTeamMember } from "@/lib/film/access";
 import { memberRights } from "@/lib/film/team";
 import { JAWAD_BUCKET } from "@/lib/jawad/server/runtime";
 import { applyAll, CommandError, type Command } from "./commands";
+import { keepPoint, logChange } from "./changes";
 import { editorSniff, EDITOR_MIMES, KIND_AR, storedType } from "./media";
 import { allTracks, emptyTimeline, isProjectKind, PROJECT_KINDS, readTimeline, type AssetInfo, type AssetKind, type ProjectKind, type Timeline } from "./model";
 
@@ -242,9 +243,10 @@ export async function projectState(p: EditorProject) {
 
 /**
  * Saves the whole timeline if nobody saved since `version` (another tab, Claude…); otherwise 409 with the newer one.
- * The document is cleaned first (clips on media that isn't in this project are dropped).
+ * The document is cleaned first (clips on media that isn't in this project are dropped). The change is logged (who,
+ * its name, its steps) and the document it replaced may be kept as a point to come back to («ارجع لهنا», changes.ts).
  */
-export async function saveTimeline(p: EditorProject, b: { timeline?: unknown; version?: unknown; label?: unknown; actor?: unknown; title?: unknown }) {
+export async function saveTimeline(p: EditorProject, b: { timeline?: unknown; version?: unknown; label?: unknown; actor?: unknown; title?: unknown; steps?: unknown }) {
   const version = Number(b.version);
   if (!Number.isInteger(version)) throw new UserError("نسخة غير صحيحة.", 400);
   const ids = new Set((await assetRows(p.id)).filter((r) => r.status !== "pending").map((r) => r.id));
@@ -257,7 +259,9 @@ export async function saveTimeline(p: EditorProject, b: { timeline?: unknown; ve
     const now = await requireEditorProject(p.id, p.user_id);
     return { ok: false as const, version: now.version, timeline: readTimeline(now.timeline) };
   }
-  await db().from("editor_ops").insert({ project_id: p.id, version: version + 1, actor: String(b.actor ?? "user").slice(0, 60), label: String(b.label ?? "").slice(0, 200) });
+  const actor = String(b.actor ?? "user");
+  await keepPoint(p, { version, actor });
+  await logChange(p.id, { version: version + 1, actor, label: String(b.label ?? ""), steps: b.steps });
   return { ok: true as const, version: version + 1 };
 }
 
@@ -266,19 +270,13 @@ export async function runCommands(p: EditorProject, cmds: Command[], actor: stri
   const assets = await assetViews(p.id);
   try {
     const r = applyAll(readTimeline(p.timeline), cmds, new Map(assets.map((a) => [a.id, assetInfo(a)])));
-    const saved = await saveTimeline(p, { timeline: r.timeline, version: p.version, label: r.label, actor });
+    const saved = await saveTimeline(p, { timeline: r.timeline, version: p.version, label: r.label, actor, steps: r.steps });
     if (!saved.ok) throw new UserError("تغيّر المشروع أثناء التنفيذ؛ جرّب مرة ثانية.", 409);
     return { version: saved.version, timeline: r.timeline, label: r.label };
   } catch (err) {
     if (err instanceof CommandError) throw new UserError(err.message, 400);
     throw err;
   }
-}
-
-/** The project's change history, newest first. */
-export async function history(projectId: string) {
-  const { data } = await db().from("editor_ops").select("version,actor,label,created_at").eq("project_id", projectId).not("actor", "in", "(speech,claude)").order("id", { ascending: false }).limit(50);
-  return data ?? [];
 }
 
 // ---------- media ----------

@@ -48,6 +48,8 @@ import { useClaudeModel } from "@/components/robots/claude-model";
 import { codeEdit, codeGrade, type CodeDeps } from "./claude-code";
 import { cleanVoice } from "@/components/claude-code/clean-voice";
 import type { AssetInfo } from "@/lib/editor/model";
+import HaidaraRules from "./HaidaraRules";
+import { localRules } from "./haidara-rules";
 
 interface Msg {
   role: "user" | "assistant";
@@ -261,10 +263,11 @@ function Conversation({
     tlRef.current = tl;
   }, [tl]);
   // everything حيدرا ماكس applies goes through here: each clip's background and colour key are remembered first, so
-  // «↩️ رجّع الخلفية لما كانت» (its backdrop tab) can put them back if they ever come out broken
+  // «↩️ رجّع الخلفية لما كانت» (its backdrop tab) can put them back if they ever come out broken — and it is his in
+  // «سجل التغييرات» (saved at once, with his steps)
   const run: Run = (c, o) => {
     rememberBackdrops(tlRef.current);
-    return runEditor(c, o);
+    return runEditor(c, { ...o, by: "haidara" });
   };
   // «🩺 تشخيص»: the next message asks حيدرا ماكس to find what went wrong (the owner only)
   const [diagOn, setDiagOn] = useState(false);
@@ -598,6 +601,8 @@ function Conversation({
         refs: pending.map((a) => a.id),
         refLooks,
         face: found?.face ?? null,
+        // «تعليماتي الدايمة» as this device has them (the server's kept copy wins once there is one)
+        rules: localRules(),
       }, signal);
       setPending([]);
       setChat((x) => ({ ...x, spent: Math.max(0, Number(r.spent) || 0) }));
@@ -1240,6 +1245,7 @@ export default function AssistantPanel({
   open,
   hidden = false,
   onShow,
+  onLog,
   ...rest
 }: ConversationProps & {
   /** the motion lab inside his conversations (none: a project only read) */
@@ -1250,6 +1256,8 @@ export default function AssistantPanel({
   hidden?: boolean;
   /** brings the window back (the pill of a conversation at work) */
   onShow?: () => void;
+  /** opens «سجل التغييرات» (what he and the person changed, and «ارجع لهنا») */
+  onLog?: () => void;
 }) {
   const { projectId, readOnly } = rest;
   const [state, setState] = useState<{ tabs: OpenTab[]; active: string }>(() => withMain(null));
@@ -1384,6 +1392,12 @@ export default function AssistantPanel({
       <button type="button" className="hm-icon" aria-expanded={listOpen} onClick={() => (setListOpen((v) => !v), void loadRows())} title="المحادثات" aria-label="المحادثات">
         <span aria-hidden>🗂️</span>
       </button>
+      <HaidaraRules projectId={projectId} readOnly={readOnly} />
+      {onLog && (
+        <button type="button" className="hm-icon" onClick={onLog} title="سجل التغييرات: وش تغيّر ومين غيّره (أنت أو حيدرا ماكس)، وارجع لأي نقطة" aria-label="سجل التغييرات">
+          <Icon name="clock" size={17} />
+        </button>
+      )}
       {listOpen && (
         <>
           <button type="button" className="fixed inset-0 z-20 cursor-default" aria-label="إغلاق" onClick={() => setListOpen(false)} />

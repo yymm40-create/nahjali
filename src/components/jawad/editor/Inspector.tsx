@@ -56,7 +56,7 @@ import { detectBeats, peaksOf } from "./peaks";
 import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
 
-export type Run = (cmd: Command | Command[], opts?: { label?: string; coalesce?: string }) => unknown;
+export type Run = (cmd: Command | Command[], opts?: { label?: string; coalesce?: string; /** made by حيدرا ماكس (his turn, in «سجل التغييرات») */ by?: "haidara" }) => unknown;
 export type InspectorTab = "basic" | "crop" | "motion" | "opacity" | "anim" | "fx" | "color" | "backdrop" | "transition" | "sound";
 
 const COLORS = ["#ffffff", "#000000", "#b8f53d", "#facc15", "#f43f5e", "#22d3ee", "#a78bfa", "#fb923c"];

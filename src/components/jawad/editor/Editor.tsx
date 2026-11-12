@@ -38,6 +38,8 @@ import { placeStems } from "@/lib/editor/make";
 import CaptionsPanel from "./CaptionsPanel";
 import { planSync } from "./sync";
 import ExportPanel from "./ExportPanel";
+import ChangeLog from "./ChangeLog";
+import type { PageActor } from "@/lib/editor/changes-core";
 import Handles from "./Handles";
 import Inspector, { type SceneCutRun, type InspectorTab } from "./Inspector";
 import { peaksOf, waveImage } from "./peaks";
@@ -180,6 +182,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [keysOpen, setKeysOpen] = useState<false | "first" | "page">(false);
   const importInput = useRef<HTMLInputElement>(null);
   const [captioning, setCaptioning] = useState(false);
+  // «سجل التغييرات» (the top bar, the «تعديل» menu, and حيدرا ماكس's window)
+  const [logOpen, setLogOpen] = useState(false);
   // Claude: open beside the work from the start on a computer; on a phone it opens over it when asked
   // (opened by itself on a conversation the address names: «?lab=»)
   const [assisting, setAssisting] = useState(() => Boolean(labChat && !project.purged));
@@ -633,6 +637,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const tlRef = useRef(tl);
   const titleRef = useRef(title);
   const labelRef = useRef("");
+  // «سجل التغييرات»: who made the change waiting to be saved (the person, a turn of حيدرا ماكس, a «ارجع لهنا») and its steps
+  const byRef = useRef<{ actor: PageActor; steps: string[] }>({ actor: "user", steps: [] });
   const versionRef = useRef(project.version);
   const infos = useRef(new Map(initialAssets.map((a) => [a.id, info(a)])));
   const dirty = useRef(false);
@@ -661,12 +667,19 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       if (!dirty.current || versionRef.current <= 0) return;
       dirty.current = false;
       setSave("saving");
+      // who made what is sent now (a title typed after it is the person's again)
+      const by = byRef.current;
+      byRef.current = { actor: "user", steps: [] };
+      // not sent: kept for the next try, unless a newer change is waiting with its own
+      const keepBy = () => {
+        if (byRef.current.actor === "user" && !byRef.current.steps.length) byRef.current = by;
+      };
       const run = (async () => {
         try {
           const r = await api<{ ok: boolean; version: number }>(`/api/jawad/editor/projects/${project.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ timeline: tlRef.current, version: versionRef.current, label: labelRef.current, title: titleRef.current }),
+            body: JSON.stringify({ timeline: tlRef.current, version: versionRef.current, label: labelRef.current, title: titleRef.current, actor: by.actor, steps: by.steps }),
           });
           if (r.ok) {
             versionRef.current = r.version;
@@ -675,10 +688,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             // someone (another tab) saved in between: nothing is overwritten until the person decides
             dirty.current = true;
             versionRef.current = -r.version;
+            keepBy();
             setSave("conflict");
           }
         } catch {
           dirty.current = true;
+          keepBy();
           setSave("error");
           timer.current = setTimeout(() => void go(), 5000);
         }
@@ -727,18 +742,28 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   }, [flush]);
 
   // ---------- every change: one command (or several as one step), with undo ----------
+  // `by`: a change of حيدرا ماكس or a «ارجع لهنا» is saved at once and on its own (what the person changed before it is
+  // saved first as theirs), so «سجل التغييرات» says who did what and the document before it can be kept to come back to
   const commit = useCallback(
-    (next: TL, label: string) => {
+    (next: TL, label: string, by?: { actor: PageActor; steps?: string[] }) => {
+      const actor = by?.actor ?? "user";
+      const waiting = dirty.current && byRef.current.actor === actor;
+      if (dirty.current && !waiting) void flush();
+      // several steps of one turn waiting together: all their steps, under the turn's own name
+      const steps = [...(waiting && actor !== "user" ? byRef.current.steps : []), ...(by?.steps ?? [])].slice(-60);
+      const head = waiting && actor === "haidara" && /^حيدرا ماكس:/.test(labelRef.current);
       tlRef.current = next;
-      labelRef.current = label;
+      if (!head) labelRef.current = label;
+      byRef.current = { actor, steps };
       setTl(next);
       markDirty();
+      if (actor !== "user") void flush();
     },
-    [markDirty],
+    [markDirty, flush],
   );
 
   const run = useCallback(
-    (cmd: Command | Command[], opts: { label?: string; coalesce?: string } = {}): Applied | null => {
+    (cmd: Command | Command[], opts: { label?: string; coalesce?: string; by?: "haidara" } = {}): Applied | null => {
       if (readOnly) return null;
       const cur = tlRef.current;
       let r: Applied;
@@ -754,7 +779,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       const merge = !!opts.coalesce && lastStep.current.key === opts.coalesce && now - lastStep.current.at < 1500;
       lastStep.current = { key: opts.coalesce ?? null, at: now };
       if (!merge) setHist((h) => ({ past: [...h.past.slice(-99), { tl: cur, label: r.label }], future: [] }));
-      commit(r.timeline, r.label);
+      commit(r.timeline, r.label, opts.by ? { actor: opts.by, steps: r.steps?.length ? r.steps : [r.label] } : undefined);
       if (r.select) setSelected(r.select);
       return r;
     },
@@ -774,6 +799,29 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     setHist({ past: [...hist.past, { tl: tlRef.current, label: step.label }], future: hist.future.slice(1) });
     commit(step.tl, step.label);
     flash(`أعدت: ${step.label}`);
+  };
+  // «ارجع لهنا» (سجل التغييرات): a kept point's timeline put on as a NEW change — one undo takes it back, it is saved with
+  // the version check like any edit (another window's newer save still asks first), and the log shows it
+  const restoreTo = async (version: number, label: string) => {
+    if (readOnly) return false;
+    await flush();
+    if (versionRef.current <= 0) {
+      flash("انحفظت نسخة أحدث من نافذة ثانية؛ اختر فوق وش تبي قبل ترجع.", true);
+      return false;
+    }
+    try {
+      const r = await postJson<{ timeline: TL }>(`/api/jawad/editor/projects/${project.id}`, { action: "snapshot", version });
+      const cur = tlRef.current;
+      setHist((h) => ({ past: [...h.past.slice(-99), { tl: cur, label }], future: [] }));
+      setSelected([]);
+      commit(r.timeline, label, { actor: "restore" });
+      await flush();
+      flash(label);
+      return true;
+    } catch (e) {
+      flash(e instanceof Error ? e.message : String(e), true);
+      return false;
+    }
   };
 
   // ---------- media ----------
@@ -891,14 +939,14 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // one above the other («stack»); the line goes on from the end of the last one placed
   const cursor = useRef<{ group: string; at: number } | null>(null);
   const placeAsset = useCallback(
-    (a: EditorAsset, p?: Placement) => {
-      if (!p) return run({ type: "add_clip", assetId: a.id });
+    (a: EditorAsset, p?: Placement, by?: "haidara") => {
+      if (!p) return run({ type: "add_clip", assetId: a.id }, { by });
       const want = a.kind === "audio" ? "audio" : "video";
       const onTrack = p.trackId === "new" ? "new" : p.trackId ? tlRef.current.tracks.find((x) => x.id === p.trackId && x.kind === want && !x.locked)?.id : undefined;
       let at = p.at;
       if (p.mode === "line" && cursor.current?.group === p.group) at = cursor.current.at;
       const trackId = p.mode === "stack" && !p.first ? "new" : onTrack;
-      const r = run({ type: "add_clip", assetId: a.id, at, ...(trackId ? { trackId } : {}) });
+      const r = run({ type: "add_clip", assetId: a.id, at, ...(trackId ? { trackId } : {}) }, { by });
       const made = r?.select?.[0] ? findClip(r.timeline, r.select[0]) : null;
       if (made && p.mode === "line") cursor.current = { group: p.group, at: clipEnd(made.clip) };
       return r;
@@ -932,11 +980,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           if (f?.source) void postJson(`/api/jawad/editor/projects/${project.id}`, { action: "lab_source_save", assetId: a.id, source: f.source }).then(() => addAssets([{ ...a, lab: true }])).catch(() => flash("نزل المقطع، بس ما انحفظ مشهده للتعديل بعدين.", true));
           if (f?.muted?.length) placedMutes.current.set(a.id, f.muted);
           if (f?.replaceAssetId) {
-            if (!run({ type: "swap_asset", from: f.replaceAssetId, to: a.id }, { label: "عدّلت قطعة الموشن" })) placeAsset(a, place);
+            if (!run({ type: "swap_asset", from: f.replaceAssetId, to: a.id }, { label: "عدّلت قطعة الموشن", by: "haidara" })) placeAsset(a, place, "haidara");
             f.placed?.(a.id);
             return;
           }
-          placeAsset(a, place);
+          placeAsset(a, place, "haidara");
           f?.placed?.(a.id);
           return;
         }
@@ -1120,7 +1168,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     // built on the person's own clip: the piece lands on its own track over it, and the clip under it is muted (its
     // voice is inside the piece already); a film opened again from the timeline takes the old one's place instead
     uploads.add([film], [{ at, trackId: place ? "new" : null, mode: "one", group: `lab:${key}`, first: true }]);
-    for (const m of muted) run({ type: "update_clip", clipId: m.clipId, patch: { volume: 0 } }, { label: "مختبر الموشن على فيديوك" });
+    for (const m of muted) run({ type: "update_clip", clipId: m.clipId, patch: { volume: 0 } }, { label: "مختبر الموشن على فيديوك", by: "haidara" });
     flash(labOf?.replaceAssetId ? "🎬 نرفع النسخة الجديدة ونبدّلها في التايملاين…" : "🎬 نرفع المقطع وننزّله عند مؤشر الوقت…");
     if (cues.length) {
       try {
@@ -1136,11 +1184,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           const when = at + Math.round(c.t * 1000);
           const free = lanes.find((l) => l.end <= when);
           const lane = free ?? (lanes.length < 4 ? null : lanes.reduce((x, y) => (y.end < x.end ? y : x)));
-          const added = run({ type: "add_clip", assetId: a.id, at: when, trackId: lane?.trackId ?? "new" }, { label: "مؤثرات الموشن" });
+          const added = run({ type: "add_clip", assetId: a.id, at: when, trackId: lane?.trackId ?? "new" }, { label: "مؤثرات الموشن", by: "haidara" });
           const id = added?.select?.[0];
           const f = id && added ? findClip(added.timeline, id) : null;
           if (!f) continue;
-          if (c.vol < 0.99) run({ type: "update_clip", clipId: id!, patch: { volume: c.vol } }, { label: "مؤثرات الموشن", coalesce: `lab-vol-${id}` });
+          if (c.vol < 0.99) run({ type: "update_clip", clipId: id!, patch: { volume: c.vol } }, { label: "مؤثرات الموشن", coalesce: `lab-vol-${id}`, by: "haidara" });
           const end = clipEnd(f.clip);
           if (lane) lane.end = end;
           else lanes.push({ trackId: f.track.id, end });
@@ -1154,11 +1202,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         flash("🎵 نصنع الموسيقى على الإيقاع…");
         const a = await makeMusicAsset(project.id, music.prompt, Math.max(10_000, music.ms));
         addAssets([a]);
-        const added = run({ type: "add_clip", assetId: a.id, at, trackId: "new" }, { label: "موسيقى الموشن" });
+        const added = run({ type: "add_clip", assetId: a.id, at, trackId: "new" }, { label: "موسيقى الموشن", by: "haidara" });
         const id = added?.select?.[0];
         if (id) {
-          run({ type: "trim_clip", clipId: id, edge: "end", to: at + music.ms }, { label: "موسيقى الموشن" });
-          run({ type: "update_clip", clipId: id, patch: { volume: 0.55, fadeOut: 600 } }, { label: "موسيقى الموشن" });
+          run({ type: "trim_clip", clipId: id, edge: "end", to: at + music.ms }, { label: "موسيقى الموشن", by: "haidara" });
+          run({ type: "update_clip", clipId: id, patch: { volume: 0.55, fadeOut: 600 } }, { label: "موسيقى الموشن", by: "haidara" });
         }
       } catch (e) {
         flash(e instanceof Error ? `الموسيقى: ${e.message}` : "ما قدرنا نصنع الموسيقى.", true);
@@ -1583,6 +1631,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     if (a.open === "captions") setCaptioning(true);
     else if (a.open === "shortcuts") setKeysOpen("page");
     else if (a.open === "layout") setLayoutOpen(true);
+    else if (a.open === "log") setLogOpen(true);
     else if (a.open === "haidara") openClaude();
     else if (a.open === "haidaraDock") {
       const on = !(assisting && chatDock);
@@ -1953,6 +2002,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             <span className="jw-spinner !h-3 !w-3" /> حيدرا ماكس يصنع {making.length === 1 ? `«${making[0].name.slice(0, 24)}»` : `${making.length} أشياء`}
           </span>
         )}
+        {/* «🕘 سجل التغييرات»: what changed, by whom (you or حيدرا ماكس), and «ارجع لهنا» (a phone: in «المزيد») */}
+        <button type="button" className={`jw-btn jw-3d hidden shrink-0 sm:inline-flex ${logOpen ? "border-jw-accent text-jw-accent" : ""}`} onClick={() => setLogOpen((v) => !v)} aria-pressed={logOpen} title="سجل التغييرات: وش تغيّر ومين غيّره، وارجع لأي نقطة">
+          <Icon name="clock" size={16} /> <span className="hidden xl:inline">السجل</span>
+        </button>
         {/* «⋯ المزيد»: what is used now and then (the shortcuts, the app, the editor's size) — one button instead of four */}
         <div className="relative shrink-0">
           <button type="button" className={`jw-btn jw-3d ${picking ? "border-jw-accent text-jw-accent" : ""}`} onClick={() => setPicking((v) => !v)} aria-expanded={picking} title="المزيد: الاختصارات، التطبيق، حجم الواجهة">
@@ -1962,6 +2015,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             <div role="menu" aria-label="المزيد" className="jw-glass absolute end-0 top-full z-50 mt-2 w-[20rem] max-w-[90vw] space-y-2 rounded-2xl p-2">
               <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-start text-sm hover:bg-jw-surface-2" onClick={() => { setPicking(false); setKeysOpen("page"); }}>
                 <Icon name="keyboard" size={15} /> الاختصارات (بريمير، دافنشي، كاب كت، فاينل كت)
+              </button>
+              <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-start text-sm hover:bg-jw-surface-2" onClick={() => { setPicking(false); setLogOpen(true); }}>
+                <Icon name="clock" size={15} /> سجل التغييرات (ارجع لأي نقطة)
               </button>
               <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-sm">
                 <span>حجم الواجهة</span>
@@ -2020,7 +2076,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         {(
           <aside className={`hd-pop ${chatBig ? "big" : ""}`} ref={sizeChat} aria-label="حيدرا ماكس" dir="rtl" style={assisting ? undefined : { display: "none" }}>
             <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
-              <Guard name="حيدرا ماكس"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} onDock={wide ? () => setChatDock(true) : undefined} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => (setChatBig(false), openClaude(false))} readOnly={readOnly} diag={owner ? diagApp : undefined} lab={{ width: tl.width, height: tl.height, assets, footageClips, onUpload: labUpload, onFilm: placeFilm, onUnplace: unplaceFilm }} open={haidaraOpen} hidden={!assisting} onShow={() => openClaude(true)} /></Guard>
+              <Guard name="حيدرا ماكس"><AssistantPanel big={chatBig} onLog={() => setLogOpen(true)} onBig={() => setChatBig((v) => !v)} onDock={wide ? () => setChatDock(true) : undefined} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => (setChatBig(false), openClaude(false))} readOnly={readOnly} diag={owner ? diagApp : undefined} lab={{ width: tl.width, height: tl.height, assets, footageClips, onUpload: labUpload, onFilm: placeFilm, onUnplace: unplaceFilm }} open={haidaraOpen} hidden={!assisting} onShow={() => openClaude(true)} /></Guard>
             </div>
           </aside>
         )}
@@ -2141,7 +2197,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
         {/* «كاب كت»: the right column — an option that needs its own window opens here (the captions, the export) */}
         {wide && !big && !colorRoom && (
-          <div ref={setRightEl} className={`cut-right jw-glass-lg my-2 min-h-0 w-[min(380px,30vw)] shrink-0 flex-col overflow-hidden rounded-2xl ${captioning || exporting ? "flex" : "hidden"}`} style={{ order: 1 }} />
+          <div ref={setRightEl} className={`cut-right jw-glass-lg my-2 min-h-0 w-[min(380px,30vw)] shrink-0 flex-col overflow-hidden rounded-2xl ${captioning || exporting || logOpen ? "flex" : "hidden"}`} style={{ order: 1 }} />
         )}
 
         {/* the rail of sections at the side (the blue and nature looks) */}
@@ -2220,7 +2276,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       {false && assisting && chatDock && wide && (
         <aside className="hd-pop dock" ref={sizeChat} aria-label="حيدرا ماكس" dir="rtl">
           <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
-            <Guard name="حيدرا ماكس"><AssistantPanel big={false} docked onDock={() => setChatDock(false)} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} /></Guard>
+            <Guard name="حيدرا ماكس"><AssistantPanel big={false} onLog={() => setLogOpen(true)} docked onDock={() => setChatDock(false)} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} /></Guard>
           </div>
         </aside>
       )}
@@ -2287,6 +2343,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         }}
       />
       <CaptionsPanel dock={rightEl} open={captioning} onClose={() => setCaptioning(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} />
+      <ChangeLog dock={rightEl} open={logOpen} onClose={() => setLogOpen(false)} projectId={project.id} flush={flush} onRestore={restoreTo} readOnly={readOnly} />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       <ExportPanel
         dock={rightEl}
