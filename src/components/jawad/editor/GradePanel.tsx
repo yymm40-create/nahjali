@@ -15,6 +15,7 @@ import type { PlayerLike } from "./Timeline";
 import { saveFile } from "./package";
 import { copyGrade, pasteableGrade } from "./clipboard";
 import { pasteGradeCommands } from "@/lib/editor/grade-paste";
+import { track } from "@/lib/feature-track";
 
 
 function Slider({ label, value, min, max, step, onChange, format, disabled, center, bg }: { label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; format?: (v: number) => string; disabled?: boolean; center?: boolean; bg?: string }) {
@@ -216,6 +217,7 @@ function MaskEditor({ mask, onChange, thumb, disabled, clipT, inClip, tools }: {
     tools &&
     words.trim() &&
     work(async (signal) => {
+      track("editor.mask");
       setBusy("…");
       const near = m ? (m.kind === "path" && m.points.length ? { x: m.x, y: m.y } : posAt(m, clipT)) : null;
       const got = await tools.smart(words.trim(), follow && tools.video, near, setBusy, signal);
@@ -303,7 +305,7 @@ function MaskEditor({ mask, onChange, thumb, disabled, clipT, inClip, tools }: {
             ["path", "رسم"],
           ] as [Mask["kind"] | null, string][]
         ).map(([k, label]) => (
-          <button key={label} type="button" role="radio" aria-checked={(m?.kind ?? null) === k} disabled={disabled} onClick={() => onChange(k ? { ...(m ?? NEW_MASK), kind: k, points: k === "path" ? (m?.points ?? []) : [], shapes: k === "path" ? (m?.shapes ?? []) : [], ...(k === "linear" ? { w: 0.4, h: 0 } : {}) } : null)}>
+          <button key={label} type="button" role="radio" aria-checked={(m?.kind ?? null) === k} disabled={disabled} onClick={() => (k && track("editor.mask"), onChange(k ? { ...(m ?? NEW_MASK), kind: k, points: k === "path" ? (m?.points ?? []) : [], shapes: k === "path" ? (m?.shapes ?? []) : [], ...(k === "linear" ? { w: 0.4, h: 0 } : {}) } : null))}>
             {label}
           </button>
         ))}

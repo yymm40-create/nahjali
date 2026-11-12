@@ -31,6 +31,8 @@ export function rulesFor(path: string, method: string): Rule[] {
   if (path === "/api/mahdi/health/meal" && method === "POST") out.push({ key: "meal", max: 40, windowMs: 10 * 60_000 });
   // a page opened (the owner's statistics): one per page, never a flood
   if (path === "/api/visit") out.push({ key: "visit", max: 60, windowMs: 60_000 });
+  // the features used (the owner's «استخدام المزايا»): a batch every few seconds at most
+  if (path === "/api/feature-use") out.push({ key: "feature-use", max: 60, windowMs: 60_000 });
   // a game's player reports an error it hit: a few, never a flood (anyone with a game's link can)
   if (path.startsWith("/api/games/play/") && method === "POST") out.push({ key: "game-error", max: 10, windowMs: 10 * 60_000 });
   // what costs money (Claude, pictures, videos, voices): plenty for a person, a wall for a script

@@ -69,6 +69,7 @@ import { diagNote, startDiag } from "./diag";
 import { startMaking, useMaking } from "./making";
 import type { MakePlan } from "@/lib/editor/make-any";
 import Coined from "@/components/Coined";
+import { track } from "@/lib/feature-track";
 
 type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict";
 interface Step {
@@ -760,6 +761,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     },
     [readOnly, commit, flash],
   );
+  // «استخدام المزايا»: a change made by the person's own hand (the settings, the timeline, the handles on the picture)
+  const handRun = useCallback<typeof run>((cmd, opts) => (track("editor.edit"), run(cmd, opts)), [run]);
 
   const undo = () => {
     const step = hist.past.at(-1);
@@ -860,6 +863,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         setAssets((xs) => xs.map((x) => (x.id === known.id ? { ...x, width: known.width, height: known.height, durationMs: known.durationMs } : x)));
       }
       if (Math.max(a.width!, a.height!) >= 3800) return flash(`«${a.name}» دقته ${a.width}×${a.height} — هذا 4K أصلًا.`, true);
+      track("editor.upscale");
       if (!window.confirm(`أرفع دقة «${a.name}» (${a.width}×${a.height}) إلى ${target === "4k" ? "4K" : "1080p"} بالذكاء الاصطناعي (Topaz)؟\nياخذ من دقايق لأكثر على حسب طوله، وتقدر تكمل شغلك. النسخة الجديدة تنضاف للمكتبة والأصلي يظل.`)) return;
       try {
         const r = await postJson<{ asset: EditorAsset; coins: number }>(`/api/jawad/editor/projects/${project.id}`, { action: "upscale", assetId, target, width: a.width, height: a.height, durationMs: a.durationMs });
@@ -876,6 +880,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // the timeline); it is sent to be upscaled whole, and the 4K file downloads by itself when it is ready
   const upscaleWhole = useCallback(
     async (a: EditorAsset, target: "4k" | "1080p", file: string) => {
+      track("editor.upscale");
       try {
         const r = await postJson<{ asset: EditorAsset; coins: number }>(`/api/jawad/editor/projects/${project.id}`, { action: "upscale", assetId: a.id, target, width: a.width, height: a.height, durationMs: a.durationMs });
         addAssets([r.asset]);
@@ -892,6 +897,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const cursor = useRef<{ group: string; at: number } | null>(null);
   const placeAsset = useCallback(
     (a: EditorAsset, p?: Placement) => {
+      track("editor.clip_add");
       if (!p) return run({ type: "add_clip", assetId: a.id });
       const want = a.kind === "audio" ? "audio" : "video";
       const onTrack = p.trackId === "new" ? "new" : p.trackId ? tlRef.current.tracks.find((x) => x.id === p.trackId && x.kind === want && !x.locked)?.id : undefined;
@@ -984,6 +990,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // already in the library go on the timeline the same way
   // open again from «حيدرة كت» after visiting other sections, until the person leaves it
   useEffect(() => rememberOpen(project.id), [project.id]);
+  useEffect(() => track("editor.open"), []);
   const kitTaken = useRef(false);
 
   useEffect(() => {
@@ -1061,6 +1068,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [syncing, setSyncing] = useState(false);
   const syncClips = async (ids: string[]) => {
     if (syncing) return;
+    track("editor.sync");
     setSyncing(true);
     try {
       const plan = await planSync(tlRef.current, ids, new Map(assets.map((x) => [x.id, x])), (text) => flash(text));
@@ -1077,6 +1085,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     if (a) placeAsset(a, { at, trackId, mode: "one", group: "", first: true });
   };
   const addToTimeline = (a: EditorAsset) => {
+    track("editor.clip_add");
     const r = run({ type: "add_clip", assetId: a.id, at: player?.ms ?? 0 });
     // like CapCut: the playhead moves to the end of what was added, so the next one goes after it
     const added = r?.select?.[0] ? findClip(r.timeline, r.select[0]) : null;
@@ -1335,7 +1344,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       const f = findClip(tlRef.current, id);
       return f && ms > f.clip.start && ms < clipEnd(f.clip);
     });
-    run({ type: "split", at: ms, clipIds: under.length ? under : undefined });
+    handRun({ type: "split", at: ms, clipIds: under.length ? under : undefined });
   };
   const remove = (ripple: boolean) => (selected.length ? run({ type: "delete", clipIds: selected, ripple }) : flash("اختر مقطعًا أول (اضغط عليه).", true));
   const duplicate = () => (selected[0] ? run({ type: "duplicate", clipId: selected[0] }) : flash("اختر مقطعًا أول.", true));
@@ -1420,11 +1429,13 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     ];
   };
   const addText = () => {
+    track("editor.text");
     run({ type: "add_text", at: at() });
     if (!wide) setSheet("inspector");
   };
   // «مسار الموشن»: an element at the playhead, on the motion track, its settings open
   const addMotion = (kind: MotionKind) => {
+    track("editor.motion_track");
     run({ type: "add_motion", kind, at: at() });
     if (!wide) setSheet("inspector");
   };
@@ -1554,6 +1565,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         return flash("شلت منطقة التصدير؛ التصدير على المشروع كله.");
     }
   };
+  // a section of the settings opened by the person (counted in «استخدام المزايا»; one that follows the chosen clip is not)
+  const openTab = (t: InspectorTab) => {
+    track(`editor.tab.${t}`);
+    setTab(t);
+  };
   // «واجهات البرامج»: a page, and what a menu item does
   const openPage = (p: PageId) => {
     if (p === "captions") return setCaptioning(true);
@@ -1571,7 +1587,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         return;
       }
       setWantTab(info.tab);
-      setTab(info.tab);
+      openTab(info.tab);
       pick([id]);
       setRail("inspector");
     }
@@ -1669,7 +1685,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                   if (r.id === "captions") return setCaptioning(true);
                   if (r.id === "haidara") return openClaude();
                   if (r.tab) {
-                    setTab(r.tab);
+                    openTab(r.tab);
                     setRail("inspector");
                   } else setRail(r.id as "media" | "styles" | "project");
                   if (variant === "tabs") setSheet(null);
@@ -1717,7 +1733,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         openClaude(true);
         return setAsk((q) => ({ text: a.text, n: (q?.n ?? 0) + 1 }));
       case "tab":
-        setTab(a.tab);
+        openTab(a.tab);
         return setSheet("inspector");
       case "project":
         setSelected([]);
@@ -1793,6 +1809,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         return;
       case "color":
         if (selected[0]) {
+          track("editor.tab.color");
           setWantTab("color");
           pick([selected[0]]);
         }
@@ -2035,7 +2052,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
               className={`jw-screen rounded-xl ${pz === "fit" || full ? "max-h-full max-w-full" : "m-auto shrink-0"}`}
               style={pz === "fit" || full ? { aspectRatio: `${tl.width} / ${tl.height}` } : { aspectRatio: `${tl.width} / ${tl.height}`, ...sizeOf(previewSize(stageBox.w, stageBox.h, tl.width, tl.height, pz)) }}
             />
-            <Guard name="الإمساك"><Handles tl={tl} canvas={canvasEl} selected={colorRoom ? [] : selected} onSelect={pick} assets={assetMap} run={run} readOnly={readOnly} player={player} /></Guard>
+            <Guard name="الإمساك"><Handles tl={tl} canvas={canvasEl} selected={colorRoom ? [] : selected} onSelect={pick} assets={assetMap} run={handRun} readOnly={readOnly} player={player} /></Guard>
             <button
               type="button"
               className={`jw-glass jw-3d absolute end-3 top-3 z-20 items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold ${full ? "hidden" : "flex"}`}
@@ -2126,7 +2143,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
           <div className={`jw-scroll min-h-0 flex-1 ${colorRoom && one ? "overflow-hidden" : "overflow-y-auto"}`}>
             {colorRoom && !one && <p className="room-empty p-6 text-center">اختر لقطة من الشريط فوق عشان تلوّنها.</p>}
-            <Guard name="الإعدادات"><Inspector page={bigPage} projectId={project.id} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onUpscale={readOnly ? undefined : upscale} onLabEdit={readOnly ? undefined : editLabPiece} onExtend={readOnly ? undefined : extendClip} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
+            <Guard name="الإعدادات"><Inspector page={bigPage} projectId={project.id} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} tl={tl} selected={selected} assets={assetMap} run={handRun} readOnly={readOnly} player={player} tab={tab} onTab={openTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onUpscale={readOnly ? undefined : upscale} onLabEdit={readOnly ? undefined : editLabPiece} onExtend={readOnly ? undefined : extendClip} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
           </div>
         </aside>
 
@@ -2232,7 +2249,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         )}
         {wide && <SequenceTabs tl={tl} run={run} readOnly={readOnly} />}
         <div className="min-h-0 flex-1">
-        <Guard name="التايملاين"><Timeline range={exportRange} tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} run={run} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onMenu={wide ? openMenu : undefined} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
+        <Guard name="التايملاين"><Timeline range={exportRange} tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} run={handRun} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onMenu={wide ? openMenu : undefined} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
           setWantTab("transition");
           pick([id]);
           if (!wide) setSheet("inspector");
