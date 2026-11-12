@@ -3,6 +3,7 @@
 import LabPiece from "./LabPiece";
 import MotionPanel from "./MotionPanel";
 import CropPanel from "./CropPanel";
+import ReframeBox from "./ReframeBox";
 import SpeedRamp from "./SpeedRamp";
 import type { LabSource } from "./MotionLab";
 import { useEffect, useState } from "react";
@@ -230,6 +231,7 @@ export default function Inspector({
             ))}
           </div>
         </div>
+        <ReframeBox tl={tl} assets={assets} run={run} readOnly={readOnly} flash={flash} />
         <label className="flex items-center justify-between gap-2 text-xs text-jw-muted">
           لون الخلفية
           <input type="color" disabled={readOnly} value={tl.background} onChange={(e) => run({ type: "set_background", color: e.target.value }, { coalesce: "bg" })} className="h-8 w-12 cursor-pointer rounded border border-jw-line bg-transparent" />

@@ -16,6 +16,7 @@ export type PhoneAction =
   | { kind: "duplicate" }
   | { kind: "text" }
   | { kind: "captions" }
+  | { kind: "transcript" }
   | { kind: "claude" }
   | { kind: "ask"; text: string }
   | { kind: "extract" }
@@ -69,6 +70,7 @@ const MAIN: Chip[] = [
   { id: "text", label: "نص", icon: "type", go: "text" },
   { id: "claude", label: "حيدرا ماكس", icon: "orb", go: { kind: "claude" }, accent: true },
   { id: "captions", label: "كابشن", icon: "sparkles", go: { kind: "captions" } },
+  { id: "transcript", label: "النص", icon: "book", go: { kind: "transcript" } },
   { id: "media", label: "الوسائط", icon: "folder", go: { kind: "library" } },
   { id: "project", label: "المقاس", icon: "ratio", go: { kind: "project" } },
 ];
@@ -85,6 +87,7 @@ const TEXT: Chip[] = [
   { id: "add", label: "أضف نص", icon: "type", go: { kind: "text" } },
   { id: "hook", label: "نص الهوك", icon: "wand", go: { kind: "ask", text: "سوّ لي نص هوك قوي لبداية الفيديو." }, accent: true },
   { id: "captions", label: "كابشن تلقائي", icon: "sparkles", go: { kind: "captions" } },
+  { id: "transcript", label: "عدّل من النص", icon: "book", go: { kind: "transcript" } },
 ];
 
 export default function PhoneTools({ selected, hasAudio, total, readOnly, on }: { selected: ClipKindOf | null; hasAudio: boolean; total: number; readOnly: boolean; on: (a: PhoneAction) => void }) {

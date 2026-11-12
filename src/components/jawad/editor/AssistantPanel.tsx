@@ -6,7 +6,7 @@ import MotionLab, { type FilmPlacer, type LabSource, type LabView } from "./Moti
 import type { FootageSource } from "./lab-footage";
 import { NEW_TITLE, readTabs, storeOf, tabsKey, type Tab } from "./lab-tabs";
 import { chatParam, conversationList, MAIN, MAIN_TITLE, mainRow, mergeStream, routeOf, saysEnough, timeOf, type ChatRow } from "./haidara-chats";
-import { clipEnd, duration, findClip, mainTrack, timelineTime, type Timeline } from "@/lib/editor/model";
+import { clipEnd, duration, findClip, mainTrack, ratioOf, timelineTime, type Timeline } from "@/lib/editor/model";
 import { rampKey } from "@/lib/editor/ramp";
 import { framesOf } from "./media";
 import { watchClip, watchFilm } from "./watch";
@@ -34,6 +34,7 @@ import StylePicker from "./StylePicker";
 import { MOTION_TEN } from "@/lib/editor/motion-ten";
 import { faceOnFrame, type FaceBox } from "@/lib/editor/talk-motion";
 import { faceIn } from "./face";
+import { reframeCandidates, reframeClips, reframeShape, stillThere } from "./reframe-run";
 import Icon from "../Icon";
 import { blobBase64, canTalk, hear, hush, record, SILENT_PEAK, REPLY_VOICE_KEY, replyVoice, say, wavOf, type RecordingHandle } from "./talk";
 import { useUploads } from "./useUploads";
@@ -694,6 +695,22 @@ function Conversation({
             setFocus(true);
             trackUse("editor.motion_lab");
             piece.start({ brief: q.prompt, seconds: Number(q.seconds) || 15, clipId: onClip, auto: saysEnough(message) });
+          } else if (q.kind === "reframe") {
+            // «اتبع الوجه»: the shape first (when he named another), then each wide video follows its face (read here, free)
+            const shape = (["9:16", "1:1", "4:5"] as const).find((r) => r === q.aspect);
+            const shaped = shape && ratioOf(tlRef.current) !== shape ? (run({ type: "set_ratio", ratio: shape }, { label: `المقاس ${shape}` }) as { timeline: Timeline } | null) : null;
+            // (the panel's copy of the timeline catches up after the next render: the new shape is taken from the change itself)
+            const now = shaped?.timeline ?? tlRef.current;
+            const ids = (q.clipId ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+            const all = reframeCandidates(now, assets);
+            const picked = ids.length ? all.filter((x) => ids.includes(x.clip.id)) : all;
+            if (!reframeShape(now)) throw new Error("المقاس عرضي (16:9)؛ اتبع الوجه للمقاس الطولي أو المربع.");
+            if (!picked.length) throw new Error("ما فيه فيديو أعرض من الإطار أتبع فيه الوجه.");
+            trackUse("editor.auto_reframe");
+            const r = await reframeClips(now, picked, (text) => setBusy(text), signal);
+            const cmds = stillThere(tlRef.current, r.commands);
+            if (cmds.length) run(cmds, { label: r.done > 1 ? `اتبع الوجه (${r.done} مقاطع)` : "اتبع الوجه" });
+            if (r.noFace.length) setMsgs((m) => [...m, { role: "assistant", text: `ما لقيت وجه في: ${r.noFace.join("، ")} — خليتها مثل ما هي.` }]);
           } else if (q.kind === "watch") {
             // «👁️»: he needs to see the clip whole — it is watched, and he is asked again with it, by itself
             watchNext.current = q.clipId === FILM || findClip(tlRef.current, q.clipId) ? q.clipId : null;
