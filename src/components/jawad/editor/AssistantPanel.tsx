@@ -35,6 +35,7 @@ import { MOTION_TEN } from "@/lib/editor/motion-ten";
 import { faceOnFrame, type FaceBox } from "@/lib/editor/talk-motion";
 import { faceIn } from "./face";
 import { reframeCandidates, reframeClips, reframeShape, stillThere } from "./reframe-run";
+import { askShorts } from "./shorts-ask";
 import Icon from "../Icon";
 import { blobBase64, canTalk, hear, hush, record, SILENT_PEAK, REPLY_VOICE_KEY, replyVoice, say, wavOf, type RecordingHandle } from "./talk";
 import { useUploads } from "./useUploads";
@@ -711,6 +712,13 @@ function Conversation({
             const cmds = stillThere(tlRef.current, r.commands);
             if (cmds.length) run(cmds, { label: r.done > 1 ? `اتبع الوجه (${r.done} مقاطع)` : "اتبع الوجه" });
             if (r.noFace.length) setMsgs((m) => [...m, { role: "assistant", text: `ما لقيت وجه في: ${r.noFace.join("، ")} — خليتها مثل ما هي.` }]);
+          } else if (q.kind === "shorts") {
+            // «طلّع مقاطع قصيرة»: its window opens on the long file with the price — paid, so the person confirms there
+            const f = q.clipId ? findClip(tlRef.current, q.clipId) : null;
+            const id = f?.clip.assetId ?? [...assets.values()].filter((a) => a.kind !== "image" && a.hasAudio).sort((x, y) => (y.durationMs ?? 0) - (x.durationMs ?? 0))[0]?.id;
+            if (!id) throw new Error("ما فيه فيديو فيه كلام أطلّع منه مقاطع؛ ارفع الفيديو الطويل أول.");
+            askShorts({ tab: "shorts", assetId: id, ...(Number(q.seconds) > 0 ? { max: Number(q.seconds) } : {}) });
+            setMsgs((m) => [...m, { role: "assistant", text: `فتحت «مقاطع قصيرة» على «${assets.get(id)?.name ?? "الفيديو"}» — السعر مكتوب على الزر، اضغطه وأطلّع لك أقوى اللحظات.` }]);
           } else if (q.kind === "watch") {
             // «👁️»: he needs to see the clip whole — it is watched, and he is asked again with it, by itself
             watchNext.current = q.clipId === FILM || findClip(tlRef.current, q.clipId) ? q.clipId : null;
