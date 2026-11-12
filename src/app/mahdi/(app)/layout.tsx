@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import AppShell from "@/components/mahdi/AppShell";
 import MahdiProvider from "@/components/mahdi/Provider";
+import UsePing from "@/components/mahdi/UsePing";
 import { getMahdiSession } from "@/lib/mahdi/server/session";
 import { loadSnapshot } from "@/lib/mahdi/server/snapshot";
 import { ensureUsername } from "@/lib/username";
@@ -32,6 +33,7 @@ export default async function MahdiAppLayout({ children }: { children: React.Rea
 
   return (
     <MahdiProvider initial={snapshot}>
+      <UsePing />
       <AppShell familyMember={Boolean(family)}>{children}</AppShell>
     </MahdiProvider>
   );
