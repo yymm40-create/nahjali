@@ -58,6 +58,7 @@ import {
   DEFAULT_BACKDROP,
   readBackdrop,
   type Word,
+  type Key,
   type CaptionStyle,
   CAPTION_STYLES,
   FIX_TRACK,
@@ -140,6 +141,11 @@ export type Command =
   | { type: "set_key"; clipId: string; at: number; transform: Partial<Transform> }
   | { type: "remove_key"; clipId: string; at: number }
   | { type: "clear_keys"; clipId: string }
+  /**
+   * «اتبع الوجه»: the clip's motion points all at once (source ms, each a full look), replacing the ones it had — the
+   * camera path worked out in the browser; the person moves any of them afterwards like any motion point
+   */
+  | { type: "set_keys"; clipId: string; keys: Key[]; label?: string }
   /** beat marks the cuts snap to: `add` (merged) or `replace`; `clear` removes them all */
   | { type: "set_markers"; markers: number[]; mode: "add" | "replace" | "clear" }
   /** «تسلسلات»: a new empty timeline (same size and frame rate) opened; open, rename, copy or delete one */
@@ -866,6 +872,22 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       clip.keys = clip.keys.filter((k) => Math.abs(k.t - st) > 40);
       if (clip.keys.length === before) fail("ما فيه نقطة حركة عند المؤشر.");
       return { timeline: t, label: "شلت نقطة حركة", select: [clip.id] };
+    }
+
+    case "set_keys": {
+      const { clip } = owned(t, cmd.clipId);
+      if (clip.text) fail("هذا للصور والفيديو.");
+      const n = (v: unknown, lo: number, hi: number, d: number) => (Number.isFinite(Number(v)) && v !== null ? Math.min(hi, Math.max(lo, Number(v))) : d);
+      const base = clip.transform;
+      const keys = (Array.isArray(cmd.keys) ? cmd.keys : [])
+        .filter((k) => k && Number.isFinite(Number(k.t)))
+        .map((k) => ({ t: Math.round(n(k.t, 0, LIMITS.maxMs, 0)), x: n(k.x, -2, 3, base.x), y: n(k.y, -2, 3, base.y), scale: n(k.scale, 0.05, 10, base.scale), rotate: n(k.rotate, -360, 360, base.rotate), opacity: n(k.opacity, 0, 1, base.opacity) }))
+        .sort((a, b) => a.t - b.t)
+        .filter((k, i, all) => i === 0 || k.t - all[i - 1].t > 15);
+      if (keys.length > LIMITS.keys) fail("نقاط الحركة أكثر من المسموح لمقطع واحد.");
+      clip.keys = keys;
+      if (keys.length) clip.transform = { x: keys[0].x, y: keys[0].y, scale: keys[0].scale, rotate: keys[0].rotate, opacity: keys[0].opacity };
+      return { timeline: t, label: (typeof cmd.label === "string" && cmd.label.trim().slice(0, 60)) || "نقاط حركة", select: [clip.id] };
     }
 
     case "clear_keys": {

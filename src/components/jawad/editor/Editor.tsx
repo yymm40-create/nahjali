@@ -36,6 +36,7 @@ import { sourceOf, type FootageSource } from "./lab-footage";
 import type { Cue } from "@/lib/editor/scene/contract";
 import { placeStems } from "@/lib/editor/make";
 import CaptionsPanel from "./CaptionsPanel";
+import TranscriptPanel from "./TranscriptPanel";
 import { planSync } from "./sync";
 import ExportPanel from "./ExportPanel";
 import ChangeLog from "./ChangeLog";
@@ -157,6 +158,7 @@ const RAIL: { id: string; label: string; icon: string; tab?: InspectorTab; hint:
   { id: "sound", label: "الصوت", icon: "volume", tab: "sound", hint: "عزل الضوضاء، محسّن الصوت، المؤثرات" },
   { id: "transition", label: "انتقال", icon: "frames", tab: "transition", hint: "الانتقال للمقطع اللي بعده" },
   { id: "captions", label: "كابشن", icon: "type", hint: "كابشن تلقائي، مزامنة قصيدة، SRT" },
+  { id: "transcript", label: "النص", icon: "book", hint: "عدّل من الكلام: احذف كلمات من النص تنحذف من الفيديو، وشيل الحشو" },
   { id: "styles", label: "أساليب", icon: "sparkles", hint: "أساليب مونتاج جاهزة بضغطة" },
   { id: "project", label: "المشروع", icon: "ratio", hint: "المقاس، الخلفية، المغناطيس" },
   { id: "haidara", label: "حيدرا ماكس", icon: "sparkles", hint: "حيدرا ماكس: قل له وش تبي ويعدّل المونتاج" },
@@ -183,6 +185,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [keysOpen, setKeysOpen] = useState<false | "first" | "page">(false);
   const importInput = useRef<HTMLInputElement>(null);
   const [captioning, setCaptioning] = useState(false);
+  // «النص» (editing from the transcript): in the same right column as «الكابشن» (one of them at a time)
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const openTranscript = () => {
+    setCaptioning(false);
+    setTranscriptOpen(true);
+  };
   // «سجل التغييرات» (the top bar, the «تعديل» menu, and حيدرا ماكس's window)
   const [logOpen, setLogOpen] = useState(false);
   // Claude: open beside the work from the start on a computer; on a phone it opens over it when asked
@@ -1645,6 +1653,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     if ("key" in a) return keyDo(a.key, keysFrom ?? "jawad");
     if ("page" in a) return openPage(a.page);
     if (a.open === "captions") setCaptioning(true);
+    else if (a.open === "transcript") openTranscript();
     else if (a.open === "shortcuts") setKeysOpen("page");
     else if (a.open === "layout") setLayoutOpen(true);
     else if (a.open === "log") setLogOpen(true);
@@ -1723,7 +1732,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     <nav className={`${RAIL_NAV[variant]} ${variant === "side" ? "lg:order-last" : ""}`} aria-label="أقسام المحرر">
       {RAIL.filter((r) => !r.tab || !seen.kind || rail !== "inspector" || TABS_OF[seen.kind].includes(r.tab)).map((r, i) => {
             const label = r.id === "edit" && seen.kind && rail === "inspector" ? EDIT_LABEL[seen.kind] : r.label;
-            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.id === "haidara" ? assisting : r.tab ? rail === "inspector" && tab === r.tab : false;
+            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.id === "haidara" ? assisting : r.id === "transcript" ? transcriptOpen && !captioning : r.tab ? rail === "inspector" && tab === r.tab : false;
             return (
               <button
                 key={r.id}
@@ -1732,6 +1741,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                 title={r.hint}
                 onClick={() => {
                   if (r.id === "captions") return setCaptioning(true);
+                  if (r.id === "transcript") return openTranscript();
                   if (r.id === "haidara") return openClaude();
                   if (r.tab) {
                     openTab(r.tab);
@@ -1776,6 +1786,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         return addText();
       case "captions":
         return setCaptioning(true);
+      case "transcript":
+        return openTranscript();
       case "claude":
         return openClaude(true);
       case "ask":
@@ -2214,7 +2226,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
         {/* «كاب كت»: the right column — an option that needs its own window opens here (the captions, the export) */}
         {wide && !big && !colorRoom && (
-          <div ref={setRightEl} className={`cut-right jw-glass-lg my-2 min-h-0 w-[min(380px,30vw)] shrink-0 flex-col overflow-hidden rounded-2xl ${captioning || exporting || logOpen ? "flex" : "hidden"}`} style={{ order: 1 }} />
+          <div ref={setRightEl} className={`cut-right jw-glass-lg my-2 min-h-0 w-[min(380px,30vw)] shrink-0 flex-col overflow-hidden rounded-2xl ${captioning || transcriptOpen || exporting || logOpen ? "flex" : "hidden"}`} style={{ order: 1 }} />
         )}
 
         {/* the rail of sections at the side (the blue and nature looks) */}
@@ -2360,6 +2372,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         }}
       />
       <CaptionsPanel dock={rightEl} open={captioning} onClose={() => setCaptioning(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} />
+      <TranscriptPanel dock={rightEl} open={transcriptOpen && !captioning} onClose={() => setTranscriptOpen(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} player={player} readOnly={readOnly} />
       <ChangeLog dock={rightEl} open={logOpen} onClose={() => setLogOpen(false)} projectId={project.id} flush={flush} onRestore={restoreTo} readOnly={readOnly} />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       <ExportPanel

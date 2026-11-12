@@ -13,6 +13,10 @@ import { jawadSpeak, jawadVoiceReady } from "@/lib/jawad/server/providers/jawad-
 import { jawadReference } from "@/lib/jawad/server/voices";
 import { ELEVEN_DEFAULT_VOICE } from "@config/jawad/generators";
 import { charged, type Who } from "./pricing";
+import { coinsRequired } from "@/lib/coins";
+import { getLimit } from "@/lib/film/limits";
+import { sellKind } from "@config/coins";
+import { mergeTranscripts, needsListening, type AssetSpeech } from "./transcript";
 import { EDITOR_BUCKET, isUuid, stillOpen, type AssetRow, type EditorProject } from "./server";
 
 import { storage } from "@/lib/storage";
@@ -100,6 +104,31 @@ export async function transcribe(p: EditorProject, who: Who, b: { assetId?: unkn
   const keys = Object.keys(all).slice(-6);
   await db().from("editor_assets").update({ meta: { ...row.meta, transcripts: Object.fromEntries(keys.map((k) => [k, all[k]])) } }).eq("id", row.id);
   return { words, cached: false, language: heard.language };
+}
+
+/**
+ * «النص» (editing from the transcript): what is already written of the project's files (each file's kept transcripts
+ * merged into one list of words, with the parts listened to) — free, nothing is heard again — and the price of
+ * listening to the heard clips that aren't written yet (`clips`: their file and part), as «كابشن» charges it: each
+ * clip's minutes rounded up.
+ */
+export async function keptSpeech(p: EditorProject, who: Who, b: { clips?: unknown }) {
+  const { data } = await db().from("editor_assets").select("id,kind,meta").eq("project_id", p.id).neq("kind", "image");
+  const speech: Record<string, AssetSpeech> = {};
+  for (const r of (data ?? []) as Pick<AssetRow, "id" | "kind" | "meta">[]) {
+    const kept = r.meta?.transcripts as Record<string, SpokenWord[]> | undefined;
+    if (kept && Object.keys(kept).length) speech[r.id] = mergeTranscripts(kept);
+  }
+  const clips = (Array.isArray(b.clips) ? b.clips.slice(0, 300) : []).flatMap((c) => {
+    const o = (c ?? {}) as Record<string, unknown>;
+    const from = Math.max(0, Math.round(Number(o.from) || 0));
+    const to = Math.round(Number(o.to) || 0);
+    return typeof o.assetId === "string" && to > from ? [{ assetId: o.assetId, in: from, out: to }] : [];
+  });
+  const unit = await getLimit("editor_price_caption");
+  const free = who.owner || !(await coinsRequired());
+  const price = free ? 0 : clips.filter((c) => needsListening(speech[c.assetId]?.spans, c)).reduce((m, c) => m + sellKind(Math.ceil(unit * Math.ceil((c.out - c.in) / 60_000)), "other"), 0);
+  return { speech, price };
 }
 
 /** The given text (verses, one per line) timed word by word on the asset's recitation between `from` and `to`. */

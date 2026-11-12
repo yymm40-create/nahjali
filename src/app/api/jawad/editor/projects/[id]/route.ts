@@ -38,7 +38,7 @@ import {
   uploadedParts,
   completeUpload,
 } from "@/lib/editor/server";
-import { align, signSpeechUpload, transcribe, voiceIn, voiceOut } from "@/lib/editor/speech";
+import { align, keptSpeech, signSpeechUpload, transcribe, voiceIn, voiceOut } from "@/lib/editor/speech";
 import { voiceprint } from "@/lib/editor/voiceprint";
 import { makeHook, makeMusic, makeSfx, separate } from "@/lib/editor/generate";
 import { assist, gradeCheck } from "@/lib/editor/assistant";
@@ -125,6 +125,9 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await transcribe(p, who, b));
     case "align":
       return NextResponse.json(await align(p, who, b));
+    // «النص»: the words already written of the project's files, and the price of writing the rest (free to read)
+    case "transcripts":
+      return NextResponse.json(await keptSpeech(p, who, b), noStore);
     // talking with حيدرا ماكس: what was said → text, and the reply → sound
     case "voice_in":
       return NextResponse.json(await voiceIn(p, who, b));

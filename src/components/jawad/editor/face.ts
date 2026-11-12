@@ -45,6 +45,15 @@ export async function faceIn(url: string, fromMs: number, toMs: number): Promise
  * «مختبر الموشن» keeps the face framed with when it builds a piece on the person's video. Moments with no face are left out.
  */
 export async function faceTrack(url: string, fromMs: number, toMs: number, n: number): Promise<{ samples: { ms: number; face: FaceBox }[]; width: number; height: number }> {
+  const r = await faceFrames(url, fromMs, toMs, n);
+  return { samples: r.frames.flatMap((f) => (f.faces.length ? [{ ms: f.ms, face: f.faces[0] }] : [])), width: r.width, height: r.height };
+}
+
+/**
+ * Every face at `n` moments spread over `fromMs`–`toMs` (source time), biggest first, and the moments with none
+ * (`faces: []`) — «اتبع الوجه» holds the camera there. `onProgress` gets 0–1; `signal` stops it between two looks.
+ */
+export async function faceFrames(url: string, fromMs: number, toMs: number, n: number, opts: { onProgress?: (p: number) => void; signal?: AbortSignal } = {}): Promise<{ frames: { ms: number; faces: FaceBox[] }[]; width: number; height: number }> {
   const det = await detector();
   const v = document.createElement("video");
   v.crossOrigin = "anonymous";
@@ -63,9 +72,10 @@ export async function faceTrack(url: string, fromMs: number, toMs: number, n: nu
     c.width = Math.max(1, Math.round(v.videoWidth * k));
     c.height = Math.max(1, Math.round(v.videoHeight * k));
     const g = c.getContext("2d")!;
-    const samples: { ms: number; face: FaceBox }[] = [];
+    const frames: { ms: number; faces: FaceBox[] }[] = [];
     const span = Math.max(0, toMs - fromMs);
     for (let i = 0; i < n; i++) {
+      if (opts.signal?.aborted) throw new DOMException("أوقفت.", "AbortError");
       const ms = fromMs + (span * (i + 0.5)) / n;
       await new Promise<void>((ok) => {
         const done = () => {
@@ -78,10 +88,15 @@ export async function faceTrack(url: string, fromMs: number, toMs: number, n: nu
       });
       g.drawImage(v, 0, 0, c.width, c.height);
       const r = det.detect(c);
-      const best = r.detections.map((d) => d.boundingBox).filter((b): b is NonNullable<typeof b> => !!b).sort((a, b) => b.width * b.height - a.width * a.height)[0];
-      if (best) samples.push({ ms: Math.round(ms), face: { x: (best.originX + best.width / 2) / c.width, y: (best.originY + best.height / 2) / c.height, w: best.width / c.width, h: best.height / c.height } });
+      const faces = r.detections
+        .map((d) => d.boundingBox)
+        .filter((b): b is NonNullable<typeof b> => !!b)
+        .sort((a, b) => b.width * b.height - a.width * a.height)
+        .map((b) => ({ x: (b.originX + b.width / 2) / c.width, y: (b.originY + b.height / 2) / c.height, w: b.width / c.width, h: b.height / c.height }));
+      frames.push({ ms: Math.round(ms), faces });
+      opts.onProgress?.((i + 1) / n);
     }
-    return { samples, width: v.videoWidth, height: v.videoHeight };
+    return { frames, width: v.videoWidth, height: v.videoHeight };
   } finally {
     v.removeAttribute("src");
     v.load();
