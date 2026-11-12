@@ -14,8 +14,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RIDHA } from "@config/ridha";
-import { addClip, addMarker, addRecording, addTrack, armTrack, chooseTake, clipOf, deleteClips, duplicateClips, patchClip, replaceSound, splitClip, takesOf, trackOf } from "@/lib/ridha/ops";
-import { barsLabel, clockLabel, SR, type Clip, type Project } from "@/lib/ridha/model";
+import { addClip, addMarker, addRecording, addTrack, armTrack, chooseTake, clipOf, deleteClips, duplicateClips, patchClip, punchRecording, replaceSound, splitClip, takesOf, trackOf } from "@/lib/ridha/ops";
+import { barSec, barsLabel, clockLabel, SR, type Clip, type Project } from "@/lib/ridha/model";
 import { StudioCtx, type PanelId, type Studio as StudioApi } from "./ctx";
 import { decodeFile, Engine, getSound, putSound } from "./engine";
 import { saveProject, Store, useProject } from "./store";
@@ -33,16 +33,20 @@ import ArrangePanel from "./panels/ArrangePanel";
 import VoicePanel from "./panels/VoicePanel";
 import ExportPanel from "./panels/ExportPanel";
 import MaxPanel from "./panels/MaxPanel";
+import SmartPanel from "./panels/SmartPanel";
+import MasterPanel from "./panels/MasterPanel";
+import LyricsPanel from "./panels/LyricsPanel";
 import LatencyDialog, { loadLatency } from "./LatencyDialog";
 import { CHOIRS } from "@config/ridha-choirs";
 import { buildChoir } from "@/lib/ridha/choir";
 
-/** The dock: five doors. Each opens a floating window; a door with several tools shows them as tabs in the window's bar. */
+/** The dock: six doors. Each opens a floating window; a door with several tools shows them as tabs in the window's bar. */
 const DOCK: { id: string; name: string; icon: string; size: { w: number; h: number }; tabs: { id: PanelId; name: string }[] }[] = [
   { id: "fx", size: { w: 860, h: 440 }, name: "المؤثرات", icon: "M4 6h16M4 12h16M4 18h16M8 4v4M15 10v4M10 16v4", tabs: [{ id: "fx", name: "السلسلة والجاهز" }, { id: "eq", name: "الإكولايزر" }] },
-  { id: "clip", size: { w: 920, h: 480 }, name: "المقطع", icon: "M6 6a2.5 2.5 0 1 0 0 .01M6 18a2.5 2.5 0 1 0 0 .01M8 8l12 10M8 16L20 6", tabs: [{ id: "editor", name: "تحرير" }, { id: "clean", name: "تنظيف" }, { id: "tune", name: "أوتوتيون ونغمة" }, { id: "voice", name: "تغيير الصوت" }] },
-  { id: "mixer", size: { w: 1100, h: 440 }, name: "الميكسر", icon: "M6 4v16M12 4v16M18 4v16M4 9h4M10 15h4M16 7h4", tabs: [{ id: "mixer", name: "الميكسر" }] },
+  { id: "clip", size: { w: 920, h: 480 }, name: "المقطع", icon: "M6 6a2.5 2.5 0 1 0 0 .01M6 18a2.5 2.5 0 1 0 0 .01M8 8l12 10M8 16L20 6", tabs: [{ id: "editor", name: "تحرير" }, { id: "clean", name: "تنظيف" }, { id: "smart", name: "أدوات ذكية" }, { id: "tune", name: "أوتوتيون ونغمة" }, { id: "voice", name: "تغيير الصوت" }] },
+  { id: "mixer", size: { w: 1100, h: 440 }, name: "الميكسر", icon: "M6 4v16M12 4v16M18 4v16M4 9h4M10 15h4M16 7h4", tabs: [{ id: "mixer", name: "الميكسر" }, { id: "master", name: "الماستر" }] },
   { id: "create", size: { w: 1040, h: 500 }, name: "هارموني وتوزيع", icon: "M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z", tabs: [{ id: "harmony", name: "هارموني 3D" }, { id: "arrange", name: "التوزيع السريع" }] },
+  { id: "lyrics", size: { w: 420, h: 520 }, name: "الكلمات", icon: "M5 5h14M5 10h14M5 15h9M5 20h6", tabs: [{ id: "lyrics", name: "الكلمات" }] },
   { id: "max", size: { w: 460, h: 520 }, name: "الرضا ماكس", icon: "M12 3l2.2 5.3L20 9l-4.3 3.9L17 19l-5-3-5 3 1.3-6.1L4 9l5.8-.7z", tabs: [{ id: "max", name: "الرضا ماكس" }] },
 ];
 
@@ -91,6 +95,9 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
   const clockEl = useRef<HTMLSpanElement>(null);
   const barsEl = useRef<HTMLSpanElement>(null);
   const clipboard = useRef<Clip[]>([]);
+  // the stretch being punched into (recording inside the loop region only), while such a take is running
+  const punch = useRef<{ a: number; b: number } | null>(null);
+  const taps = useRef<number[]>([]);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toast = useCallback((text: string) => {
@@ -220,20 +227,33 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
     const p = store.get();
     const armed = p.tracks.find((t) => t.arm);
     const rec = engine.stopRecording();
+    const zone = punch.current;
+    punch.current = null;
     setRecStart(null);
     if (!rec || !armed) return;
-    const dur = rec.channels[0].length / SR;
+    let channels = rec.channels;
+    if (zone) {
+      // a punch keeps only what was sung inside the region: the bar before it was the run-up
+      const a = Math.max(0, Math.round((zone.a - rec.start) * SR)), b = Math.min(channels[0].length, Math.round((zone.b - rec.start) * SR));
+      if (b - a < SR * 0.15) {
+        toast("وقف التسجيل قبل ما يوصل المنطقة المحددة، فما انحفظ شيء.");
+        engine.seek(rec.start);
+        return;
+      }
+      channels = channels.map((ch) => ch.slice(a, b));
+    }
+    const dur = channels[0].length / SR;
     if (dur < 0.15) return;
     const n = p.clips.filter((c) => c.trackId === armed.id).length + 1;
-    const s = putSound(rec.channels, `${armed.name} · تسجيل ${n}`);
+    const s = putSound(channels, `${armed.name} · تسجيل ${n}`);
     store.set((q) => {
-      const r = addRecording(q, armed.id, s.id, rec.start, dur, `تسجيل ${n}`);
+      const r = zone ? punchRecording(q, armed.id, s.id, zone.a, zone.a + dur, `تسجيل ${n}`) : addRecording(q, armed.id, s.id, rec.start, dur, `تسجيل ${n}`);
       setSelClips([r.clip.id]);
       setSelTrack(armed.id);
       return r.project;
     });
     engine.seek(rec.start);
-  }, [engine, store]);
+  }, [engine, store, toast]);
 
   // a recording is stopped at the longest length the device's memory can be trusted with
   useEffect(() => {
@@ -241,7 +261,14 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
     const t = setInterval(() => {
       if (engine.recording && engine.position() - recStart > RIDHA.maxMinutes * 60) stopRec();
     }, 1000);
-    return () => clearInterval(t);
+    // a punch ends by itself where its region ends
+    const out = setInterval(() => {
+      if (engine.recording && punch.current && engine.position() >= punch.current.b + 0.06) stopRec();
+    }, 40);
+    return () => {
+      clearInterval(t);
+      clearInterval(out);
+    };
   }, [engine, recStart, stopRec]);
 
   const toggleRecord = useCallback(async () => {
@@ -250,9 +277,13 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
     if (!store.get().tracks.some((t) => t.arm)) store.set((q) => armTrack(q, q.tracks.find((t) => t.id === selTrack && t.kind !== "group")?.id ?? q.tracks.find((t) => t.kind !== "group")!.id), { undo: false });
     const p = store.get();
     try {
-      const from = engine.position();
+      // a punch records only inside the loop region: playback starts a bar before it (the run-up) and the take ends with it
+      const zone = p.punch && p.loop.end > p.loop.start + 0.2 ? { a: p.loop.start, b: p.loop.end } : null;
+      const runUp = zone ? Math.min(zone.a, barSec(p)) : 0;
+      const from = zone ? zone.a - runUp : engine.position();
       // the other tracks play while the armed one records; a stereo track records two channels
-      await engine.record(from, p.countIn, p.tracks.find((t) => t.arm)?.stereo === true);
+      await engine.record(from, zone && runUp > 0.5 ? false : p.countIn, p.tracks.find((t) => t.arm)?.stereo === true);
+      punch.current = zone;
       setRecStart(from);
     } catch (e) {
       const name = e instanceof DOMException ? e.name : "";
@@ -394,6 +425,14 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
         <input type="number" inputMode="numeric" min={30} max={240} step={1} value={Math.round(project.bpm * 10) / 10} onChange={(e) => store.set((p) => ({ ...p, bpm: Math.max(30, Math.min(240, Number(e.target.value) || p.bpm)) }), { merge: "bpm" })} />
         <small>BPM</small>
       </label>
+      <button type="button" className="rv-tap" onClick={() => {
+        // the tempo tapped by hand: the average of the last taps (a pause of two seconds starts over)
+        const now = performance.now();
+        const t = taps.current.length && now - taps.current[taps.current.length - 1] > 2000 ? [] : taps.current.slice(-7);
+        t.push(now);
+        taps.current = t;
+        if (t.length >= 3) store.set((p) => ({ ...p, bpm: Math.max(30, Math.min(240, Math.round(60000 / ((t[t.length - 1] - t[0]) / (t.length - 1))))) }), { merge: "bpm" });
+      }} title="انقر الإيقاع بإصبعك ثلاث مرات أو أكثر والسرعة تنضبط عليه" aria-label="انقر الإيقاع">TAP</button>
       <select className="rv-sig" value={project.beats} onChange={(e) => store.set((p) => ({ ...p, beats: Number(e.target.value) }))} title="الميزان" aria-label="الميزان">
         <option value={2}>2/4</option>
         <option value={3}>3/4</option>
@@ -419,6 +458,7 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
         ) : null}
         <label className="rv-check"><input type="checkbox" checked={project.snap} onChange={() => set({ snap: !project.snap })} />المقاطع تلتصق بالشبكة عند السحب</label>
         <label className="rv-check"><input type="checkbox" checked={project.countIn} onChange={() => set({ countIn: !project.countIn })} />عدّ بار كامل قبل ما يبدأ التسجيل</label>
+        <label className="rv-check"><input type="checkbox" checked={!!project.punch} onChange={() => set({ punch: !project.punch })} />سجّل داخل منطقة التكرار فقط (يشتغل بار قبلها ويوقف عند نهايتها)</label>
         <label className="rv-check"><input type="checkbox" checked={monitor} disabled={!engine.hasMic} onChange={() => {
           engine.setMonitor(!monitor);
           setMonitor(!monitor);
@@ -531,6 +571,9 @@ export default function Studio({ initial, onExit }: { initial: Project; onExit()
               {tab === "harmony" ? <HarmonyPanel /> : null}
               {tab === "arrange" ? <ArrangePanel /> : null}
               {tab === "voice" ? <VoicePanel /> : null}
+              {tab === "smart" ? <SmartPanel /> : null}
+              {tab === "master" ? <MasterPanel /> : null}
+              {tab === "lyrics" ? <LyricsPanel /> : null}
               {tab === "max" ? <MaxPanel /> : null}
             </FloatWindow>
           );

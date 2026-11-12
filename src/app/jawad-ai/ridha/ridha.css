@@ -485,10 +485,43 @@
 .rv-feats div { padding: 11px 12px; border-radius: 12px; border: 1px solid var(--rv-line); color: var(--rv-mut); font-size: 12px; }
 .rv-feats b { display: block; color: var(--rv-ink); font-size: 12.5px; font-weight: 600; margin-bottom: 2px; }
 
+/* ───────── the smart tools, the master, the words ───────── */
+
+.rv-tap { height: 36px; padding: 0 9px; border-radius: 9px; background: var(--rv-raise); color: var(--rv-mut); font-family: var(--rv-mono); font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; }
+.rv-tap:hover { color: var(--rv-ink); background: var(--rv-raise2); }
+.rv-tap:active { background: var(--rv-teal); color: #06231f; }
+.rv-smart { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.rv-smart section { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 10px; background: var(--rv-raise); min-width: 0; }
+.rv-smart section .rv-panel-head { margin-bottom: 0; }
+.rv-smart section p { margin: 0; line-height: 1.55; }
+.rv-smart .rv-slider { flex: none; }
+.rv-smart .rv-clean-go { margin: 2px 0; }
+.rv-master { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(230px, 0.8fr); gap: 16px; }
+.rv-master-main { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.rv-master-main .rv-panel-head { margin-bottom: 0; }
+.rv-master-main p { margin: 0; line-height: 1.55; }
+.rv-master-level { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--rv-mut); }
+.rv-master-level .rv-seg button { min-width: 38px; }
+.rv-master-side { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 10px; background: var(--rv-raise); align-items: flex-start; }
+.rv-master-ref { font-size: 12.5px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--rv-gold); }
+.rv-tone { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; width: 100%; height: 96px; }
+.rv-tone span { position: relative; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 1px; min-width: 0; }
+.rv-tone i { width: 100%; max-height: calc(100% - 30px); min-height: 2px; border-radius: 3px 3px 0 0; background: var(--rv-teal); }
+.rv-tone i.neg { background: var(--rv-gold); }
+.rv-tone small { font-size: 9.5px; color: var(--rv-faint); white-space: nowrap; }
+.rv-tone em { font-style: normal; font-family: var(--rv-mono); font-size: 10px; color: var(--rv-mut); }
+.rv-lyrics { display: flex; flex-direction: column; height: 100%; min-height: 240px; }
+.rv .rv-lyrics textarea { flex: 1; width: 100%; min-height: 200px; resize: none; border: 0; outline: none; border-radius: 10px; padding: 14px 16px; background: var(--rv-raise); color: var(--rv-ink); line-height: 2; font-family: inherit; }
+.rv-lyrics textarea::placeholder { color: var(--rv-faint); font-size: 14px; line-height: 1.8; }
+.rv-fx-mine .rv-card { flex-direction: row; align-items: center; padding: 0; overflow: hidden; }
+.rv-fx-mine .rv-card > button:first-child { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 9px 11px; text-align: start; }
+.rv-fx-mine .rv-card small { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.rv-phone .rv-smart, .rv-phone .rv-master { grid-template-columns: minmax(0, 1fr); }
+
 /* ───────── narrow windows ───────── */
 
 @media (max-width: 1000px) {
-  .rv-fx, .rv-clean, .rv-tune, .rv-harmony, .rv-arr, .rv-voice, .rv-export { grid-template-columns: minmax(0, 1fr); }
+  .rv-fx, .rv-clean, .rv-tune, .rv-harmony, .rv-arr, .rv-voice, .rv-export, .rv-smart, .rv-master { grid-template-columns: minmax(0, 1fr); }
   .rv-top { grid-template-columns: auto 1fr auto; gap: 6px; }
   .rv-name, .rv-saved, .rv-top .rv-logo-text { display: none; }
 }
