@@ -2,7 +2,7 @@
 // turned from the source picture's fractions into the frame's (through the video clip's fit, place and size), so the
 // brackets sit on the face as it is seen. MediaPipe in the browser (face.ts): nothing uploaded, nothing paid.
 
-import { clipEnd, type Clip, type Timeline } from "@/lib/editor/model";
+import { clipEnd, sourceTime, timelineTime, type Clip, type Timeline } from "@/lib/editor/model";
 import type { FaceSample } from "@/lib/editor/motion-elements";
 import { faceTrack } from "./face";
 import { baseSize } from "./render";
@@ -31,8 +31,8 @@ export async function readFaceTrack(tl: Timeline, el: Clip, assets: Map<string, 
   if (!v || !a?.url) throw new Error("ما فيه فيديو تحت هذا العنصر نقرأ منه الوجه.");
   const from = Math.max(el.start, v.start);
   const to = Math.min(clipEnd(el), clipEnd(v));
-  const srcFrom = v.in + (from - v.start) * v.speed;
-  const srcTo = v.in + (to - v.start) * v.speed;
+  const srcFrom = sourceTime(v, from);
+  const srcTo = sourceTime(v, to);
   const n = Math.max(4, Math.min(120, Math.round((to - from) / PER_MS)));
   const r = await faceTrack(a.url, srcFrom, srcTo, n);
   if (!r.samples.length) throw new Error("ما لقينا وجه في الفيديو بهذي الثواني.");
@@ -44,7 +44,7 @@ export async function readFaceTrack(tl: Timeline, el: Clip, assets: Map<string, 
   const left = v.transform.x * W - w / 2;
   const top = v.transform.y * H - h / 2;
   return r.samples.map((s) => {
-    const timeline = v.start + (s.ms - v.in) / v.speed;
+    const timeline = timelineTime(v, s.ms);
     return {
       t: Math.max(0, Math.round(el.in + (timeline - el.start))),
       x: (left + s.face.x * w) / W,

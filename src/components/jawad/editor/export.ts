@@ -22,7 +22,8 @@ import {
 } from "mediabunny";
 import { wantedEncode } from "./perf-bench";
 import type { HwHint } from "@/lib/editor/perf";
-import { clipEnd, duration, gainAt, hasSoundFx, sourceTime, voiceSpans, type Clip, type Timeline, type Track } from "@/lib/editor/model";
+import { clipEnd, duration, gainAt, hasSoundFx, retimed, sourceTime, voiceSpans, type Clip, type Timeline, type Track } from "@/lib/editor/model";
+import { rampSamples } from "@/lib/editor/ramp";
 import { drawFrame, layersAt, setExporting, type Frame } from "./render";
 import { soundLadder, type ExportPlan } from "@/lib/editor/export-plan";
 import { stretch } from "./stretch";
@@ -296,12 +297,12 @@ export async function exportVideo(
       const src0 = sourceTime(c, s) / 1000 - base;
       const src1 = sourceTime(c, e) / 1000 - base;
       if (whole) {
-        if (c.speed !== 1) {
+        if (retimed(c)) {
           const sr = whole.sampleRate;
           const a0 = Math.max(0, Math.floor((src0 - 0.05) * sr));
           const a1 = Math.min(whole.length, Math.ceil((src1 + 0.1) * sr));
           const chs = Array.from({ length: Math.min(2, whole.numberOfChannels) }, (_, ch) => whole.getChannelData(ch).subarray(a0, a1));
-          place(mix, gain, chs, sr, Math.round((src0 * sr) - a0), c.speed, s, e, from);
+          place(mix, gain, chs, sr, Math.round((src0 * sr) - a0), c, s, e, from);
         } else {
           const node = mix.createBufferSource();
           node.buffer = whole;
@@ -310,7 +311,7 @@ export async function exportVideo(
         }
         continue;
       }
-      if (c.speed !== 1) {
+      if (retimed(c)) {
         await stretched(mix, gain, track!, c, s, e, from, src0, src1);
         continue;
       }
@@ -349,13 +350,18 @@ export async function exportVideo(
       }
       return arr;
     });
-    place(mix, gain, input, sr, Math.max(0, Math.round((src0 - t0) * sr)), c.speed, s, e, from);
+    place(mix, gain, input, sr, Math.max(0, Math.round((src0 - t0) * sr)), c, s, e, from);
   }
 
-  /** Stretches `channels` from sample `at` to the piece [s, e) and plays it there (pitch kept). */
-  function place(mix: OfflineAudioContext, gain: GainNode, channels: Float32Array[], sr: number, at: number, speed: number, s: number, e: number, from: number) {
+  /**
+   * Stretches `channels` from sample `at` to the piece [s, e) and plays it there (pitch kept). A clip with a speed curve
+   * is read along its curve (the same source moment as its picture at every sample, so picture and sound stay in step).
+   */
+  function place(mix: OfflineAudioContext, gain: GainNode, channels: Float32Array[], sr: number, at: number, c: Clip, s: number, e: number, from: number) {
     const outLen = Math.max(1, Math.round(((e - s) / 1000) * sr));
-    const out = stretch(channels, at, speed, outLen, sr);
+    const speed = c.speed;
+    const map = rampSamples(c, s, sr);
+    const out = stretch(channels, at, speed, outLen, sr, map);
     const buf = mix.createBuffer(out.length, outLen, sr);
     out.forEach((d, ch) => buf.copyToChannel(d as Float32Array<ArrayBuffer>, ch));
     const node = mix.createBufferSource();

@@ -2,7 +2,7 @@
 // spoken words grouped into short phrases on the timeline, poem verses kept one per caption, and SRT files in and out.
 
 import { ALL_FORMATS, AudioBufferSink, AudioBufferSource, BufferTarget, canEncodeAudio, Input, Output, UrlSource, WebMOutputFormat } from "mediabunny";
-import { clipEnd, formatTime, type Clip, type Timeline, type Word } from "@/lib/editor/model";
+import { clipEnd, formatTime, timelineTime, type Clip, type Timeline, type Word } from "@/lib/editor/model";
 import { decodeWhole, sliceMono } from "./audio";
 
 export interface SpokenWord {
@@ -116,7 +116,7 @@ function wav(parts: Int16Array[], rate: number) {
 export function onTimeline(c: Clip, words: SpokenWord[]): SpokenWord[] {
   return words
     .filter((w) => w.s >= c.in && w.s < c.out)
-    .map((w) => ({ s: Math.round(c.start + (w.s - c.in) / c.speed), e: Math.round(c.start + (Math.min(w.e, c.out) - c.in) / c.speed), w: w.w }))
+    .map((w) => ({ s: Math.round(timelineTime(c, w.s)), e: Math.round(timelineTime(c, Math.min(w.e, c.out))), w: w.w }))
     .filter((w) => w.s < clipEnd(c));
 }
 

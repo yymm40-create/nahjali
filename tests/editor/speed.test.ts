@@ -96,7 +96,7 @@ describe("المعاينة ما تغيّر طبقة الصوت", () => {
     expect(player).toContain("webkitPreservesPitch: true");
   });
   it("the export stretches at the sound's own sample rate", () => {
-    expect(readFileSync("src/components/jawad/editor/export.ts", "utf8")).toContain("stretch(channels, at, speed, outLen, sr)");
+    expect(readFileSync("src/components/jawad/editor/export.ts", "utf8")).toContain("stretch(channels, at, speed, outLen, sr, map)");
   });
 });
 

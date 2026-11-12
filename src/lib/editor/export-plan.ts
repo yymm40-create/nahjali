@@ -3,14 +3,14 @@
 // handed plain numbers. «نفس المصدر» («المدخل نفس المخرج») reads the biggest source video of the timeline and matches
 // it — the same short side, the same frame rate, and a bitrate not under its own, so nothing is lost on the way out.
 
-import { duration, type Timeline } from "./model";
+import { duration, ratioOf, type Ratio, type Timeline } from "./model";
 
 /** The short side of the file, in pixels, or the source's own. */
 export type ExportRes = 480 | 720 | 1080 | 1440 | 2160 | "source";
 /** How many bits a second: a level, the source's own, or megabits the person typed. */
 export type ExportQuality = "low" | "medium" | "high" | "max" | "source" | { mbps: number };
-/** The frames a second: the project's, or the source's own. */
-export type ExportFps = "project" | "source";
+/** The frames a second: the project's, the source's own, or a platform's (a whole number). */
+export type ExportFps = "project" | "source" | number;
 
 export const RES_LIST: ExportRes[] = [480, 720, 1080, 1440, 2160, "source"];
 export const RES_AR: Record<string, string> = { 480: "480p", 720: "720p", 1080: "1080p", 1440: "1440p (2K)", 2160: "2160p (4K)", source: "نفس المصدر" };
@@ -90,6 +90,7 @@ export function sizeFor(tl: Pick<Timeline, "width" | "height">, res: ExportRes, 
 
 /** The frame rate: the project's, or the source's own (12–60, whole frames). */
 export function fpsFor(tl: Pick<Timeline, "fps">, fps: ExportFps, source?: SourceInfo | null): number {
+  if (typeof fps === "number" && Number.isFinite(fps)) return clamp(Math.round(fps), 12, 60);
   if (fps === "source" && source?.fps) return clamp(Math.round(source.fps), 12, 60);
   return clamp(Math.round(tl.fps) || 30, 12, 60);
 }
@@ -179,4 +180,59 @@ export function sourceFromTimeline(tl: Pick<Timeline, "tracks">, assets: PlanAss
 export function sourceLine(s: SourceInfo | null): string {
   if (!s) return "ما فيه مقطع فيديو في التايملاين أطابقه";
   return [`${s.width}×${s.height}`, s.fps ? `${Math.round(s.fps)} ف/ث` : null, s.mbps ? `${s.mbps} ميجابت/ث` : null].filter(Boolean).join(" · ");
+}
+
+// ───────── «مقاس جاهز للمنصة»: one tap sets the file for where it will be posted ─────────
+//
+// Each platform's shape, size, frame rate, a bitrate (the platforms re-encode every upload: more than this only makes a
+// bigger file to upload) and how long a post may be. Checked on the web on 12 November 2026:
+// - YouTube (official): https://support.google.com/youtube/answer/1722171 — SDR uploads, 1080p 8 Mbps at 24/25/30 fps
+//   and 12 Mbps at 48/50/60 fps, MP4 H.264 + AAC 48 kHz. Shorts: vertical or square, up to 3 minutes (since 15 October
+//   2024: https://petapixel.com/2024/10/04/youtube-shorts-expands-video-length-to-three-minutes/).
+// - Instagram Reels (no official page; guides agree): 1080×1920 9:16, 30 fps, up to 3 minutes (90 s or less is the usual
+//   advice), 10–15 Mbps at 1080p — https://wyzowl.com/social-media-video-specs/, https://socialrails.com/sizes/instagram/reels
+// - TikTok (guides): 1080×1920 9:16, 30 fps, 6–12 Mbps at 1080p (it re-encodes); up to 10 minutes from the app, up to 60
+//   from a computer — https://www.heyorca.com/blog/tiktok-media-specs-best-practices-2026, https://postfa.st/sizes/tiktok/video
+// - Snapchat Spotlight (guides): 1080×1920 9:16, 5–60 s, H.264, 5–10 Mbps — https://www.ayrshare.com/docs/media-guidelines/snapchat,
+//   https://moda.app/resources/sizes/snapchat-spotlight
+// - Stories (Instagram and Snapchat): 1080×1920 9:16, each story up to 60 s (a longer video is cut into stories).
+
+export type PlatformId = "reels" | "tiktok" | "shorts" | "youtube" | "snap" | "story";
+
+export interface Platform {
+  label: string;
+  icon: string;
+  /** the shape it wants (the first) and any other it takes as it is */
+  ratios: Ratio[];
+  res: Exclude<ExportRes, "source">;
+  /** frames a second, or the project's own («يوتيوب» takes 24, 30 and 60 alike) */
+  fps: number | "project";
+  /** the bitrate for this frame rate, in megabits a second */
+  mbps: (fps: number) => number;
+  /** the longest post (ms), and what to say past it */
+  maxMs: number;
+  tooLong: string;
+}
+
+export const PLATFORMS: Record<PlatformId, Platform> = {
+  reels: { label: "ريلز إنستغرام", icon: "📸", ratios: ["9:16"], res: 1080, fps: 30, mbps: () => 12, maxMs: 3 * 60_000, tooLong: "الريلز حتى ٣ دقائق؛ قصّره أو صدّر جزء (والأفضل للانتشار تحت ٩٠ ثانية)." },
+  tiktok: { label: "تيك توك", icon: "🎵", ratios: ["9:16"], res: 1080, fps: 30, mbps: () => 10, maxMs: 10 * 60_000, tooLong: "تيك توك من الجوال حتى ١٠ دقائق؛ الأطول ارفعه من الكمبيوتر (حتى ٦٠ دقيقة)." },
+  shorts: { label: "يوتيوب شورتس", icon: "▶️", ratios: ["9:16", "1:1"], res: 1080, fps: 30, mbps: () => 8, maxMs: 3 * 60_000, tooLong: "الشورتس حتى ٣ دقائق؛ الأطول ينرفع فيديو عادي مو شورتس." },
+  youtube: { label: "يوتيوب عرضي", icon: "🖥️", ratios: ["16:9"], res: 1080, fps: "project", mbps: (fps) => (fps >= 48 ? 12 : 8), maxMs: 12 * 3600_000, tooLong: "يوتيوب يقبل حتى ١٢ ساعة للحسابات الموثّقة (١٥ دقيقة بدون توثيق)." },
+  snap: { label: "سناب (سبوتلايت)", icon: "👻", ratios: ["9:16"], res: 1080, fps: 30, mbps: () => 8, maxMs: 60_000, tooLong: "سبوتلايت سناب حتى ٦٠ ثانية؛ قصّره أو صدّر جزء." },
+  story: { label: "ستوري", icon: "⭕", ratios: ["9:16"], res: 1080, fps: 30, mbps: () => 8, maxMs: 60_000, tooLong: "الستوري الواحدة حتى ٦٠ ثانية؛ الأطول ينقسم لأكثر من ستوري." },
+};
+export const PLATFORM_IDS = Object.keys(PLATFORMS) as PlatformId[];
+
+/** The export's choices for a platform (its size, frame rate and bitrate), from the project's frame rate. */
+export function platformOpts(id: PlatformId, tl: Pick<Timeline, "fps">): ExportOpts {
+  const p = PLATFORMS[id];
+  const fps = p.fps === "project" ? fpsFor(tl, "project") : p.fps;
+  return { res: p.res, quality: { mbps: p.mbps(fps) }, fps: p.fps === "project" ? "project" : p.fps };
+}
+
+/** What doesn't fit the platform: the project's shape (the shape to reshape to), and a length past its limit. */
+export function platformCheck(id: PlatformId, tl: Pick<Timeline, "width" | "height">, lengthMs: number): { reshape: Ratio | null; tooLong: string | null } {
+  const p = PLATFORMS[id];
+  return { reshape: p.ratios.includes(ratioOf(tl)) ? null : p.ratios[0], tooLong: lengthMs > p.maxMs ? p.tooLong : null };
 }

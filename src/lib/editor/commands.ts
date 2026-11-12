@@ -4,6 +4,7 @@
 
 import { isMotionKind, motionLabel, MOTION_KINDS, MOTION_MS, newMotion, readMotion, type MotionEl, type MotionKind } from "./motion-elements";
 import { applyLook, LOOKS, MAX_LAYERS, NEUTRAL_GRADE, readGrade, readGrades, type Grade } from "./grade";
+import { cutTimed, isFlat, rampArea, rampName, readRamp, type Ramp, type RampPresetId } from "./ramp";
 import {
   allTracks,
   clipEnd,
@@ -18,6 +19,7 @@ import {
   pack,
   RATIOS,
   sourceTime,
+  timelineTime,
   STILL_MS,
   COLOR_PRESETS,
   NEUTRAL_COLOR,
@@ -95,6 +97,11 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
   fx?: ClipFx[];
   /** «مسار الموشن»: merged over the element (motion clips only); `colors: null` = back to the theme's */
   motion?: Partial<MotionEl>;
+  /**
+   * «منحنى السرعة»: a ready curve's id or the curve's points ({u: 0–1 along the clip, s: speed}); null = back to one
+   * speed (the curve's average, so the length stays). Media clips only. A plain `speed` in the same patch is ignored.
+   */
+  ramp?: RampPresetId | Ramp | null;
 };
 
 /** What every new clip starts with (besides its media and timing). */
@@ -220,6 +227,16 @@ const sourceMax = (c: Clip, assets: Map<string, AssetInfo>) => {
   return a && a.kind !== "image" && a.durationMs ? a.durationMs : Infinity;
 };
 const isStill = (c: Clip, assets: Map<string, AssetInfo>) => c.text != null || assets.get(c.assetId ?? "")?.kind === "image";
+
+/** A clip's source part, speed and speed curve as one piece of a cut (a flat part has no curve). */
+const timedFields = (t: ReturnType<typeof cutTimed>): Pick<Clip, "in" | "out" | "speed" | "ramp"> => ({ in: t.in, out: t.out, speed: t.speed, ramp: t.ramp ?? undefined });
+function setTimed(c: Clip, t: ReturnType<typeof cutTimed>) {
+  c.in = t.in;
+  c.out = t.out;
+  c.speed = t.speed;
+  if (t.ramp) c.ramp = t.ramp;
+  else delete c.ramp;
+}
 
 function editable(t: Timeline, trackId: string) {
   // a track, or the track of a clip (a clip just made, as "$N": the next picture goes on the same track as it)
@@ -489,8 +506,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         ...structuredClone(src!),
         id: newId("c"),
         start: from,
-        in: Math.round(src!.in + (from - src!.start) * src!.speed),
-        out: Math.round(src!.in + (to - src!.start) * src!.speed),
+        ...timedFields(cutTimed(src!, from, to)),
         volume: 0,
         transition: null,
         fadeIn: 0,
@@ -581,7 +597,21 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const min = LIMITS.minClipMs * speed;
       const prevEnd = magnet(t, track) ? 0 : index > 0 ? clipEnd(track.clips[index - 1]) : 0;
       const nextStart = magnet(t, track) ? Infinity : (track.clips[index + 1]?.start ?? Infinity);
-      if (cmd.edge === "end") {
+      if (clip.ramp && !isStill(clip, assets)) {
+        // «منحنى السرعة»: the edge moves along the curve; the part that stays plays exactly as before
+        const end = clipEnd(clip);
+        if (cmd.edge === "end") {
+          const hi = Math.max(clip.start + LIMITS.minClipMs, timelineTime(clip, sourceMax(clip, assets)));
+          const to = Math.round(Math.min(hi, Math.max(clip.start + LIMITS.minClipMs, Math.min(cmd.to, nextStart))));
+          setTimed(clip, cutTimed(clip, clip.start, to));
+        } else {
+          const lo = Math.max(prevEnd, Math.ceil(timelineTime(clip, 0)));
+          const start = Math.round(Math.min(end - LIMITS.minClipMs, Math.max(lo, cmd.to)));
+          setTimed(clip, cutTimed(clip, start, end));
+          clip.in = Math.max(0, clip.in);
+          clip.start = start;
+        }
+      } else if (cmd.edge === "end") {
         const want = clip.in + (Math.min(cmd.to, nextStart) - clip.start) * speed;
         clip.out = Math.round(Math.min(sourceMax(clip, assets), Math.max(clip.in + min, want)));
       } else if (isStill(clip, assets)) {
@@ -616,6 +646,11 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
           if (at - c.start < LIMITS.minClipMs || clipEnd(c) - at < LIMITS.minClipMs) continue;
           const cut = Math.round(sourceTime(c, at));
           const right: Clip = { ...structuredClone(c), id: newId("c"), start: at, in: cut, fadeIn: 0 };
+          // «منحنى السرعة»: each side keeps its own part of the curve (and plays the same as before the cut)
+          if (c.ramp) {
+            setTimed(right, cutTimed(c, at, clipEnd(c)));
+            setTimed(c, cutTimed(c, c.start, at));
+          }
           if (right.fix) right.fix = { ...right.fix, job: null, from: null, state: "draft" };
           if (c.words.length) {
             // a caption keeps each word on the side it is said; the text follows the words
@@ -628,7 +663,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
             }
           }
           // the cut is a plain one; what came after the clip now comes after its right part
-          c.out = cut;
+          if (!c.ramp) c.out = cut;
           c.transition = null;
           c.fadeOut = 0;
           next.push(right);
@@ -707,9 +742,26 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const p = cmd.patch;
       if (p.volume != null) clip.volume = Math.min(2, Math.max(0, Number(p.volume) || 0));
       if (p.fit) clip.fit = p.fit === "contain" ? "contain" : "cover";
-      if (p.speed != null) {
-        // the clip keeps its source part; its length on the timeline follows the speed
+      if (p.speed != null && p.ramp === undefined) {
+        // the clip keeps its source part; its length on the timeline follows the speed (one speed: a curve goes)
         clip.speed = Math.min(10, Math.max(0.1, Number(p.speed) || 1));
+        delete clip.ramp;
+      }
+      if (p.ramp !== undefined) {
+        // «منحنى السرعة»: the clip's speed becomes the curve's average, so its length follows the curve
+        const a = clip.assetId ? assets.get(clip.assetId) : null;
+        if (clip.text || clip.seq || !a || a.kind === "image") fail("منحنى السرعة لمقاطع الفيديو والصوت بس.");
+        if (p.ramp === null) delete clip.ramp;
+        else {
+          const r = readRamp(p.ramp) ?? fail("منحنى سرعة غير صالح.");
+          if (isFlat(r!)) {
+            clip.speed = r![0].s;
+            delete clip.ramp;
+          } else {
+            clip.ramp = r;
+            clip.speed = rampArea(r!);
+          }
+        }
       }
       if (p.transform) clip.transform = { ...clip.transform, ...Object.fromEntries(Object.entries(p.transform).filter(([, v]) => Number.isFinite(v))) };
       if (p.fadeIn != null) clip.fadeIn = Math.round(Math.min(clipLength(clip), Math.max(0, Number(p.fadeIn) || 0)));
@@ -816,7 +868,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
           clip.words = tokens.length === clip.words.length ? clip.words.map((w, i) => ({ ...w, w: tokens[i] })) : [];
         }
       }
-      if (p.speed != null) {
+      if (p.speed != null || p.ramp !== undefined) {
         if (magnet(t, track)) tidy(t, track);
         else place(track, clip);
       }
@@ -826,6 +878,10 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         ? "عدّلت النص"
         : p.volume != null
           ? "غيّرت مستوى الصوت"
+          : p.ramp !== undefined
+            ? clip.ramp
+              ? `منحنى السرعة: ${rampName(clip.ramp)}`
+              : "شلت منحنى السرعة"
           : p.speed != null
             ? "غيّرت السرعة"
             : p.color !== undefined
@@ -1284,7 +1340,8 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         for (let i = 0; i + 1 < track.clips.length; i++) {
           const c = track.clips[i];
           const over = clipEnd(c) - track.clips[i + 1].start;
-          if (over > 0) c.out = Math.max(c.in + LIMITS.minClipMs * (c.speed || 1), c.out - over * (c.speed || 1));
+          if (over > 0 && c.ramp) setTimed(c, cutTimed(c, c.start, Math.max(c.start + LIMITS.minClipMs, clipEnd(c) - over)));
+          else if (over > 0) c.out = Math.max(c.in + LIMITS.minClipMs * (c.speed || 1), c.out - over * (c.speed || 1));
         }
         tidy(t, track);
       }
@@ -1309,6 +1366,7 @@ function cutOut(c: Clip, a: number, b: number, assets: Map<string, AssetInfo>): 
   const still = isStill(c, assets);
   if (c.start < a) {
     const left = { ...structuredClone(c), out: still ? c.in + (a - c.start) * c.speed : Math.round(sourceTime(c, a)), transition: null, fadeOut: 0 };
+    if (!still && c.ramp) setTimed(left, cutTimed(c, c.start, a));
     left.words = left.words.filter((w) => w.s < a - c.start);
     out.push(left);
   }
@@ -1316,6 +1374,7 @@ function cutOut(c: Clip, a: number, b: number, assets: Map<string, AssetInfo>): 
     const shift = b - c.start;
     const right = { ...structuredClone(c), id: c.start < a ? newId("c") : c.id, start: a, fadeIn: 0 };
     if (still) right.out = c.in + (e - b) * c.speed;
+    else if (c.ramp) setTimed(right, cutTimed(c, b, e));
     else right.in = Math.round(sourceTime(c, b));
     right.words = right.words.filter((w) => w.s >= shift).map((w) => ({ ...w, s: w.s - shift, e: w.e - shift }));
     out.push(right);

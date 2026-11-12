@@ -5,6 +5,7 @@
 
 import { apply, type Command } from "./commands";
 import { clipEnd, findClip, mainTrack, type AssetInfo, type Timeline } from "./model";
+import { rampTimeline, type Timed } from "./ramp";
 
 /** Silence cutting (majed-video 01_cut_plan): quieter than −32 dB for 0.35 s or more, 0.13 s kept each side. */
 export const TIGHT = { quietDb: -32, minSilenceMs: 350, padMs: 130, minKeepMs: 300 } as const;
@@ -47,12 +48,12 @@ export function silentSpans(peaks: Uint8Array, rate: number, fromMs: number, toM
 }
 
 /** Source spans of one clip → its timeline spans (only what it plays). */
-export function onTimeline(c: { start: number; in: number; out: number; speed: number }, spans: [number, number][]): [number, number][] {
+export function onTimeline(c: Timed, spans: [number, number][]): [number, number][] {
   const out: [number, number][] = [];
   for (const [s, e] of spans) {
     const a = Math.max(s, c.in);
     const b = Math.min(e, c.out);
-    if (b > a) out.push([Math.round(c.start + (a - c.in) / c.speed), Math.round(c.start + (b - c.in) / c.speed)]);
+    if (b > a) out.push([Math.round(rampTimeline(c, a)), Math.round(rampTimeline(c, b))]);
   }
   return out;
 }
