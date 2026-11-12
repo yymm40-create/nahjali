@@ -35,6 +35,8 @@ import { probeFile, putWithProgress } from "./upload";
 import WorksPanel from "./WorksPanel";
 import StylePicker from "./StylePicker";
 import MorePrompts from "./MorePrompts";
+import ReadyApps from "./ReadyApps";
+import { composeReady, composerSideOf, fitSettings, type ReadyApp, type ReadyValues } from "@config/jawad/ready-apps";
 import { findStyle } from "@config/film-styles";
 import { refKindOfTag, takeCreativeUse } from "@/lib/jawad/creative-use";
 import { refMeta, type Draft, type RefItem, type StudioProps, type UploadView } from "./types";
@@ -200,6 +202,8 @@ export default function Studio({ section, studioSections, generators, directorGe
   // «جواد»: the chat assistant, and the thumbnail maker it can open
   const [chatOpen, setChatOpen] = useState(false);
   const [composer, setComposer] = useState<{ person: string; side: ThumbnailSide } | null>(null);
+  // «جاهز بضغطة»: a thumbnail card leaves this side empty for the person's photo («ركّب الشخص» after generating)
+  const [readySide, setReadySide] = useState<ThumbnailSide | null>(null);
   const pendingKey = useRef<string | null>(null);
   // what the pending key was made for: a changed request gets a new key (else the server returns the old job)
   const pendingSig = useRef("");
@@ -927,6 +931,43 @@ export default function Studio({ section, studioSections, generators, directorGe
     setNotice("");
     return [];
   }
+  // ── «جاهز بضغطة»: a card fills the form (never generates; no AI call) ──
+  function applyReady(app: ReadyApp, values: ReadyValues, gid: string) {
+    const nd = generatorById(gid);
+    if (!nd || !generators.some((g) => g.id === gid)) return setNotice("هذا المولّد غير متاح لحسابك الحين.");
+    const form = composeReady(app, values);
+    // a picture or clip already added fills the card's slot (the first ready one of its kind); the rest are let go
+    const kept: RefItem[] = [];
+    const used: typeof form.slots = [];
+    for (const slot of form.slots) {
+      const r = draft.refs.find((x) => x.kind === slot.kind && x.status === "ready" && !kept.some((k) => k.localId === x.localId));
+      if (!r) continue;
+      kept.push({ ...r, name: slot.name, role: slot.role ?? "reference" });
+      used.push(slot);
+    }
+    const add = form.slots.filter((s) => !used.includes(s));
+    setDraft((d) => ({
+      ...d,
+      generatorId: gid,
+      prompt: form.prompt,
+      settings: { ...d.settings, [gid]: fitSettings(nd, form.settings) },
+      refStyle: { ...d.refStyle, [gid]: form.refStyle },
+      refs: kept,
+      styleId: form.styleId,
+      extra: [],
+      mainRefs: null,
+      wantNames: add.map((s) => ({ name: s.name, kind: s.kind })),
+    }));
+    setReadySide(composerSideOf(app, values));
+    setBeforeDirector(null);
+    setTouched(true);
+    setTab("settings");
+    setNotice(
+      `جهّزنا «${app.name}» على ${generators.find((g) => g.id === gid)?.name ?? nd.name}.` +
+        (used.length ? ` استخدمنا مرجعك الموجود كـ ${used.map((s) => `@${s.name}`).join(" و")}؛ بدّله إذا مو هو.` : "") +
+        (add.length ? ` أضف ${add.map((s) => s.what).join(" و")} من «المراجع» (ياخذ اسم ${add.map((s) => `@${s.name}`).join(" و")} تلقائيًا)، ثم اضغط «توليد».` : " راجع البرومبت واضغط «توليد».")
+    );
+  }
   const composerPersons = draft.refs.flatMap((r) => (r.kind === "image" && r.status === "ready" && r.url ? [{ name: r.name, url: r.url }] : []));
   const composerResults = items.flatMap((it) => (it.type === "job" && it.status === "succeeded" ? it.outputs.filter((o) => o.kind === "image" && o.url).map((o) => ({ id: o.id, url: o.url! })) : [])).slice(0, 8);
 
@@ -996,6 +1037,11 @@ export default function Studio({ section, studioSections, generators, directorGe
                 <button type="button" onClick={() => setNotice("")} aria-label="إخفاء"><Icon name="x" size={12} /></button>
               </p>
             )}
+            {readySide && def.output === "image" && (
+              <button type="button" className="jw-btn !min-h-9 w-full gap-1.5 text-xs" onClick={() => setComposer({ person: composerPersons[0]?.name ?? "", side: readySide })}>
+                <Icon name="layers" size={14} /> ركّب صورتك على الثامبنيل بعد التوليد
+              </button>
+            )}
             <RefsStrip
               def={def}
               ev={ev}
@@ -1016,6 +1062,7 @@ export default function Studio({ section, studioSections, generators, directorGe
               onRole={(id, role) => updateRef(id, { role })}
             />
             {def.output !== "audio" && <StylePicker value={draft.styleId ?? ""} onChange={(id) => (setDraft((d) => ({ ...d, styleId: id })), setTouched(true))} />}
+            <ReadyApps generators={generators} owner={owner} onUse={applyReady} />
             <PromptBox
               def={def}
               ev={ev}
