@@ -78,6 +78,8 @@ import { startMaking, useMaking } from "./making";
 import type { MakePlan } from "@/lib/editor/make-any";
 import Coined from "@/components/Coined";
 import { track } from "@/lib/feature-track";
+import ReviewPanel from "./ReviewPanel";
+import { reviewMarks, useReview, type ShareOpts } from "./review-client";
 
 type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict";
 interface Step {
@@ -213,6 +215,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const uploadSeq = useRef(0);
   // «سجل التغييرات» (the top bar, the «تعديل» menu, and حيدرا ماكس's window)
   const [logOpen, setLogOpen] = useState(false);
+  // «💬 تعليقات المراجعة» (the top bar, «ملف» menu); the comment pressed on the ruler; the link's choices for «صدّر وشارك»
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewFocus, setReviewFocus] = useState<number | null>(null);
+  const reviewOpts = useRef<ShareOpts>({ expiry: "none", allowDownload: false });
+  const [exportShare, setExportShare] = useState(false);
   // Claude: open beside the work from the start on a computer; on a phone it opens over it when asked
   // (opened by itself on a conversation the address names: «?lab=»)
   const [assisting, setAssisting] = useState(() => Boolean(labChat && !project.purged));
@@ -1711,6 +1718,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     else if (a.open === "shortcuts") setKeysOpen("page");
     else if (a.open === "layout") setLayoutOpen(true);
     else if (a.open === "log") setLogOpen(true);
+    else if (a.open === "review") setReviewOpen(true);
     else if (a.open === "haidara") openClaude();
     else if (a.open === "haidaraDock") {
       const on = !(assisting && chatDock);
@@ -1767,6 +1775,16 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   );
   const total = duration(tl);
   const exportRange = rangeIO.from == null && rangeIO.to == null ? null : { from: Math.max(0, rangeIO.from ?? 0), to: Math.min(total, rangeIO.to ?? total) };
+  // «رابط مراجعة للعميل»: its comments as marks on the ruler (carried to the timeline as it is now)
+  const review = useReview(project.id, flush, !readOnly);
+  const reviewNotes = useMemo(() => reviewMarks(review.data, tl), [review.data, tl]);
+  const shareForReview = (file: File) => {
+    setReviewOpen(true);
+    review.shareFile(file, reviewOpts.current).then(
+      (r) => flash(`انرفعت نسخة ${r.n} على رابط المراجعة ✓`),
+      (e: unknown) => flash(e instanceof Error ? e.message : String(e), true),
+    );
+  };
   const one = selected.length === 1 ? findClip(tl, selected[0]) : null;
 
   const pluginCtx = () => ({
@@ -2092,6 +2110,15 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         <button type="button" className={`jw-btn jw-3d hidden shrink-0 sm:inline-flex ${logOpen ? "border-jw-accent text-jw-accent" : ""}`} onClick={() => setLogOpen((v) => !v)} aria-pressed={logOpen} title="سجل التغييرات: وش تغيّر ومين غيّره، وارجع لأي نقطة">
           <Icon name="clock" size={16} /> <span className="hidden xl:inline">السجل</span>
         </button>
+        {/* «💬 المراجعة»: the client's review link and comments, with the new ones counted */}
+        {!readOnly && (
+          <button type="button" className={`jw-btn jw-3d relative shrink-0 ${reviewOpen ? "border-jw-accent text-jw-accent" : ""}`} onClick={() => setReviewOpen((v) => !v)} aria-pressed={reviewOpen} title="شارك للمراجعة: رابط لعميلك يعلّق على اللحظات">
+            <span aria-hidden>💬</span> <span className="hidden xl:inline">المراجعة</span>
+            {(review.data?.fresh ?? 0) > 0 && (
+              <span className="absolute -end-1 -top-1 min-w-4 rounded-full bg-jw-accent px-1 text-[10px] font-bold leading-4 text-white" aria-label={`${review.data?.fresh} تعليق جديد`}>{review.data?.fresh}</span>
+            )}
+          </button>
+        )}
         {/* «⋯ المزيد»: what is used now and then (the shortcuts, the app, the editor's size) — one button instead of four */}
         <div className="relative shrink-0">
           <button type="button" className={`jw-btn jw-3d ${picking ? "border-jw-accent text-jw-accent" : ""}`} onClick={() => setPicking((v) => !v)} aria-expanded={picking} title="المزيد: الاختصارات، التطبيق، حجم الواجهة">
@@ -2283,7 +2310,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
         {/* «كاب كت»: the right column — an option that needs its own window opens here (the captions, the export) */}
         {wide && !big && !colorRoom && (
-          <div ref={setRightEl} className={`cut-right jw-glass-lg my-2 min-h-0 w-[min(380px,30vw)] shrink-0 flex-col overflow-hidden rounded-2xl ${captioning || transcriptOpen || templatesOpen || exporting || logOpen ? "flex" : "hidden"}`} style={{ order: 1 }} />
+          <div ref={setRightEl} className={`cut-right jw-glass-lg my-2 min-h-0 w-[min(380px,30vw)] shrink-0 flex-col overflow-hidden rounded-2xl ${captioning || transcriptOpen || templatesOpen || exporting || logOpen || reviewOpen ? "flex" : "hidden"}`} style={{ order: 1 }} />
         )}
 
         {/* the rail of sections at the side (the blue and nature looks) */}
@@ -2374,7 +2401,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         )}
         {wide && <SequenceTabs tl={tl} run={run} readOnly={readOnly} />}
         <div className="min-h-0 flex-1">
-        <Guard name="التايملاين"><Timeline range={exportRange} tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} run={handRun} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onMenu={wide ? openMenu : undefined} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
+        <Guard name="التايملاين"><Timeline notes={reviewNotes} onNote={(id) => {
+          const n = reviewNotes.find((x) => x.id === id);
+          if (n) player?.seek(n.at);
+          setReviewFocus(id);
+          setReviewOpen(true);
+        }} range={exportRange} tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} run={handRun} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onMenu={wide ? openMenu : undefined} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
           setWantTab("transition");
           pick([id]);
           if (!wide) setSheet("inspector");
@@ -2454,12 +2486,37 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           setCaptioning(true);
         }}
       />
+      <ReviewPanel
+        dock={rightEl}
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        review={review}
+        tl={tl}
+        focus={reviewFocus}
+        onSeek={(ms) => player?.seek(ms)}
+        onAsk={(text) => {
+          openClaude(true);
+          setAsk((q) => ({ text, n: (q?.n ?? 0) + 1 }));
+        }}
+        onExport={(o) => {
+          reviewOpts.current = o;
+          if (!total) return flash("ما فيه شي تصدّره للحين.", true);
+          // a phone: one window at a time (the review comes back when the video goes up)
+          if (!wide) setReviewOpen(false);
+          setExportShare(true);
+          setExporting(true);
+        }}
+        readOnly={readOnly}
+      />
       <ChangeLog dock={rightEl} open={logOpen} onClose={() => setLogOpen(false)} projectId={project.id} flush={flush} onRestore={restoreTo} readOnly={readOnly} />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       <ExportPanel
         dock={rightEl}
         open={exporting}
-        onClose={() => setExporting(false)}
+        onClose={() => {
+          setExporting(false);
+          setExportShare(false);
+        }}
         projectId={project.id}
         kind={project.kind}
         title={title}
@@ -2470,6 +2527,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         onRange={(r) => setRangeIO(r ? { from: r.from, to: r.to } : { from: null, to: null })}
         player={player}
         onExported={() => undefined}
+        onShareReview={readOnly ? undefined : shareForReview}
+        shareFirst={exportShare}
         onReshape={readOnly ? undefined : (r) => {
           run({ type: "set_ratio", ratio: r });
           flash(`صار مقاس المشروع ${r}؛ شيّك على مكان الصور والكتابة قبل التصدير (تقدر ترجع بالتراجع).`);

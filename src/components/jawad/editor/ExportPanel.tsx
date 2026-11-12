@@ -70,6 +70,8 @@ export default function ExportPanel({
   onExported,
   onUpscaleExport,
   onReshape,
+  onShareReview,
+  shareFirst = false,
 }: {
   /** the editor's right column (a computer) */
   dock?: HTMLElement | null;
@@ -90,6 +92,10 @@ export default function ExportPanel({
   onUpscaleExport?: (file: File, target: "4k" | "1080p", name: string) => void;
   /** «مقاس جاهز للمنصة»: the project's shape changed to the platform's (the project settings' own «المقاس»; none: not offered) */
   onReshape?: (ratio: Ratio) => void;
+  /** «صدّر وشارك للمراجعة»: the finished whole video goes up to the project's review link (none: not offered) */
+  onShareReview?: (file: File) => void;
+  /** opened from «تعليقات المراجعة»'s «صدّر وشارك»: the main button shares too */
+  shareFirst?: boolean;
 }) {
   const [res, setRes] = useState<ExportRes>(1080);
   const [quality, setQuality] = useState<ExportQuality>("high");
@@ -185,6 +191,8 @@ export default function ExportPanel({
     setNote("نزل الفريم صورة ✓");
   };
 
+  // «صدّر وشارك للمراجعة»: this export goes to the review link when it is done
+  const shareAfter = useRef(false);
   const start = async () => {
     if (what === "srt" || what === "frame") return quick();
     if (!canExport()) {
@@ -237,6 +245,8 @@ export default function ExportPanel({
       }
       download(r.blob, name);
       track(`editor.export.${what}`);
+      if (shareAfter.current && onShareReview && what === "video" && !use) onShareReview(new File([r.blob], name, { type: "video/mp4" }));
+      shareAfter.current = false;
       // «رفع دقة الفيديو كامل»: the same file goes up and is upscaled whole; the 4K file downloads by itself when it is ready
       if (upOn && upTarget && onUpscaleExport) onUpscaleExport(new File([r.blob], name, { type: "video/mp4" }), upTarget, `${stem}-${upTarget === "4k" ? "4K" : "1080p"}.mp4`);
       // only the whole video keeps a copy with the project; a part, a muted picture or the sound alone is just saved
@@ -525,9 +535,15 @@ export default function ExportPanel({
             </>)}
             <p className="text-xs text-jw-faint">التصدير يصير داخل متصفحك (بدون انتظار سيرفر). خلّ الصفحة مفتوحة حتى يخلص.</p>
             {phase.k === "error" && <p className="error-box text-sm">{phase.m}</p>}
-            <button type="button" className="jw-btn jw-btn-primary w-full" disabled={!total0} onClick={start}>
+            <button type="button" className="jw-btn jw-btn-primary w-full" disabled={!total0} onClick={() => { shareAfter.current = shareFirst && what === "video" && !use; void start(); }}>
               <Icon name="download" size={16} /> {what === "srt" ? "نزّل الكابشن" : what === "frame" ? "نزّل الفريم" : what === "audio" ? "صدّر الصوت" : what === "mute" ? "صدّر بدون صوت" : upOn ? "صدّر وارفع الدقة" : "صدّر الحين"}
             </button>
+            {shareFirst && onShareReview && what === "video" && !use && <p className="text-xs text-jw-muted">💬 بعد التصدير ينرفع الفيديو لرابط المراجعة كنسخة جديدة.</p>}
+            {onShareReview && what === "video" && !use && !shareFirst && (
+              <button type="button" className="jw-btn w-full" disabled={!total0} onClick={() => { shareAfter.current = true; void start(); }} title="بعد التصدير ينرفع الفيديو لرابط المراجعة (نسخة جديدة على نفس الرابط)">
+                💬 صدّر وشارك للمراجعة
+              </button>
+            )}
             {note && <p className="text-xs text-jw-ok" aria-live="polite">{note}</p>}
             <div className="space-y-2 rounded-xl border border-jw-line p-3">
               <p className="text-sm font-bold">💾 المشروع نفسه في جهازك</p>
@@ -558,6 +574,11 @@ export default function ExportPanel({
             <button type="button" className="jw-btn w-full" onClick={() => download(phase.r.blob, phase.file)}>
               <Icon name="download" size={16} /> نزّله مرة ثانية
             </button>
+            {onShareReview && what === "video" && !use && (
+              <button type="button" className="jw-btn w-full" onClick={() => onShareReview(new File([phase.r.blob], phase.file, { type: "video/mp4" }))} title="يرفع هذا الفيديو لرابط المراجعة">
+                💬 شارك للمراجعة
+              </button>
+            )}
             <button type="button" className="jw-btn jw-btn-quiet w-full" onClick={() => { setPhase({ k: "idle" }); onClose(); }}>
               رجوع للمونتاج
             </button>

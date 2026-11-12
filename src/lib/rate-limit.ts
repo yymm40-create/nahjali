@@ -29,6 +29,9 @@ export function rulesFor(path: string, method: string): Rule[] {
   // «عباس سبع القنطرة» (the coach of «الصحة العلوية») is free for the person: a conversation, never a flood
   if (path === "/api/mahdi/health/coach" && method === "POST") out.push({ key: "coach", max: 30, windowMs: 10 * 60_000 });
   if (path === "/api/mahdi/health/meal" && method === "POST") out.push({ key: "meal", max: 40, windowMs: 10 * 60_000 });
+  // «رابط مراجعة للعميل» is open without sign-in: a client comments a few times a minute, never a flood (the server also
+  // counts each address per link per hour)
+  if (path.startsWith("/api/review/") && method === "POST") out.push({ key: "review", max: 20, windowMs: 5 * 60_000 });
   // a page opened (the owner's statistics): one per page, never a flood
   if (path === "/api/visit") out.push({ key: "visit", max: 60, windowMs: 60_000 });
   // the features used (the owner's «استخدام المزايا»): a batch every few seconds at most

@@ -3,6 +3,7 @@ import { deleteExpiredSourcePhotos } from "@/lib/orders";
 import { advanceOpenJobs } from "@/lib/jawad/server/jobs";
 import { studentSweep } from "@/lib/jawad/student/cleanup";
 import { sweepEditor } from "@/lib/editor/server";
+import { sweepReviews } from "@/lib/editor/review-server";
 
 export const maxDuration = 300;
 
@@ -22,5 +23,7 @@ export async function GET(req: Request) {
   await studentSweep().catch((e) => console.error("student sweep failed", e));
   // «حيدرة كت»: only unfinished uploads are dropped (projects are no longer deleted after an export)
   await sweepEditor().catch((e) => console.error("editor sweep failed", e));
+  // «رابط مراجعة للعميل»: a link that ended 30 days ago loses its videos (its comments stay)
+  await sweepReviews().catch((e) => console.error("review sweep failed", e));
   return NextResponse.json({ ok: true, checked });
 }

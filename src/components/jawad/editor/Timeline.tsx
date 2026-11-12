@@ -51,6 +51,9 @@ interface Props {
   look?: "classic" | "pro";
   /** «منطقة التصدير» (In → Out), shown on the ruler */
   range?: { from: number; to: number } | null;
+  /** «تعليقات المراجعة»: the client's comments on the ruler (a press opens one); `lost`: on its version's own time */
+  notes?: { id: number; at: number; how: "same" | "moved" | "lost"; done: boolean; text: string }[];
+  onNote?: (id: number) => void;
 }
 
 /** What the library puts on a drag (the asset's id). */
@@ -138,7 +141,7 @@ export const timecode = (ms: number, fps: number) => {
 };
 const PRO_TONE = { video: "#2f4f6e", image: "#3a5470", audio: "#2f6b4f", text: "#7346b0" } as const;
 
-export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, onSync, syncing = false, run, player, compact, readOnly, onEmpty, onTransition, onDropFiles, onDropAsset, onMenu, look = "classic", range }: Props) {
+export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, onSync, syncing = false, run, player, compact, readOnly, onEmpty, onTransition, onDropFiles, onDropAsset, onMenu, look = "classic", range, notes, onNote }: Props) {
   const pro = look === "pro";
   // track labels like V1, V2, A1, T1 (bottom-up for pictures, top-down for sound)
   const labels = new Map<string, string>();
@@ -876,6 +879,21 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
               {/* beat marks */}
               {tl.markers.map((m) => (
                 <span key={`m${m}`} className="pointer-events-none absolute bottom-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-jw-warn" style={{ left: X0 - HEAD + lanePx(m) }} />
+              ))}
+              {/* «تعليقات المراجعة»: a speech mark per comment (dashed: the project changed, it sits on its version's time) */}
+              {notes?.map((n) => (
+                <button
+                  key={`r${n.id}`}
+                  type="button"
+                  className={`absolute top-0.5 z-[2] grid h-3.5 w-3.5 -translate-x-1/2 place-items-center rounded-[4px_4px_4px_0] text-[8px] leading-none text-black ${n.done ? "bg-emerald-400/70" : "bg-amber-300"} ${n.how === "lost" ? "outline-dashed outline-1 outline-jw-ink/70" : ""}`}
+                  style={{ left: X0 - HEAD + lanePx(n.at) }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => onNote?.(n.id)}
+                  title={`${n.text}${n.how === "lost" ? " (تغيّر المشروع: وقته في النسخة)" : ""}`}
+                  aria-label={`تعليق المراجعة: ${n.text}`}
+                >
+                  💬
+                </button>
               ))}
             </div>
           </div>

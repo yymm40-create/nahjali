@@ -438,7 +438,7 @@ async function head(bucket: string, path: string) {
   return new Uint8Array(await r.arrayBuffer()).subarray(0, 64);
 }
 
-async function storedSize(bucket: string, path: string) {
+export async function storedSize(bucket: string, path: string) {
   const dir = path.slice(0, path.lastIndexOf("/"));
   const name = path.slice(path.lastIndexOf("/") + 1);
   const { data } = await storage.from(bucket).list(dir, { search: name, limit: 5 });
@@ -653,6 +653,8 @@ export async function exportLink(p: EditorProject) {
 /** Deletes a project and everything it uploaded. */
 export async function deleteProject(p: EditorProject) {
   await removeFiles(p);
+  // «رابط مراجعة للعميل»: its videos (the rows go with the project)
+  await (await import("./review-server")).removeReviewFiles(p.id).catch(() => undefined);
   await db().from("editor_projects").delete().eq("id", p.id);
 }
 
