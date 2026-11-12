@@ -405,7 +405,9 @@ describe("الرضا فويس: the project and the advice", () => {
   it("orders harmony ideas by the scale: thirds for western keys, unison and octaves for quarter-tone maqamat", () => {
     const range = { low: 50, high: 62, median: 56 };
     const western = suggestHarmony(range, scaleById("minor"));
-    expect(western[0].id).toBe("duo");
+    // كرد، عجم، نهاوند: the maqam singer's three tries first (third, fifth, seventh at a fixed distance)
+    expect(western.slice(0, 3).map((i) => i.id)).toEqual(["maqam3", "maqam5", "maqam7"]);
+    expect(western[0].voices.every((x) => x.motion === "fixed")).toBe(true);
     expect(western[0].experimental).toBeFalsy();
     const maqam = suggestHarmony(range, scaleById("bayati"));
     expect(maqam[0].id).toBe("unison");
@@ -890,5 +892,136 @@ describe("الرضا فويس: the level tools, the punch and the master", () =>
     expect(need[5] - need[1]).toBeGreaterThan(5);
     // the other way round the top comes down
     expect(matchTone(toneOf([bright], SR), toneOf([noise], SR), 1, 9)[5]).toBeLessThan(-4);
+  });
+});
+
+describe("الرضا فويس: what the engineer علي البقال asked for", () => {
+  it("redraws a clipped voice: the flat tops become curves again and the whole sits under −1 dB", async () => {
+    const { declip, findClipping } = await import("@/lib/ridha/dsp/clean");
+    const clean = voice(1, () => 200, 0.6);
+    const clipped = clean.map((v) => Math.max(-0.5, Math.min(0.5, v)));
+    expect(findClipping(clipped).runs.length).toBeGreaterThan(50);
+    const { out, report } = declip(clipped);
+    expect(report.runs).toBeGreaterThan(50);
+    let peak = 0;
+    for (const v of out) peak = Math.max(peak, Math.abs(v));
+    expect(peak).toBeLessThanOrEqual(0.8915);
+    // the redrawn wave is much closer in SHAPE to the original than the clipped one was
+    const err = (y: Float32Array, k: number) => {
+      let e = 0;
+      for (let i = 0; i < y.length; i++) e += (y[i] / k - clean[i]) ** 2;
+      return Math.sqrt(e / y.length);
+    };
+    const k = 10 ** (report.gainDb / 20);
+    expect(err(out, k)).toBeLessThan(err(clipped, 1) * 0.6);
+    // a clean recording is left alone
+    expect(declip(clean).report.runs).toBe(0);
+    expect(declip(clean).out).toBe(clean);
+  });
+
+  it("guards the words: what a cleaner ate from the voice comes back, the noise stays gone", async () => {
+    const { guardWords, noiseProfile } = await import("@/lib/ridha/dsp/clean");
+    const sung = voice(2, () => 220, 0.25);
+    const noisy = new Float32Array(3 * SR);
+    for (let i = 0; i < noisy.length; i++) noisy[i] = rand() * 0.01;
+    for (let i = 0; i < sung.length; i++) noisy[SR + i] += sung[i];
+    const prof = await noiseProfile(noisy);
+    // a cleaner that ate half of the voice and all of the noise
+    const eaten = new Float32Array(noisy.length);
+    for (let i = 0; i < sung.length; i++) eaten[SR + i] = sung[i] * 0.4;
+    const g = await guardWords(noisy, eaten, prof);
+    expect(rms(g, Math.round(1.3 * SR), Math.round(2.7 * SR))).toBeGreaterThan(rms(eaten, Math.round(1.3 * SR), Math.round(2.7 * SR)) * 1.8);
+    expect(rms(g, Math.round(0.2 * SR), Math.round(0.8 * SR))).toBeLessThan(0.002);
+  });
+
+  it("hears where a crowd strikes, follows it as it speeds up, and lays a latma on its beats", async () => {
+    const { hearCrowd, layLatma, strikesIn, struckBeats } = await import("@/lib/ridha/dsp/beats");
+    // a crowd at 84 BPM speeding up to 96 over 20 s, under a held voice, with a verse of no latm in the middle
+    const len = 20 * SR;
+    const x = new Float32Array(len);
+    const truth: number[] = [];
+    let t = 0.5;
+    while (t < 19.5) {
+      if (t < 8 || t > 11) truth.push(t);
+      const bpm = 84 + (12 * t) / 20;
+      t += 60 / bpm;
+    }
+    const thump = (at: number) => {
+      const a = Math.round(at * SR);
+      for (let i = 0; i < 0.12 * SR && a + i < len; i++) {
+        const e = Math.exp(-i / (0.025 * SR));
+        x[a + i] += 0.5 * e * Math.sin((2 * Math.PI * 90 * i) / SR) + 0.15 * e * rand();
+      }
+    };
+    truth.forEach(thump);
+    const v = voice(20, (s) => 200 + 20 * Math.sin(s), 0.08);
+    for (let i = 0; i < len; i++) x[i] += v[i];
+    const c = hearCrowd([x], SR);
+    expect(c.bpm).toBeGreaterThan(80);
+    expect(c.bpm).toBeLessThan(100);
+    const struck = struckBeats(c);
+    // every real strike has a found beat within 25 ms
+    const hits = truth.filter((tt) => struck.some((b) => Math.abs(b - tt) < 0.025)).length;
+    expect(hits / truth.length).toBeGreaterThan(0.9);
+    // and the verse with no latm stays (mostly) empty
+    expect(struck.filter((b) => b > 8.8 && b < 10.2).length).toBeLessThanOrEqual(1);
+
+    // a one-strike latma laid on those beats
+    const latma = new Float32Array(Math.round(0.3 * SR));
+    for (let i = 0; i < latma.length; i++) latma[i] = Math.exp(-i / (0.03 * SR)) * Math.sin((2 * Math.PI * 70 * i) / SR) * (i < 0.004 * SR ? i / (0.004 * SR) : 1);
+    expect(strikesIn(latma, SR)).toHaveLength(1);
+    const laid = layLatma(len, SR, struck, [latma], { every: 1, phase: 0, nudgeMs: 0, gainDb: 0 });
+    expect(laid.placed).toBe(struck.length);
+    const laidStrikes = strikesIn(laid.channels[0], SR);
+    const onTime = truth.filter((tt) => laidStrikes.some((b) => Math.abs(b - tt) < 0.03)).length;
+    expect(onTime / truth.length).toBeGreaterThan(0.85);
+    // every other beat
+    expect(layLatma(len, SR, struck, [latma], { every: 2, phase: 1, nudgeMs: 0, gainDb: 0 }).placed).toBe(Math.floor(struck.length / 2));
+  });
+
+  it("harmonises the maqam way: a fixed distance, and a note that falls outside the maqam moved one step in", async () => {
+    const { planHarmony } = await import("@/lib/ridha/dsp/tune");
+    const kurd = scaleById("kurd");
+    // a line on E (pitch class 4) in kurd on E: E F G A B C D
+    const notes = [64, 65, 67, 69, 71, 72, 74];
+    const hz = (t: number) => midiToHz(notes[Math.min(notes.length - 1, Math.floor(t / 0.4))]);
+    const x = voice(notes.length * 0.4, hz, 0.3);
+    const track = await trackPitch(x, SR);
+    const ratio = planHarmony(track, { tonic: 4, scale: kurd, steps: 2, octaves: 0, detuneCents: 0, motion: "fixed", tight: 1 });
+    const fps = SR / track.hop;
+    const at = (k: number) => {
+      const f = Math.round((k * 0.4 + 0.25) * fps);
+      return Math.round(hzToMidi(track.f0[f]) + 12 * Math.log2(ratio[f]));
+    };
+    // a kurd third above the tonic is 3 semitones: E→G stays a minor third where it fits the maqam
+    expect(at(0)).toBe(67);
+    // every harmony note is inside the maqam
+    const inKurd = (m: number) => kurd.cents.includes((((m - 4) % 12) + 12) % 12 * 100);
+    for (let k = 0; k < notes.length; k++) expect(inKurd(at(k))).toBe(true);
+    // F + 3 = G♯, outside kurd on E: carried one step further up, to A
+    expect(at(1)).toBe(69);
+  });
+
+  it("names the maqam by where the phrases come to rest, not by where the line passes", async () => {
+    const { detectKey, restingNotes } = await import("@/lib/ridha/dsp/scales");
+    // four phrases that wander through G major's notes but each comes to rest on G (kurd on G: G A♭ B♭ C D E♭ F)
+    const phrase = [67, 68, 70, 72, 70, 68, 67];
+    const pieces: Float32Array[] = [];
+    for (let p = 0; p < 4; p++) {
+      pieces.push(voice(phrase.length * 0.3, (t) => midiToHz(phrase[Math.min(phrase.length - 1, Math.floor(t / 0.3))]), 0.3));
+      pieces.push(new Float32Array(Math.round(0.4 * SR)));
+    }
+    const x = new Float32Array(pieces.reduce((n, a) => n + a.length, 0));
+    let at = 0;
+    for (const a of pieces) {
+      x.set(a, at);
+      at += a.length;
+    }
+    const track = await trackPitch(x, SR);
+    const rests = restingNotes(track);
+    expect(rests[0].pc).toBe(7);
+    expect(rests[0].phrases).toBe(4);
+    const k = detectKey(track);
+    expect(k[0].tonic).toBe(7);
   });
 });

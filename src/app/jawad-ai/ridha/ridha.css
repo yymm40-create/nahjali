@@ -523,10 +523,26 @@
 .rv-fx-mine .rv-card small { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 .rv-phone .rv-smart, .rv-phone .rv-master { grid-template-columns: minmax(0, 1fr); }
 
+/* ───────── where the phrases rest, the latma, many tracks ───────── */
+
+.rv-rests > span { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border-radius: 13px; background: var(--rv-raise); color: var(--rv-mut); font-size: 12px; }
+.rv-rests > span.on { background: var(--rv-gold-soft, rgba(233, 185, 73, 0.18)); color: var(--rv-gold); }
+.rv-latma { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.9fr); gap: 16px; }
+.rv-latma section, .rv-latma aside { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.rv-latma aside { padding: 10px; border-radius: 10px; background: var(--rv-raise); }
+.rv-latma .rv-panel-head { margin-bottom: 0; }
+.rv-latma p { margin: 0; line-height: 1.6; }
+.rv-latma .rv-slider { flex: none; }
+.rv-beatline { position: relative; height: 34px; border-radius: 8px; background: var(--rv-well); overflow: hidden; }
+.rv-beatline i { position: absolute; top: 6px; bottom: 6px; width: 2px; border-radius: 1px; background: var(--rv-gold); }
+.rv-batch { grid-column: 1 / -1; }
+.rv-batch .rv-pills button { height: 32px; }
+.rv-phone .rv-latma { grid-template-columns: minmax(0, 1fr); }
+
 /* ───────── narrow windows ───────── */
 
 @media (max-width: 1000px) {
-  .rv-fx, .rv-clean, .rv-tune, .rv-harmony, .rv-arr, .rv-voice, .rv-export, .rv-smart, .rv-master { grid-template-columns: minmax(0, 1fr); }
+  .rv-fx, .rv-clean, .rv-tune, .rv-harmony, .rv-arr, .rv-voice, .rv-export, .rv-smart, .rv-master, .rv-latma { grid-template-columns: minmax(0, 1fr); }
   .rv-top { grid-template-columns: auto 1fr auto; gap: 6px; }
   .rv-name, .rv-saved, .rv-top .rv-logo-text { display: none; }
 }

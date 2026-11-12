@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { hzToMidi, pitchStats } from "@/lib/ridha/dsp/pitch";
 import { psolaShift } from "@/lib/ridha/dsp/psola";
-import { detectKey, noteLabel, NOTE_LATIN, NOTE_NAMES, scaleById, SCALES, type KeyGuess } from "@/lib/ridha/dsp/scales";
+import { detectKey, noteLabel, NOTE_LATIN, NOTE_NAMES, restingNotes, scaleById, SCALES, type KeyGuess } from "@/lib/ridha/dsp/scales";
 import { planTune } from "@/lib/ridha/dsp/tune";
 import { SR } from "@/lib/ridha/model";
 import { hear, type Heard } from "../analysis";
@@ -38,6 +38,8 @@ export default function TunePanel() {
   const key = project.key ?? { tonic: 0, scale: "chromatic" };
   const scale = scaleById(key.scale);
   const setKey = (k: { tonic: number; scale: string }) => store.set((p) => ({ ...p, key: k }), { undo: false });
+  // where the phrases come to rest: the general rest first, the partial ones after
+  const rests = useMemo(() => (h ? restingNotes(h.h.track).slice(0, 5) : []), [h]);
   const plan = useMemo(() => (h ? planTune(h.h.track, { tonic: key.tonic, scale, strength, speedMs: speed, transpose }) : null), [h, key.tonic, scale, strength, speed, transpose]);
   const stats = useMemo(() => (h ? pitchStats(h.h.track) : null), [h]);
 
@@ -131,8 +133,8 @@ export default function TunePanel() {
         <div className="rv-panel-head">
           <b>النغمة</b>
           <Btn small kind="main" onClick={() => void listen()}>اكتشف النغمة</Btn>
-          <label className="rv-inline">
-            القرار
+          <label className="rv-inline" title="النغمة اللي يستقر عليها اللحن في نهايات جمله — اسمها عند المهندسين «طبقة الاستقرار»">
+            طبقة الاستقرار
             <select value={key.tonic} onChange={(e) => setKey({ ...key, tonic: Number(e.target.value) })}>
               {Array.from({ length: 24 }, (_, i) => i / 2).map((t) => (
                 <option key={t} value={t}>{NOTE_NAMES[Math.floor(t)]}{t % 1 ? "½" : ""} ({NOTE_LATIN[Math.floor(t)]}{t % 1 ? "+" : ""})</option>
@@ -154,6 +156,16 @@ export default function TunePanel() {
               <button key={g.label} type="button" className={g.tonic === key.tonic && g.scale.id === key.scale ? "on" : ""} onClick={() => setKey({ tonic: g.tonic, scale: g.scale.id })} title={`الثقة ${Math.round(g.confidence * 100)}%`}>
                 {g.label} <small dir="ltr">{Math.round(g.confidence * 100)}%</small>
               </button>
+            ))}
+          </div>
+        ) : null}
+        {rests.length ? (
+          <div className="rv-pills rv-rests">
+            <span className="rv-muted">تقف الجمل على:</span>
+            {rests.map((r, i) => (
+              <span key={r.pc} className={i === 0 ? "on" : ""} title={i === 0 ? "الاستقرار العام: عليه تنتهي أغلب الجمل، وهو اللي يسمّي المقام" : "استقرار جزئي في وسط اللحن"}>
+                {NOTE_NAMES[Math.floor(r.pc)]}{r.pc % 1 ? "½" : ""} <small>×{r.phrases}</small>{i === 0 ? <small> · استقرار عام</small> : null}
+              </span>
             ))}
           </div>
         ) : null}
