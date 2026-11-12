@@ -12,7 +12,7 @@ import { deskImage, deskReference, DeskError, type DeskWho } from "@/lib/content
 import { BAKED_TEXT_RULE, NO_TEXT_RULE, type DesignerTextMode } from "@config/designer";
 import { getChat, saveChat, type Chat, type PendingDesign } from "./chats";
 import { drawnPng } from "@/lib/jawad/server/uploads";
-import { addFile, addFileFromOutput, attachmentsOf, fileLinks, uploadLinks } from "./files";
+import { addFile, addFileFromOutput, attachmentsOf, fileBytes, fileLinks, uploadLinks } from "./files";
 import { readLayers, type Design } from "./layers";
 import { editOf, photoKeys, readProgram, type DesignEdit } from "./program";
 import { findContentFont, FONT_PIN, fontBlock } from "@config/content-fonts";
@@ -185,14 +185,26 @@ export async function majlisGpt(userId: string, chatId: string, o: { email?: str
   const base = chat.messages[at]?.design;
   if (!base) throw new UserError("ما لقينا التصميم في المحادثة.", 409);
   try {
-    const res = await fetch(o.origin + baseUrl(t.id));
-    if (!res.ok) throw new UserError("ما قدرنا نفتح التصميم المختار.", 502);
-    const ref1 = await deskReference(userId, Buffer.from(await res.arrayBuffer()), `majlis-${t.id}`);
     const who: DeskWho = { id: userId, email: o.email, owner: await unlimitedFor(o.email), origin: o.origin };
-    const refs = [{ uploadId: ref1, name: "ref1" }, ...p.majlis.people.map((x, i) => ({ uploadId: x.photo, name: `ref${i + 2}` }))];
-    const r = await deskImage(who, { key: `mj-${randomUUID().replace(/-/g, "")}`, kind: "image", generatorId: maker === "gpt2" ? "openai-gpt-image-2" : GPT_IMAGE_26_ID, ...(maker === "gpt2" ? {} : { variant: maker }), prompt: majlisGptPrompt(t, p.majlis), aspect: "2:3", resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
+    const edit = p.majlisEdit;
+    let prompt: string, refs: { uploadId: string; name: string }[];
+    if (edit) {
+      // a change: the picture made before is ref1, and only what the person asked changes
+      const prev = await fileBytes(userId, edit.prev);
+      if (!prev) throw new UserError("ما لقينا التصميم اللي تبي تعدّله.", 409);
+      const ref1 = await deskReference(userId, prev, `majlis-edit-${t.id}`);
+      refs = [{ uploadId: ref1, name: "ref1" }];
+      prompt = `Edit the attached design ref1. Change ONLY this, exactly as asked (the person's words, in Arabic): «${edit.said}». Keep everything else EXACTLY as it is in ref1: the layout, the people and their faces, every other word, the colours, the light. Every Arabic word stays written exactly, letters joined right to left; no new words unless asked.`;
+    } else {
+      const res = await fetch(o.origin + baseUrl(t.id));
+      if (!res.ok) throw new UserError("ما قدرنا نفتح التصميم المختار.", 502);
+      const ref1 = await deskReference(userId, Buffer.from(await res.arrayBuffer()), `majlis-${t.id}`);
+      refs = [{ uploadId: ref1, name: "ref1" }, ...p.majlis.people.map((x, i) => ({ uploadId: x.photo, name: `ref${i + 2}` }))];
+      prompt = majlisGptPrompt(t, p.majlis);
+    }
+    const r = await deskImage(who, { key: `mj-${randomUUID().replace(/-/g, "")}`, kind: "image", generatorId: maker === "gpt2" ? "openai-gpt-image-2" : GPT_IMAGE_26_ID, ...(maker === "gpt2" ? {} : { variant: maker }), prompt, aspect: "2:3", resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
     const file = await addFileFromOutput({ userId, chatId, out: r.out, name: `artwork-${p.id}`, meta: { prompt: p.artwork, aspect: t.aspect, kind: p.kind, textMode: "baked", refs: p.refs, maker, majlis: p.majlis, desk: r.receipt } });
-    const design: Design = { ...base, artwork: file.id, width: r.out.width ?? base.width, height: r.out.height ?? base.height, textMode: "baked", layers: [], state: "ready", error: undefined, detail: undefined };
+    const design: Design = { ...base, artwork: file.id, width: r.out.width ?? base.width, height: r.out.height ?? base.height, textMode: "baked", layers: [], state: "ready", error: undefined, detail: undefined, majlis: t.id };
     const messages = [...chat.messages];
     messages[at] = { ...messages[at], design };
     await saveChat(userId, chatId, { messages, pending: null });
@@ -234,10 +246,11 @@ async function majlisBrief(userId: string, chat: Chat, origin: string, owner: bo
   const links = await uploadLinks(userId, ids);
   const ph = majlisPhotos(t, o, (id) => links.get(id) ?? null, origin);
   if (ph.ids.people.some((x) => !x)) throw new UserError("ما قدرنا نفتح صور الأشخاص؛ ارفعها مرة ثانية.", 409);
-  const code = majlisProgram(t, o, ph.ids);
+  // a change: the program drawn before is patched by «حيدرا ماكس» (the same photos, in the same order)
+  const code = p.majlisEdit?.code ?? majlisProgram(t, o, ph.ids);
   // each person's photo: cut around his face for a frame, or (a design with people) put with his face where the man's was
   const faces = t.slots.map((s, i) => ({ photo: Number(ph.ids.people[i]!.slice(5)), aspect: (s.r[2] * t.size[0]) / (s.r[3] * t.size[1]), cut: o.cut, ...(s.shape === "person" && s.face ? { place: s.face } : {}) }));
-  return { prompt: p.artwork, aspect: t.aspect, refs: [origin + viewUrl(t.id)], photos: ph.urls, picture: false, style: "", template: { code, fonts: { head: MAJLIS_FONTS.head, body: MAJLIS_FONTS.body }, extra: { lalezar: MAJLIS_FONTS.lalezar }, faces, ...(cutHere ? { cutHere: true } : {}) } };
+  return { prompt: p.artwork, aspect: t.aspect, refs: [origin + viewUrl(t.id)], photos: ph.urls, picture: false, style: "", template: { code, fonts: { head: MAJLIS_FONTS.head, body: MAJLIS_FONTS.body }, extra: { lalezar: MAJLIS_FONTS.lalezar }, faces, ...(cutHere ? { cutHere: true } : {}), ...(p.majlisEdit?.code ? { change: { said: p.majlisEdit.said, brief: p.artwork, fonts: p.majlisEdit.fonts ?? { head: MAJLIS_FONTS.head, body: MAJLIS_FONTS.body } } } : {}) } };
 }
 
 /**
@@ -275,7 +288,7 @@ export async function produceFromCode(userId: string, chatId: string, b: { png?:
   // the program it was drawn from is kept with it (when it drew exactly this picture), so a change patches it later
   const program = readProgram(b.program, [meta.width, meta.height]);
   const file = await addFile({ userId, chatId, bytes, name: `artwork-${p.id}`, role: "artwork", width: meta.width, height: meta.height, meta: { prompt: p.artwork, aspect: p.aspect, kind: p.kind, textMode: "baked", textPlan: p.layers, refs: p.refs, ...(p.place?.length ? { place: p.place } : {}), ...(p.picture ? { picture: p.picture } : {}), ...(p.art ? { art: p.art } : {}), ...(p.fontId ? { fontId: p.fontId } : {}), ...(p.paletteId ? { paletteId: p.paletteId } : {}), ...(p.majlis ? { majlis: p.majlis } : {}), maker: "code", claudeCode: { rounds: Math.round(Number(b.rounds) || 0), scores: b.scores ?? null, ...(b.edited === true ? { edited: true } : {}) }, ...(program ? { program: { ...program, photos: photoKeys(p) } } : {}) } });
-  const design: Design = { ...base, artwork: file.id, width: meta.width, height: meta.height, textMode: "baked", layers: [], state: "ready", ...(p.art ? { art: p.art } : {}) };
+  const design: Design = { ...base, artwork: file.id, width: meta.width, height: meta.height, textMode: "baked", layers: [], state: "ready", ...(p.art ? { art: p.art } : {}), ...(p.majlis ? { majlis: p.majlis.templateId } : {}) };
   const messages = [...chat.messages];
   messages[at] = { ...messages[at], design };
   await saveChat(userId, chatId, { messages, pending: null });
