@@ -31,6 +31,7 @@ const GROUPS: { title: string; items: { href: string; icon: string; label: strin
       { href: "/jawad-ai/admin/ads", icon: "📣", label: "الإعلانات" },
       { href: "/jawad-ai/admin/brand", icon: "🎨", label: "الشعار واللون" },
       { href: "/jawad-ai/admin/jobs", icon: "🧾", label: "المهام والصرف" },
+      { href: "/jawad-ai/admin/gallery", icon: "🖼️", label: "معرض الناس" },
       { href: "/jawad-ai/admin/student", icon: "🎒", label: "الطالب الذكي" },
       { href: "/admin/islamic", icon: "🕌", label: "الذكاء الإسلامي" },
       { href: "/admin/games", icon: "🎮", label: "صانع الألعاب الذكي" },

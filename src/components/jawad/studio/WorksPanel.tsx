@@ -10,6 +10,7 @@ import Dialog from "../Dialog";
 import SmartEdit from "./SmartEdit";
 import { smartEditInEditor } from "../editor/smart-open";
 import SoundOnVideo from "./SoundOnVideo";
+import PublishShare from "../gallery/PublishShare";
 import Icon from "../Icon";
 import LocalTime from "../LocalTime";
 import LoginLink from "../LoginLink";
@@ -317,6 +318,9 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
     setEditing(true);
   };
   const editable = j.status === "succeeded" && j.outputs.length > 0 && (j.outputKind === "video" || j.outputKind === "image");
+  // «انشر وشارك»: «معرض الناس» and the permanent link, for a finished picture or video
+  const [sharing, setSharing] = useState(false);
+  const shareable = j.status === "succeeded" && j.outputs.some((o) => o.kind === "image" || o.kind === "video");
   // Opened with ?edit=<this job> (e.g. a film video sent here): «التعديل الذكي» opens by itself
   useEffect(() => {
     if (!editable) return;
@@ -501,6 +505,11 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
               <Icon name={copied ? "check" : "copy"} size={14} /> {copied ? "انسخ الرابط ✓" : "رابط مؤقت"}
             </button>
           )}
+          {shareable && (
+            <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" title="انشره في «معرض الناس» أو سوّ له رابط دائم" onClick={() => setSharing(true)}>
+              <Icon name="link" size={14} /> انشر وشارك
+            </button>
+          )}
           {tracks.length > 0 && (
             <button type="button" className="jw-btn !min-h-8 !px-2 text-xs !border-jw-accent/50 text-jw-accent" onClick={() => (track("studio.sound_on_video"), setWatching(true))}>
               <Icon name="play" size={14} /> شاهد مع الفيديو
@@ -524,6 +533,7 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
         </div>
         {j.status === "validating" && j.error && <p className="text-xs text-jw-warn">{j.error}</p>}
       </div>
+      {shareable && sharing && <PublishShare job={j} open={sharing} onClose={() => setSharing(false)} />}
       {tracks.length > 0 && sourceVideo && <SoundOnVideo uploadId={sourceVideo.uploadId} tracks={tracks} open={watching} onClose={() => setWatching(false)} />}
       {editable && (
         <SmartEdit
