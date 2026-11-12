@@ -174,7 +174,7 @@ export const ar = {
   },
 
   onboarding: {
-    steps: ["الاسم", "المظهر", "المشروع"],
+    steps: ["الاسم", "أول عادة"],
     lookTitle: "اختر مظهرك (تقدر تغيّره لاحقًا)",
     welcomeTitle: "أهلًا بك في «لأجل المهدي»",
     welcomeBody: "مساحتك الهادئة لمتابعة عاداتك ومشاريعك، ورؤية تقدّمك يومًا بعد يوم.",
@@ -191,6 +191,10 @@ export const ar = {
     projectHint: "المشروع مجموعة عادات لهدف واحد، مثل العبادة أو الدراسة.",
     projectCustom: "اسم آخر…",
     projectCreate: "أنشئ المشروع",
+    habitTitle: "وأول عادة فيه",
+    habitPlaceholder: "مثلًا: صلاة الليل",
+    habitHint: "عادة وحدة تبي تثبت عليها، كل يوم. تقدر تعدّلها بعدين.",
+    habitCreate: "ابدأ",
     skip: "لاحقًا، خذني للرئيسية",
     finish: "ابدأ",
   },
@@ -2159,6 +2163,16 @@ export const ar = {
       community: "المجتمع", groups: "إخوة الولاية", challenges: "التحديات", progress: "التقدّم", grow: "تطوّر وازدهر", stories: "القصص",
       more: "المزيد", share: "شارك إنجازي", day: "يوم سابق", race: "المسابقة", inbox: "الإشعارات", u: "صفحات الناس", p: "الملفات", post: "المنشورات",
     } as Record<string, string>,
+  },
+  firstSteps: {
+    eyebrow: "خطوتك الأولى",
+    tickTitle: "سجّل أول «تم»",
+    tickHint: "سويتها اليوم؟ اضغط هنا وتنحسب. كل يوم تضغطها من الرئيسية بلمسة.",
+    tickButton: (name: string) => `${name}: تم`,
+    wellDone: "أحسنت، أول «تم» 🌿",
+    lookHint: "الحين اختر الحرم اللي يرافقك وتصميم التطبيق اللي يشبهك.",
+    lookButton: "اختر الحرم والتصميم",
+    later: "بعدين",
   },
 };
 
