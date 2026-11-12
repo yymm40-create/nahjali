@@ -194,9 +194,15 @@ export async function majlisGpt(userId: string, chatId: string, o: { email?: str
       if (!prev) throw new UserError("ما لقينا التصميم اللي تبي تعدّله.", 409);
       const ref1 = await deskReference(userId, prev, `majlis-edit-${t.id}`);
       refs = [{ uploadId: ref1, name: "ref1" }];
-      prompt = `Edit the attached design ref1. Change ONLY this, exactly as asked (the person's words, in Arabic): «${edit.said}». Keep everything else EXACTLY as it is in ref1: the layout, the people and their faces, every other word, the colours, the light. Every Arabic word stays written exactly, letters joined right to left; no new words unless asked.`;
+      // a design with people: the design they picked goes too (ref2), so «مثل الأصلية» — the men's pose, how they stand,
+      // where they look — can be copied from it
+      const orig = t.kind === "people" ? await fetch(o.origin + viewUrl(t.id)).then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null) : null;
+      if (orig) refs.push({ uploadId: await deskReference(userId, Buffer.from(orig), `majlis-${t.id}-picked`), name: "ref2" });
+      prompt = `Edit the attached design ref1. Change ONLY this, exactly as asked (the person's words, in Arabic): «${edit.said}».${orig ? " ref2 is the original design the person picked: when the words speak of the original («الأصلية», «الصورة الأساسية», «نفس التصميم»), copy that from ref2 exactly — the men's poses, the way their bodies are turned, where they look, how they stand to each other — but keep the faces of the men in ref1 (they are the person's own people, never the men of ref2)." : ""} Keep everything else EXACTLY as it is in ref1: the layout, the people and their faces, every other word, the colours, the light. Every Arabic word stays written exactly, letters joined right to left; no new words unless asked.`;
     } else {
-      const res = await fetch(o.origin + baseUrl(t.id));
+      // a design with people: the design itself as it was picked (the men in it show the pose to keep); one with frames:
+      // its empty design (frames without the sample photos)
+      const res = await fetch(o.origin + (t.kind === "people" ? viewUrl(t.id) : baseUrl(t.id)));
       if (!res.ok) throw new UserError("ما قدرنا نفتح التصميم المختار.", 502);
       const ref1 = await deskReference(userId, Buffer.from(await res.arrayBuffer()), `majlis-${t.id}`);
       refs = [{ uploadId: ref1, name: "ref1" }, ...p.majlis.people.map((x, i) => ({ uploadId: x.photo, name: `ref${i + 2}` }))];
