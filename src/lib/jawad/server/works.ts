@@ -74,6 +74,7 @@ export async function jobViews(jobs: JobRow[], opts: { owner?: boolean } = {}): 
       refStyle: j.inputs.refStyle ?? "none",
       refs: j.refs as JobView["refs"],
       modelPrompt: hidden(j) ? null : j.inputs.modelPrompt ?? null,
+      ...(j.inputs.taste || j.inputs.brand ? { look: { ...(j.inputs.taste ? { tasteId: j.inputs.taste.id } : {}), ...(j.inputs.brand ? { brand: { logo: j.inputs.brand.logo === true } } : {}) } } : {}),
       diction: j.inputs.diction?.words ?? [],
       priceCoins: j.price_coins,
       charged: j.charged,

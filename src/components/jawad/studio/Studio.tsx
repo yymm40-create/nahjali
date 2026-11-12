@@ -36,6 +36,7 @@ import WorksPanel from "./WorksPanel";
 import CompareGenerators from "./CompareGenerators";
 import { DEFAULT_VIEW, worksQuery, type WorksView } from "@/lib/jawad/works-organise";
 import StylePicker from "./StylePicker";
+import TasteBrand, { lookRefItems, lookUploadIds, useLook } from "./TasteBrand";
 import MorePrompts from "./MorePrompts";
 import ReadyApps from "./ReadyApps";
 import GalleryStrip from "../gallery/GalleryStrip";
@@ -209,6 +210,9 @@ export default function Studio({ section, studioSections, generators, directorGe
   const [confirm, setConfirm] = useState<{ coins: number; was: number } | null>(null);
   // «مكتبتي»: the person's characters and places, mentioned by «@name» (null until loaded)
   const [library, setLibrary] = useState<{ items: LibraryItem[]; active: boolean } | null>(null);
+  // «🎨 ذوقي» and «هويتي»: the person's tastes and brand kit (null until loaded)
+  const { look, setLook } = useLook(Boolean(user && allowed));
+  const onTaste = useCallback((tasteId: string) => setDraft((d) => (d.tasteId === tasteId ? d : { ...d, tasteId })), []);
   // «جواد»: the chat assistant, and the thumbnail maker it can open
   const [chatOpen, setChatOpen] = useState(false);
   const [composer, setComposer] = useState<{ person: string; side: ThumbnailSide } | null>(null);
@@ -292,6 +296,8 @@ export default function Studio({ section, studioSections, generators, directorGe
         extra: Array.isArray(saved.extra) ? saved.extra.slice(0, 2) : [],
         mainRefs: Array.isArray(saved.mainRefs) ? saved.mainRefs : null,
         wantNames: Array.isArray(saved.wantNames) ? saved.wantNames : undefined,
+        tasteId: typeof saved.tasteId === "string" ? saved.tasteId : "",
+        brand: saved.brand && typeof saved.brand === "object" ? { on: saved.brand.on === true, logo: saved.brand.logo === true } : undefined,
       }));
       // Fresh links (and existence) of the kept references
       const ids = (saved.refs ?? []).flatMap((r) => (r.uploadId ? [r.uploadId] : []));
@@ -338,9 +344,19 @@ export default function Studio({ section, studioSections, generators, directorGe
   const atCost = useAtCost();
   // A performance description only goes to generators that take one (it stays in the draft for when the user switches back)
   const instructions = def?.extraText ? draft.instructions : "";
-  const ev = useMemo(
+  // the person's own references alone (what «+» may still add)…
+  const evRefs = useMemo(
     () => (def ? evaluate(def, { settings, prompt: draft.prompt, instructions, refStyle, refs: draft.refs.map(refMeta), atCost }, prices[def.id] ?? {}) : null),
     [def, settings, draft.prompt, instructions, refStyle, draft.refs, prices, atCost],
+  );
+  // …and the generation as it goes: with the taste's pictures and the logo where they go (the same choice as the server)
+  const lookExtra = (refs: RefItem[]) => (def ? lookRefItems(def, refStyle, settings, refs, look, draft.tasteId, draft.brand) : []);
+  const extra = def ? lookRefItems(def, refStyle, settings, draft.refs, look, draft.tasteId, draft.brand) : [];
+  const extraSig = extra.map((r) => r.localId).join(",");
+  const ev = useMemo(
+    () => (def && extra.length ? evaluate(def, { settings, prompt: draft.prompt, instructions, refStyle, refs: [...draft.refs, ...extra].map(refMeta), atCost }, prices[def.id] ?? {}) : evRefs),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [evRefs, extraSig],
   );
 
   // ── editing ──
@@ -576,12 +592,12 @@ export default function Studio({ section, studioSections, generators, directorGe
     durationMs: null,
     fps: null,
   });
-  const canUseLibrary = Boolean(library?.active && def?.refLabel && ev?.refKinds.image?.allowed);
+  const canUseLibrary = Boolean(library?.active && def?.refLabel && evRefs?.refKinds.image?.allowed);
   /** Adds a library item as a reference; why not, or null. */
   function addLibraryRef(it: LibraryItem, role?: RefRole): string | null {
     if (draft.refs.some((r) => r.uploadId === it.uploadId)) return null;
     if (!library?.active) return "«المكتبة» مقفلة.";
-    if (!ev?.refKinds.image?.allowed) return ev?.refKinds.image?.reason ?? "هذا المولد لا يقبل صورًا مرجعية.";
+    if (!evRefs?.refKinds.image?.allowed) return evRefs?.refKinds.image?.reason ?? "هذا المولد لا يقبل صورًا مرجعية.";
     if (draft.refs.some((r) => sameName(r.name, it.name))) return `يوجد مرجع آخر باسم «@${it.name}»؛ غيّر اسمه أولًا.`;
     track("studio.ref_add");
     setDraft((d) => ({ ...d, refs: [...d.refs, libraryRef(it, refStyle === "frames" ? role ?? nextFrameRole(d.refs) : "reference")] }));
@@ -605,7 +621,7 @@ export default function Studio({ section, studioSections, generators, directorGe
   const pick = (names: string[] | null | undefined) => (names ? draft.refs.filter((r) => names.includes(r.name)) : draft.refs);
   const extras = def?.output === "audio" ? [] : (draft.extra ?? []).filter((x) => x.prompt.trim());
   const plan = def && extras.length
-    ? [{ prompt: draft.prompt, refs: pick(draft.mainRefs) }, ...extras.map((x) => ({ prompt: x.prompt, refs: pick(x.refs) }))].map((x) => ({ ...x, ev: evaluate(def, { settings, prompt: x.prompt, instructions, refStyle, refs: x.refs.map(refMeta), atCost }, prices[def.id] ?? {}) }))
+    ? [{ prompt: draft.prompt, refs: pick(draft.mainRefs) }, ...extras.map((x) => ({ prompt: x.prompt, refs: pick(x.refs) }))].map((x) => ({ ...x, ev: evaluate(def, { settings, prompt: x.prompt, instructions, refStyle, refs: [...x.refs, ...lookExtra(x.refs)].map(refMeta), atCost }, prices[def.id] ?? {}) }))
     : null;
   const price = plan ? (plan.every((x) => x.ev.price.ok) ? plan.reduce((t, x) => t + (x.ev.price.ok ? x.ev.price.coins : 0), 0) : null) : ev?.price.ok ? ev.price.coins : null;
   async function submitAll() {
@@ -716,7 +732,9 @@ export default function Studio({ section, studioSections, generators, directorGe
         setSubmitting(false);
       }
     }
-    const sig = JSON.stringify([activeSection.id, def.id, refStyle, usedSettings, P, instructions, R.map((r) => [r.uploadId, r.role, r.name]), freeImage]);
+    // «ذوقي» / «هويتي» (not on the welcome picture): the server adds their words and pictures itself
+    const lookAsk = freeImage || def.output === "audio" ? {} : { ...(look?.tastes.some((t) => t.id === draft.tasteId) ? { tasteId: draft.tasteId } : {}), ...(look?.migrated && draft.brand?.on && (look.brand.colors.length || look.brand.fonts.length || look.brand.voice || look.brand.logo) ? { brand: draft.brand.logo ? { logo: true } : true } : {}) };
+    const sig = JSON.stringify([activeSection.id, def.id, refStyle, usedSettings, P, instructions, R.map((r) => [r.uploadId, r.role, r.name]), freeImage, lookAsk]);
     if (pendingSig.current !== sig) pendingKey.current = null;
     pendingSig.current = sig;
     const idem = (pendingKey.current ??= uid());
@@ -768,6 +786,7 @@ export default function Studio({ section, studioSections, generators, directorGe
       expectedCoins,
       model: claude.id,
       ...(def.output !== "audio" && draft.styleId ? { styleId: draft.styleId } : {}),
+      ...lookAsk,
       ...(freeImage ? { signupFreeImage: true } : {}),
       ...(frames ? { frames } : {}),
     };
@@ -819,11 +838,14 @@ export default function Studio({ section, studioSections, generators, directorGe
       return;
     }
     let refs: RefItem[] = [];
-    if (j.refs.length) {
-      const { ok, body } = await call<{ uploads: UploadView[] }>(`/api/jawad/uploads?ids=${j.refs.map((r) => r.uploadId).join(",")}`);
+    // a taste's pictures and the logo come back through «ذوقي» / «هويتي», never as ordinary references
+    const kept = lookUploadIds(look);
+    const jRefs = j.refs.filter((r) => !kept.has(r.uploadId) && !(j.look && /^(taste_\d+|brand_logo)(_\d+)*$/.test(r.name ?? "")));
+    if (jRefs.length) {
+      const { ok, body } = await call<{ uploads: UploadView[] }>(`/api/jawad/uploads?ids=${jRefs.map((r) => r.uploadId).join(",")}`);
       const byId = new Map((ok ? body.uploads : []).map((u) => [u.id, u]));
       refs = withNames(
-        j.refs.map((r) => {
+        jRefs.map((r) => {
           const v = byId.get(r.uploadId);
           const name = r.name ?? "";
           return v ? fromView(v, r.role, name) : { localId: uid(), uploadId: r.uploadId, kind: r.kind, name, role: r.role, fileName: "", status: "missing", progress: 1, error: "هذا المرجع حُذف.", url: null, mime: "", bytes: 0, width: null, height: null, durationMs: null, fps: null };
@@ -838,6 +860,8 @@ export default function Studio({ section, studioSections, generators, directorGe
       settings: { ...d.settings, [j.generatorId]: j.settings },
       refStyle: { ...d.refStyle, [j.generatorId]: j.refStyle },
       refs,
+      tasteId: j.look?.tasteId ?? "",
+      brand: j.look?.brand ? { on: true, logo: j.look.brand.logo } : d.brand ? { ...d.brand, on: false } : undefined,
     }));
     setNotice("حمّلنا إعدادات هذا العمل. راجعها ثم اضغط «توليد».");
     setTab("settings");
@@ -891,6 +915,9 @@ export default function Studio({ section, studioSections, generators, directorGe
       refs: j.refs.map((x) => ({ uploadId: x.uploadId, role: x.role, name: x.name ?? "" })),
       expectedCoins: j.priceCoins,
       model: claude.id,
+      // the same taste and brand (the server places their pictures again; the ones sent above are set aside)
+      ...(j.look?.tasteId ? { tasteId: j.look.tasteId } : {}),
+      ...(j.look?.brand ? { brand: j.look.brand.logo ? { logo: true } : true } : {}),
     }).catch(() => null);
     setItems((cur) => cur.filter((c) => c.id !== tempId));
     if (!r) return setNotice("انقطع الاتصال، جرّب مرة ثانية.");
@@ -1054,7 +1081,7 @@ export default function Studio({ section, studioSections, generators, directorGe
   const composerPersons = draft.refs.flatMap((r) => (r.kind === "image" && r.status === "ready" && r.url ? [{ name: r.name, url: r.url }] : []));
   const composerResults = items.flatMap((it) => (it.type === "job" && it.status === "succeeded" ? it.outputs.filter((o) => o.kind === "image" && o.url).map((o) => ({ id: o.id, url: o.url! })) : [])).slice(0, 8);
 
-  const canUseAsRef = (o: OutputView) => (!ev ? "" : ev.refKinds[o.kind]?.allowed ? null : ev.refKinds[o.kind]?.reason ?? "غير مدعوم هنا");
+  const canUseAsRef = (o: OutputView) => (!evRefs ? "" : evRefs.refKinds[o.kind]?.allowed ? null : evRefs.refKinds[o.kind]?.reason ?? "غير مدعوم هنا");
   const openCount = openIds.length + items.filter((i) => i.id.startsWith("temp-")).length;
 
   if (!gen || !def || !ev) {
@@ -1150,7 +1177,7 @@ export default function Studio({ section, studioSections, generators, directorGe
             )}
             <RefsStrip
               def={def}
-              ev={ev}
+              ev={evRefs ?? ev}
               refStyle={refStyle}
               onRefStyle={setRefStyle}
               refs={draft.refs}
@@ -1168,6 +1195,21 @@ export default function Studio({ section, studioSections, generators, directorGe
               onRole={(id, role) => updateRef(id, { role })}
             />
             {def.output !== "audio" && <StylePicker value={draft.styleId ?? ""} onChange={(id) => (setDraft((d) => ({ ...d, styleId: id })), setTouched(true), id && track("studio.style"))} />}
+            {def.output !== "audio" && (
+              <TasteBrand
+                look={look}
+                onLook={setLook}
+                owner={owner}
+                def={def}
+                refStyle={refStyle}
+                settings={settings}
+                extra={extra}
+                tasteId={draft.tasteId ?? ""}
+                onTaste={onTaste}
+                brand={draft.brand ?? { on: false, logo: false }}
+                onBrand={(brand) => (setDraft((d) => ({ ...d, brand })), setTouched(true))}
+              />
+            )}
             <ReadyApps generators={generators} owner={owner} onUse={applyReady} />
             <GalleryStrip signedIn={Boolean(user)} onTry={applyGallery} />
             <PromptBox
