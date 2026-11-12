@@ -78,6 +78,9 @@ function settingChips(j: JobView) {
   return out;
 }
 
+/** The pictures «أدوات الصورة» take (an animated GIF or an SVG drawing is not one of them). */
+const TOOL_MIMES = ["image/png", "image/jpeg", "image/webp"];
+
 export interface WorksPanelProps {
   items: WorkItem[];
   filter: WorksFilter;
@@ -102,6 +105,8 @@ export interface WorksPanelProps {
   view: WorksView;
   onView: (v: WorksView) => void;
   onMarked: (type: WorkItem["type"], id: string, mark: Partial<WorkMark>) => void;
+  /** «🖼️ أدوات الصورة» (امسح بالفرشاة · وسّع · ارفع الدقة) on a finished picture; absent when none is open to this person */
+  onImageTool?: (o: OutputView) => void;
 }
 
 export default function WorksPanel(p: WorksPanelProps) {
@@ -309,7 +314,7 @@ function OutputMedia({ o, onOpen, cover }: { o: OutputView; onOpen?: () => void;
   );
 }
 
-function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetrySubmit, canUseAsRef, onEdited }: { j: JobView; onOpen: (i: number) => void } & WorksPanelProps) {
+function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetrySubmit, canUseAsRef, onEdited, onImageTool }: { j: JobView; onOpen: (i: number) => void } & WorksPanelProps) {
   const [details, setDetails] = useState(false);
   const [copied, setCopied] = useState(false);
   const copyLink = async (url: string) => {
@@ -523,6 +528,15 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
               <Icon name={copied ? "check" : "copy"} size={14} /> {copied ? "انسخ الرابط ✓" : "رابط مؤقت"}
             </button>
           )}
+          {j.status === "succeeded" &&
+            onImageTool &&
+            outs.map((o, i) =>
+              o.kind === "image" && TOOL_MIMES.includes(o.mime) ? (
+                <button key={`tool-${o.id}`} type="button" className="jw-btn !min-h-8 !px-2 text-xs !border-jw-accent/50 text-jw-accent" title="امسح جزء أو بدّله بالفرشاة، وسّع الصورة، أو ارفع دقتها" onClick={() => onImageTool(o)}>
+                  <Icon name="wand" size={14} /> أدوات الصورة{outs.length > 1 ? ` ${i + 1}` : ""}
+                </button>
+              ) : null,
+            )}
           {shareable && (
             <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" title="انشره في «معرض الناس» أو سوّ له رابط دائم" onClick={() => setSharing(true)}>
               <Icon name="link" size={14} /> انشر وشارك
