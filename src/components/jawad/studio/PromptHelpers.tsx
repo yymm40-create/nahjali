@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Icon from "../Icon";
+import { track } from "@/lib/feature-track";
 
 // Ready looks to tap instead of typing (the leading tools' preset grids): each adds a few words to the prompt
 const PRESETS: Record<"image" | "video" | "audio", { label: string; text: string }[]> = {
@@ -89,6 +90,7 @@ export default function PromptHelpers({ kind, prompt, onPrompt, disabled, genera
     r.onerror = () => setListening(false);
     rec.current = r;
     setListening(true);
+    track("studio.prompt_speak");
     r.start();
   };
 
@@ -97,6 +99,7 @@ export default function PromptHelpers({ kind, prompt, onPrompt, disabled, genera
   const addTag = (tag: string, at: "start" | "end") => {
     const text = prompt.trim();
     if (text.includes(tag)) return onPrompt(text.replace(tag, "").replace(/\s{2,}/g, " ").trim());
+    track("studio.voice_tag");
     if (at === "end") return onPrompt(text ? `${text} ${tag}` : tag);
     const feelings = (tags?.list.find((g) => g.at === "start")?.tags ?? []).map(([v]) => `${tags!.open}${v}${tags!.close}`);
     const rest = feelings.reduce((t, f) => (t.startsWith(f) ? t.slice(f.length).trim() : t), text);
@@ -104,6 +107,7 @@ export default function PromptHelpers({ kind, prompt, onPrompt, disabled, genera
   };
   const add = (text: string) => {
     if (prompt.includes(text)) return;
+    track("studio.prompt_preset");
     const sep = kind === "audio" ? " " : ", ";
     onPrompt(prompt.trim() ? `${prompt.trim()}${sep}${text}` : text);
   };

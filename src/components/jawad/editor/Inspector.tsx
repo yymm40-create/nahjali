@@ -55,8 +55,9 @@ import { clipSound } from "./voice";
 import { detectBeats, peaksOf } from "./peaks";
 import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
+import { track as trackUse } from "@/lib/feature-track";
 
-export type Run = (cmd: Command | Command[], opts?: { label?: string; coalesce?: string }) => unknown;
+export type Run = (cmd: Command | Command[], opts?: { label?: string; coalesce?: string; /** made by حيدرا ماكس (his turn, in «سجل التغييرات») */ by?: "haidara" }) => unknown;
 export type InspectorTab = "basic" | "crop" | "motion" | "opacity" | "anim" | "fx" | "color" | "backdrop" | "transition" | "sound";
 
 const COLORS = ["#ffffff", "#000000", "#b8f53d", "#facc15", "#f43f5e", "#22d3ee", "#a78bfa", "#fb923c"];
@@ -375,6 +376,7 @@ export default function Inspector({
 
   const beats = async () => {
     if (!a) return;
+    trackUse("editor.beat");
     setBeatBusy(true);
     try {
       const peaks = await peaksOf(a.id, a.url);
@@ -509,7 +511,7 @@ export default function Inspector({
           )}
           {text && <TextControls text={text} locked={locked} setText={setText} />}
           {text && !clip.motion && (
-            <button type="button" disabled={locked} className="jw-btn jw-btn-quiet w-full text-xs" onClick={() => run({ type: "behind_person", clipId: clip.id })} title="ننسخ الفيديو اللي تحت الكتابة بنفس ثوانيها ونشيل خلفيته في مسار فوقها، فيصير الشخص قدّام الكلام">
+            <button type="button" disabled={locked} className="jw-btn jw-btn-quiet w-full text-xs" onClick={() => (trackUse("editor.depth"), run({ type: "behind_person", clipId: clip.id }))} title="ننسخ الفيديو اللي تحت الكتابة بنفس ثوانيها ونشيل خلفيته في مسار فوقها، فيصير الشخص قدّام الكلام">
               🧍 حط الكتابة ورا الشخص
             </button>
           )}

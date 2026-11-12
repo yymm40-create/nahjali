@@ -18,6 +18,7 @@ import { postJson } from "@/lib/fetch";
 import { coinStr } from "@config/coins";
 import { ProgramError, runEdit, runGradeWith, toBase64 } from "@/components/claude-code/compute-host";
 import type { Run } from "./Inspector";
+import { localRules } from "./haidara-rules";
 
 export const CODE_LAYER_NAME = "حيدرا ماكس";
 
@@ -56,7 +57,8 @@ interface Wrote {
   facts?: unknown;
 }
 
-const api = <T>(d: CodeDeps, action: string, body: Record<string, unknown>) => postJson<T>(`/api/jawad/editor/projects/${d.projectId}`, { action, model: d.model, ...body }, d.signal);
+// (with «تعليماتي الدايمة» as this device has them: a cut or a look follows them too)
+const api = <T>(d: CodeDeps, action: string, body: Record<string, unknown>) => postJson<T>(`/api/jawad/editor/projects/${d.projectId}`, { action, model: d.model, rules: localRules(), ...body }, d.signal);
 /** What a job has cost so far (halalas): every paid step adds to it, and past the budget no more rounds are asked for. */
 const meter = () => {
   let spent = 0;

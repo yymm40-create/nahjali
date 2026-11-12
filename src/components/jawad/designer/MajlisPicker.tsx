@@ -3,8 +3,8 @@
 // «المصمم الذكي كاظم» — دعوة مجلس من تصميم جاهز: كم خطيب وكم رادود ← التصاميم اللي تناسب ← البيانات والصور ← مين يسويه
 // (حيدرا ماكس بالكود نفس التصميم بالضبط، أو GPT Image 2.6 Sunburst / Flare، أو GPT Image 2 مع تنبيه الملامح).
 
-import { useMemo, useRef, useState } from "react";
-import { postJson } from "@/lib/fetch";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import { MAJLIS, MAJLIS_BG, MAJLIS_FIELDS, MAJLIS_MAKERS, ROLE_LABEL, templatesFor, viewUrl, type MajlisFieldKey, type MajlisMaker, type MajlisOrder, type MajlisTemplate } from "@config/designer-majlis";
 
@@ -42,13 +42,36 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
   const [names, setNames] = useState<string[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [logo, setLogo] = useState<Photo>(null);
+  // «هوية المأتم»: the majlis's saved details and logo fill a new invitation; the person may save them again
+  const [keepBrand, setKeepBrand] = useState(true);
+  const [hasBrand, setHasBrand] = useState(false);
+  useEffect(() => {
+    let on = true;
+    api<{ brand: { fields: Partial<Record<MajlisFieldKey, string>>; logo?: string }; logoUrl: string | null }>("/api/designer/brand")
+      .then((r) => {
+        if (!on) return;
+        const f = r.brand.fields ?? {};
+        if (Object.keys(f).length || r.brand.logo) setHasBrand(true);
+        setFields((old) => ({ ...f, ...old }));
+        if (r.brand.logo) setLogo((old) => old ?? { id: r.brand.logo!, url: r.logoUrl });
+      })
+      .catch(() => null);
+    return () => {
+      on = false;
+    };
+  }, []);
   const [maker, setMaker] = useState<MajlisMaker>("code");
   // the person's own choice, always asked: remove the photos' background, or keep it
   const [cut, setCut] = useState<boolean | null>(null);
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const total = kh + rd;
-  const list = useMemo(() => templatesFor(kh, rd), [kh, rd]);
+  // «قوالب المصممين»: the designers' approved templates join the list
+  const [extra, setExtra] = useState<MajlisTemplate[]>([]);
+  useEffect(() => {
+    api<{ approved: MajlisTemplate[] }>("/api/designer/templates").then((r) => setExtra(r.approved ?? [])).catch(() => null);
+  }, []);
+  const list = useMemo(() => templatesFor(kh, rd, extra), [kh, rd, extra]);
   // the people in the order of the frames: the khateebs first (the bigger frame), then the radoods
   const roles = useMemo(() => [...Array(kh).fill("kh"), ...Array(rd).fill("rd")] as ("kh" | "rd")[], [kh, rd]);
   const files = useRef<(HTMLInputElement | null)[]>([]);
@@ -76,10 +99,14 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
   async function submit() {
     if (!tpl) return;
     if (cut === null) { setErr("اختر: تفرّغ خلفية الصور أو تخليها بخلفيتها."); return; }
-    const order: MajlisOrder = { templateId: tpl.id, fields, people: roles.map((role, i) => ({ role, name: (names[i] ?? "").trim(), photo: photos[i]?.id ?? "" })), cut, ...(logo ? { logo: logo.id } : {}) };
+    const order: MajlisOrder = { templateId: tpl.id, ...(tpl.source === "user" ? { template: tpl } : {}), fields, people: roles.map((role, i) => ({ role, name: (names[i] ?? "").trim(), photo: photos[i]?.id ?? "" })), cut, ...(logo ? { logo: logo.id } : {}) };
     setErr("");
     setBusy(maker === "code" ? "أرسل الطلب لحيدرا ماكس…" : "جواد يسوي التصميم (دقيقة إلى دقيقتين)…");
     try {
+      if (keepBrand) {
+        const keep = (["host", "invite", "pre", "place", "women", "live"] as MajlisFieldKey[]).reduce((a, k) => (fields[k] ? { ...a, [k]: fields[k] } : a), {} as Partial<Record<MajlisFieldKey, string>>);
+        await postJson("/api/designer/brand", { fields: keep, ...(logo ? { logo: logo.id } : {}) }).catch(() => null);
+      }
       const r = await postJson<MajlisDone>("/api/designer/majlis", { chatId, order, maker });
       onDone(r);
     } catch (e) {
@@ -115,7 +142,7 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
             {list.map((t) => (
               <button type="button" key={t.id} className={`mj-card ${tpl?.id === t.id ? "on" : ""}`} onClick={() => setTpl(t)} title={t.title}>
                 <img src={viewUrl(t.id)} alt={t.title} loading="lazy" />
-                <span>{t.kind === "people" ? "بأشخاص · " : ""}{t.id.slice(1)} · {t.title}</span>
+                <span>{t.source === "user" ? "🧩 " : t.kind === "people" ? "بأشخاص · " : ""}{t.source === "user" ? "" : `${t.id.slice(1)} · `}{t.title}</span>
               </button>
             ))}
           </div>
@@ -151,6 +178,10 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
               <button type="button" className="dz-mini" onClick={() => logoFile.current?.click()}>{logo ? "✓ الشعار مرفوع" : "＋ شعار المأتم (اختياري)"}</button>
             </div>
           )}
+          <label className="mj-note" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={keepBrand} onChange={(e) => setKeepBrand(e.target.checked)} />
+            {hasBrand ? "🏷️ عبّيت لك بيانات مأتمك المحفوظة — احفظ أي تغيير فيها كهوية المأتم" : "🏷️ احفظ اسم المأتم والمكان والشعار كهوية المأتم (تتعبّى تلقائي في الدعوات الجاية)"}
+          </label>
           <p>صور الأشخاص: تبي نفرّغ الخلفية أو نخليها بخلفيتها؟</p>
           <div className="mj-makers">
             {MAJLIS_BG.map((b) => (

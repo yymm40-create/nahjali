@@ -29,6 +29,7 @@ import type { EditorAsset } from "./types";
 import type { Player } from "./player";
 import { toSRT } from "./captions";
 import { packProject, saveFile } from "./package";
+import { track } from "@/lib/feature-track";
 
 /** what to save: the whole video, the picture without sound, the sound alone, the subtitles, or the frame under the playhead */
 type What = "video" | "alpha" | "mute" | "audio" | "srt" | "frame";
@@ -141,6 +142,7 @@ export default function ExportPanel({
     if (what === "srt") {
       if (!srt) return setNote("ما فيه كابشن في " + (use ? "هذي المنطقة." : "المشروع."));
       saveFile(new Blob([srt], { type: "application/x-subrip" }), `${stem}.srt`);
+      track("editor.export.srt");
       return setNote("نزل ملف الكابشن ✓");
     }
     if (!player) return setNote("المعاينة ما جهزت بعد؛ جرّب بعد ثانية.");
@@ -148,6 +150,7 @@ export default function ExportPanel({
     const blob = await player.frameBlob();
     if (!blob) return setNote("ما قدرت أحفظ هذا الفريم. جرّب مرة ثانية.");
     saveFile(blob, `${stem.replace(/-[\d-]+_[\d-]+$/, "")}-${formatTime(player.ms).replace(/[:.]/g, "-")}.png`);
+    track("editor.export.frame");
     setNote("نزل الفريم صورة ✓");
   };
 
@@ -202,6 +205,7 @@ export default function ExportPanel({
         }
       }
       download(r.blob, name);
+      track(`editor.export.${what}`);
       // «رفع دقة الفيديو كامل»: the same file goes up and is upscaled whole; the 4K file downloads by itself when it is ready
       if (upOn && upTarget && onUpscaleExport) onUpscaleExport(new File([r.blob], name, { type: "video/mp4" }), upTarget, `${stem}-${upTarget === "4k" ? "4K" : "1080p"}.mp4`);
       // only the whole video keeps a copy with the project; a part, a muted picture or the sound alone is just saved

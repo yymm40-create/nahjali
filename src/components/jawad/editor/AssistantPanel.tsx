@@ -48,6 +48,9 @@ import { useClaudeModel } from "@/components/robots/claude-model";
 import { codeEdit, codeGrade, type CodeDeps } from "./claude-code";
 import { cleanVoice } from "@/components/claude-code/clean-voice";
 import type { AssetInfo } from "@/lib/editor/model";
+import HaidaraRules from "./HaidaraRules";
+import { localRules } from "./haidara-rules";
+import { track as trackUse } from "@/lib/feature-track";
 
 interface Msg {
   role: "user" | "assistant";
@@ -261,10 +264,11 @@ function Conversation({
     tlRef.current = tl;
   }, [tl]);
   // everything حيدرا ماكس applies goes through here: each clip's background and colour key are remembered first, so
-  // «↩️ رجّع الخلفية لما كانت» (its backdrop tab) can put them back if they ever come out broken
+  // «↩️ رجّع الخلفية لما كانت» (its backdrop tab) can put them back if they ever come out broken — and it is his in
+  // «سجل التغييرات» (saved at once, with his steps)
   const run: Run = (c, o) => {
     rememberBackdrops(tlRef.current);
-    return runEditor(c, o);
+    return runEditor(c, { ...o, by: "haidara" });
   };
   // «🩺 تشخيص»: the next message asks حيدرا ماكس to find what went wrong (the owner only)
   const [diagOn, setDiagOn] = useState(false);
@@ -486,6 +490,7 @@ function Conversation({
   const talkFace = async (message: string): Promise<{ face: FaceBox; timeline: Timeline | null } | null> => {
     const talky = !!styleInText(message)?.talk || /على\s*كلام|موشن على|talk\)/.test(message);
     if (!talky) return null;
+    trackUse("editor.talk_reel");
     const main = mainTrack(tlRef.current);
     const first = main?.clips.find((c) => !c.text && c.assetId && assets.get(c.assetId)?.kind === "video");
     const a = first?.assetId ? assets.get(first.assetId) : null;
@@ -515,6 +520,7 @@ function Conversation({
     const lab = labRef.current;
     if (lab && routeOf(message, { focus, lab: lab.hasPiece || lab.search, pending: pending.length, search: lab.search }) === "lab") {
       if (lab.busy) return null;
+      trackUse("editor.motion_lab");
       setText("");
       setFocus(true);
       await lab.send(message);
@@ -525,6 +531,7 @@ function Conversation({
       return null;
     }
     sendingRef.current = true;
+    trackUse("editor.haidara_msg");
     abortRef.current = new AbortController();
     setCanStop(true);
     try {
@@ -598,6 +605,8 @@ function Conversation({
         refs: pending.map((a) => a.id),
         refLooks,
         face: found?.face ?? null,
+        // «تعليماتي الدايمة» as this device has them (the server's kept copy wins once there is one)
+        rules: localRules(),
       }, signal);
       setPending([]);
       setChat((x) => ({ ...x, spent: Math.max(0, Number(r.spent) || 0) }));
@@ -682,6 +691,7 @@ function Conversation({
             const usable = (id: string | null | undefined) => (id && labDeps?.footageClips.some((c) => c.clipId === id) ? id : null);
             const onClip = (q.clipId && findClip(tlRef.current, q.clipId) ? usable(q.clipId) : null) ?? (selected.length === 1 ? usable(selected[0]) : null);
             setFocus(true);
+            trackUse("editor.motion_lab");
             piece.start({ brief: q.prompt, seconds: Number(q.seconds) || 15, clipId: onClip, auto: saysEnough(message) });
           } else if (q.kind === "watch") {
             // «👁️»: he needs to see the clip whole — it is watched, and he is asked again with it, by itself
@@ -791,6 +801,7 @@ function Conversation({
       setTalk(null);
       return;
     }
+    trackUse("editor.haidara_talk");
     talkRef.current = true;
     try {
       while (talkRef.current) {
@@ -1188,7 +1199,7 @@ function Conversation({
 
           <MediaStrip assets={assets} picked={pending} onPick={attach} disabled={readOnly} />
         </div>
-        <StylePicker open={gallery} disabled={readOnly || !!busy} onClose={() => setGallery(false)} onSend={(words) => void send(words)} />
+        <StylePicker open={gallery} disabled={readOnly || !!busy} onClose={() => setGallery(false)} onSend={(words) => (trackUse("editor.motion_styles"), void send(words))} />
       </div>
     );
   };
@@ -1240,6 +1251,7 @@ export default function AssistantPanel({
   open,
   hidden = false,
   onShow,
+  onLog,
   ...rest
 }: ConversationProps & {
   /** the motion lab inside his conversations (none: a project only read) */
@@ -1250,6 +1262,8 @@ export default function AssistantPanel({
   hidden?: boolean;
   /** brings the window back (the pill of a conversation at work) */
   onShow?: () => void;
+  /** opens «سجل التغييرات» (what he and the person changed, and «ارجع لهنا») */
+  onLog?: () => void;
 }) {
   const { projectId, readOnly } = rest;
   const [state, setState] = useState<{ tabs: OpenTab[]; active: string }>(() => withMain(null));
@@ -1384,6 +1398,12 @@ export default function AssistantPanel({
       <button type="button" className="hm-icon" aria-expanded={listOpen} onClick={() => (setListOpen((v) => !v), void loadRows())} title="المحادثات" aria-label="المحادثات">
         <span aria-hidden>🗂️</span>
       </button>
+      <HaidaraRules projectId={projectId} readOnly={readOnly} />
+      {onLog && (
+        <button type="button" className="hm-icon" onClick={onLog} title="سجل التغييرات: وش تغيّر ومين غيّره (أنت أو حيدرا ماكس)، وارجع لأي نقطة" aria-label="سجل التغييرات">
+          <Icon name="clock" size={17} />
+        </button>
+      )}
       {listOpen && (
         <>
           <button type="button" className="fixed inset-0 z-20 cursor-default" aria-label="إغلاق" onClick={() => setListOpen(false)} />

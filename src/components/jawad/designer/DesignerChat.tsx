@@ -22,6 +22,8 @@ import { FontList, PaletteGrid } from "./Pickers";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { renderDesign, type DesignView, type FontDef } from "./LayerEditor";
 import MajlisPicker, { type MajlisDone } from "./MajlisPicker";
+import TemplateMaker from "./TemplateMaker";
+import { downloadPrint, downloadSize, printDpi, PRINTS, SIZES } from "./exports";
 import { drawWithCode, pngBody, smallJpeg, type DrawEdit, type DrawTemplate } from "@/components/claude-code/draw";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
@@ -200,6 +202,8 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   const [editFrom, setEditFrom] = useState<number | null>(null);
   /** «دعوة مجلس من تصميم جاهز»: the picker is open */
   const [majlis, setMajlis] = useState(false);
+  /** «قوالب المصممين»: a designer uploads a template (the owner approves it here too) */
+  const [maker, setMaker] = useState(false);
   /** one drawing loop per conversation (opening it again must not start a second, paid one) */
   const drawingFor = useRef<string | null>(null);
   useEffect(() => setVerbose(store.get(VERBOSE_KEY) === "1"), []);
@@ -379,6 +383,21 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   async function send(text = q) {
     const typed = text.trim();
     if ((!typed && !pending.length) || busy || uploading) return;
+    // the design that stands is a ready majlis design: the words change THAT design («حيدرا ماكس» edits it)
+    const lastReady = msgs.filter((m) => m.design).at(-1)?.design;
+    if (chatId && typed && !pending.length && editFrom == null && lastReady?.majlis && lastReady.state === "ready") {
+      setBusy("writing");
+      setQ("");
+      try {
+        await postJson("/api/designer/majlis/edit", { chatId, said: typed });
+        setBusy("");
+        await open(chatId);
+      } catch (e) {
+        setMsgs((m) => [...m, { role: "user", text: typed }, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر التعديل.", error: true }]);
+        setBusy("");
+      }
+      return;
+    }
     const files = pending;
     // an edited old message: the talk goes on from there
     const editing = editFrom;
@@ -484,7 +503,8 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
               <div className="dz-title">{name}</div>
               <div className="dz-muted" style={{ fontSize: 12 }}>تكلّم مع {persona} · حيدرا ماكس يصمم والكلام بخطك، وأي كلمة تتعدّل بطلب</div>
             </div>
-            {!loginHref && <button type="button" className="dz-mini mj-open" disabled={!!busy} onClick={() => { fresh(); setMajlis(true); }}>🕯️ دعوة مجلس</button>}
+            {!loginHref && <button type="button" className="dz-mini mj-open" disabled={!!busy} onClick={() => { fresh(); setMaker(false); setMajlis(true); }}>🕯️ دعوة مجلس</button>}
+            {!loginHref && <button type="button" className="dz-mini" disabled={!!busy} onClick={() => { fresh(); setMajlis(false); setMaker(true); }} title="للمصممين: ارفع قالبك وحدّد مكان الصور والكلام">🧩 ارفع قالبك</button>}
           </header>
 
           {!loginHref && decisions.length > 0 && (
@@ -503,6 +523,8 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                 <p>سجّل دخولك عشان تتكلم مع {persona}.</p>
                 <div className="dz-actions"><Link className="dz-mini" href={loginHref}>تسجيل الدخول</Link></div>
               </div>
+            ) : maker ? (
+              <TemplateMaker onClose={() => setMaker(false)} />
             ) : majlis ? (
               <MajlisPicker chatId={chatId} onClose={() => setMajlis(false)} onDone={(r) => void majlisDone(r)} />
             ) : msgs.length === 0 ? (
@@ -559,7 +581,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                           {m.design.flag && <p className="dz-flag">⚠️ ملاحظة الفحص الآلي على الصورة: {m.design.flag}. تقدر تعيد رسمها.</p>}
                           {i === lastDesign ? (
                             <>
-                              <DesignDone design={m.design} fonts={fonts} saving={saving} busy={!!busy} photo={!!photo} onSave={saveFinal} onRedraw={() => chatId && void runProduce(chatId, true)} onEdit={() => void toZahraa()} />
+                              <DesignDone chatId={chatId} design={m.design} fonts={fonts} saving={saving} busy={!!busy} photo={!!photo} onSave={saveFinal} onRedraw={() => chatId && void runProduce(chatId, true)} onEdit={() => void toZahraa()} />
                             </>
                           ) : (
                             <p className="dz-muted">تصميم سابق في هذه المحادثة (المحرر يفتح على آخر تصميم).</p>
@@ -622,6 +644,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
  * platform's rule: he writes and edits the words himself, زهراء is the extra road.
  */
 function DesignDone({
+  chatId,
   design,
   fonts,
   saving,
@@ -631,6 +654,7 @@ function DesignDone({
   onRedraw,
   onEdit,
 }: {
+  chatId: string | null;
   design: DesignView;
   fonts: FontDef[];
   saving: boolean;
@@ -641,6 +665,28 @@ function DesignDone({
   onEdit: () => void;
 }) {
   const [working, setWorking] = useState(false);
+  const [exporting, setExporting] = useState<string | null>(null);
+  /** The design as it stands (its picture with any edited words), in another size or as a print PDF. */
+  async function exportAs<I extends string>(id: I, fn: () => (b: Blob, id: I) => Promise<void>) {
+    setExporting(id);
+    try {
+      await fn()(await renderDesign(design, fonts), id);
+    } finally {
+      setExporting(null);
+    }
+  }
+  /** The title as a vector drawing (GPT Image 2.6's SVG), downloaded. */
+  async function titleSvg() {
+    setExporting("svg");
+    try {
+      const r = await postJson<{ url: string | null }>("/api/designer/svg", { chatId });
+      if (r.url) window.open(r.url, "_blank", "noopener");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "تعذّر رسم SVG.");
+    } finally {
+      setExporting(null);
+    }
+  }
   const save = async () => {
     setWorking(true);
     try {
@@ -670,6 +716,24 @@ function DesignDone({
           🔁 أعد الرسم
         </button>
       </div>
+      {!design.splitOf && (
+        <div className="dz-done-row" role="group" aria-label="مقاسات أخرى والطباعة">
+          <span className="dz-muted" style={{ fontSize: 12 }}>📐 بضغطة:</span>
+          {SIZES.map((s) => (
+            <button key={s.id} type="button" className="dz-mini" disabled={busy || !!exporting} onClick={() => void exportAs(s.id, () => downloadSize)}>
+              {exporting === s.id ? "…" : s.label}
+            </button>
+          ))}
+          <button type="button" className="dz-mini" disabled={busy || !!exporting} onClick={() => void titleSvg()} title="العنوان والزخرفة رسم متجه (SVG) بـ GPT Image 2.6 — يكبر لأي مقاس بدون تشويش، للبنرات والطباعة الكبيرة">
+            {exporting === "svg" ? "…" : "✒️ العنوان SVG"}
+          </button>
+          {PRINTS.map((p) => (
+            <button key={p.id} type="button" className="dz-mini" disabled={busy || !!exporting} onClick={() => void exportAs(p.id, () => downloadPrint)} title={`PDF بهامش قص ٣ مم — دقة تقريبية ${printDpi([design.width, design.height], p.id)} نقطة/إنش`}>
+              {exporting === p.id ? "…" : `🖨️ ${p.label}`}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
