@@ -504,6 +504,11 @@ export interface Clip {
   fix: Fix | null;
   /** «مسار الموشن»: a motion element drawn live from this data (motion-elements.ts); absent/null on every other clip */
   motion?: MotionEl | null;
+  /**
+   * «بدّل الكاميرات تلقائياً»: a cut made from one of the synced cameras — the id of that camera's original clip (kept,
+   * hidden and quiet, on an «angles» track), so «بدّل الزاوية» can show the same moment from another camera. Video only.
+   */
+  angle?: string | null;
 }
 
 /** What to do with a piece on the red track: the note for Claude and how much of the video is made again. */
@@ -562,6 +567,8 @@ export interface Track {
   role?: TrackRole | null;
   /** «مسار الموشن»: a text-kind track that holds motion elements (never a caption track) */
   motion?: boolean;
+  /** «بدّل الكاميرات تلقائياً»: a video track holding one synced camera's original clip (the cuts are made from it) */
+  angles?: boolean;
   /** clips never overlap and are kept sorted by `start` */
   clips: Clip[];
 }
@@ -1145,6 +1152,7 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
     sound: kind === "text" ? null : readSound(o.sound),
     anim: kind === "audio" ? null : readAnim(o.anim, kind === "text"),
     fx: kind === "video" ? readFx(o.fx) : [],
+    ...(kind === "video" && typeof o.angle === "string" && ID.test(o.angle) ? { angle: o.angle } : {}),
     bg:
       kind === "video" && o.bg && typeof o.bg === "object"
         ? readBackdrop(o.bg as Record<string, unknown>)
@@ -1179,7 +1187,7 @@ export function readTimeline(raw: unknown, assets: Set<string> | null = null, ne
       list.push(c);
       clips++;
     }
-    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, color: TRACK_COLORS.includes(String(t.color)) ? String(t.color) : null, role: kind === "video" && (t.role === "fix" || t.role === "fixed" || t.role === "cont") ? t.role : null, ...(kind === "text" && t.motion === true ? { motion: true } : {}), clips: settle(list) });
+    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, color: TRACK_COLORS.includes(String(t.color)) ? String(t.color) : null, role: kind === "video" && (t.role === "fix" || t.role === "fixed" || t.role === "cont") ? t.role : null, ...(kind === "text" && t.motion === true ? { motion: true } : {}), ...(kind === "video" && t.angles === true ? { angles: true } : {}), clips: settle(list) });
   }
   if (!tracks.some((t) => t.kind === "video")) tracks.unshift({ id: "main", kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] });
   const width = int(o.width, 144, 4096, 1080);
