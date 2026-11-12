@@ -39,6 +39,12 @@ export const FEATURES = [
   { id: "studio.claude_draw", section: "studio", label: "رسم بـ«حيدرا ماكس» في الصور" },
   { id: "studio.assistant", section: "studio", label: "فتح «جواد» (المساعد)" },
   { id: "studio.director_chat", section: "studio", label: "فتح «جواد المخرج»" },
+  { id: "studio.works_search", section: "studio", label: "البحث في «أعمالي»" },
+  { id: "studio.works_folder", section: "studio", label: "مجلدات «أعمالي» (إنشاء، نقل، فتح)" },
+  { id: "studio.works_favourite", section: "studio", label: "⭐ المفضلة في «أعمالي»" },
+  { id: "studio.camera_move", section: "studio", label: "«🎥 حركة الكاميرا» (اختيار حركة)" },
+  { id: "studio.compare_run", section: "studio", label: "«قارن المولّدات» (تشغيل مقارنة)" },
+  { id: "studio.compare_pick", section: "studio", label: "«كمّل بهذا» من المقارنة" },
 
   // «حيدرة كت» (/jawad-ai/editor)
   { id: "editor.open", section: "editor", label: "فتح مشروع في حيدرة كت" },

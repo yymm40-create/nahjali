@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Icon from "../Icon";
 import { track } from "@/lib/feature-track";
+import { generatorById } from "@config/jawad/generators";
+import CameraMoves from "./CameraMoves";
 
 // Ready looks to tap instead of typing (the leading tools' preset grids): each adds a few words to the prompt
 const PRESETS: Record<"image" | "video" | "audio", { label: string; text: string }[]> = {
@@ -21,8 +23,6 @@ const PRESETS: Record<"image" | "video" | "audio", { label: string; text: string
   video: [
     { label: "🎥 لقطة قريبة", text: "close-up shot" },
     { label: "🏞️ لقطة واسعة", text: "wide establishing shot" },
-    { label: "🔄 دوران الكاميرا", text: "slow orbit around the subject" },
-    { label: "➡️ تتبع", text: "tracking shot following the subject" },
     { label: "🐢 حركة بطيئة", text: "slow motion" },
     { label: "⏱️ تايم لابس", text: "time-lapse" },
     { label: "🌅 غروب", text: "golden hour, warm light" },
@@ -127,6 +127,8 @@ export default function PromptHelpers({ kind, prompt, onPrompt, disabled, genera
           </button>
         ))}
       </div>
+      {/* camera moves have their own picker with moving previews («🎥 حركة الكاميرا») */}
+      {kind === "video" && generatorId && <CameraMoves generatorId={generatorId} generatorName={generatorById(generatorId)?.name ?? generatorId} prompt={prompt} onPrompt={onPrompt} disabled={disabled} />}
       {kind === "audio" && tags && (
         <div className="space-y-1.5 rounded-xl border border-jw-line bg-jw-surface-2 p-2.5" aria-label="وسوم الصوت">
           {tags.list.map((g) => (
