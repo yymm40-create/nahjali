@@ -11,6 +11,8 @@ import type { Layer, TextLayer } from "@/lib/designer/layers";
 export interface FontDef { id: string; family: string; label: string; role: string; files: { url: string; weight: string }[] }
 export interface DesignView {
   id: string;
+  /** a ready majlis design («دعوة مجلس»): its template id */
+  majlis?: string;
   aspect: string;
   width: number;
   height: number;

@@ -22,6 +22,7 @@ import { FontList, PaletteGrid } from "./Pickers";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { renderDesign, type DesignView, type FontDef } from "./LayerEditor";
 import MajlisPicker, { type MajlisDone } from "./MajlisPicker";
+import { downloadPrint, downloadSize, printDpi, PRINTS, SIZES } from "./exports";
 import { drawWithCode, pngBody, smallJpeg, type DrawEdit, type DrawTemplate } from "@/components/claude-code/draw";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
@@ -379,6 +380,21 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   async function send(text = q) {
     const typed = text.trim();
     if ((!typed && !pending.length) || busy || uploading) return;
+    // the design that stands is a ready majlis design: the words change THAT design («حيدرا ماكس» edits it)
+    const lastReady = msgs.filter((m) => m.design).at(-1)?.design;
+    if (chatId && typed && !pending.length && editFrom == null && lastReady?.majlis && lastReady.state === "ready") {
+      setBusy("writing");
+      setQ("");
+      try {
+        await postJson("/api/designer/majlis/edit", { chatId, said: typed });
+        setBusy("");
+        await open(chatId);
+      } catch (e) {
+        setMsgs((m) => [...m, { role: "user", text: typed }, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر التعديل.", error: true }]);
+        setBusy("");
+      }
+      return;
+    }
     const files = pending;
     // an edited old message: the talk goes on from there
     const editing = editFrom;
@@ -641,6 +657,16 @@ function DesignDone({
   onEdit: () => void;
 }) {
   const [working, setWorking] = useState(false);
+  const [exporting, setExporting] = useState<string | null>(null);
+  /** The design as it stands (its picture with any edited words), in another size or as a print PDF. */
+  async function exportAs<I extends string>(id: I, fn: () => (b: Blob, id: I) => Promise<void>) {
+    setExporting(id);
+    try {
+      await fn()(await renderDesign(design, fonts), id);
+    } finally {
+      setExporting(null);
+    }
+  }
   const save = async () => {
     setWorking(true);
     try {
@@ -670,6 +696,21 @@ function DesignDone({
           🔁 أعد الرسم
         </button>
       </div>
+      {!design.splitOf && (
+        <div className="dz-done-row" role="group" aria-label="مقاسات أخرى والطباعة">
+          <span className="dz-muted" style={{ fontSize: 12 }}>📐 بضغطة:</span>
+          {SIZES.map((s) => (
+            <button key={s.id} type="button" className="dz-mini" disabled={busy || !!exporting} onClick={() => void exportAs(s.id, () => downloadSize)}>
+              {exporting === s.id ? "…" : s.label}
+            </button>
+          ))}
+          {PRINTS.map((p) => (
+            <button key={p.id} type="button" className="dz-mini" disabled={busy || !!exporting} onClick={() => void exportAs(p.id, () => downloadPrint)} title={`PDF بهامش قص ٣ مم — دقة تقريبية ${printDpi([design.width, design.height], p.id)} نقطة/إنش`}>
+              {exporting === p.id ? "…" : `🖨️ ${p.label}`}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

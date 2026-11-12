@@ -100,6 +100,8 @@ export interface DrawTemplate {
   faces?: { photo: number; aspect: number; place?: number[]; cut?: boolean }[];
   /** «فرّغ الخلفية» with the photos as they were uploaded: «حيدرا ماكس» cuts the people out here, in the page */
   cutHere?: boolean;
+  /** a change asked for this design: «حيدرا ماكس» patches `code` (the program drawn before) by the person's words */
+  change?: { said: string; brief: string; fonts: { head: string; body: string } };
 }
 
 /** A working canvas (a plain one: an iPhone's older Safari has no OffscreenCanvas for 2D). */
@@ -286,16 +288,34 @@ async function drawTemplate(o: DrawOptions, t: DrawTemplate): Promise<DrawResult
   }
   const assets = bms.map((bm, i) => ({ id: `photo${i + 1}`, bitmap: bm! }));
   const fonts = [...sceneFonts(t.fonts), ...Object.entries(t.extra ?? {}).map(([role, id]) => sceneFont(role, id)).filter((f): f is NonNullable<typeof f> => !!f)];
+  let code = t.code, coins = 0, edited = false;
+  if (t.change) {
+    o.onStep({ text: "✏️ حيدرا ماكس يعدّل نفس التصميم حسب كلامك…" });
+    const w = await postJson<{ code: string; problems?: string[]; coins?: number; patchFailed?: string }>(URL, { action: "write", edit: true, model: o.model, prompt: `${t.change.brief}\n\nTHE CHANGE: ${t.change.said}`, aspect: o.aspect, style: "", references: [], photos: [], from: "designer", code: t.code, fonts: t.change.fonts, brief: t.change.brief, said: t.change.said, photosChanged: false }, o.signal);
+    coins += w.coins ?? 0;
+    if (w.code && !w.problems?.length && !w.patchFailed) {
+      code = w.code;
+      edited = true;
+    } else o.onStep({ text: "التعديل ما ركب على البرنامج — أرسم التصميم كما كان، وقل لي التعديل بكلمات ثانية." });
+  }
   const host = new SceneHost();
   try {
     o.onStep({ text: "أرسم التصميم…" });
-    await host.load(t.code, { w: W, h: H, assets, fonts });
+    try {
+      await host.load(code, { w: W, h: H, assets, fonts });
+    } catch (e) {
+      // the patched program threw: the design as it was
+      if (!edited || !(e instanceof SceneError)) throw e;
+      code = t.code;
+      edited = false;
+      await host.load(code, { w: W, h: H, assets, fonts });
+    }
     const bm = await host.frame(0);
     const png = await bitmapTo(bm, "image/png");
     const still = await bitmapTo(bm, "image/jpeg", 1280, 0.85);
     bm.close();
     o.onStep({ text: "✅ التصميم جاهز.", preview: `data:image/jpeg;base64,${still}` });
-    return { png, scores: {}, pass: true, verdict: "", rounds: 1, coins: 0, program: { code: t.code, fonts: t.fonts, size: [W, H] } };
+    return { png, scores: {}, pass: true, verdict: "", rounds: 1, coins, program: { code, fonts: t.fonts, size: [W, H] }, ...(edited ? { edited: true } : {}) };
   } finally {
     host.destroy();
     for (const a of assets) a.bitmap.close();
