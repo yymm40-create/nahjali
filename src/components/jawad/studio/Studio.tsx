@@ -248,7 +248,7 @@ export default function Studio({ section, studioSections, generators: allGenerat
       saved = {
         ...base,
         ...(gid ? { generatorId: gid } : {}),
-        prompt: handed.prompt,
+        prompt: handed.prompt || base.prompt || "",
         settings: gid ? { ...(base.settings ?? {}), [gid]: { ...(base.settings?.[gid] ?? {}), ...settingsOk } as Settings } : base.settings,
         refStyle: gid && handed.refStyle && gdef?.modes.some((m) => m.refStyle === handed.refStyle) ? { ...(base.refStyle ?? {}), [gid]: handed.refStyle } : base.refStyle,
         styleId: handed.styleId ?? "",
@@ -262,7 +262,9 @@ export default function Studio({ section, studioSections, generators: allGenerat
       };
       const list = handed.refs.map((r) => `@${r.name} (${r.what})`).join("، ");
       const gname = gid ? generators.find((g) => g.id === gid)?.name : null;
-      setNotice(
+      // from a generator's own page (/jawad-ai/models): the generator only, no prompt
+      if (!handed.prompt) setNotice(gname ? `اخترنا لك ${gname}. اكتب وصفك بالعربي واضغط «توليد»، والسعر يبين لك قبل.` : "هالمولّد غير متاح لحسابك الحين، فاختر مولّد ثاني.");
+      else setNotice(
         `جهّزنا برومبت «${handed.label}» من طرق إبداعية` +
           (gname ? ` على ${gname} بنفس الإعدادات.` : `، بس مولّده غير متاح لحسابك الحين فاختر مولّد.`) +
           (list ? ` أضف مراجعك أنت بالترتيب: ${list}، وبتاخذ هالأسماء تلقائيًا.` : " عدّل اللي تبيه واضغط «توليد».")

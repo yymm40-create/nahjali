@@ -30,7 +30,8 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
   loginHref: string;
   samples: string[];
   tools: LandingTool[];
-  models: string[];
+  /** the generators live now, each linking to its own page (/jawad-ai/models/<id>) */
+  models: { id: string; name: string }[];
   packs: Pack[];
   featured: string;
   /** the signup free picture is on for an account made today: the offer goes in the strip and on the button */
@@ -149,8 +150,13 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
             <h2 className="ld-h">أقوى النماذج في العالم، بين يديك</h2>
             <p className="ld-lead">ما تحتاج تشترك في كل موقع لحاله: نفس المولدات العالمية، برصيد واحد.</p>
             <ul className="ld-models">
-              {models.map((m) => <li key={m} dir="ltr">{m}</li>)}
+              {models.map((m) => (
+                <li key={m.id} dir="ltr">
+                  <Link href={`/jawad-ai/models/${m.id}`}>{m.name}</Link>
+                </li>
+              ))}
             </ul>
+            <Link href="/jawad-ai/models" className="ld-models-all">كل المولدات وأسعارها ←</Link>
           </div>
         </section>
       )}

@@ -108,7 +108,8 @@ export default async function JawadHome() {
     const live = rt.generators.filter((g) => g.live);
     // small WebPs kept by the CDN, not the 1–3 MB originals (lib/storage/public → app/files/thumb)
     const samples = [...new Set(live.map((g) => g.sampleUrl).filter((u): u is string => !!u && /\.(png|jpe?g|webp)(\?|$)/i.test(u)))].slice(0, 12).map((u) => thumbOf(u, 480)!);
-    const models = [...new Set(live.map((g) => g.name))].slice(0, 14);
+    // one per name (a generator and its «تعديل فيديو» twin share a family), each with its own page
+    const models = live.filter((g, i, a) => a.findIndex((x) => x.name === g.name) === i).slice(0, 14).map((g) => ({ id: g.id, name: g.name }));
     return (
       <>
         {/* the same text for everyone (no person's data), escaped against «</script>» */}
