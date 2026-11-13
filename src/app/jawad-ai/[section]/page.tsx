@@ -22,7 +22,10 @@ async function studioSection(id: string) {
 export async function generateMetadata({ params }: PageProps<"/jawad-ai/[section]">) {
   const { s } = await studioSection((await params).section);
   const unified = s && STUDIO_SECTION_IDS.includes(s.id as (typeof STUDIO_SECTION_IDS)[number]);
-  return { title: unified ? "الاستوديو الإبداعي" : s?.name ?? "غير موجود" };
+  return {
+    title: unified ? "الاستوديو الإبداعي" : s?.name ?? "غير موجود",
+    description: "الاستوديو الإبداعي في الجواد الذكي: صور وفيديو وصوت بالذكاء الاصطناعي من لوحة وحدة — GPT Image وSeedance وKling وWan وElevenLabs وغيرها، بالريال وبدون اشتراك.",
+  };
 }
 
 /** A studio section (images, video, audio, or one the owner added): generation settings on the left, the user's works on the right. */

@@ -20,7 +20,7 @@ import { COURSE, saleBarAt } from "@config/course";
 import InDevelopment from "@/components/jawad/InDevelopment";
 import JawadHeader from "@/components/jawad/JawadHeader";
 import RobotGuide from "@/components/jawad/RobotGuide";
-import { JAWAD_PATH_HEADER } from "@config/site";
+import { JAWAD_PATH_HEADER, SITE_URL } from "@config/site";
 import { JAWAD } from "@config/jawad/brand";
 import "./jawad.css";
 import "./sections.css";
@@ -28,13 +28,22 @@ import "./director/director.css";
 
 const readex = Readex_Pro({ variable: "--font-readex", subsets: ["arabic", "latin"], weight: ["300", "400", "500", "600", "700"] });
 
-export const metadata: Metadata = {
-  title: { default: `${JAWAD.nameEn} · ${JAWAD.nameAr}`, template: `%s · ${JAWAD.nameEn}` },
-  description: JAWAD.tagline,
-  applicationName: JAWAD.nameEn,
-  openGraph: { title: `${JAWAD.nameEn} · ${JAWAD.nameAr}`, description: JAWAD.tagline, siteName: JAWAD.nameEn, locale: "ar", type: "website" },
-  twitter: { card: "summary_large_image", title: `${JAWAD.nameEn} · ${JAWAD.nameAr}`, description: JAWAD.tagline },
-};
+/**
+ * Every page names its one true address (SEO audit, 14 November 2026): the same pages also answer on the old address
+ * (nahjali.vercel.app) and with any query («?code=», «?pack=»…), so each points search engines at its path on the main
+ * address. The path comes from the proxy (JAWAD_PATH_HEADER); a page that sets its own `alternates` wins.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const path = (await headers()).get(JAWAD_PATH_HEADER) || "/jawad-ai";
+  return {
+    title: { default: `${JAWAD.nameEn} · ${JAWAD.nameAr}`, template: `%s · ${JAWAD.nameEn}` },
+    description: JAWAD.tagline,
+    applicationName: JAWAD.nameEn,
+    alternates: { canonical: `${SITE_URL}${path.replace(/\/+$/, "") || "/jawad-ai"}` },
+    openGraph: { title: `${JAWAD.nameEn} · ${JAWAD.nameAr}`, description: JAWAD.tagline, siteName: JAWAD.nameEn, locale: "ar_SA", type: "website" },
+    twitter: { card: "summary_large_image", title: `${JAWAD.nameEn} · ${JAWAD.nameAr}`, description: JAWAD.tagline },
+  };
+}
 
 export const viewport: Viewport = { themeColor: "#0b0c0f", colorScheme: "dark" };
 

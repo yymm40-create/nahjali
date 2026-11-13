@@ -1,7 +1,7 @@
 import { CONTACT_EMAIL, LEGAL_UPDATED, NAHJ_ALI_HIDDEN, SITE_NAME } from "@config/site";
 import { CARD_PAYMENT_PUBLIC } from "@config/pricing";
 
-export const metadata = { title: "سياسة الخصوصية" };
+export const metadata = { title: "سياسة الخصوصية", description: "كيف يتعامل الجواد الذكي مع بياناتك وملفاتك وما يحفظه منها.", alternates: { canonical: "/privacy" } };
 
 /** «الجواد الذكي»'s privacy policy (while «نهج علي» is hidden, config/site.ts). */
 const JAWAD_SECTIONS: { title: string; body: string[] }[] = [

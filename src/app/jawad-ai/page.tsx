@@ -19,8 +19,38 @@ import { LEARN } from "@config/learn";
 import { unifiedStudioNavigation } from "@config/jawad/sections";
 import { SECTIONS } from "@config/sections";
 import { thumbOf } from "@/lib/storage/public";
+import { SITE_URL } from "@config/site";
+import { SHARE } from "@config/share";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * The front page in search results (SEO audit, 14 November 2026): what the site is and the words people search with —
+ * an Arabic studio for pictures, video and films with AI — instead of only the brand's two names.
+ */
+export const metadata = {
+  title: { absolute: "الجواد الذكي | استوديو عربي للصور والفيديو والأفلام بالذكاء الاصطناعي" },
+  description: "اصنع صورًا وفيديوهات وأفلامًا وتصاميم وكاروسيل بالذكاء الاصطناعي بالعربي: GPT Image وSeedance وKling وغيرها في مكان واحد، تدفع بالريال بدون اشتراك، وأول صورة مجانًا.",
+};
+
+/** What search engines read about the platform (schema.org): the organisation, the site, and the web app itself. */
+const STRUCTURED = JSON.stringify({
+  "@context": "https://schema.org",
+  "@graph": [
+    { "@type": "Organization", "@id": `${SITE_URL}/#org`, name: "الجواد الذكي", alternateName: "JAWAD AI", url: `${SITE_URL}/jawad-ai`, logo: `${SITE_URL}/jawad-ai/logo.png`, sameAs: [`https://www.instagram.com/${SHARE.account}/`] },
+    { "@type": "WebSite", "@id": `${SITE_URL}/#site`, name: "الجواد الذكي", alternateName: "JAWAD AI", url: `${SITE_URL}/jawad-ai`, inLanguage: "ar", publisher: { "@id": `${SITE_URL}/#org` } },
+    {
+      "@type": "WebApplication",
+      name: "الجواد الذكي",
+      url: `${SITE_URL}/jawad-ai`,
+      applicationCategory: "MultimediaApplication",
+      operatingSystem: "Web",
+      inLanguage: "ar",
+      description: "استوديو عربي لصناعة الصور والفيديو والصوت والتصاميم والأفلام بالذكاء الاصطناعي.",
+      publisher: { "@id": `${SITE_URL}/#org` },
+    },
+  ],
+}).replace(/</g, "\\u003c");
 
 const BLURB: Record<string, string> = {
   "studio:image": "صور من النص أو من مراجعك، بالنسب والدقة التي تختارها.",
@@ -81,6 +111,8 @@ export default async function JawadHome() {
     const models = [...new Set(live.map((g) => g.name))].slice(0, 14);
     return (
       <>
+        {/* the same text for everyone (no person's data), escaped against «</script>» */}
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: STRUCTURED }} />
         <ContestWinners />
         <Landing loginHref={jawadLogin(JAWAD.base)} samples={samples} tools={tools} models={models} packs={credits.packs} featured={credits.featured} whatsapp={credits.whatsapp} units={units} freeImageOn={freeImageOn} />
       </>
