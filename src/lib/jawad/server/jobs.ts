@@ -9,6 +9,7 @@
 //   end ─► jawad_finish_job: exactly once; success keeps the charge, failure or cancellation refunds it.
 
 import { reportFinalFailure } from "@/lib/platform-fault";
+import { noteJob, refundPromptOfStudioJob } from "@/lib/prompt-refund";
 import { findStyle } from "@config/film-styles";
 import { withStyle } from "@config/jawad/style-prompt";
 import { costOfLines } from "@config/coins";
@@ -178,6 +179,8 @@ export async function finishJob(job: Pick<JobRow, "id" | "generator_id">, status
     p_label: coinLabel(generatorById(job.generator_id)),
   });
   if (error) throw error;
+  // «رجّع مبلغ كلود»: failed through the platform's own account — the Claude reply that wrote its prompt goes back too
+  if (data && status === "failed") await refundPromptOfStudioJob(job.id, `${o.detail ?? ""} ${o.message ?? ""}`).catch((e) => console.error("prompt refund", e));
   // a team series' generation that didn't succeed: the team's coins and the member's attempt go back
   if (data && status !== "succeeded") {
     const held = await refundTeamCoins(job.id).catch(() => null);
@@ -374,6 +377,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
       throw err;
     }
   }
+  if (row.created) noteJob(row.job_id);
   if (row.created) after(() => runJob(row.job_id));
   return { kind: row.created ? "created" : "existing", job: job as JobRow, balance: row.balance };
 }

@@ -4,6 +4,7 @@ import { giveAttempt, teamPayment, teamSeriesOf } from "./team";
 import { serviceKind } from "./credits";
 import { hasAdminAccess } from "./admin-access";
 import { claudeCost, type ClaudeUsage } from "./anthropic";
+import { failureText, refundPromptOfFilmJob } from "@/lib/prompt-refund";
 
 /** What a coin movement says in the user's history. */
 const COIN_LABELS: Record<string, string> = {
@@ -195,6 +196,8 @@ export async function succeedJob(jobId: string, actual: { costUsd: number; units
  */
 export async function failJob(jobId: string, error: unknown, providerCostUsd?: number) {
   await refundCoins(jobId).catch((e) => console.error("coin refund failed", e));
+  // «رجّع مبلغ كلود»: a video or picture that failed through the platform's own account gives back the reply that wrote it
+  await refundPromptOfFilmJob(jobId, failureText(error)).catch((e) => console.error("film prompt refund", e));
   const db = createAdminClient();
   // a team member's failed attempt is given back
   const { data: j } = await db.from("film_jobs").select("project_id,user_id,status").eq("id", jobId).maybeSingle();

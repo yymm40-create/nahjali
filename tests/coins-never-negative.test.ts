@@ -111,3 +111,36 @@ describe("the estimate is held first, and a wallet never goes below zero", () =>
     expect(wallets.get("u")).toBe(held + 100);
   });
 });
+
+// «رجّع مبلغ كلود» (the owner, 13 November 2026): a generation that failed through the platform's own account gives back
+// the Claude reply that wrote its prompt — the whole settled charge, once.
+describe("a settled Claude reply can be given back once", () => {
+  it("gives back exactly what was taken, and a second call gives nothing", async () => {
+    wallets.set("u", 5000);
+    const model = CLAUDE_MODELS[0];
+    const bill = await coins.claudeMeter({ id: "u" }, model, "chat");
+    expect(bill.ref).toMatch(/^claude:/);
+    const taken = await bill.settle(0.02);
+    expect(taken).toBeGreaterThan(0);
+    expect(wallets.get("u")).toBe(5000 - taken);
+    expect(await coins.refundCharge(bill.ref!)).toBe(taken);
+    expect(wallets.get("u")).toBe(5000);
+    expect(await coins.refundCharge(bill.ref!)).toBe(0);
+    expect(wallets.get("u")).toBe(5000);
+  });
+
+  it("a film reply's job (its ref is the job id) comes back the same way", async () => {
+    wallets.set("u", 5000);
+    await coins.reserveCoins({ id: "u" }, "film-reply-1", 0.05, "رد المخرج", "claude");
+    const charged = await coins.settleCoins("film-reply-1", 0.03, "claude");
+    expect(wallets.get("u")).toBe(5000 - charged);
+    expect(await coins.refundCharge("film-reply-1")).toBe(charged);
+    expect(wallets.get("u")).toBe(5000);
+  });
+
+  it("nothing charged, nothing given back", async () => {
+    wallets.set("u", 100);
+    expect(await coins.refundCharge("claude:nothing")).toBe(0);
+    expect(wallets.get("u")).toBe(100);
+  });
+});
