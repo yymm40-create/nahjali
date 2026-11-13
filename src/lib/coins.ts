@@ -230,6 +230,32 @@ export async function refundCoins(jobId: string) {
 
 // ───────────── «نقود الفريق الذكي»: a team series' own wallet (migration 0033) ─────────────
 
+/**
+ * Gives back everything still charged under a ref (a Claude reply, a film reply's job), once: what the ledger shows taken,
+ * net of what came back already. Two calls at the same moment are corrected after the fact (a second give-back is taken
+ * again). Personal wallet and team wallet alike. Returns the halalas given back.
+ */
+export async function refundCharge(ref: string, label?: string): Promise<number> {
+  let back = 0;
+  const t = await teamReserved(ref);
+  if (t && t.held > 0) {
+    await adjustTeam(t.seriesId, t.userId, t.held, "refund", ref, label ?? t.label, true);
+    back += t.held;
+  }
+  const r = await reserved(ref);
+  if (r && r.held > 0) {
+    await adjust(r.userId, r.held, "refund", ref, label ?? r.label, true);
+    back += r.held;
+    const after = await reserved(ref);
+    // given back twice by two calls at once: the extra is taken again
+    if (after && after.held < 0) {
+      await takeUpTo(r.userId, -after.held, "settle", ref, label ?? r.label);
+      back += after.held;
+    }
+  }
+  return back;
+}
+
 async function adjustTeam(seriesId: string, userId: string | null, delta: number, reason: string, ref: string, label: string, allowNegative = false) {
   const { data, error } = await db().rpc("adjust_team_coins", {
     p_series: seriesId, p_user: userId, p_delta: delta, p_reason: reason, p_ref: ref, p_label: label, p_allow_negative: allowNegative,
@@ -345,6 +371,8 @@ export interface ClaudeBill {
   free: boolean;
   /** halalas charged after `settle` */
   charged: number;
+  /** the ledger ref of a paid reply (a free one has none): what «رجّع مبلغ كلود» gives back */
+  ref?: string;
   /** after `settle`: the reply's value in halalas — exactly what was taken from a paying wallet, or (a free account:
    * the owner, an unlimited one) what it would have cost at the site's price; a conversation's running total adds these */
   worth: number;
@@ -401,6 +429,7 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
   const back = (coins: number) => (who.team ? adjustTeam(who.team, who.id, coins, "refund", ref, label, true) : adjust(who.id, coins, "refund", ref, label, true));
   const paid: ClaudeBill = {
     free: false,
+    ref,
     charged: 0,
     worth: 0,
     settle: async (usd: number) => {

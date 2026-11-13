@@ -2,6 +2,7 @@
 // the prices are 0 or «النقود الذكية مطلوبة» is off; a price is held before the paid call and given back if it fails.
 
 import { remembering, type Memo } from "@/lib/claude-run";
+import { collectJobs, linkTurnJobs } from "@/lib/prompt-refund";
 import { logFree, dropFree, claudeMeter, coinsRequired, holdCoins, holdTeamCoins, logCostHalalas, refundTeamCoins, releaseCoins } from "@/lib/coins";
 import { getLimit, type LimitKey } from "@/lib/film/limits";
 import { sellKind, type PriceKind } from "@config/coins";
@@ -65,7 +66,9 @@ export async function claudeCharged<T>(who: Who, modelId: unknown, label: string
   const model = claudeModelOf(await claudeFor(who.email, modelId));
   const bill = await claudeMeter(who, model, label, kind);
   // the person's memory («ذاكرتي») is read by حيدرا ماكس too, and learns from the turn
-  const out = await withClaude(model.id, () => remembering(who.id, run, memo)).catch(async (e) => {
+  // the studio jobs this conversation creates: one that later fails through our account gives the reply back (lib/prompt-refund)
+  const jobs: string[] = [];
+  const out = await collectJobs(jobs, () => withClaude(model.id, () => remembering(who.id, run, memo))).catch(async (e) => {
     await bill.release().catch(() => {});
     throw e;
   });
@@ -73,5 +76,6 @@ export async function claudeCharged<T>(who: Who, modelId: unknown, label: string
     console.error("claude settle failed", e);
     return 0;
   });
+  if (coins > 0 && bill.ref && jobs.length) await linkTurnJobs(bill.ref, jobs).catch((e) => console.error("prompt refund link", e));
   return { ...out, model: model.id, coins, worth: bill.worth };
 }

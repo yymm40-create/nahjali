@@ -12,6 +12,7 @@ import { isAdmin } from "@config/site";
 import { claudeFor } from "@/lib/access-perks";
 import { watchTurn } from "@/lib/platform-fault";
 import { clearSoftStreak, softTurnIsOurs } from "@/lib/soft-streak";
+import { collectJobs, linkTurnJobs } from "@/lib/prompt-refund";
 
 export interface RobotUser {
   id: string;
@@ -61,7 +62,9 @@ export async function robotTurn<T extends { usd: number }>(user: RobotUser, mode
   // a code may cap the model (the owner's «الأكواد»): a dearer pick is served by the ceiling's model
   const model = claudeModelOf(await claudeFor(user.email, modelId));
   const bill = await claudeMeter({ id: user.id, email: user.email, owner: isAdmin(user.email), team: user.team }, model, label, options.price ?? "claude");
-  const { out, ours, soft, why } = await watchTurn(() => withClaude(model.id, () => (options.memory === "isolated" ? withMemory("", run) : remembering(user.id, run, memo)))).catch(async (e) => {
+  // the studio jobs this turn creates (its pictures, videos…): a job that later fails through our account gives the turn back
+  const jobs: string[] = [];
+  const { out, ours, soft, why } = await watchTurn(() => collectJobs(jobs, () => withClaude(model.id, () => (options.memory === "isolated" ? withMemory("", run) : remembering(user.id, run, memo))))).catch(async (e) => {
     await bill.release().catch(() => {});
     throw e;
   });
@@ -83,6 +86,7 @@ export async function robotTurn<T extends { usd: number }>(user: RobotUser, mode
     console.error("claude settle failed", e);
     return 0;
   });
+  if (coins > 0 && bill.ref && jobs.length) await linkTurnJobs(bill.ref, jobs).catch((e) => console.error("prompt refund link", e));
   // `worth`: what was taken, or for a free account what it would have cost — a conversation's running total adds it
   return { ...out, model: model.id, coins, worth: bill.worth };
 }
