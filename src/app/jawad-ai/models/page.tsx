@@ -15,12 +15,12 @@ export const revalidate = 600;
 
 const ICON: Record<ModelPage["output"], string> = { image: "🖼️", video: "🎬", audio: "🎙️" };
 
-function Card({ m }: { m: ModelPage }) {
+function Card({ m, first = false }: { m: ModelPage; first?: boolean }) {
   return (
     <Link href={`${MODELS_BASE}/${m.id}`} className="md-card">
       {m.sample ? (
         // eslint-disable-next-line @next/next/no-img-element -- a small WebP kept by the CDN (app/files/thumb)
-        <img src={m.sample} alt={`مثال من ${m.name}`} width={480} height={360} loading="lazy" decoding="async" />
+        <img src={m.sample} alt={`مثال من ${m.name}`} width={480} height={360} loading={first ? "eager" : "lazy"} fetchPriority={first ? "high" : "auto"} decoding="async" />
       ) : (
         <div className="md-ph" aria-hidden>{ICON[m.output]}</div>
       )}
@@ -59,7 +59,8 @@ export default async function ModelsPage() {
         <section key={g.k}>
           <h2 className="md-h2">مولدات {OUTPUT_LABEL[g.k]}</h2>
           <div className="md-grid">
-            {g.items.map((m) => <Card key={m.id} m={m} />)}
+            {/* the first row is on the screen at once: it loads first (the page's largest picture) */}
+            {g.items.map((m, i) => <Card key={m.id} m={m} first={g === groups[0] && i < 4} />)}
           </div>
         </section>
       ))}
