@@ -11,6 +11,7 @@
 import { reportFinalFailure } from "@/lib/platform-fault";
 import { findStyle } from "@config/film-styles";
 import { withStyle } from "@config/jawad/style-prompt";
+import { labelsOf, withBrand, withTaste } from "@config/jawad/taste";
 import { costOfLines } from "@config/coins";
 import { jawadSpeak } from "./providers/jawad-voice";
 import { jawadReference, onceReferenceText } from "./voices";
@@ -31,6 +32,7 @@ import { cleanRefName, defaultRefName, promptForModel } from "../mentions";
 import { probe, sniff } from "../media";
 import { loadRuntime, JAWAD_BUCKET } from "./runtime";
 import { refsFor, type UploadRow } from "./uploads";
+import { lookFor, lookRefs } from "./taste";
 import { ProviderError, providerUserId } from "./providers/common";
 import { openaiImage, openaiSpeech, TTS_MIME, type ImageQuality } from "./providers/openai";
 import { arkCancelTask, arkCreateTask, arkGetTask, arkImage, arkListTasks, type ArkContent, type ArkTask } from "./providers/modelark";
@@ -76,7 +78,7 @@ export interface JobRow {
    * modelPrompt: the prompt as the model receives it (each «@name» written the model's way, or Arabic words written
    * phonetically by «النطق الدقيق»), when it differs. diction: the words whose pronunciation was set.
    */
-  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; signupFreeImage?: boolean; /** fal: the endpoint a video was sent to (text- or image-to-video) */ falModel?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; /** the Claude model the person chose (config/claude-models.ts): «النطق الدقيق» runs on it, never dearer than its fixed price */ claude?: string; film?: { projectId: string; assetId?: string; genId?: string; title?: string } };
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; signupFreeImage?: boolean; /** fal: the endpoint a video was sent to (text- or image-to-video) */ falModel?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; /** the Claude model the person chose (config/claude-models.ts): «النطق الدقيق» runs on it, never dearer than its fixed price */ claude?: string; film?: { projectId: string; assetId?: string; genId?: string; title?: string }; /** «🎨 ذوقي» */ taste?: { id: string; name: string }; /** «طبّق هويتي» (and whether the logo went in) */ brand?: { logo: boolean } };
   refs: { uploadId: string; kind: string; role: RefRole; name?: string }[];
   price_coins: number;
   price_breakdown: { label: string; centi: number }[];
@@ -209,6 +211,10 @@ export interface GenerateBody {
   frames?: unknown;
   /** the Claude model the person chose (config/claude-models.ts): kept on the job for the Claude work it does later («النطق الدقيق») */
   model?: unknown;
+  /** «ذوقي»: one of the person's tastes (its words, and its pictures as style references where the generator takes them) */
+  tasteId?: unknown;
+  /** «طبّق هويتي»: true, or `{ logo: true }` to put the logo in too (pictures that take references) */
+  brand?: unknown;
 }
 
 export type CreateResult =
@@ -249,11 +255,16 @@ export async function createJob(user: { id: string; email?: string | null }, own
 
   const rawRefs = Array.isArray(b.refs) ? b.refs.slice(0, 60) : [];
   const refStyle: RefStyle = b.refStyle === "frames" || b.refStyle === "references" ? b.refStyle : "none";
-  const wanted = rawRefs.map((r) => {
-    const x = (r ?? {}) as { uploadId?: unknown; role?: unknown; name?: unknown };
-    const role = refStyle === "frames" && ROLES.includes(x.role as RefRole) ? (x.role as RefRole) : "reference";
-    return { uploadId: String(x.uploadId ?? ""), role, name: cleanRefName(x.name) };
-  });
+  // «ذوقي» / «هويتي»: what this generation asked for (never a team's, a cartoon's or the welcome picture's)
+  const look = def.output !== "audio" && !server.cartoon && b.signupFreeImage !== true ? await lookFor(user.id, b) : null;
+  // (a taste's pictures and the logo are added below, only where they may go — never as the person's ordinary references)
+  const wanted = rawRefs
+    .map((r) => {
+      const x = (r ?? {}) as { uploadId?: unknown; role?: unknown; name?: unknown };
+      const role = refStyle === "frames" && ROLES.includes(x.role as RefRole) ? (x.role as RefRole) : "reference";
+      return { uploadId: String(x.uploadId ?? ""), role, name: cleanRefName(x.name) };
+    })
+    .filter((w) => !look?.ids.has(w.uploadId));
   // Frames go first frame, then last frame: the order the model numbers them in
   if (refStyle === "frames") wanted.sort((a, b) => ROLES.indexOf(a.role) - ROLES.indexOf(b.role));
   const found = await refsFor(user.id, wanted);
@@ -270,6 +281,10 @@ export async function createJob(user: { id: string; email?: string | null }, own
     return { ...m, name };
   });
   const settings = (b.settings && typeof b.settings === "object" ? b.settings : {}) as Settings;
+  // the logo, then the taste's pictures, as STYLE references: only on picture generators that take them, as far as there is room
+  const extra = look ? await lookRefs(user.id, def, refStyle, settings, meta, look) : null;
+  const extraMeta = extra ? [...(extra.logo ? [extra.logo] : []), ...extra.taste] : [];
+  for (const m of extraMeta) meta.push({ ...m, name: m.name ?? "" });
   const prompt = typeof b.prompt === "string" ? b.prompt : "";
   // A performance description is only for generators that take one (a page left from another generator may send it)
   const instructions = def.extraText && typeof b.instructions === "string" ? b.instructions : "";
@@ -325,7 +340,10 @@ export async function createJob(user: { id: string; email?: string | null }, own
   // «الستايل»: one of the library's styles chosen under the prompt — its text goes into what the model reads as the look
   const style = def.output !== "audio" && typeof b.styleId === "string" ? findStyle(b.styleId) : undefined;
   const asWritten = def.refLabel ? promptForModel(prompt, meta, def.refLabel).text : prompt;
-  const modelPrompt = style ? withStyle(asWritten, style.text, def.output === "video" ? style.videoText : undefined) : asWritten;
+  let modelPrompt = style ? withStyle(asWritten, style.text, def.output === "video" ? style.videoText : undefined) : asWritten;
+  // «ذوقي»: its words like a style, its pictures named as style references only; «هويتي»: colours, fonts, voice, logo
+  if (look?.taste) modelPrompt = withTaste(modelPrompt, look.taste.description, labelsOf(meta, extra?.taste.map((m) => m.id) ?? [], def.refLabel));
+  if (look?.brand) modelPrompt = withBrand(modelPrompt, look.brand, def.output, extra?.logo ? labelsOf(meta, [extra.logo.id], def.refLabel)[0] : null);
 
   // made inside a team series' edit («المسلسل الذكي»): its «نقود الفريق الذكي» pays, not the person's own coins
   const teamPays = !signupFreeImage && !freeFirst && !owner && !!server.team && payCoins > 0;
@@ -341,7 +359,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
       mode: e.mode.id,
       output_kind: def.output,
       prompt,
-      inputs: { settings: e.settings, instructions, refStyle, origin, ...(server.cartoon ? { cartoon: server.cartoon } : {}), ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}), ...(signupFreeImage ? { signupFreeImage: true } : {}), ...(def.output === "audio" && findClaudeModel(b.model) ? { claude: String(b.model) } : {}) },
+      inputs: { settings: e.settings, instructions, refStyle, origin, ...(server.cartoon ? { cartoon: server.cartoon } : {}), ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(look?.taste ? { taste: { id: look.taste.id, name: look.taste.name } } : {}), ...(look?.brand ? { brand: { logo: Boolean(extra?.logo) } } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}), ...(signupFreeImage ? { signupFreeImage: true } : {}), ...(def.output === "audio" && findClaudeModel(b.model) ? { claude: String(b.model) } : {}) },
       refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
       price_coins: chargeCoins,
       price_breakdown: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : freeFirst ? [{ label: "أول تجربة مجانية", centi: 0 }] : payLines,

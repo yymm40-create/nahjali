@@ -12,6 +12,7 @@ import { MAX_UPLOAD_BYTES, probe, sniff, UPLOAD_EXT, UPLOAD_MIMES } from "../med
 import { FILM_BUCKET } from "@/lib/film/types";
 import { JAWAD_BUCKET } from "./runtime";
 import { inLibrary } from "./library-access";
+import { keptByTaste } from "./taste-kept";
 
 import { storage } from "@/lib/storage";
 export interface UploadRow {
@@ -182,6 +183,8 @@ export async function deleteUpload(userId: string, id: unknown) {
   if (!row) return;
   // A picture kept in «المكتبة» stays (removing it from a draft's references doesn't delete it from the library)
   if (await inLibrary(row.id)) return;
+  // the same for a picture of «ذوقي» or the logo of «هويتي»
+  if (await keptByTaste(row.id)) return;
   // A reference an unfinished job still needs is kept until that job ends
   const { data: open } = await db()
     .from("jawad_jobs")
