@@ -28,14 +28,14 @@ describe("the balance packages", () => {
     const total = video + pictures + robots;
     expect(SCENE_PACK_SAR * 100).toBeGreaterThanOrEqual(total);
     expect(SCENE_PACK_SAR * 100 - total).toBeLessThan(100);
-    expect(SCENE_PACK_SAR).toBe(31);
+    expect(SCENE_PACK_SAR).toBe(30);
     expect(SCENE_PACK_SAR).toBeLessThanOrEqual(50);
   });
   it("say what each package makes (pictures, 5-second videos, scenes, study summaries), each on its own", () => {
     const u = { image: 100, video5: 450, scene: SCENE_PACK_SAR * 100, summary: STUDENT_SUMMARY_HALALAS };
     expect(packYield(10, u)).toEqual({ images: 10, videos: 2, scenes: 0, summaries: 1 });
-    expect(packYield(SCENE_PACK_SAR, u)).toEqual({ images: 31, videos: 6, scenes: 1, summaries: 5 });
-    expect(packYield(549, u).scenes).toBe(17);
+    expect(packYield(SCENE_PACK_SAR, u)).toEqual({ images: 30, videos: 6, scenes: 1, summaries: 5 });
+    expect(packYield(549, u).scenes).toBe(18);
     expect(packYield(10, { image: 0, video5: 0, scene: 0, summary: 0 })).toEqual({ images: 0, videos: 0, scenes: 0, summaries: 0 });
     // «الطالب الذكي» makes one short PDF's summary comfortably, often two (measured: ¤2.40–¤8 each)
     expect(packYield(STUDENT_PACK_SAR, u).summaries).toBe(2);

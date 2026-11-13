@@ -1264,7 +1264,7 @@ export default function Studio({ section, studioSections, generators: allGenerat
                 {price != null && (
                   <span className="ms-1 flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--jw-on-accent)_15%,transparent)] px-2 py-0.5 text-sm">
                     {/* the owner sees the very price a customer sees (and the note below: nothing is taken from him) */}
-                    <Riyal halalas={price} was={ev?.price.ok ? ev.price.was : null} size={15} />
+                    <Riyal halalas={price} size={15} />
                   </span>
                 )}
               </button>

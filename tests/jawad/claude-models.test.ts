@@ -54,25 +54,25 @@ describe("the four minds", () => {
   });
 });
 
-describe("the platform's 60% on Claude's usage («حيدرا ماكس» too)", () => {
+describe("the platform's 30% on Claude's usage («حيدرا ماكس» too)", () => {
   setPricing(null);
-  it("is the real cost plus 60% — rounded up to the halala only", () => {
-    expect(CLAUDE_MARGIN_PCT).toBe(60);
+  it("is the real cost plus 30% — rounded up to the halala only", () => {
+    expect(CLAUDE_MARGIN_PCT).toBe(30);
     for (const usd of [0.0003, 0.002, 0.03, 0.12, 0.5, 1.37, 9.99]) {
       const cost = costHalalas(usd);
       const exact = usd * 3.75 * 100;
       const price = claudeHalalas(usd);
-      expect(price, String(usd)).toBeGreaterThanOrEqual(exact * 1.6 - 1e-9);
-      // never more than the 60% and one halala of rounding
-      expect(price, String(usd)).toBeLessThanOrEqual(Math.ceil(exact * 1.6) + 0);
-      expect(claudeHalalas(usd, undefined, "max"), String(usd)).toBe(Math.max(1, Math.ceil(exact * 1.6 - 1e-9)));
+      expect(price, String(usd)).toBeGreaterThanOrEqual(exact * 1.3 - 1e-9);
+      // never more than the 30% and one halala of rounding
+      expect(price, String(usd)).toBeLessThanOrEqual(Math.ceil(exact * 1.3) + 0);
+      expect(claudeHalalas(usd, undefined, "max"), String(usd)).toBe(Math.max(1, Math.ceil(exact * 1.3 - 1e-9)));
       expect(price).toBeGreaterThanOrEqual(cost);
     }
   });
 
   it("is under the general price (which rounds to the half riyal)", () => {
-    expect(claudeHalalas(0.12)).toBe(72);
-    expect(coinsFor(0.12)).toBe(100);
+    expect(claudeHalalas(0.12)).toBe(59); // 45 × 1.3 = 58.5 → 59
+    expect(coinsFor(0.12)).toBe(100); // 0.45 → 0.50 + (0.27 → 0.50)
     expect(claudeHalalas(0)).toBe(0);
   });
 
@@ -86,9 +86,9 @@ describe("the platform's 60% on Claude's usage («حيدرا ماكس» too)", (
 });
 
 describe("what the robots know about it", () => {
-  it("names the four minds by our names, the 10% and the microphone — and never the real models", () => {
+  it("names the four minds by our names, the 30% and the microphone — and never the real models", () => {
     for (const m of CLAUDE_MODELS) expect(JAWAD_KNOWLEDGE, m.id).toContain(`«${m.name}»`);
-    expect(JAWAD_KNOWLEDGE).toContain("10٪");
+    expect(JAWAD_KNOWLEDGE).toContain("plus 30٪");
     expect(JAWAD_KNOWLEDGE).toContain("microphone");
     const para = JAWAD_KNOWLEDGE.slice(JAWAD_KNOWLEDGE.indexOf("The robots' own thinking"), JAWAD_KNOWLEDGE.indexOf("advise them by these lines."));
     expect(para.length).toBeGreaterThan(500);
