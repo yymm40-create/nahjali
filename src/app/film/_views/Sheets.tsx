@@ -1,4 +1,5 @@
 import { credits } from "@/lib/film/credits";
+import Coined from "@/components/Coined";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
@@ -43,7 +44,7 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
         <h1 className={project.series_id ? "display text-4xl" : "display text-2xl"}>🎨 صانع الشيت</h1>
         <p className="text-sm font-bold text-muted">
           خريطة الشيتات ← اختبار الستايل (كل ستايل بصورته) ← بس تعتمد الستايل ينرسم الماستر وكل الشيتات لحالهم ← تعتمد الصور (الكل، المحدد، أو وحدة وحدة)، وبعدها ينتقل تلقائيًا للمخرج.
-          النصوص <span>{credits(cost.byService.anthropic ?? 0, "claude")}</span> · الصور <span>{credits(cost.byService.openai_image ?? 0, "image")}</span>
+          النصوص <span><Coined text={credits(cost.byService.anthropic ?? 0, "claude")} /></span> · الصور <span><Coined text={credits(cost.byService.openai_image ?? 0, "image")} /></span>
         </p>
       </header>
       <SheetsWorkspace

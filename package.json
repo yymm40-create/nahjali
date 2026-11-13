@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@mediabunny/aac-encoder": "^1.61.3",
+    "@mediabunny/mp3-encoder": "^1.65.2",
     "@mediapipe/tasks-vision": "^1.0.1",
     "@shiguredo/rnnoise-wasm": "^2025.1.5",
     "@sparticuz/chromium": "^153.0.0",

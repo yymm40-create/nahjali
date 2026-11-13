@@ -24,12 +24,14 @@ export function placeMusic(assetId: string, at: number): Command[] {
 }
 
 /** The parts of a clip's sound (talking, music, effects — in that order), each on its own sound track. */
-export function placeStems(clip: Pick<Clip, "id" | "start" | "speed">, assetIds: string[]): Command[] {
+export function placeStems(clip: Pick<Clip, "id" | "start" | "speed" | "ramp">, assetIds: string[]): Command[] {
   const cmds: Command[] = [];
   assetIds.forEach((id, i) => {
     cmds.push({ type: "add_clip", assetId: id, trackId: "new", at: clip.start });
     const ref = `$${cmds.length}`;
-    if (clip.speed !== 1) cmds.push({ type: "update_clip", clipId: ref, patch: { speed: clip.speed } });
+    // the same speed (or the same speed curve: each part is the clip's own seconds), so they stay in step
+    if (clip.ramp) cmds.push({ type: "update_clip", clipId: ref, patch: { ramp: clip.ramp } });
+    else if (clip.speed !== 1) cmds.push({ type: "update_clip", clipId: ref, patch: { speed: clip.speed } });
     if (i === 1) cmds.push({ type: "update_track", trackId: ref, patch: { duck: false } });
   });
   cmds.push({ type: "update_clip", clipId: clip.id, patch: { volume: 0 } });

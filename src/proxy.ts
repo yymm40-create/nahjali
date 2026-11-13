@@ -130,5 +130,5 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   // Skip static assets and image files
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|editor-sw\\.js|.*\\.(?:png|jpg|jpeg|svg|webp|webmanifest)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|vendor/|\\.well-known/|mahdi/android/|editor-sw\\.js|.*\\.(?:png|jpg|jpeg|svg|webp|webmanifest)$).*)"],
 };

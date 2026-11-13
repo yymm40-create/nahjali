@@ -1,6 +1,7 @@
 "use client";
 
 import { creditsRange } from "@/lib/film/credits";
+import Coined from "@/components/Coined";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useCallback, useTransition } from "react";
@@ -198,7 +199,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
           <button className="btn btn-primary w-full text-xl" disabled={busy} onClick={() => send({ action: "start", superDirector: useSuper })}>
             {busy ? "نرسل…" : "ابدأ مع المخرج"}
           </button>
-          <p className="text-center text-xs font-bold text-muted">كل رد {creditsRange(0.05, 1, "claude")}</p>
+          <p className="text-center text-xs font-bold text-muted">كل رد <Coined text={creditsRange(0.05, 1, "claude")} /></p>
         </div>
       ) : (
         <section className="card flex flex-wrap items-center justify-between gap-2 p-4">

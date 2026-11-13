@@ -19,10 +19,10 @@ export const GET = handle(async (req: Request) => {
   await owner();
   const status = new URL(req.url).searchParams.get("status");
   const [settings, orders] = await Promise.all([loadCreditSettings(), listCreditOrders(STATUSES.includes(status as CreditStatus) ? (status as CreditStatus) : undefined)]);
-  return NextResponse.json({ settings, orders, telegram: telegramFull() });
+  return NextResponse.json({ settings, orders, telegram: telegramFull(), now: Date.now() });
 });
 
-/** save { settings: { packs, featured, whatsapp } } · confirm { id } · reject { id, note? } */
+/** save { settings: { packs, featured, whatsapp } } · codes { codes: [{ code, pct, until }] } · confirm { id } · reject { id, note? } */
 export const POST = handle(async (req: Request) => {
   const user = await owner();
   const by = user.email ?? user.id;
@@ -32,6 +32,8 @@ export const POST = handle(async (req: Request) => {
       const s = (b.settings && typeof b.settings === "object" ? b.settings : {}) as Record<string, unknown>;
       return NextResponse.json({ settings: await saveCreditSettings({ packs: s.packs, featured: s.featured, whatsapp: s.whatsapp }, by) });
     }
+    case "codes":
+      return NextResponse.json({ settings: await saveCreditSettings({ codes: b.codes }, by) });
     case "confirm":
       if (typeof b.id !== "string") throw new UserError("طلب غير صحيح.", 400);
       return NextResponse.json(await confirmCreditOrder(b.id, by));

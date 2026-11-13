@@ -8,50 +8,51 @@ import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { rememberPick } from "@/lib/mahdi/client/look-pick";
 import type { Shrine } from "@/lib/mahdi/types";
 import Icon from "@/components/mahdi/Icon";
-import { ShrinePicker, ThemePicker } from "@/components/mahdi/LookPickers";
 import { useLook } from "@/components/mahdi/ThemeRoot";
+import { NEWCOMER } from "@/components/mahdi/FirstSteps";
 
-export default function Onboarding({ shrines, suggestedName, username: existingUsername }: { shrines: Shrine[]; suggestedName: string; username: string | null }) {
+export default function Onboarding({ suggestedName, username: existingUsername }: { shrines: Shrine[]; suggestedName: string; username: string | null }) {
   const router = useRouter();
   const look = useLook();
   const [step, setStep] = useState(0);
   const [name, setName] = useState(suggestedName);
   // the @username was claimed from the name on the way in; a taken name is sorted out later in «المزيد»
   const username = existingUsername;
-  const [shrineId, setShrineId] = useState(look.shrine?.id ?? DEFAULT_SHRINE);
+  const shrineId = look.shrine?.id ?? DEFAULT_SHRINE;
   const [project, setProject] = useState("");
   const [custom, setCustom] = useState("");
+  const [habit, setHabit] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const steps = t.onboarding.steps;
 
+  // The look (shrine and design) is no longer asked here: the first «تم» comes first, and the home invites the
+  // person to pick their look right after it (FirstSteps). The account starts with the look on the screen now.
   async function saveProfile() {
-    setBusy(true);
-    setError("");
-    try {
-      const { profile: saved } = await mahdiFetch<{ profile: { theme: MahdiTheme; userId: string } }>("/api/mahdi/profile", {
-        method: "POST",
-        json: { displayName: name.trim(), shrineId, theme: look.theme, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Riyadh" },
-      });
-      // the pick stays on this device too, in case the account could not keep it
-      rememberPick(saved.userId, look.theme, saved.theme);
-      setStep(2);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-    setBusy(false);
+    const { profile: saved } = await mahdiFetch<{ profile: { theme: MahdiTheme; userId: string } }>("/api/mahdi/profile", {
+      method: "POST",
+      json: { displayName: name.trim(), shrineId, theme: look.theme, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Riyadh" },
+    });
+    // the pick stays on this device too, in case the account could not keep it
+    rememberPick(saved.userId, look.theme, saved.theme);
   }
 
+  /** Name → project + first habit → the home, where one tap gives the first «تم». */
   async function finish(withProject: boolean) {
     setBusy(true);
     setError("");
     try {
+      await saveProfile();
+      try {
+        localStorage.setItem(NEWCOMER, "1");
+      } catch {}
       const chosen = custom.trim() || project;
       if (withProject && chosen) {
         const icon = PROJECT_SUGGESTIONS.find((s) => s.name === chosen)?.icon ?? "";
         const { id } = await mahdiFetch<{ id: string }>("/api/mahdi/projects", { method: "POST", json: { name: chosen, icon } });
-        router.replace(`/mahdi/projects/${id}`);
-      } else router.replace("/mahdi");
+        await mahdiFetch("/api/mahdi/habits", { method: "POST", json: { projectId: id, name: habit.trim(), measure: "check", freq: "daily", target: 1 } });
+      }
+      router.replace("/mahdi");
       router.refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -60,7 +61,6 @@ export default function Onboarding({ shrines, suggestedName, username: existingU
   }
 
   const next = () => setStep((s) => s + 1);
-  const back = () => setStep((s) => Math.max(0, s - 1));
 
   return (
     <main id="m-main" className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col justify-end gap-6 px-4 pb-10 pt-[20vh]">
@@ -110,29 +110,6 @@ export default function Onboarding({ shrines, suggestedName, username: existingU
         )}
 
         {step === 1 && (
-          <div className="space-y-5">
-            <h1 className="text-2xl font-semibold">{t.onboarding.lookTitle}</h1>
-            <div className="space-y-2">
-              <p className="m-hint">{t.onboarding.shrineHint}</p>
-              <ShrinePicker
-                shrines={shrines}
-                value={shrineId}
-                onChange={(s) => {
-                  setShrineId(s.id);
-                  look.setShrine(s);
-                }}
-              />
-            </div>
-            <div className="space-y-2">
-              <p className="m-hint">{t.onboarding.themeHint}</p>
-              <ThemePicker value={look.theme} onChange={(th: MahdiTheme) => look.setTheme(th)} />
-            </div>
-            {error && <p className="m-error" role="alert">{error}</p>}
-            <Nav back={back} next={saveProfile} canNext={!busy} label={busy ? t.common.saving : t.common.next} />
-          </div>
-        )}
-
-        {step === 2 && (
           <div className="space-y-4">
             <h1 className="text-2xl font-semibold">{t.onboarding.projectTitle}</h1>
             <p className="m-hint">{t.onboarding.projectHint}</p>
@@ -157,9 +134,14 @@ export default function Onboarding({ shrines, suggestedName, username: existingU
               <span className="sr-only">{t.onboarding.projectCustom}</span>
               <input className="m-field" value={custom} onChange={(e) => setCustom(e.target.value)} maxLength={MAHDI_LIMITS.projectNameMax} placeholder={t.onboarding.projectCustom} />
             </label>
+            <label className="block space-y-1">
+              <span className="font-semibold">{t.onboarding.habitTitle}</span>
+              <input className="m-field text-lg" value={habit} onChange={(e) => setHabit(e.target.value)} maxLength={MAHDI_LIMITS.habitNameMax} placeholder={t.onboarding.habitPlaceholder} />
+              <span className="m-hint block">{t.onboarding.habitHint}</span>
+            </label>
             {error && <p className="m-error" role="alert">{error}</p>}
-            <button type="button" className="m-btn m-btn-primary w-full" disabled={busy || !(custom.trim() || project)} onClick={() => finish(true)}>
-              {busy ? t.common.saving : t.onboarding.projectCreate}
+            <button type="button" className="m-btn m-btn-primary w-full" disabled={busy || !(custom.trim() || project) || !habit.trim()} onClick={() => finish(true)}>
+              {busy ? t.common.saving : t.onboarding.habitCreate}
             </button>
             <button type="button" className="m-btn m-btn-quiet w-full" disabled={busy} onClick={() => finish(false)}>
               {t.onboarding.skip}
@@ -169,18 +151,5 @@ export default function Onboarding({ shrines, suggestedName, username: existingU
         {error && step === 0 && <p className="m-error" role="alert">{error}</p>}
       </section>
     </main>
-  );
-}
-
-function Nav({ back, next, canNext, submit, label = t.common.next }: { back: () => void; next?: () => void; canNext: boolean; submit?: boolean; label?: string }) {
-  return (
-    <div className="flex gap-3 pt-2">
-      <button type="button" className="m-btn m-btn-ghost" onClick={back}>
-        <Icon name="chevronRight" size={18} /> {t.common.back}
-      </button>
-      <button type={submit ? "submit" : "button"} className="m-btn m-btn-primary flex-1" disabled={!canNext} onClick={submit ? undefined : next}>
-        {label} <Icon name="chevronLeft" size={18} />
-      </button>
-    </div>
   );
 }

@@ -19,11 +19,12 @@ const hann = (n: number) => {
 /**
  * Plays `channels` from sample `from` at `speed` × and returns `outLen` samples per channel. The source must hold
  * about `outLen × speed + 2 × window` samples after `from` (fewer: the end is silent). `sr` is the sample rate (it
- * sizes the window; 48 kHz when not given).
+ * sizes the window; 48 kHz when not given). `map` («منحنى السرعة»): a speed that changes — for output sample `o`, how
+ * many source samples after `from` to read (rising); the windows then follow it instead of `o × speed`.
  */
-export function stretch(channels: Float32Array[], from: number, speed: number, outLen: number, sr = 48_000): Float32Array[] {
+export function stretch(channels: Float32Array[], from: number, speed: number, outLen: number, sr = 48_000, map?: (o: number) => number): Float32Array[] {
   const len = channels[0]?.length ?? 0;
-  if (speed === 1) {
+  if (speed === 1 && !map) {
     // nothing to stretch: the very samples, so ×1 never loses a thing
     return channels.map((ch) => {
       const o = new Float32Array(outLen);
@@ -44,7 +45,7 @@ export function stretch(channels: Float32Array[], from: number, speed: number, o
 
   let prev = -1;
   for (let o = 0; o < outLen; o += HOP) {
-    let pos = Math.round(from + o * speed);
+    let pos = Math.round(from + (map ? map(o) : o * speed));
     if (prev >= 0) {
       // the natural continuation of the last window, and the nearby window that matches it best — matched by shape
       // (normalised), not by loudness, so a louder spot nearby never wins over the right one

@@ -67,7 +67,9 @@ export async function coinsRequired() {
 
 // ── the pricing in force: the owner's settings (film_limits) over the defaults, read once a minute
 let pricingAt = 0;
-const PRICING_KEYS: Record<string, keyof Pricing> = { price_usd_sar_x100: "usdToSar", price_step_halalas: "stepHalalas", price_margin_pct: "marginPct", price_was_margin_pct: "wasMarginPct", price_image_margin_pct: "imageMarginPct", price_video_margin_pct: "videoMarginPct" };
+// the profit is one number now (the owner, 13 November 2026: 60٪ on everything but Claude's work): a new key, so the old
+// per-kind margins still stored (price_margin_pct 40, price_image_margin_pct 30…) no longer apply
+const PRICING_KEYS: Record<string, keyof Pricing> = { price_usd_sar_x100: "usdToSar", price_step_halalas: "stepHalalas", price_profit_pct: "marginPct" };
 export async function loadPricing(force = false): Promise<Pricing> {
   if (!force && Date.now() - pricingAt < 60_000) return (await import("@config/coins")).getPricing();
   const { data } = await db().from("film_limits").select("key,value").eq("scope", "all").eq("target", "").in("key", Object.keys(PRICING_KEYS));

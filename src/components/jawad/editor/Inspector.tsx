@@ -3,6 +3,9 @@
 import LabPiece from "./LabPiece";
 import MotionPanel from "./MotionPanel";
 import CropPanel from "./CropPanel";
+import ReframeBox from "./ReframeBox";
+import MulticamBox, { AngleSwap } from "./MulticamBox";
+import SpeedRamp from "./SpeedRamp";
 import type { LabSource } from "./MotionLab";
 import { useEffect, useState } from "react";
 import { setStemQuality, stemQuality, type StemQuality } from "./make";
@@ -22,6 +25,7 @@ import {
   RATIOS,
   ratioOf,
   sourceTime,
+  timelineTime,
   transformAt,
   type Anim,
   type AnimKind,
@@ -55,8 +59,9 @@ import { clipSound } from "./voice";
 import { detectBeats, peaksOf } from "./peaks";
 import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
+import { track as trackUse } from "@/lib/feature-track";
 
-export type Run = (cmd: Command | Command[], opts?: { label?: string; coalesce?: string }) => unknown;
+export type Run = (cmd: Command | Command[], opts?: { label?: string; coalesce?: string; /** made by حيدرا ماكس (his turn, in «سجل التغييرات») */ by?: "haidara" }) => unknown;
 export type InspectorTab = "basic" | "crop" | "motion" | "opacity" | "anim" | "fx" | "color" | "backdrop" | "transition" | "sound";
 
 const COLORS = ["#ffffff", "#000000", "#b8f53d", "#facc15", "#f43f5e", "#22d3ee", "#a78bfa", "#fb923c"];
@@ -193,6 +198,7 @@ export default function Inspector({
             <p className="text-[11px] leading-5 text-jw-faint">يثبّت أول مقطع، ويحرّك الباقي لين ينطبق صوتهم عليه.</p>
           </div>
         )}
+        <MulticamBox tl={tl} selected={selected} assets={assets} run={run} readOnly={readOnly} flash={flash} />
         {selected.length > 1 && (() => {
           // the colour grading of the first selected picture, spread onto the others (or a grading copied earlier onto all of them)
           const okIds = new Set(gradeable(tl, selected));
@@ -227,6 +233,7 @@ export default function Inspector({
             ))}
           </div>
         </div>
+        <ReframeBox tl={tl} assets={assets} run={run} readOnly={readOnly} flash={flash} />
         <label className="flex items-center justify-between gap-2 text-xs text-jw-muted">
           لون الخلفية
           <input type="color" disabled={readOnly} value={tl.background} onChange={(e) => run({ type: "set_background", color: e.target.value }, { coalesce: "bg" })} className="h-8 w-12 cursor-pointer rounded border border-jw-line bg-transparent" />
@@ -375,12 +382,13 @@ export default function Inspector({
 
   const beats = async () => {
     if (!a) return;
+    trackUse("editor.beat");
     setBeatBusy(true);
     try {
       const peaks = await peaksOf(a.id, a.url);
       const r = peaks ? detectBeats(peaks, clip.in, clip.out) : null;
       if (!r || !r.beats.length) return flash("ما قدرنا نلقى إيقاعًا واضحًا في هذا الصوت.", true);
-      const marks = r.beats.map((s) => Math.round(clip.start + (s - clip.in) / clip.speed)).filter((m) => m >= clip.start && m < clipEnd(clip));
+      const marks = r.beats.map((s) => Math.round(timelineTime(clip, s))).filter((m) => m >= clip.start && m < clipEnd(clip));
       run({ type: "set_markers", markers: marks, mode: "add" });
       flash(`الإيقاع ${r.bpm} ضربة في الدقيقة: ${marks.length} علامة؛ القص والسحب يلتصقون عليها.`);
     } finally {
@@ -421,6 +429,7 @@ export default function Inspector({
 
       {current === "basic" && (
         <div className="space-y-3">
+          {clip.angle && <AngleSwap tl={tl} clipId={clip.id} run={run} locked={locked} />}
           {a?.kind === "video" && onSceneCut && <SceneCut clipId={clip.id} locked={locked} run={onSceneCut} />}
           {a?.kind === "video" && a.status === "ready" && onExtend && (
             <div className="space-y-2 rounded-xl border border-cyan-400/35 bg-gradient-to-br from-cyan-400/10 via-jw-surface-2 to-violet-500/10 p-2.5">
@@ -509,7 +518,7 @@ export default function Inspector({
           )}
           {text && <TextControls text={text} locked={locked} setText={setText} />}
           {text && !clip.motion && (
-            <button type="button" disabled={locked} className="jw-btn jw-btn-quiet w-full text-xs" onClick={() => run({ type: "behind_person", clipId: clip.id })} title="ننسخ الفيديو اللي تحت الكتابة بنفس ثوانيها ونشيل خلفيته في مسار فوقها، فيصير الشخص قدّام الكلام">
+            <button type="button" disabled={locked} className="jw-btn jw-btn-quiet w-full text-xs" onClick={() => (trackUse("editor.depth"), run({ type: "behind_person", clipId: clip.id }))} title="ننسخ الفيديو اللي تحت الكتابة بنفس ثوانيها ونشيل خلفيته في مسار فوقها، فيصير الشخص قدّام الكلام">
               🧍 حط الكتابة ورا الشخص
             </button>
           )}
@@ -532,13 +541,14 @@ export default function Inspector({
               <span className="text-xs text-jw-muted">السرعة — مثل يوتيوب: الصوت يحتفظ بطبقته ونبرته، بدون صوت «سناجب» ولا ثقل</span>
               <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="السرعة">
                 {SPEEDS.map((s) => (
-                  <button key={s} type="button" role="radio" aria-checked={clip.speed === s} disabled={locked} onClick={() => run({ type: "update_clip", clipId: clip.id, patch: { speed: s } })} dir="ltr" className={`jw-chip !px-2.5 !py-1 !text-xs ${clip.speed === s ? "!border-jw-accent !text-jw-ink" : ""}`}>
+                  <button key={s} type="button" role="radio" aria-checked={!clip.ramp && clip.speed === s} disabled={locked} onClick={() => run({ type: "update_clip", clipId: clip.id, patch: { speed: s } })} dir="ltr" className={`jw-chip !px-2.5 !py-1 !text-xs ${!clip.ramp && clip.speed === s ? "!border-jw-accent !text-jw-ink" : ""}`}>
                     {s === 1 ? "عادي" : `×${s}`}
                   </button>
                 ))}
               </div>
               <Slider label="مخصص" value={clip.speed} min={0.25} max={4} step={0.05} disabled={locked} ltr onChange={(v) => set({ speed: Math.round(v * 100) / 100 }, "speed")} format={(v) => `×${v.toFixed(2)}`} />
-              <p className="text-[11px] text-jw-faint">طول المقطع على التايملاين يصير {formatTime(clipLength(clip))}.</p>
+              <p className="text-[11px] text-jw-faint">طول المقطع على التايملاين يصير {formatTime(clipLength(clip))}.{clip.ramp ? " (السرعة الثابتة تشيل المنحنى)" : ""}</p>
+              {!clip.seq && <SpeedRamp clip={clip} locked={locked} run={run} />}
             </div>
           )}
           {sound && soundButtons}

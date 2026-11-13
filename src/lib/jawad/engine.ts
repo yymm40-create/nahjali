@@ -14,7 +14,7 @@ import type {
   Settings,
 } from "@config/jawad/types";
 import { findMentions, looksLikeRef, sameName } from "./mentions";
-import { coinsOf, priceKindOf, wasOf } from "@config/jawad/generators";
+import { coinsOf, priceKindOf } from "@config/jawad/generators";
 import { costOfLines } from "@config/coins";
 
 export interface EvalInput {
@@ -202,7 +202,7 @@ export function evaluate(def: GeneratorDef, input: EvalInput, prices: Record<str
   // the profit follows what is made: GPT Image 2's pictures, videos, the rest the general margin (config/coins.ts)
   const kind = priceKindOf(def);
   const centi = quoted.ok ? quoted.lines.reduce((sum, l) => sum + l.centi, 0) : 0;
-  const price: PriceResult = quoted.ok ? (input.atCost && centi > 0 ? { ...quoted, coins: costOfLines(quoted.lines), was: undefined } : { ...quoted, coins: coinsOf(centi, kind), was: wasOf(centi, kind) }) : quoted;
+  const price: PriceResult = quoted.ok ? (input.atCost && centi > 0 ? { ...quoted, coins: costOfLines(quoted.lines) } : { ...quoted, coins: coinsOf(centi, kind) }) : quoted;
   if (!price.ok) issues.push({ field: "price", message: price.reason });
 
   return {

@@ -16,6 +16,8 @@ import Icon from "../Icon";
 import type { Run } from "./Inspector";
 import { RECIPES } from "./recipes";
 import type { EditorAsset } from "./types";
+import { recipeFeature } from "@config/feature-use";
+import { track } from "@/lib/feature-track";
 
 export interface PluginContext {
   projectId: string;
@@ -57,6 +59,7 @@ export function PluginTools({ plugins = PLUGINS, ctx, run, flash, readOnly, inli
   const go = async (p: EditorPlugin) => {
     setOpen(false);
     setBusy(p.id);
+    track(recipeFeature(p.id));
     try {
       const cmds = await p.run(ctx());
       if (cmds.length) run(cmds, { label: p.label });

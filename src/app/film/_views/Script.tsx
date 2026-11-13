@@ -1,4 +1,5 @@
 import { credits } from "@/lib/film/credits";
+import Coined from "@/components/Coined";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
@@ -22,7 +23,7 @@ export default async function ScriptView({ id, base }: { id: string; base: strin
         <h1 className={project.series_id ? "display text-4xl" : "display text-2xl"}>✍️ السيناريست</h1>
         <p className="text-sm font-bold text-muted">
           يبدأ لحاله من قصتك: يفهمها ← جولة أسئلة وحدة للرحلة كلها (القصة، شكل الشخصيات والأماكن، الإخراج) ← السيناريو مع القصة المطوّرة، وبعد اعتماده ينتقل تلقائيًا لصانع الشيت.
-          تكلفة النصوص إلى الآن: <span>{credits(scriptCost, "claude")}</span>
+          تكلفة النصوص إلى الآن: <span><Coined text={credits(scriptCost, "claude")} /></span>
         </p>
       </header>
       <ScriptWorkspace

@@ -6,7 +6,8 @@ import MotionLab, { type FilmPlacer, type LabSource, type LabView } from "./Moti
 import type { FootageSource } from "./lab-footage";
 import { NEW_TITLE, readTabs, storeOf, tabsKey, type Tab } from "./lab-tabs";
 import { chatParam, conversationList, MAIN, MAIN_TITLE, mainRow, mergeStream, routeOf, saysEnough, timeOf, type ChatRow } from "./haidara-chats";
-import { clipEnd, duration, findClip, mainTrack, type Timeline } from "@/lib/editor/model";
+import { clipEnd, duration, findClip, mainTrack, ratioOf, timelineTime, type Timeline } from "@/lib/editor/model";
+import { rampKey } from "@/lib/editor/ramp";
 import { framesOf } from "./media";
 import { watchClip, watchFilm } from "./watch";
 import { rememberBackdrops } from "./backdrop-memory";
@@ -33,6 +34,9 @@ import StylePicker from "./StylePicker";
 import { MOTION_TEN } from "@/lib/editor/motion-ten";
 import { faceOnFrame, type FaceBox } from "@/lib/editor/talk-motion";
 import { faceIn } from "./face";
+import { reframeCandidates, reframeClips, reframeShape, stillThere } from "./reframe-run";
+import { defaultSound, multicamCameras, planMulticam } from "./multicam-run";
+import { MULTICAM } from "@/lib/editor/multicam";
 import Icon from "../Icon";
 import { blobBase64, canTalk, hear, hush, record, SILENT_PEAK, REPLY_VOICE_KEY, replyVoice, say, wavOf, type RecordingHandle } from "./talk";
 import { useUploads } from "./useUploads";
@@ -48,6 +52,9 @@ import { useClaudeModel } from "@/components/robots/claude-model";
 import { codeEdit, codeGrade, type CodeDeps } from "./claude-code";
 import { cleanVoice } from "@/components/claude-code/clean-voice";
 import type { AssetInfo } from "@/lib/editor/model";
+import HaidaraRules from "./HaidaraRules";
+import { localRules } from "./haidara-rules";
+import { track as trackUse } from "@/lib/feature-track";
 
 interface Msg {
   role: "user" | "assistant";
@@ -104,8 +111,8 @@ async function quietParts(tl: Timeline, assets: Map<string, EditorAsset>) {
         if (quiet && start < 0) start = k;
         if (!quiet && start >= 0) {
           if (k - start >= PEAK_RATE / 2) {
-            const s = ((start / PEAK_RATE) * 1000 - c.in) / c.speed + c.start;
-            const e = ((k / PEAK_RATE) * 1000 - c.in) / c.speed + c.start;
+            const s = timelineTime(c, (start / PEAK_RATE) * 1000);
+            const e = timelineTime(c, (k / PEAK_RATE) * 1000);
             ranges.push([Math.round(s), Math.round(Math.min(e, clipEnd(c)))]);
           }
           start = -1;
@@ -261,10 +268,11 @@ function Conversation({
     tlRef.current = tl;
   }, [tl]);
   // everything حيدرا ماكس applies goes through here: each clip's background and colour key are remembered first, so
-  // «↩️ رجّع الخلفية لما كانت» (its backdrop tab) can put them back if they ever come out broken
+  // «↩️ رجّع الخلفية لما كانت» (its backdrop tab) can put them back if they ever come out broken — and it is his in
+  // «سجل التغييرات» (saved at once, with his steps)
   const run: Run = (c, o) => {
     rememberBackdrops(tlRef.current);
-    return runEditor(c, o);
+    return runEditor(c, { ...o, by: "haidara" });
   };
   // «🩺 تشخيص»: the next message asks حيدرا ماكس to find what went wrong (the owner only)
   const [diagOn, setDiagOn] = useState(false);
@@ -337,7 +345,7 @@ function Conversation({
         const n = a.kind === "image" ? 1 : Math.min(6, Math.max(2, Math.round((c.out - c.in) / 2000)));
         const src = await framesOf(a.url, a.kind, c.in, c.out, n);
         // the moments on the timeline (what the person sees)
-        frames = await Promise.all(src.map(async (x) => ({ t: Math.round(c.start + (x.t - c.in) / c.speed), data: x.data, scope: await scopeOfJpeg(x.data) })));
+        frames = await Promise.all(src.map(async (x) => ({ t: Math.round(timelineTime(c, x.t)), data: x.data, scope: await scopeOfJpeg(x.data) })));
         seenFrames.current.set(key, frames);
       } catch {
         return null;
@@ -404,11 +412,11 @@ function Conversation({
     const a = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
     if (!f || !a?.url || a.kind !== "video") return null;
     const c = f.clip;
-    const key = `${c.id}:${c.in}:${c.out}:${c.start}:${c.speed}`;
+    const key = `${c.id}:${c.in}:${c.out}:${c.start}:${c.speed}:${c.ramp ? rampKey(c.ramp) : ""}`;
     const kept = watched.current.get(key);
     if (kept) return kept;
     try {
-      const w = await watchClip(a.url, { id: c.id, start: c.start, in: c.in, out: c.out, speed: c.speed || 1 }, setBusy, signal);
+      const w = await watchClip(a.url, { id: c.id, start: c.start, in: c.in, out: c.out, speed: c.speed || 1, ramp: c.ramp ?? null }, setBusy, signal);
       if (w.sheets.length) watched.current.set(key, w);
       return w.sheets.length ? w : null;
     } catch {
@@ -486,6 +494,7 @@ function Conversation({
   const talkFace = async (message: string): Promise<{ face: FaceBox; timeline: Timeline | null } | null> => {
     const talky = !!styleInText(message)?.talk || /على\s*كلام|موشن على|talk\)/.test(message);
     if (!talky) return null;
+    trackUse("editor.talk_reel");
     const main = mainTrack(tlRef.current);
     const first = main?.clips.find((c) => !c.text && c.assetId && assets.get(c.assetId)?.kind === "video");
     const a = first?.assetId ? assets.get(first.assetId) : null;
@@ -515,6 +524,7 @@ function Conversation({
     const lab = labRef.current;
     if (lab && routeOf(message, { focus, lab: lab.hasPiece || lab.search, pending: pending.length, search: lab.search }) === "lab") {
       if (lab.busy) return null;
+      trackUse("editor.motion_lab");
       setText("");
       setFocus(true);
       await lab.send(message);
@@ -525,6 +535,7 @@ function Conversation({
       return null;
     }
     sendingRef.current = true;
+    trackUse("editor.haidara_msg");
     abortRef.current = new AbortController();
     setCanStop(true);
     try {
@@ -598,6 +609,8 @@ function Conversation({
         refs: pending.map((a) => a.id),
         refLooks,
         face: found?.face ?? null,
+        // «تعليماتي الدايمة» as this device has them (the server's kept copy wins once there is one)
+        rules: localRules(),
       }, signal);
       setPending([]);
       setChat((x) => ({ ...x, spent: Math.max(0, Number(r.spent) || 0) }));
@@ -682,7 +695,36 @@ function Conversation({
             const usable = (id: string | null | undefined) => (id && labDeps?.footageClips.some((c) => c.clipId === id) ? id : null);
             const onClip = (q.clipId && findClip(tlRef.current, q.clipId) ? usable(q.clipId) : null) ?? (selected.length === 1 ? usable(selected[0]) : null);
             setFocus(true);
+            trackUse("editor.motion_lab");
             piece.start({ brief: q.prompt, seconds: Number(q.seconds) || 15, clipId: onClip, auto: saysEnough(message) });
+          } else if (q.kind === "multicam") {
+            // «بدّل الكاميرات تلقائياً»: each camera's microphone read here (free), the cuts as one undo
+            const ids = (q.clipId ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+            const cams = multicamCameras(tlRef.current, assets, ids, true);
+            if (cams.length < 2) throw new Error("ما لقيت كاميرتين متزامنتين؛ اختر الكاميرات واضغط «🎯 زامن الصوت» أول.");
+            trackUse("editor.multicam");
+            const secs = Number(q.seconds) || 0;
+            const minShotMs = secs > 0 ? Math.round(Math.min(MULTICAM.minShotRange[1], Math.max(MULTICAM.minShotRange[0], secs * 1000))) : MULTICAM.minShotMs;
+            const wide = q.text && cams.some((c) => c.clip.id === q.text.trim()) ? q.text.trim() : null;
+            const r = await planMulticam(cams, { minShotMs, wide, faces: false, sound: defaultSound(tlRef.current, cams, assets) }, (text) => setBusy(text), signal);
+            run(r.command, { label: `بدّل الكاميرات (${r.shots.length} لقطة)` });
+            setMsgs((m) => [...m, { role: "assistant", text: `بدّلت بين الكاميرات: ${r.notes.join(" ")} تقدر تبدّل زاوية أي لقطة من إعداداتها.` }]);
+          } else if (q.kind === "reframe") {
+            // «اتبع الوجه»: the shape first (when he named another), then each wide video follows its face (read here, free)
+            const shape = (["9:16", "1:1", "4:5"] as const).find((r) => r === q.aspect);
+            const shaped = shape && ratioOf(tlRef.current) !== shape ? (run({ type: "set_ratio", ratio: shape }, { label: `المقاس ${shape}` }) as { timeline: Timeline } | null) : null;
+            // (the panel's copy of the timeline catches up after the next render: the new shape is taken from the change itself)
+            const now = shaped?.timeline ?? tlRef.current;
+            const ids = (q.clipId ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+            const all = reframeCandidates(now, assets);
+            const picked = ids.length ? all.filter((x) => ids.includes(x.clip.id)) : all;
+            if (!reframeShape(now)) throw new Error("المقاس عرضي (16:9)؛ اتبع الوجه للمقاس الطولي أو المربع.");
+            if (!picked.length) throw new Error("ما فيه فيديو أعرض من الإطار أتبع فيه الوجه.");
+            trackUse("editor.auto_reframe");
+            const r = await reframeClips(now, picked, (text) => setBusy(text), signal);
+            const cmds = stillThere(tlRef.current, r.commands);
+            if (cmds.length) run(cmds, { label: r.done > 1 ? `اتبع الوجه (${r.done} مقاطع)` : "اتبع الوجه" });
+            if (r.noFace.length) setMsgs((m) => [...m, { role: "assistant", text: `ما لقيت وجه في: ${r.noFace.join("، ")} — خليتها مثل ما هي.` }]);
           } else if (q.kind === "watch") {
             // «👁️»: he needs to see the clip whole — it is watched, and he is asked again with it, by itself
             watchNext.current = q.clipId === FILM || findClip(tlRef.current, q.clipId) ? q.clipId : null;
@@ -791,6 +833,7 @@ function Conversation({
       setTalk(null);
       return;
     }
+    trackUse("editor.haidara_talk");
     talkRef.current = true;
     try {
       while (talkRef.current) {
@@ -1188,7 +1231,7 @@ function Conversation({
 
           <MediaStrip assets={assets} picked={pending} onPick={attach} disabled={readOnly} />
         </div>
-        <StylePicker open={gallery} disabled={readOnly || !!busy} onClose={() => setGallery(false)} onSend={(words) => void send(words)} />
+        <StylePicker open={gallery} disabled={readOnly || !!busy} onClose={() => setGallery(false)} onSend={(words) => (trackUse("editor.motion_styles"), void send(words))} />
       </div>
     );
   };
@@ -1240,6 +1283,7 @@ export default function AssistantPanel({
   open,
   hidden = false,
   onShow,
+  onLog,
   ...rest
 }: ConversationProps & {
   /** the motion lab inside his conversations (none: a project only read) */
@@ -1250,6 +1294,8 @@ export default function AssistantPanel({
   hidden?: boolean;
   /** brings the window back (the pill of a conversation at work) */
   onShow?: () => void;
+  /** opens «سجل التغييرات» (what he and the person changed, and «ارجع لهنا») */
+  onLog?: () => void;
 }) {
   const { projectId, readOnly } = rest;
   const [state, setState] = useState<{ tabs: OpenTab[]; active: string }>(() => withMain(null));
@@ -1384,6 +1430,12 @@ export default function AssistantPanel({
       <button type="button" className="hm-icon" aria-expanded={listOpen} onClick={() => (setListOpen((v) => !v), void loadRows())} title="المحادثات" aria-label="المحادثات">
         <span aria-hidden>🗂️</span>
       </button>
+      <HaidaraRules projectId={projectId} readOnly={readOnly} />
+      {onLog && (
+        <button type="button" className="hm-icon" onClick={onLog} title="سجل التغييرات: وش تغيّر ومين غيّره (أنت أو حيدرا ماكس)، وارجع لأي نقطة" aria-label="سجل التغييرات">
+          <Icon name="clock" size={17} />
+        </button>
+      )}
       {listOpen && (
         <>
           <button type="button" className="fixed inset-0 z-20 cursor-default" aria-label="إغلاق" onClick={() => setListOpen(false)} />

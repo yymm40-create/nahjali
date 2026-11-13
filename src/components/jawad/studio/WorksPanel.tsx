@@ -10,10 +10,14 @@ import Dialog from "../Dialog";
 import SmartEdit from "./SmartEdit";
 import { smartEditInEditor } from "../editor/smart-open";
 import SoundOnVideo from "./SoundOnVideo";
+import PublishShare from "../gallery/PublishShare";
 import Icon from "../Icon";
 import LocalTime from "../LocalTime";
 import LoginLink from "../LoginLink";
 import Riyal from "@/components/Riyal";
+import { track } from "@/lib/feature-track";
+import { isFresh, matchesView, sortWorks, type WorkMark, type WorksView } from "@/lib/jawad/works-organise";
+import { MarkButtons, MoveDialog, OrganiseProvider, useOrganiseState, WorksToolbar } from "./WorksOrganise";
 
 const FILTERS: { key: WorksFilter; label: string; icon: string }[] = [
   { key: "all", label: "الكل", icon: "grid" },
@@ -74,6 +78,9 @@ function settingChips(j: JobView) {
   return out;
 }
 
+/** The pictures «أدوات الصورة» take (an animated GIF or an SVG drawing is not one of them). */
+const TOOL_MIMES = ["image/png", "image/jpeg", "image/webp"];
+
 export interface WorksPanelProps {
   items: WorkItem[];
   filter: WorksFilter;
@@ -94,6 +101,12 @@ export interface WorksPanelProps {
   canUseAsRef: (o: OutputView) => string | null;
   /** «التعديل الذكي» made a new job. */
   onEdited: (j: JobView, balance: number | null) => void;
+  /** «ترتيب أعمالي»: the search, sort, folder and ⭐ view, and a work's folder or ⭐ changed */
+  view: WorksView;
+  onView: (v: WorksView) => void;
+  onMarked: (type: WorkItem["type"], id: string, mark: Partial<WorkMark>) => void;
+  /** «🖼️ أدوات الصورة» (امسح بالفرشاة · وسّع · ارفع الدقة) on a finished picture; absent when none is open to this person */
+  onImageTool?: (o: OutputView) => void;
 }
 
 export default function WorksPanel(p: WorksPanelProps) {
@@ -105,6 +118,10 @@ export default function WorksPanel(p: WorksPanelProps) {
   const detail = detailId ? p.items.find((it) => itemKey(it) === detailId) ?? null : null;
   const sentinel = useRef<HTMLDivElement>(null);
   const { hasMore, loading, onMore } = p;
+  // «ترتيب أعمالي»: what is loaded, filtered and sorted by the view right away (a job being made always shows)
+  const organise = useOrganiseState(p.signedIn && p.allowed, p.onMarked);
+  const shown = sortWorks(p.items.filter((it) => isFresh(it) || matchesView(it, p.view, Boolean(organise.ready))), p.view.sort);
+  const narrowed = Boolean(p.view.q || p.view.folder || p.view.fav);
 
   // Load the next page when the end of the list comes into view
   useEffect(() => {
@@ -116,6 +133,7 @@ export default function WorksPanel(p: WorksPanelProps) {
   }, [hasMore, loading, onMore]);
 
   return (
+    <OrganiseProvider value={organise}>
     <section aria-label="أعمالي" className="flex min-h-0 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-jw-line px-4 py-2.5">
         <h2 className="text-sm font-semibold">أعمالي</h2>
@@ -137,6 +155,7 @@ export default function WorksPanel(p: WorksPanelProps) {
           </div>
         </div>
       </div>
+      {p.signedIn && p.allowed && <WorksToolbar view={p.view} onView={p.onView} o={organise} onFolderDeleted={(id) => p.items.forEach((it) => it.folderId === id && p.onMarked(it.type, it.id, { folderId: null }))} />}
 
       <div className="jw-scroll min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
         {p.offline && (
@@ -150,15 +169,17 @@ export default function WorksPanel(p: WorksPanelProps) {
           </Empty>
         ) : !p.allowed ? (
           <Empty icon="lock" title="المنصة مغلقة لحسابك حاليًا" text="تواصل مع إدارة المنصة إذا كنت تتوقع أن تكون متاحة لك." />
-        ) : p.items.length === 0 && !p.loading ? (
+        ) : shown.length === 0 && !p.loading ? (
           p.error ? (
             <Empty icon="alert" title="تعذّر تحميل أعمالك" text={p.error} />
+          ) : narrowed ? (
+            <Empty icon="search" title="ما فيه أعمال هنا" text={p.view.q ? "جرّب كلمة ثانية من البرومبت أو اسم المولّد، أو اختر «كل الأعمال»." : "انقل أعمال لهنا من زر المجلد أو ⭐ على أي عمل."} />
           ) : (
             <Empty icon="sparkles" title={p.filter === "all" ? "لا توجد أعمال بعد" : "لا توجد أعمال من هذا النوع"} text="اكتب وصفًا في الخانة واضغط «توليد»؛ أول عمل لك يظهر هنا خلال ثوانٍ إلى دقائق." />
           )
         ) : small ? (
           <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-            {p.items.map((it) => (
+            {shown.map((it) => (
               <li key={itemKey(it)} className="jw-fade-in">
                 <Tile it={it} onOpen={() => setDetailId(itemKey(it))} />
               </li>
@@ -167,7 +188,7 @@ export default function WorksPanel(p: WorksPanelProps) {
           </ul>
         ) : (
           <ul className="grid grid-cols-1 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
-            {p.items.map((it) =>
+            {shown.map((it) =>
               it.type === "job" ? (
                 <li key={it.id} className="jw-fade-in">
                   <JobCard j={it} onOpen={(index) => setViewer({ job: it, index })} {...p} />
@@ -221,7 +242,9 @@ export default function WorksPanel(p: WorksPanelProps) {
       <Dialog open={Boolean(viewer)} onClose={() => setViewer(null)} title={viewer ? `${viewer.job.generatorName} · ${viewer.index + 1}/${viewer.job.outputs.length}` : ""} wide>
         {viewer && <Viewer job={viewer.job} index={viewer.index} onIndex={(index) => setViewer({ ...viewer, index })} />}
       </Dialog>
+      <MoveDialog items={p.items} />
     </section>
+    </OrganiseProvider>
   );
 }
 
@@ -254,6 +277,7 @@ function Tile({ it, onOpen }: { it: WorkItem; onOpen: () => void }) {
         <Icon name={it.type === "film" ? "film" : kind === "video" ? "play" : kind === "audio" ? "audio" : "image"} size={10} />
         {job && job.outputs.length > 1 && <span dir="ltr">{job.outputs.length}</span>}
       </span>
+      {it.favourite && <span className="absolute end-1 top-1 text-xs drop-shadow" aria-hidden>⭐</span>}
     </button>
   );
 }
@@ -290,10 +314,11 @@ function OutputMedia({ o, onOpen, cover }: { o: OutputView; onOpen?: () => void;
   );
 }
 
-function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetrySubmit, canUseAsRef, onEdited }: { j: JobView; onOpen: (i: number) => void } & WorksPanelProps) {
+function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetrySubmit, canUseAsRef, onEdited, onImageTool }: { j: JobView; onOpen: (i: number) => void } & WorksPanelProps) {
   const [details, setDetails] = useState(false);
   const [copied, setCopied] = useState(false);
   const copyLink = async (url: string) => {
+    track("studio.share_link");
     try {
       await navigator.clipboard.writeText(new URL(url, window.location.origin).href);
       setCopied(true);
@@ -306,6 +331,7 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
   const [opening, setOpening] = useState(false);
   // a video: cut out the pieces to fix in «حيدرة كت» (red track) and get them made again there (green track)
   const startEdit = async () => {
+    track("studio.smart_edit");
     if (j.outputKind !== "video") return setEditing(true);
     setOpening(true);
     const href = await smartEditInEditor(j.id, j.outputs[0]?.id);
@@ -314,6 +340,9 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
     setEditing(true);
   };
   const editable = j.status === "succeeded" && j.outputs.length > 0 && (j.outputKind === "video" || j.outputKind === "image");
+  // «انشر وشارك»: «معرض الناس» and the permanent link, for a finished picture or video
+  const [sharing, setSharing] = useState(false);
+  const shareable = j.status === "succeeded" && j.outputs.some((o) => o.kind === "image" || o.kind === "video");
   // Opened with ?edit=<this job> (e.g. a film video sent here): «التعديل الذكي» opens by itself
   useEffect(() => {
     if (!editable) return;
@@ -385,7 +414,8 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
 
       <div className="space-y-2 p-3">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-semibold" dir="ltr">{j.generatorName}</span>
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold" dir="ltr" style={{ textAlign: "right" }}>{j.generatorName}</span>
+          <MarkButtons it={j} />
           <LocalTime iso={j.createdAt} className="shrink-0 text-[11px] text-jw-faint" />
         </div>
         {j.prompt && <p className="line-clamp-2 text-xs text-jw-muted" dir="auto">{j.prompt}</p>}
@@ -467,7 +497,7 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
           )}
           {j.status === "succeeded" &&
             outs.map((o, i) => (
-              <a key={o.id} href={o.downloadUrl} className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" download>
+              <a key={o.id} href={o.downloadUrl} className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" download onClick={() => track("studio.download")}>
                 <Icon name="download" size={14} /> تنزيل{stemLabel(o) && outs.length > 1 ? ` ${stemLabel(o)}` : outs.length > 1 ? ` ${i + 1}` : ""}
               </a>
             ))}
@@ -476,6 +506,7 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
               type="button"
               className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs"
               onClick={() => {
+                track("studio.download");
                 // one click, every file (a moment apart so the browser accepts them all)
                 outs.forEach((o, i) => setTimeout(() => { const a = document.createElement("a"); a.href = o.downloadUrl; a.download = ""; a.click(); }, i * 400));
               }}
@@ -497,8 +528,22 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
               <Icon name={copied ? "check" : "copy"} size={14} /> {copied ? "انسخ الرابط ✓" : "رابط مؤقت"}
             </button>
           )}
+          {j.status === "succeeded" &&
+            onImageTool &&
+            outs.map((o, i) =>
+              o.kind === "image" && TOOL_MIMES.includes(o.mime) ? (
+                <button key={`tool-${o.id}`} type="button" className="jw-btn !min-h-8 !px-2 text-xs !border-jw-accent/50 text-jw-accent" title="امسح جزء أو بدّله بالفرشاة، وسّع الصورة، أو ارفع دقتها" onClick={() => onImageTool(o)}>
+                  <Icon name="wand" size={14} /> أدوات الصورة{outs.length > 1 ? ` ${i + 1}` : ""}
+                </button>
+              ) : null,
+            )}
+          {shareable && (
+            <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" title="انشره في «معرض الناس» أو سوّ له رابط دائم" onClick={() => setSharing(true)}>
+              <Icon name="link" size={14} /> انشر وشارك
+            </button>
+          )}
           {tracks.length > 0 && (
-            <button type="button" className="jw-btn !min-h-8 !px-2 text-xs !border-jw-accent/50 text-jw-accent" onClick={() => setWatching(true)}>
+            <button type="button" className="jw-btn !min-h-8 !px-2 text-xs !border-jw-accent/50 text-jw-accent" onClick={() => (track("studio.sound_on_video"), setWatching(true))}>
               <Icon name="play" size={14} /> شاهد مع الفيديو
             </button>
           )}
@@ -520,6 +565,7 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
         </div>
         {j.status === "validating" && j.error && <p className="text-xs text-jw-warn">{j.error}</p>}
       </div>
+      {shareable && sharing && <PublishShare job={j} open={sharing} onClose={() => setSharing(false)} />}
       {tracks.length > 0 && sourceVideo && <SoundOnVideo uploadId={sourceVideo.uploadId} tracks={tracks} open={watching} onClose={() => setWatching(false)} />}
       {editable && (
         <SmartEdit
@@ -553,7 +599,8 @@ function FilmCard({ f }: { f: FilmItemView }) {
       </div>
       <div className="space-y-2 p-3">
         <div className="flex items-center justify-between gap-2">
-          <span className="flex items-center gap-1.5 text-sm font-semibold"><Icon name="film" size={14} className="text-jw-accent" /> الفيلم السينمائي</span>
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold"><Icon name="film" size={14} className="text-jw-accent" /> الفيلم السينمائي</span>
+          <MarkButtons it={f} />
           <LocalTime iso={f.createdAt} className="shrink-0 text-[11px] text-jw-faint" />
         </div>
         <p className="truncate text-xs text-jw-muted" dir="auto">من مشروع: {f.projectTitle} {f.refKey && <span dir="ltr">· {f.refKey}</span>}</p>
@@ -591,7 +638,7 @@ function Viewer({ job, index, onIndex }: { job: JobView; index: number; onIndex:
           <button type="button" className="jw-btn jw-btn-icon" disabled={index >= job.outputs.length - 1} onClick={() => onIndex(index + 1)} aria-label="التالية"><Icon name="chevronLeft" /></button>
         </div>
         <span className="text-xs text-jw-muted" dir="ltr">{o.width && o.height ? `${o.width}×${o.height}` : ""}</span>
-        <a href={o.downloadUrl} className="jw-btn jw-btn-primary" download><Icon name="download" size={16} /> تنزيل</a>
+        <a href={o.downloadUrl} className="jw-btn jw-btn-primary" download onClick={() => track("studio.download")}><Icon name="download" size={16} /> تنزيل</a>
       </div>
     </div>
   );

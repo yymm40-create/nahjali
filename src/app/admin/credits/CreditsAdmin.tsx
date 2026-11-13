@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
-import { type CreditSettings, type Pack } from "@config/credits";
+import { CREDITS, TOPUP_CODE_RE, cleanCode, type CreditSettings, type Pack, type TopupCode } from "@config/credits";
 import { waLink } from "@config/course";
 
 interface Order {
@@ -24,6 +24,8 @@ interface Data {
   settings: CreditSettings;
   orders: Order[];
   telegram: boolean;
+  /** the server's clock when read (whether a code is still on) */
+  now?: number;
 }
 const URL = "/api/credits/admin";
 const STATUS: Record<Order["status"], string> = { started: "بدأ ولم يحوّل", transferred: "ضغط تم التحويل", confirmed: "مؤكد ✅ (انضاف الرصيد)", rejected: "مرفوض ❌" };
@@ -37,6 +39,8 @@ export default function CreditsAdmin() {
   const [packs, setPacks] = useState<Pack[]>([]);
   const [featured, setFeatured] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
+  // «كود خصم الشحن»: a new code's fields
+  const [nc, setNc] = useState({ code: "", pct: "15", hours: "24" });
   const [filter, setFilter] = useState<"" | Order["status"]>("transferred");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -116,6 +120,43 @@ export default function CreditsAdmin() {
             </li>
           ))}
         </ul>
+      </section>
+
+      <section className="card space-y-3 p-4">
+        <h2 className="text-xl font-extrabold">🏷️ أكواد خصم الشحن</h2>
+        <p className="text-sm font-bold text-muted">الكود ينقص من المبلغ اللي يدفعه، والرصيد يوصله كامل. ينفع مرة وحدة لكل حساب، ويوقف بعد الوقت اللي تحدده. السعر يتقرب للريال الأقل لصالح العميل.</p>
+        {(d.settings.codes ?? []).length === 0 && <p className="text-sm font-bold text-muted">ما فيه أكواد.</p>}
+        <ul className="space-y-2">
+          {(d.settings.codes ?? []).map((c: TopupCode) => {
+            const on = Date.parse(c.until) > (d.now ?? 0);
+            const link = `https://www.aljawadai.app${CREDITS.base}?code=${c.code}`;
+            return (
+              <li key={c.code} className="flex flex-wrap items-center gap-2 rounded-xl border border-line p-3 text-sm font-bold">
+                <b dir="ltr">{c.code}</b>· خصم {c.pct}٪ · {on ? `شغّال لين ${when(c.until)}` : "انتهى وقته"}
+                <span dir="ltr" className="text-xs text-muted">{link}</span>
+                <button type="button" className="btn btn-ghost min-h-9 px-3" onClick={() => void navigator.clipboard?.writeText(link)}>انسخ الرابط</button>
+                <button type="button" className="btn btn-ghost min-h-9 px-3" onClick={() => window.confirm(`تحذف الكود ${c.code}؟`) && void act({ action: "codes", codes: (d.settings.codes ?? []).filter((x) => x.code !== c.code) }, "انحذف الكود")}>🗑️ احذف</button>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="grid grid-cols-3 gap-2">
+          <label className="grid gap-1 text-xs font-bold">الكود<input className="field" dir="ltr" value={nc.code} placeholder="JAWAD15" onChange={(e) => setNc({ ...nc, code: cleanCode(e.target.value) })} /></label>
+          <label className="grid gap-1 text-xs font-bold">الخصم ٪<input className="field" dir="ltr" inputMode="numeric" value={nc.pct} onChange={(e) => setNc({ ...nc, pct: e.target.value.replace(/\D/g, "").slice(0, 2) })} /></label>
+          <label className="grid gap-1 text-xs font-bold">يشتغل كم ساعة<input className="field" dir="ltr" inputMode="numeric" value={nc.hours} onChange={(e) => setNc({ ...nc, hours: e.target.value.replace(/\D/g, "").slice(0, 4) })} /></label>
+        </div>
+        <button
+          type="button"
+          className="btn btn-primary w-full"
+          disabled={!TOPUP_CODE_RE.test(nc.code) || !(Number(nc.pct) >= 1 && Number(nc.pct) <= 90) || !(Number(nc.hours) >= 1)}
+          onClick={() => {
+            const until = new Date(Date.now() + Number(nc.hours) * 3600_000).toISOString();
+            const rest = (d.settings.codes ?? []).filter((x) => x.code !== nc.code);
+            void act({ action: "codes", codes: [...rest, { code: nc.code, pct: Number(nc.pct), until }] }, `انضاف الكود ${nc.code} ✅`).then(() => setNc({ code: "", pct: "15", hours: "24" }));
+          }}
+        >
+          ➕ أضف الكود
+        </button>
       </section>
 
       <section className="card space-y-3 p-4">

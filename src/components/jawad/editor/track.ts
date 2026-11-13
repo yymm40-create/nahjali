@@ -5,6 +5,7 @@
 // of what to select, and turns each answer into an outline that changes shape from moment to moment.
 
 import { postJson } from "@/lib/fetch";
+import { rampSource } from "@/lib/editor/ramp";
 import { alignTo, maskOutline } from "@/lib/editor/contour";
 import { maskAt, NEW_MASK, SHAPE_POINTS, MAX_MASK_KEYS, type Mask, type Pt } from "@/lib/editor/grade";
 import type { Clip } from "@/lib/editor/model";
@@ -75,7 +76,7 @@ const grey = (c: HTMLCanvasElement) => {
  * The window's subject followed from `fromT` (the clip's own ms) to the clip's end: motion points every 0.1 s.
  * `onStep` gets 0…1.
  */
-export async function trackWindow(url: string, clip: Pick<Clip, "in" | "out" | "speed">, m: Mask, fromT: number, onStep: (f: number) => void, signal?: AbortSignal) {
+export async function trackWindow(url: string, clip: Pick<Clip, "in" | "out" | "speed" | "ramp">, m: Mask, fromT: number, onStep: (f: number) => void, signal?: AbortSignal) {
   const len = (clip.out - clip.in) / clip.speed;
   const times: number[] = [];
   for (let t = Math.max(0, fromT); t <= len && times.length < MAX_MASK_KEYS; t += STEP_MS) times.push(Math.round(t));
@@ -90,7 +91,7 @@ export async function trackWindow(url: string, clip: Pick<Clip, "in" | "out" | "
   const keys: Mask["keys"] = [];
   await eachFrame(
     url,
-    times.map((t) => clip.in + t * clip.speed),
+    times.map((t) => rampSource({ ...clip, start: 0 }, t)),
     SIDE,
     (c, i) => {
       const f = grey(c);
@@ -142,7 +143,7 @@ export async function trackWindow(url: string, clip: Pick<Clip, "in" | "out" | "
 }
 
 /** The person's words → a window that is the subject's own outline (followed through the clip when `track`). */
-export async function smartWindow(o: { projectId: string; url: string; kind: "video" | "image"; clip: Pick<Clip, "in" | "out" | "speed">; words: string; atT: number; track: boolean; near: Pt | null; onStep: (text: string) => void; signal?: AbortSignal }): Promise<Mask> {
+export async function smartWindow(o: { projectId: string; url: string; kind: "video" | "image"; clip: Pick<Clip, "in" | "out" | "speed" | "ramp">; words: string; atT: number; track: boolean; near: Pt | null; onStep: (text: string) => void; signal?: AbortSignal }): Promise<Mask> {
   const len = (o.clip.out - o.clip.in) / o.clip.speed;
   // the moments: the playhead's alone, or across the clip (every 0.5 s, up to 40; more often in short clips)
   const times: number[] = [];
@@ -154,7 +155,7 @@ export async function smartWindow(o: { projectId: string; url: string; kind: "vi
   const jpegs: string[] = [];
   o.onStep("أقرأ لقطات المقطع…");
   if (o.kind === "image") jpegs.push((await imageCanvas(o.url, 512)).toDataURL("image/jpeg", 0.85).split(",")[1]);
-  else await eachFrame(o.url, times.map((t) => o.clip.in + t * o.clip.speed), 512, (c) => void jpegs.push(c.toDataURL("image/jpeg", 0.85).split(",")[1]), o.signal);
+  else await eachFrame(o.url, times.map((t) => rampSource({ ...o.clip, start: 0 }, t)), 512, (c) => void jpegs.push(c.toDataURL("image/jpeg", 0.85).split(",")[1]), o.signal);
 
   const shapes: Mask["shapes"] = [];
   let concept = "";

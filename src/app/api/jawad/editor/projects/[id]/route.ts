@@ -25,7 +25,6 @@ import {
   confirmAsset,
   deleteAsset,
   deleteProject,
-  history,
   importAssets,
   markExported,
   projectState,
@@ -39,14 +38,17 @@ import {
   uploadedParts,
   completeUpload,
 } from "@/lib/editor/server";
-import { align, signSpeechUpload, transcribe, voiceIn, voiceOut } from "@/lib/editor/speech";
+import { align, keptSpeech, signSpeechUpload, transcribe, voiceIn, voiceOut } from "@/lib/editor/speech";
 import { voiceprint } from "@/lib/editor/voiceprint";
 import { makeHook, makeMusic, makeSfx, separate } from "@/lib/editor/generate";
 import { assist, gradeCheck } from "@/lib/editor/assistant";
 import { diagnose } from "@/lib/editor/diagnose";
+import { changeHistory, pointTimeline, readRules, saveRules } from "@/lib/editor/changes";
+import { pageActor } from "@/lib/editor/changes-core";
 import { isAdmin } from "@config/site";
 import { planSeedanceExtend, startMake } from "@/lib/editor/make-any";
 import { smartMask } from "@/lib/editor/smart-mask";
+import { translateCaptions } from "@/lib/editor/translate";
 
 // listening to a long clip can take a while
 // حيدرا ماكس's long answers (a big timeline, a few correction rounds) may run as long as the platform allows
@@ -62,17 +64,20 @@ export const GET = handle(async (_req: Request, ctx: Ctx) => {
   return NextResponse.json(await projectState(p), noStore);
 });
 
-/** Saves the timeline: `{ timeline, version, label, title? }` → `{ ok, version }` (409-style `ok: false` with the newer one). */
+/**
+ * Saves the timeline: `{ timeline, version, label, title?, actor?, steps? }` → `{ ok, version }` (409-style `ok: false`
+ * with the newer one). `actor`: the person, حيدرا ماكس's turn, or a «ارجع لهنا» — for the log only.
+ */
 export const PUT = handle(async (req: Request, ctx: Ctx) => {
   const { user } = await requireEditorApiUser();
   const p = await requireEditorProject((await ctx.params).id, user.id);
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  return NextResponse.json(await saveTimeline(p, { ...b, actor: "user" }));
+  return NextResponse.json(await saveTimeline(p, { ...b, actor: pageActor(b.actor) }));
 });
 
-const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "lab_chat", "lab_search", "lab_cover_write", "lab_cover_review", "lab_picture", "upscale", "transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
+const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "lab_chat", "lab_search", "lab_cover_write", "lab_cover_review", "lab_picture", "upscale", "transcribe", "align", "translate_captions", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
 
-/** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history. */
+/** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history, snapshot, rules. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
   const { user, owner } = await requireEditorApiUser();
   const p = await requireEditorProject((await ctx.params).id, user.id);
@@ -121,6 +126,12 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await transcribe(p, who, b));
     case "align":
       return NextResponse.json(await align(p, who, b));
+    // «النص»: the words already written of the project's files, and the price of writing the rest (free to read)
+    case "transcripts":
+      return NextResponse.json(await keptSpeech(p, who, b), noStore);
+    // «ترجم الكابشن»: `quote` for the price first, then the lines translated (same times, a new track on the page)
+    case "translate_captions":
+      return NextResponse.json(await translateCaptions(p, who, b));
     // talking with حيدرا ماكس: what was said → text, and the reply → sound
     case "voice_in":
       return NextResponse.json(await voiceIn(p, who, b));
@@ -225,8 +236,17 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await loadChat(p), noStore);
     case "handoff":
       return NextResponse.json(await handOff(pc, who, b));
+    // «سجل التغييرات»: the changes newest first, and the versions «ارجع لهنا» can bring back (null before 0111)
     case "history":
-      return NextResponse.json({ history: await history(p.id) }, noStore);
+      return NextResponse.json(await changeHistory(p.id), noStore);
+    // «ارجع لهنا»: a kept point's timeline (the page puts it on as a new change, saved and logged like any other)
+    case "snapshot":
+      return NextResponse.json(await pointTimeline(p.id, b.version), noStore);
+    // «تعليماتي الدايمة»: the person's own (per account, not per project)
+    case "rules":
+      return NextResponse.json(await readRules(user.id), noStore);
+    case "rules_save":
+      return NextResponse.json(await saveRules(user.id, b.rules));
   }
   throw new UserError("طلب غير معروف.", 400);
 });

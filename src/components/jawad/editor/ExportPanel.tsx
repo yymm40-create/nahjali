@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { duration, flatten, formatTime, type Timeline } from "@/lib/editor/model";
+import { duration, flatten, formatTime, ratioOf, type Ratio, type Timeline } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
 import DockFrame from "./DockFrame";
 import Icon from "../Icon";
@@ -11,6 +11,10 @@ import {
   exportName,
   exportPlan,
   fmtBytes,
+  PLATFORM_IDS,
+  PLATFORMS,
+  platformCheck,
+  platformOpts,
   QUALITY_AR,
   QUALITY_LIST,
   RES_AR,
@@ -21,6 +25,7 @@ import {
   type ExportFps,
   type ExportQuality,
   type ExportRes,
+  type PlatformId,
   type SourceInfo,
 } from "@/lib/editor/export-plan";
 import { measureSource } from "./source-info";
@@ -28,7 +33,9 @@ import { sendInParts } from "./parts";
 import type { EditorAsset } from "./types";
 import type { Player } from "./player";
 import { toSRT } from "./captions";
+import { captionTracks } from "@/lib/editor/caption-translate";
 import { packProject, saveFile } from "./package";
+import { track } from "@/lib/feature-track";
 
 /** what to save: the whole video, the picture without sound, the sound alone, the subtitles, or the frame under the playhead */
 type What = "video" | "alpha" | "mute" | "audio" | "srt" | "frame";
@@ -62,6 +69,7 @@ export default function ExportPanel({
   player,
   onExported,
   onUpscaleExport,
+  onReshape,
 }: {
   /** the editor's right column (a computer) */
   dock?: HTMLElement | null;
@@ -80,10 +88,14 @@ export default function ExportPanel({
   onExported: (purgeAt: string | null) => void;
   /** «رفع دقة الفيديو كامل»: the finished file goes up and is upscaled whole; the page saves the result when it is ready (none: not offered) */
   onUpscaleExport?: (file: File, target: "4k" | "1080p", name: string) => void;
+  /** «مقاس جاهز للمنصة»: the project's shape changed to the platform's (the project settings' own «المقاس»; none: not offered) */
+  onReshape?: (ratio: Ratio) => void;
 }) {
   const [res, setRes] = useState<ExportRes>(1080);
   const [quality, setQuality] = useState<ExportQuality>("high");
   const [fpsFrom, setFpsFrom] = useState<ExportFps>("project");
+  // «مقاس جاهز للمنصة»: the platform last picked (shown as chosen while its settings are untouched)
+  const [platform, setPlatform] = useState<PlatformId | null>(null);
   // the typed bitrate («مخصص»), kept while the person edits it
   const [mbps, setMbps] = useState(12);
   const [phase, setPhase] = useState<Phase>({ k: "idle" });
@@ -102,7 +114,11 @@ export default function ExportPanel({
   const [packing, setPacking] = useState<{ busy: boolean; text: string; bad?: boolean } | null>(null);
   const total0 = duration(tl);
   const use = part && range && range.to > range.from ? range : null;
-  const srt = toSRT(tl, undefined, use);
+  // the subtitles of one caption track (a translation is a file of its own), or all of them together
+  const [srtTrack, setSrtTrack] = useState("");
+  const capTracks = captionTracks(tl);
+  const srtId = capTracks.some((t) => t.id === srtTrack) ? srtTrack : "";
+  const srt = toSRT(tl, srtId || undefined, use);
   const pack = async () => {
     setPacking({ busy: true, text: "نجهّز المشروع…" });
     try {
@@ -117,6 +133,21 @@ export default function ExportPanel({
   const abort = useRef<AbortController | null>(null);
   const total = use ? use.to - use.from : total0;
   const plan = exportPlan(tl, { res, quality, fps: fpsFrom }, source, total);
+  const pickPlatform = (id: PlatformId) => {
+    const o = platformOpts(id, tl);
+    setPlatform(id);
+    setRes(o.res);
+    setQuality(o.quality);
+    if (typeof o.quality === "object") setMbps(o.quality.mbps);
+    setFpsFrom(o.fps);
+    track("editor.export_preset");
+  };
+  const platformOn = (() => {
+    if (!platform) return null;
+    const o = platformOpts(platform, tl);
+    return o.res === res && o.fps === fpsFrom && typeof quality === "object" && typeof o.quality === "object" && quality.mbps === o.quality.mbps ? platform : null;
+  })();
+  const fits = platformOn ? platformCheck(platformOn, tl, total) : null;
   const stem = exportName(title, plan).replace(/\.mp4$/i, "") + (use ? `-${formatTime(use.from).replace(/[:.]/g, "-")}_${formatTime(use.to).replace(/[:.]/g, "-")}` : "");
   const name = `${stem}.${what === "audio" ? "m4a" : what === "alpha" ? "webm" : "mp4"}`;
   const picture = what === "video" || what === "mute" || what === "alpha";
@@ -140,7 +171,9 @@ export default function ExportPanel({
     setNote(null);
     if (what === "srt") {
       if (!srt) return setNote("ما فيه كابشن في " + (use ? "هذي المنطقة." : "المشروع."));
-      saveFile(new Blob([srt], { type: "application/x-subrip" }), `${stem}.srt`);
+      const lang = srtId ? capTracks.find((t) => t.id === srtId)?.name.replace(/[\\/:*?"<>|]+/g, "-") : null;
+      saveFile(new Blob([srt], { type: "application/x-subrip" }), `${stem}${lang ? ` ${lang}` : ""}.srt`);
+      track("editor.export.srt");
       return setNote("نزل ملف الكابشن ✓");
     }
     if (!player) return setNote("المعاينة ما جهزت بعد؛ جرّب بعد ثانية.");
@@ -148,6 +181,7 @@ export default function ExportPanel({
     const blob = await player.frameBlob();
     if (!blob) return setNote("ما قدرت أحفظ هذا الفريم. جرّب مرة ثانية.");
     saveFile(blob, `${stem.replace(/-[\d-]+_[\d-]+$/, "")}-${formatTime(player.ms).replace(/[:.]/g, "-")}.png`);
+    track("editor.export.frame");
     setNote("نزل الفريم صورة ✓");
   };
 
@@ -202,6 +236,7 @@ export default function ExportPanel({
         }
       }
       download(r.blob, name);
+      track(`editor.export.${what}`);
       // «رفع دقة الفيديو كامل»: the same file goes up and is upscaled whole; the 4K file downloads by itself when it is ready
       if (upOn && upTarget && onUpscaleExport) onUpscaleExport(new File([r.blob], name, { type: "video/mp4" }), upTarget, `${stem}-${upTarget === "4k" ? "4K" : "1080p"}.mp4`);
       // only the whole video keeps a copy with the project; a part, a muted picture or the sound alone is just saved
@@ -297,11 +332,51 @@ export default function ExportPanel({
             )}
 
             {what === "frame" && <p className="rounded-lg bg-jw-surface-2 p-2.5 text-xs leading-6">يحفظ الصورة اللي واقف عليها المؤشر الحين <b dir="ltr">({formatTime(player?.ms ?? 0)})</b> بجودة المشروع الكاملة وبتدريجها، PNG.</p>}
+            {what === "srt" && capTracks.length > 1 && (
+              <select className="jw-select w-full text-sm" value={srtId} onChange={(e) => setSrtTrack(e.target.value)} aria-label="أي مسار كابشن">
+                <option value="">كل مسارات الكابشن مع بعض</option>
+                {capTracks.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            )}
             {what === "srt" && <p className="rounded-lg bg-jw-surface-2 p-2.5 text-xs leading-6">{srt ? `ملف ترجمة جاهز${use ? " للمنطقة المحددة (يبدأ من الصفر)" : ""}.` : "ما فيه كابشن للحين؛ سوّه من «الكابشن» أول."}</p>}
             {what === "alpha" && <p className="rounded-lg bg-jw-surface-2 p-2.5 text-xs leading-6">يحفظ الأماكن الفاضية في التايملاين شفافة (ملف WebM بصوته)، عشان تركّبه فوق أي خلفية في برنامج ثاني. الـMP4 ما يقدر يكون شفاف، فيطلع له خلفية سودا. ما يشتغل إلا في Chrome أو Edge على الكمبيوتر.</p>}
             {what === "audio" && <p className="rounded-lg bg-jw-surface-2 p-2.5 text-xs leading-6">الصوت المدموج كله (الكلام والموسيقى والمؤثرات بنفس المستويات) في ملف M4A، مدته <span dir="ltr">{formatTime(total)}</span>.</p>}
 
             {picture && (<>
+            <div className="space-y-1.5">
+              <span className="jw-label">مقاس جاهز للمنصة</span>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3" role="radiogroup" aria-label="مقاس جاهز للمنصة">
+                {PLATFORM_IDS.map((id) => {
+                  const p = PLATFORMS[id];
+                  return (
+                    <button key={id} type="button" role="radio" aria-checked={platformOn === id} className={`rounded-lg border px-2 py-1.5 text-start text-xs ${platformOn === id ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`} onClick={() => pickPlatform(id)}>
+                      <b className="block">{p.icon} {p.label}</b>
+                      <span className="block text-[10px] leading-4 text-jw-muted" dir="ltr">{p.ratios[0]} · {p.res}p · {p.fps === "project" ? Math.round(tl.fps) : p.fps}fps</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {fits?.reshape && (
+                <div className="space-y-1.5 rounded-lg bg-jw-warn/10 p-2 text-xs leading-5 text-jw-warn">
+                  <p>
+                    {PLATFORMS[platformOn!].label} يبي مقاس <b dir="ltr">{fits.reshape}</b> ومشروعك <b dir="ltr">{ratioOf(tl)}</b>. ما نقص شي من نفسنا: الملف يطلع بمقاس مشروعك، والمنصة تحط له حواف أو تقصّه هي.
+                  </p>
+                  {onReshape && (
+                    <button type="button" className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => onReshape(fits.reshape!)}>
+                      ⤢ حوّل مقاس المشروع إلى <span dir="ltr">{fits.reshape}</span> (من «المقاس» في إعدادات المشروع)
+                    </button>
+                  )}
+                </div>
+              )}
+              {fits?.tooLong && (
+                <p className="rounded-lg bg-jw-warn/10 p-2 text-xs leading-5 text-jw-warn">
+                  <Icon name="alert" size={13} className="inline" /> المدة <span dir="ltr">{formatTime(total)}</span>: {fits.tooLong}
+                </p>
+              )}
+            </div>
+
             <div className="space-y-1.5">
               <span className="jw-label">الدقة</span>
               <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="الدقة">
@@ -391,6 +466,11 @@ export default function ExportPanel({
                 >
                   نفس المصدر{source?.fps ? ` (${Math.round(source.fps)})` : ""}
                 </button>
+                {typeof fpsFrom === "number" && (
+                  <button type="button" role="radio" aria-checked>
+                    {fpsFrom} (للمنصة)
+                  </button>
+                )}
               </div>
             </div>
 

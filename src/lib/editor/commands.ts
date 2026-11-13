@@ -4,6 +4,8 @@
 
 import { isMotionKind, motionLabel, MOTION_KINDS, MOTION_MS, newMotion, readMotion, type MotionEl, type MotionKind } from "./motion-elements";
 import { applyLook, LOOKS, MAX_LAYERS, NEUTRAL_GRADE, readGrade, readGrades, type Grade } from "./grade";
+import { cutTimed, isFlat, rampArea, rampName, readRamp, type Ramp, type RampPresetId } from "./ramp";
+import { angleSpan, MULTICAM } from "./multicam";
 import {
   allTracks,
   clipEnd,
@@ -16,8 +18,10 @@ import {
   mainTrack,
   newId,
   pack,
+  readTimeline,
   RATIOS,
   sourceTime,
+  timelineTime,
   STILL_MS,
   COLOR_PRESETS,
   NEUTRAL_COLOR,
@@ -58,6 +62,7 @@ import {
   DEFAULT_BACKDROP,
   readBackdrop,
   type Word,
+  type Key,
   type CaptionStyle,
   CAPTION_STYLES,
   FIX_TRACK,
@@ -95,6 +100,11 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
   fx?: ClipFx[];
   /** «مسار الموشن»: merged over the element (motion clips only); `colors: null` = back to the theme's */
   motion?: Partial<MotionEl>;
+  /**
+   * «منحنى السرعة»: a ready curve's id or the curve's points ({u: 0–1 along the clip, s: speed}); null = back to one
+   * speed (the curve's average, so the length stays). Media clips only. A plain `speed` in the same patch is ignored.
+   */
+  ramp?: RampPresetId | Ramp | null;
 };
 
 /** What every new clip starts with (besides its media and timing). */
@@ -140,6 +150,11 @@ export type Command =
   | { type: "set_key"; clipId: string; at: number; transform: Partial<Transform> }
   | { type: "remove_key"; clipId: string; at: number }
   | { type: "clear_keys"; clipId: string }
+  /**
+   * «اتبع الوجه»: the clip's motion points all at once (source ms, each a full look), replacing the ones it had — the
+   * camera path worked out in the browser; the person moves any of them afterwards like any motion point
+   */
+  | { type: "set_keys"; clipId: string; keys: Key[]; label?: string }
   /** beat marks the cuts snap to: `add` (merged) or `replace`; `clear` removes them all */
   | { type: "set_markers"; markers: number[]; mode: "add" | "replace" | "clear" }
   /** «تسلسلات»: a new empty timeline (same size and frame rate) opened; open, rename, copy or delete one */
@@ -185,7 +200,22 @@ export type Command =
    * the first and after the last only shifted). Texts and pictures stretch or shrink with it; sounds and videos keep
    * their length and only start at the new moment. Used to fit a motion piece to the real length of its narration.
    */
-  | { type: "retime"; map: [number, number][] };
+  | { type: "retime"; map: [number, number][] }
+  /**
+   * «بدّل الكاميرات تلقائياً»: the synced cameras (`cams`, their clip ids) cut by `shots` (camera index, timeline from/to)
+   * into ordinary clips on one track; each camera's original goes to an «angles» track of its own, hidden and quiet
+   * (the source of «بدّل الزاوية»). `sound`: "follow" = each cut keeps its camera's sound, a camera's index = that
+   * camera's sound all along, "keep" = the sound tracks already there carry it. Run again on the same cameras, the old
+   * cuts are replaced.
+   */
+  | { type: "multicam"; cams: string[]; shots: { cam: number; from: number; to: number }[]; wide?: number | null; sound?: "follow" | "keep" | number }
+  /** «بدّل الزاوية»: a cut shows the same moment from another synced camera (`cam`: that camera's original clip id) */
+  | { type: "multicam_angle"; clipId: string; cam: string }
+  /**
+   * «قوالب المونتاج»: the open timeline becomes a ready template filled with the person's files (built by
+   * lib/editor/templates.ts); the project's other timelines stay. Put {"type":"seq_new"} before it to keep what is there.
+   */
+  | { type: "use_template"; name: string; timeline: Timeline };
 
 export class CommandError extends Error {}
 
@@ -195,6 +225,8 @@ export interface Applied {
   label: string;
   /** clips to select afterwards */
   select?: string[];
+  /** several commands as one change: each one's name, in order («سجل التغييرات» lists them under حيدرا ماكس's turn) */
+  steps?: string[];
 }
 
 const fail = (m: string): never => {
@@ -218,6 +250,16 @@ const sourceMax = (c: Clip, assets: Map<string, AssetInfo>) => {
   return a && a.kind !== "image" && a.durationMs ? a.durationMs : Infinity;
 };
 const isStill = (c: Clip, assets: Map<string, AssetInfo>) => c.text != null || assets.get(c.assetId ?? "")?.kind === "image";
+
+/** A clip's source part, speed and speed curve as one piece of a cut (a flat part has no curve). */
+const timedFields = (t: ReturnType<typeof cutTimed>): Pick<Clip, "in" | "out" | "speed" | "ramp"> => ({ in: t.in, out: t.out, speed: t.speed, ramp: t.ramp ?? undefined });
+function setTimed(c: Clip, t: ReturnType<typeof cutTimed>) {
+  c.in = t.in;
+  c.out = t.out;
+  c.speed = t.speed;
+  if (t.ramp) c.ramp = t.ramp;
+  else delete c.ramp;
+}
 
 function editable(t: Timeline, trackId: string) {
   // a track, or the track of a clip (a clip just made, as "$N": the next picture goes on the same track as it)
@@ -487,8 +529,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         ...structuredClone(src!),
         id: newId("c"),
         start: from,
-        in: Math.round(src!.in + (from - src!.start) * src!.speed),
-        out: Math.round(src!.in + (to - src!.start) * src!.speed),
+        ...timedFields(cutTimed(src!, from, to)),
         volume: 0,
         transition: null,
         fadeIn: 0,
@@ -579,7 +620,21 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const min = LIMITS.minClipMs * speed;
       const prevEnd = magnet(t, track) ? 0 : index > 0 ? clipEnd(track.clips[index - 1]) : 0;
       const nextStart = magnet(t, track) ? Infinity : (track.clips[index + 1]?.start ?? Infinity);
-      if (cmd.edge === "end") {
+      if (clip.ramp && !isStill(clip, assets)) {
+        // «منحنى السرعة»: the edge moves along the curve; the part that stays plays exactly as before
+        const end = clipEnd(clip);
+        if (cmd.edge === "end") {
+          const hi = Math.max(clip.start + LIMITS.minClipMs, timelineTime(clip, sourceMax(clip, assets)));
+          const to = Math.round(Math.min(hi, Math.max(clip.start + LIMITS.minClipMs, Math.min(cmd.to, nextStart))));
+          setTimed(clip, cutTimed(clip, clip.start, to));
+        } else {
+          const lo = Math.max(prevEnd, Math.ceil(timelineTime(clip, 0)));
+          const start = Math.round(Math.min(end - LIMITS.minClipMs, Math.max(lo, cmd.to)));
+          setTimed(clip, cutTimed(clip, start, end));
+          clip.in = Math.max(0, clip.in);
+          clip.start = start;
+        }
+      } else if (cmd.edge === "end") {
         const want = clip.in + (Math.min(cmd.to, nextStart) - clip.start) * speed;
         clip.out = Math.round(Math.min(sourceMax(clip, assets), Math.max(clip.in + min, want)));
       } else if (isStill(clip, assets)) {
@@ -614,6 +669,11 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
           if (at - c.start < LIMITS.minClipMs || clipEnd(c) - at < LIMITS.minClipMs) continue;
           const cut = Math.round(sourceTime(c, at));
           const right: Clip = { ...structuredClone(c), id: newId("c"), start: at, in: cut, fadeIn: 0 };
+          // «منحنى السرعة»: each side keeps its own part of the curve (and plays the same as before the cut)
+          if (c.ramp) {
+            setTimed(right, cutTimed(c, at, clipEnd(c)));
+            setTimed(c, cutTimed(c, c.start, at));
+          }
           if (right.fix) right.fix = { ...right.fix, job: null, from: null, state: "draft" };
           if (c.words.length) {
             // a caption keeps each word on the side it is said; the text follows the words
@@ -626,7 +686,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
             }
           }
           // the cut is a plain one; what came after the clip now comes after its right part
-          c.out = cut;
+          if (!c.ramp) c.out = cut;
           c.transition = null;
           c.fadeOut = 0;
           next.push(right);
@@ -705,9 +765,26 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const p = cmd.patch;
       if (p.volume != null) clip.volume = Math.min(2, Math.max(0, Number(p.volume) || 0));
       if (p.fit) clip.fit = p.fit === "contain" ? "contain" : "cover";
-      if (p.speed != null) {
-        // the clip keeps its source part; its length on the timeline follows the speed
+      if (p.speed != null && p.ramp === undefined) {
+        // the clip keeps its source part; its length on the timeline follows the speed (one speed: a curve goes)
         clip.speed = Math.min(10, Math.max(0.1, Number(p.speed) || 1));
+        delete clip.ramp;
+      }
+      if (p.ramp !== undefined) {
+        // «منحنى السرعة»: the clip's speed becomes the curve's average, so its length follows the curve
+        const a = clip.assetId ? assets.get(clip.assetId) : null;
+        if (clip.text || clip.seq || !a || a.kind === "image") fail("منحنى السرعة لمقاطع الفيديو والصوت بس.");
+        if (p.ramp === null) delete clip.ramp;
+        else {
+          const r = readRamp(p.ramp) ?? fail("منحنى سرعة غير صالح.");
+          if (isFlat(r!)) {
+            clip.speed = r![0].s;
+            delete clip.ramp;
+          } else {
+            clip.ramp = r;
+            clip.speed = rampArea(r!);
+          }
+        }
       }
       if (p.transform) clip.transform = { ...clip.transform, ...Object.fromEntries(Object.entries(p.transform).filter(([, v]) => Number.isFinite(v))) };
       if (p.fadeIn != null) clip.fadeIn = Math.round(Math.min(clipLength(clip), Math.max(0, Number(p.fadeIn) || 0)));
@@ -814,7 +891,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
           clip.words = tokens.length === clip.words.length ? clip.words.map((w, i) => ({ ...w, w: tokens[i] })) : [];
         }
       }
-      if (p.speed != null) {
+      if (p.speed != null || p.ramp !== undefined) {
         if (magnet(t, track)) tidy(t, track);
         else place(track, clip);
       }
@@ -824,6 +901,10 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         ? "عدّلت النص"
         : p.volume != null
           ? "غيّرت مستوى الصوت"
+          : p.ramp !== undefined
+            ? clip.ramp
+              ? `منحنى السرعة: ${rampName(clip.ramp)}`
+              : "شلت منحنى السرعة"
           : p.speed != null
             ? "غيّرت السرعة"
             : p.color !== undefined
@@ -864,6 +945,22 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       clip.keys = clip.keys.filter((k) => Math.abs(k.t - st) > 40);
       if (clip.keys.length === before) fail("ما فيه نقطة حركة عند المؤشر.");
       return { timeline: t, label: "شلت نقطة حركة", select: [clip.id] };
+    }
+
+    case "set_keys": {
+      const { clip } = owned(t, cmd.clipId);
+      if (clip.text) fail("هذا للصور والفيديو.");
+      const n = (v: unknown, lo: number, hi: number, d: number) => (Number.isFinite(Number(v)) && v !== null ? Math.min(hi, Math.max(lo, Number(v))) : d);
+      const base = clip.transform;
+      const keys = (Array.isArray(cmd.keys) ? cmd.keys : [])
+        .filter((k) => k && Number.isFinite(Number(k.t)))
+        .map((k) => ({ t: Math.round(n(k.t, 0, LIMITS.maxMs, 0)), x: n(k.x, -2, 3, base.x), y: n(k.y, -2, 3, base.y), scale: n(k.scale, 0.05, 10, base.scale), rotate: n(k.rotate, -360, 360, base.rotate), opacity: n(k.opacity, 0, 1, base.opacity) }))
+        .sort((a, b) => a.t - b.t)
+        .filter((k, i, all) => i === 0 || k.t - all[i - 1].t > 15);
+      if (keys.length > LIMITS.keys) fail("نقاط الحركة أكثر من المسموح لمقطع واحد.");
+      clip.keys = keys;
+      if (keys.length) clip.transform = { x: keys[0].x, y: keys[0].y, scale: keys[0].scale, rotate: keys[0].rotate, opacity: keys[0].opacity };
+      return { timeline: t, label: (typeof cmd.label === "string" && cmd.label.trim().slice(0, 60)) || "نقاط حركة", select: [clip.id] };
     }
 
     case "clear_keys": {
@@ -1282,13 +1379,137 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         for (let i = 0; i + 1 < track.clips.length; i++) {
           const c = track.clips[i];
           const over = clipEnd(c) - track.clips[i + 1].start;
-          if (over > 0) c.out = Math.max(c.in + LIMITS.minClipMs * (c.speed || 1), c.out - over * (c.speed || 1));
+          if (over > 0 && c.ramp) setTimed(c, cutTimed(c, c.start, Math.max(c.start + LIMITS.minClipMs, clipEnd(c) - over)));
+          else if (over > 0) c.out = Math.max(c.in + LIMITS.minClipMs * (c.speed || 1), c.out - over * (c.speed || 1));
         }
         tidy(t, track);
       }
       t.markers = t.markers.map(at).sort((a, b) => a - b);
       if (!moved) fail("ما تغيّر شي في التوقيت.");
       return { timeline: t, label: "ضبطت التوقيت على الصوت" };
+    }
+
+    case "multicam": {
+      const ids = [...new Set(Array.isArray(cmd.cams) ? cmd.cams.map(String) : [])];
+      if (ids.length < 2) fail("اختر كاميرتين على الأقل (مقاطع فيديو متزامنة).");
+      if (ids.length > MULTICAM.maxCams) fail(`أكثر شي ${MULTICAM.maxCams} كاميرات.`);
+      const cams = ids.map((id) => owned(t, id));
+      for (const f of cams) {
+        const a = f.clip.assetId ? assets.get(f.clip.assetId) : null;
+        if (f.track.kind !== "video" || f.track.role || f.clip.text || f.clip.seq || f.clip.motion || !a || a.kind !== "video") fail("الكاميرات لازم تكون مقاطع فيديو.");
+      }
+      const wide = Number.isInteger(cmd.wide) && (cmd.wide as number) >= 0 && (cmd.wide as number) < cams.length ? (cmd.wide as number) : null;
+      const sound = cmd.sound === "keep" ? "keep" : Number.isInteger(cmd.sound) && (cmd.sound as number) >= 0 && (cmd.sound as number) < cams.length ? (cmd.sound as number) : "follow";
+      // the shots: in order, each inside its camera's clip, never overlapping
+      const shots = (Array.isArray(cmd.shots) ? cmd.shots : []).map((s) => ({ cam: Number(s?.cam), from: Math.round(Number(s?.from)), to: Math.round(Number(s?.to)) }));
+      if (!shots.length) fail("ما فيه لقطات.");
+      if (shots.length > LIMITS.clips / 2) fail("اللقطات أكثر من المسموح.");
+      let prevEnd = -Infinity;
+      for (const s of shots) {
+        const c = cams[s.cam]?.clip ?? fail("لقطة من كاميرا مو موجودة.");
+        if (!Number.isFinite(s.from) || !Number.isFinite(s.to) || s.to - s.from < LIMITS.minClipMs) fail("لقطة أقصر من المسموح.");
+        if (s.from < c.start - 2 || s.to > clipEnd(c) + 2) fail("لقطة برا وقت كاميرتها.");
+        if (s.from < prevEnd - 2) fail("اللقطات متداخلة.");
+        prevEnd = s.to;
+      }
+      // a run again on the same cameras: the cuts made from them before go (on whatever track they sit)
+      const camIds = new Set(ids);
+      let reuse: Track | null = null;
+      for (const tr of t.tracks) {
+        if (tr.angles || !tr.clips.some((c) => c.angle && camIds.has(c.angle))) continue;
+        if (tr.locked) fail(`المسار «${tr.name}» مقفول؛ افتح القفل أول.`);
+        tr.clips = tr.clips.filter((c) => !(c.angle && camIds.has(c.angle)));
+        tidy(t, tr);
+        reuse ??= tr;
+      }
+      // each camera alone on an «angles» track: hidden (the cuts show it) and quiet unless its sound carries the video
+      cams.forEach((f, k) => {
+        let tr = f.track;
+        if (!tr.angles || tr.clips.length > 1) {
+          tr.clips = tr.clips.filter((c) => c.id !== f.clip.id);
+          tidy(t, tr);
+          tr = newTrack(t, "video");
+          tr.angles = true;
+          tr.clips = [f.clip];
+          f.track = tr;
+        }
+        tr.name = `كاميرا ${k + 1}${k === wide ? " (واسعة)" : ""}`;
+        tr.hidden = true;
+        tr.muted = sound !== k;
+        tr.color = TRACK_COLORS[(8 + k * 2) % TRACK_COLORS.length];
+      });
+      const made: Clip[] = shots.map((s) => {
+        const orig = cams[s.cam].clip;
+        const c: Clip = { ...structuredClone(orig), id: newId("c"), start: s.from, ...timedFields(cutTimed(orig, s.from, s.to)), angle: orig.id, transition: null, fix: null };
+        if (s.from > orig.start + 1) c.fadeIn = 0;
+        if (s.to < clipEnd(orig) - 1) c.fadeOut = 0;
+        c.volume = sound === "follow" ? orig.volume : 0;
+        return c;
+      });
+      // edge to edge without overlapping (a millisecond of rounding goes to the later shot)
+      for (let i = 1; i < made.length; i++) made[i].start = Math.max(made[i].start, clipEnd(made[i - 1]));
+      if (countClips(t) + made.length > LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
+      const from = made[0].start;
+      const to = clipEnd(made[made.length - 1]);
+      // where they go: the track the old cuts were on, else the main track when it is free there (and its magnet
+      // keeps them in place), else a new picture track right above the main one (under what was drawn over it)
+      const fits = (tr: Track | null | undefined): tr is Track => {
+        if (!tr || tr.angles || tr.locked || tr.role || tr.kind !== "video" || !free(tr, from, to)) return false;
+        if (!magnet(t, tr)) return true;
+        const packed = pack([...tr.clips, ...made].map((c) => ({ ...c })));
+        return made.every((c) => packed.find((x) => x.id === c.id)?.start === c.start);
+      };
+      const main = mainTrack(t);
+      let target: Track;
+      if (fits(reuse)) target = reuse;
+      else if (fits(main)) target = main;
+      else {
+        target = newTrack(t, "video");
+        target.name = "المونتاج";
+        t.tracks = t.tracks.filter((x) => x !== target);
+        const at = main ? t.tracks.indexOf(main) + 1 : 0;
+        t.tracks.splice(at, 0, target);
+      }
+      target.clips = [...target.clips, ...made];
+      tidy(t, target);
+      const shown = new Set(shots.map((s) => s.cam)).size;
+      return { timeline: t, label: `بدّلت الكاميرات تلقائيًا (${made.length} لقطة من ${shown} كاميرات)`, select: [made[0].id] };
+    }
+
+    case "multicam_angle": {
+      const { track, clip } = owned(t, cmd.clipId);
+      if (!clip.angle) fail("هذي مو لقطة من «بدّل الكاميرات».");
+      const span = angleSpan(t, clip) ?? fail("الكاميرا الأصلية لهذي اللقطة انحذفت.");
+      const to = findClip(t, cmd.cam) ?? fail("ما لقينا هذي الكاميرا.");
+      if (!to.track.angles) fail("هذي مو وحدة من الكاميرات المتزامنة.");
+      if (to.clip.id === clip.angle) return { timeline: t, label: "نفس الزاوية", select: [clip.id] };
+      const [a, b] = span;
+      if (a < to.clip.start - 2 || b > clipEnd(to.clip) + 2) fail("هذي الكاميرا ما صوّرت هذي اللحظة كاملة.");
+      const len = clipLength(clip);
+      const src = to.clip;
+      setTimed(clip, cutTimed(src, Math.max(a, src.start), Math.min(b, clipEnd(src))));
+      // never longer than before (a millisecond of rounding), so nothing after it moves
+      while (clipLength(clip) > len && clip.out - clip.in > LIMITS.minClipMs) clip.out -= 1;
+      // the other camera's own look comes with it; the cut keeps its place, its transition and its fades
+      Object.assign(clip, structuredClone({ assetId: src.assetId, transform: src.transform, keys: src.keys, fit: src.fit, crop: src.crop, blend: src.blend, key: src.key, grades: src.grades, color: src.color, bg: src.bg, fx: src.fx, shape: src.shape, sound: src.sound }));
+      clip.volume = clip.volume > 0 ? src.volume : 0;
+      clip.angle = src.id;
+      tidy(t, track);
+      return { timeline: t, label: `بدّلت الزاوية: ${to.track.name}`, select: [clip.id] };
+    }
+
+    case "use_template": {
+      const known = new Set([...assets.keys()]);
+      const made = readTimeline(cmd.timeline, known);
+      if (!made.tracks.some((x) => x.clips.length)) fail("القالب فاضي.");
+      t.width = made.width;
+      t.height = made.height;
+      t.background = made.background;
+      t.magnetic = made.magnetic;
+      t.magnetAll = made.magnetAll;
+      t.markers = made.markers;
+      t.tracks = made.tracks;
+      return { timeline: t, label: `قالب: ${String(cmd.name ?? "").slice(0, 40) || "جاهز"}` };
     }
 
     case "close_gaps": {
@@ -1307,6 +1528,7 @@ function cutOut(c: Clip, a: number, b: number, assets: Map<string, AssetInfo>): 
   const still = isStill(c, assets);
   if (c.start < a) {
     const left = { ...structuredClone(c), out: still ? c.in + (a - c.start) * c.speed : Math.round(sourceTime(c, a)), transition: null, fadeOut: 0 };
+    if (!still && c.ramp) setTimed(left, cutTimed(c, c.start, a));
     left.words = left.words.filter((w) => w.s < a - c.start);
     out.push(left);
   }
@@ -1314,6 +1536,7 @@ function cutOut(c: Clip, a: number, b: number, assets: Map<string, AssetInfo>): 
     const shift = b - c.start;
     const right = { ...structuredClone(c), id: c.start < a ? newId("c") : c.id, start: a, fadeIn: 0 };
     if (still) right.out = c.in + (e - b) * c.speed;
+    else if (c.ramp) setTimed(right, cutTimed(c, b, e));
     else right.in = Math.round(sourceTime(c, b));
     right.words = right.words.filter((w) => w.s >= shift).map((w) => ({ ...w, s: w.s - shift, e: w.e - shift }));
     out.push(right);
@@ -1325,6 +1548,7 @@ function cutOut(c: Clip, a: number, b: number, assets: Map<string, AssetInfo>): 
 export function applyAll(timeline: Timeline, cmds: Command[], assets: Map<string, AssetInfo>, label?: string): Applied {
   let t = timeline;
   let last: Applied | null = null;
+  const steps: string[] = [];
   // "$2" in a later command means the clip the 2nd command made (for scripts written before the ids exist)
   const made = new Map<string, string>();
   const resolve = (v: unknown): unknown =>
@@ -1334,7 +1558,8 @@ export function applyAll(timeline: Timeline, cmds: Command[], assets: Map<string
     const r = apply(t, c, assets);
     last = r;
     t = r.timeline;
+    if (r.label) steps.push(r.label);
     if (r.select?.[0]) made.set(`$${i + 1}`, r.select[0]);
   }
-  return { timeline: t, label: label ?? last?.label ?? "", select: last?.select };
+  return { timeline: t, label: label ?? last?.label ?? "", select: last?.select, steps };
 }

@@ -21,7 +21,10 @@ import { decisionsOf, fontAnswer, paletteAnswer, stripMarks } from "@config/desi
 import { FontList, PaletteGrid } from "./Pickers";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { renderDesign, type DesignView, type FontDef } from "./LayerEditor";
-import { drawWithCode, pngBody, smallJpeg, type DrawEdit } from "@/components/claude-code/draw";
+import MajlisPicker, { type MajlisDone } from "./MajlisPicker";
+import TemplateMaker from "./TemplateMaker";
+import { downloadPrint, downloadSize, printDpi, PRINTS, SIZES } from "./exports";
+import { drawWithCode, pngBody, smallJpeg, type DrawEdit, type DrawTemplate } from "@/components/claude-code/draw";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface Question { label: string; kind: "choice" | "fonts" | "palettes"; options: string[]; multi: boolean }
@@ -167,6 +170,12 @@ const store = {
   },
 };
 
+/**
+ * «دعوة مجلس من تصميم جاهز» is not advertised (the owner, 13 November 2026): it comes to the person only when what he
+ * writes speaks of a majlis or a mourning occasion of the Ma'sumeen (peace be upon them).
+ */
+const MAJLIS_TALK = /مجلس|مجالس|مأتم|ماتم|حسيني|عزاء|استشهاد|شهادة|وفاة|ذكرى|خطيب|رادود|رواديد|ملا |نعي|رثاء|دعوة|دعوات|الزهراء|فاطمي|الحسين|المعصوم|الأئمة|الامام|الإمام|محرم|عاشوراء|أربعين|اربعين/;
+
 export default function DesignerChat({ name, persona, loginHref, owner, photo, initialChat }: { name: string; persona: string; loginHref: string | null; owner?: boolean; photo?: boolean; initialChat?: string | null }) {
   const router = useRouter();
   const [chats, setChats] = useState<ChatItem[]>([]);
@@ -197,6 +206,10 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   const [verbose, setVerbose] = useState(false);
   /** an old message being edited: the talk goes on from it */
   const [editFrom, setEditFrom] = useState<number | null>(null);
+  /** «دعوة مجلس من تصميم جاهز»: the picker is open */
+  const [majlis, setMajlis] = useState(false);
+  /** «قوالب المصممين»: a designer uploads a template (the owner approves it here too) */
+  const [maker, setMaker] = useState(false);
   /** one drawing loop per conversation (opening it again must not start a second, paid one) */
   const drawingFor = useRef<string | null>(null);
   useEffect(() => setVerbose(store.get(VERBOSE_KEY) === "1"), []);
@@ -245,13 +258,13 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
     setCodePreview(null);
     step("أجهّز التصميم (وإذا يحتاج صورة مرسومة، جواد يرسمها بـ GPT Image 2 بدون كتابة)…");
     try {
-      const r = await postJson<{ design?: DesignView; code?: { prompt: string; aspect: string; refs: string[]; photos?: string[]; picture?: boolean; edit?: DrawEdit; style?: string } }>("/api/designer/produce", { chatId: id, ...(retry ? { retry: true } : {}) });
+      const r = await postJson<{ design?: DesignView; code?: { prompt: string; aspect: string; refs: string[]; photos?: string[]; picture?: boolean; edit?: DrawEdit; style?: string; template?: DrawTemplate } }>("/api/designer/produce", { chatId: id, ...(retry ? { retry: true } : {}) });
       if (r.code) {
         if (r.code.picture) step("🖼️ صورة التصميم جاهزة من GPT Image 2 (بدون كتابة) — حيدرا ماكس يحطها ويكتب الكلام فوقها.");
         // «حيدرا ماكس»: the design is drawn here in code, looked at and rewritten, then kept as the design's artwork with
         // its program — a change to a design drawn before is a patch on that program (`edit`), not a new one
         const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
-        const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "designer", edit: r.code.edit ?? null, onStep: (s) => (step(s.text), s.preview && setCodePreview(s.preview)) });
+        const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "designer", edit: r.code.edit ?? null, template: r.code.template ?? null, onStep: (s) => (step(s.text), s.preview && setCodePreview(s.preview)) });
         step("أحفظ التصميم…");
         const saved = await postJson<{ design: DesignView }>("/api/designer/produce", { chatId: id, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(drawn.program ? { program: drawn.program } : {}), ...(drawn.edited ? { edited: true } : {}) });
         putDesign(() => saved.design);
@@ -326,6 +339,13 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
     setPending([]);
   }
 
+  /** A ready majlis design was ordered: the conversation opens (a code design starts drawing here at once). */
+  async function majlisDone(r: MajlisDone) {
+    setMajlis(false);
+    await open(r.chatId);
+    void refresh();
+  }
+
   /** Sends the last design to «زهراء» to be edited (she can send it back). */
   async function toZahraa() {
     if (!chatId) return;
@@ -369,6 +389,21 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   async function send(text = q) {
     const typed = text.trim();
     if ((!typed && !pending.length) || busy || uploading) return;
+    // the design that stands is a ready majlis design: the words change THAT design («حيدرا ماكس» edits it)
+    const lastReady = msgs.filter((m) => m.design).at(-1)?.design;
+    if (chatId && typed && !pending.length && editFrom == null && lastReady?.majlis && lastReady.state === "ready") {
+      setBusy("writing");
+      setQ("");
+      try {
+        await postJson("/api/designer/majlis/edit", { chatId, said: typed });
+        setBusy("");
+        await open(chatId);
+      } catch (e) {
+        setMsgs((m) => [...m, { role: "user", text: typed }, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر التعديل.", error: true }]);
+        setBusy("");
+      }
+      return;
+    }
     const files = pending;
     // an edited old message: the talk goes on from there
     const editing = editFrom;
@@ -474,6 +509,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
               <div className="dz-title">{name}</div>
               <div className="dz-muted" style={{ fontSize: 12 }}>تكلّم مع {persona} · حيدرا ماكس يصمم والكلام بخطك، وأي كلمة تتعدّل بطلب</div>
             </div>
+            {!loginHref && <button type="button" className="dz-mini" disabled={!!busy} onClick={() => { fresh(); setMajlis(false); setMaker(true); }} title="للمصممين: ارفع قالبك وحدّد مكان الصور والكلام">🧩 ارفع قالبك</button>}
           </header>
 
           {!loginHref && decisions.length > 0 && (
@@ -486,12 +522,22 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
             </div>
           )}
 
+          {!loginHref && !majlis && !maker && !busy && (MAJLIS_TALK.test(q) || MAJLIS_TALK.test(msgs.filter((m) => m.role === "user").at(-1)?.text ?? "")) && (
+            <button type="button" className="mj-cta" style={{ margin: "10px 14px 0", width: "auto" }} onClick={() => { fresh(); setMaker(false); setMajlis(true); }}>
+              <b>🕯️ عندنا تصاميم جاهزة لدعوة المجلس</b>
+              <span>لذكرى استشهاد أي معصوم عليه السلام: حدّد عدد الخطباء والرواديد، اختر تصميمك، واكتب بياناتك — ويوصلك بنفس الشكل اللي اخترته</span>
+            </button>
+          )}
           <div className="dz-feed">
             {loginHref ? (
               <div className="dz-msg bot">
                 <p>سجّل دخولك عشان تتكلم مع {persona}.</p>
                 <div className="dz-actions"><Link className="dz-mini" href={loginHref}>تسجيل الدخول</Link></div>
               </div>
+            ) : maker ? (
+              <TemplateMaker onClose={() => setMaker(false)} />
+            ) : majlis ? (
+              <MajlisPicker chatId={chatId} onClose={() => setMajlis(false)} onDone={(r) => void majlisDone(r)} />
             ) : msgs.length === 0 ? (
               <>
                 <div className="dz-msg bot">
@@ -542,7 +588,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                           {m.design.flag && <p className="dz-flag">⚠️ ملاحظة الفحص الآلي على الصورة: {m.design.flag}. تقدر تعيد رسمها.</p>}
                           {i === lastDesign ? (
                             <>
-                              <DesignDone design={m.design} fonts={fonts} saving={saving} busy={!!busy} photo={!!photo} onSave={saveFinal} onRedraw={() => chatId && void runProduce(chatId, true)} onEdit={() => void toZahraa()} />
+                              <DesignDone chatId={chatId} design={m.design} fonts={fonts} saving={saving} busy={!!busy} photo={!!photo} onSave={saveFinal} onRedraw={() => chatId && void runProduce(chatId, true)} onEdit={() => void toZahraa()} />
                             </>
                           ) : (
                             <p className="dz-muted">تصميم سابق في هذه المحادثة (المحرر يفتح على آخر تصميم).</p>
@@ -605,6 +651,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
  * platform's rule: he writes and edits the words himself, زهراء is the extra road.
  */
 function DesignDone({
+  chatId,
   design,
   fonts,
   saving,
@@ -614,6 +661,7 @@ function DesignDone({
   onRedraw,
   onEdit,
 }: {
+  chatId: string | null;
   design: DesignView;
   fonts: FontDef[];
   saving: boolean;
@@ -624,6 +672,28 @@ function DesignDone({
   onEdit: () => void;
 }) {
   const [working, setWorking] = useState(false);
+  const [exporting, setExporting] = useState<string | null>(null);
+  /** The design as it stands (its picture with any edited words), in another size or as a print PDF. */
+  async function exportAs<I extends string>(id: I, fn: () => (b: Blob, id: I) => Promise<void>) {
+    setExporting(id);
+    try {
+      await fn()(await renderDesign(design, fonts), id);
+    } finally {
+      setExporting(null);
+    }
+  }
+  /** The title as a vector drawing (GPT Image 2.6's SVG), downloaded. */
+  async function titleSvg() {
+    setExporting("svg");
+    try {
+      const r = await postJson<{ url: string | null }>("/api/designer/svg", { chatId });
+      if (r.url) window.open(r.url, "_blank", "noopener");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "تعذّر رسم SVG.");
+    } finally {
+      setExporting(null);
+    }
+  }
   const save = async () => {
     setWorking(true);
     try {
@@ -653,6 +723,24 @@ function DesignDone({
           🔁 أعد الرسم
         </button>
       </div>
+      {!design.splitOf && (
+        <div className="dz-done-row" role="group" aria-label="مقاسات أخرى والطباعة">
+          <span className="dz-muted" style={{ fontSize: 12 }}>📐 بضغطة:</span>
+          {SIZES.map((s) => (
+            <button key={s.id} type="button" className="dz-mini" disabled={busy || !!exporting} onClick={() => void exportAs(s.id, () => downloadSize)}>
+              {exporting === s.id ? "…" : s.label}
+            </button>
+          ))}
+          <button type="button" className="dz-mini" disabled={busy || !!exporting} onClick={() => void titleSvg()} title="العنوان والزخرفة رسم متجه (SVG) بـ GPT Image 2.6 — يكبر لأي مقاس بدون تشويش، للبنرات والطباعة الكبيرة">
+            {exporting === "svg" ? "…" : "✒️ العنوان SVG"}
+          </button>
+          {PRINTS.map((p) => (
+            <button key={p.id} type="button" className="dz-mini" disabled={busy || !!exporting} onClick={() => void exportAs(p.id, () => downloadPrint)} title={`PDF بهامش قص ٣ مم — دقة تقريبية ${printDpi([design.width, design.height], p.id)} نقطة/إنش`}>
+              {exporting === p.id ? "…" : `🖨️ ${p.label}`}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

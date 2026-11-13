@@ -4,6 +4,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DESIGNER, isDesignAspect, isDesignKind, type DesignerTextMode, type DesignAspect, type DesignKind } from "@config/designer";
 import { readDesign, readLayers, type Design, type Layer } from "./layers";
+import { isMajlisMaker, readOrder, type MajlisMaker, type MajlisOrder } from "@config/designer-majlis";
 
 const db = () => createAdminClient();
 
@@ -68,6 +69,15 @@ export interface PendingDesign {
   fontId?: string;
   /** a palette of the 100 (Color Hunt) the person picked: it replaces the direction's colours */
   paletteId?: string;
+  /** a ready majlis design the person picked and filled (its exact program is drawn, not a design from zero) */
+  majlis?: MajlisOrder;
+  /** who makes that ready design: «حيدرا ماكس» in the page ("code", the default) or GPT Image 2.6 / 2 on the server */
+  majlisMaker?: MajlisMaker;
+  /**
+   * a CHANGE asked for a ready majlis design drawn before: the person's words, and the design it changes — its program
+   * («حيدرا ماكس» patches it) or, made by GPT, its picture (GPT edits it)
+   */
+  majlisEdit?: { said: string; prev: string; code?: string; fonts?: { head: string; body: string } };
 }
 
 export interface Chat {
@@ -133,6 +143,15 @@ export function cleanHistory(raw: unknown): Turn[] {
   return out;
 }
 
+function readMajlisEdit(v: unknown): PendingDesign["majlisEdit"] | null {
+  if (!v || typeof v !== "object") return null;
+  const e = v as Record<string, unknown>;
+  const said = str(e.said, 2000).trim(), prev = str(e.prev, 60);
+  if (!said || !prev) return null;
+  const f = (e.fonts ?? {}) as Record<string, unknown>;
+  return { said, prev, ...(typeof e.code === "string" && e.code ? { code: e.code.slice(0, 140_000) } : {}), ...(typeof f.head === "string" && typeof f.body === "string" ? { fonts: { head: f.head.slice(0, 60), body: f.body.slice(0, 60) } } : {}) };
+}
+
 export function readPending(v: unknown): PendingDesign | null {
   if (!v || typeof v !== "object") return null;
   const p = v as Record<string, unknown>;
@@ -157,6 +176,7 @@ export function readPending(v: unknown): PendingDesign | null {
     ...(typeof p.base === "string" && p.base ? { base: p.base.slice(0, 60) } : {}),
     ...(typeof p.fontId === "string" && p.fontId ? { fontId: p.fontId.slice(0, 60) } : {}),
     ...(typeof p.paletteId === "string" && p.paletteId ? { paletteId: p.paletteId.slice(0, 80) } : {}),
+    ...(readOrder(p.majlis) ? { majlis: readOrder(p.majlis)!, ...(isMajlisMaker(p.majlisMaker) ? { majlisMaker: p.majlisMaker } : {}), ...(readMajlisEdit(p.majlisEdit) ? { majlisEdit: readMajlisEdit(p.majlisEdit)! } : {}) } : {}),
   };
 }
 

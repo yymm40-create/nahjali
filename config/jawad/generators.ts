@@ -6,11 +6,32 @@
 // The owner can rename, hide, reorder or re-price a generator from /jawad-ai/admin, but can never add a capability:
 // options, limits and modes only come from this file.
 
-import { COIN_COST_USD, sellKind, wasHalalas, getPricing, marginFor, type PriceKind } from "../coins";
+import { COIN_COST_USD, sellKind, type PriceKind } from "../coins";
 import type { GeneratorDef, Issue, ModeDef, OptionState, PriceResult, RefKind, RefMeta, RefRole, Settings } from "./types";
 import { DICTION_KEY, DICTION_VALUES, hasMarks, mostlyArabic, type Diction } from "./diction";
 import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, STEM_LABEL, stemsOf, VIDEO_SFX, videoSfxSeconds } from "./smart-split";
 import { REALFACE_LOW_RES, REALFACE_WARNING } from "./realface";
+import {
+  fillMegapixels,
+  IMAGE_TOOL_MODELS,
+  IMAGE_TOOL_USD,
+  IMAGE_TOOLS_CHECKED,
+  IMG_INPAINT_ID,
+  IMG_OUTPAINT_ID,
+  IMG_UPSCALE_ID,
+  maskProblem,
+  needsEnglish,
+  OUTPAINT_SHAPE_HINT,
+  OUTPAINT_SHAPE_LABEL,
+  OUTPAINT_SHAPES,
+  outpaintPlan,
+  topazTier,
+  UPSCALE_MAX_MP,
+  upscaledMp,
+  upscaleUsd,
+  type OutpaintShape,
+  type UpscaleEngine,
+} from "./image-tools";
 
 const CHECKED = "2026-10-04";
 
@@ -41,15 +62,13 @@ const MB = 1024 * 1024;
 export const centiFor = (usd: number) => Math.max(1, Math.ceil((usd / COIN_COST_USD) * 100 - 1e-9));
 /** The halalas of cost in a sum of hundredths (rounded up, never 0 for a paid line). */
 export const costOf = (centi: number) => Math.ceil(centi / 100 - 1e-9);
-/** The one picture model priced at «ربح الصور» (the owner, 21 October 2026); the other picture models take the general margin. */
+/** GPT Image 2 (its pictures are priced as «image»; every kind but Claude's takes the one margin now: config/coins.ts). */
 export const GPT_IMAGE_2_ID = "openai-gpt-image-2";
-/** What a generator's output is priced as: GPT Image 2's pictures «ربح الصور», videos «ربح الفيديو», the rest the general margin (config/coins.ts). */
+/** What a generator's output is priced as (its kind; all of them take the one margin, config/coins.ts). */
 export const priceKindOf = (g: { id: string; output: GeneratorDef["output"] | string } | null | undefined): PriceKind =>
   g?.output === "image" ? (g.id === GPT_IMAGE_2_ID ? "image" : "other") : g?.output === "video" ? "video" : "other";
 /** What the customer pays (halalas) for a sum of cost hundredths: rounded up to the step, plus the kind's margin (config/coins.ts). */
 export const coinsOf = (centi: number, kind: PriceKind = "other") => sellKind(costOf(centi), kind);
-/** The struck «was» price (halalas) for the same cost. */
-export const wasOf = (centi: number, kind: PriceKind = "other") => wasHalalas(costOf(centi), getPricing(), kind);
 
 const ARABIC = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
 export const hasArabic = (s: string) => ARABIC.test(s);
@@ -1591,10 +1610,6 @@ export const REALFACE_SECOND_USD: Record<string, number> = { "480p": 0.206, "720
 export const REALFACE_20_SECOND_USD: Record<string, number> = { "480p": 0.141, "720p": 0.31, "1080p": 0.75 };
 const realFacePer = (d: { settings: Settings }) => (d.settings.version === "2.0" ? REALFACE_20_SECOND_USD : REALFACE_SECOND_USD);
 const realFaceSec = (d: { settings: Settings }) => Math.max(4, Math.min(d.settings.version === "2.0" ? 15 : 30, Math.round(Number(d.settings.duration) || 5)));
-/** The owner's profit on «سيدنس الواقعي» (21 October 2026), whatever the videos' general margin is. */
-export const REALFACE_MARGIN_PCT = 10;
-/** The cost lines lifted so that the videos' margin on them comes to REALFACE_MARGIN_PCT. */
-const realFaceLift = () => (100 + REALFACE_MARGIN_PCT) / (100 + marginFor("video"));
 const REALFACE_CHECKED = "2026-10-21";
 
 const realFaceModes: ModeDef[] = [
@@ -1688,7 +1703,7 @@ const seedanceRealFace: GeneratorDef = {
     const per = table[`${d.settings.version === "2.0" ? "v20:" : ""}sec:${res}`];
     if (per == null) return { ok: false, reason: "سعر هذه الدقة غير محدد بعد." };
     // its own profit (10٪): the line is scaled so the videos' margin on it gives that
-    return total([{ label: `${d.settings.version === "2.0" ? "2.0" : "2.5"} · ${sec} ث · ${RES_LABEL[res] ?? res}`, centi: Math.ceil(per * sec * realFaceLift()) }], seedanceRealFace.costUsd(d, mode));
+    return total([{ label: `${d.settings.version === "2.0" ? "2.0" : "2.5"} · ${sec} ث · ${RES_LABEL[res] ?? res}`, centi: Math.ceil(per * sec) }], seedanceRealFace.costUsd(d, mode));
   },
   costUsd(d) {
     const per = realFacePer(d);
@@ -2133,7 +2148,7 @@ const smartSplit: GeneratorDef = {
 
 function total(lines: { label: string; centi: number }[], usd: number | null): PriceResult {
   const centi = lines.reduce((s, l) => s + l.centi, 0);
-  return { ok: true, coins: coinsOf(centi), was: wasOf(centi), lines, usdCeiling: usd };
+  return { ok: true, coins: coinsOf(centi), lines, usdCeiling: usd };
 }
 
 
@@ -2189,7 +2204,252 @@ const jawadVoice: GeneratorDef = {
   notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي.", "لا تُؤخذ بصمة صوت شخص إلا بإذنه."],
 };
 
-export const GENERATORS: GeneratorDef[] = [gptImage2, gptImage26, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, kling4, kling4Edit, kling4Flash, kling4FlashEdit, wan3, geminiOmni, geminiOmni12, geminiOmni12Edit, miniTts, elevenV4, jawadVoice, elevenSfx, elevenMusic, smartSplit];
+// ───────────── «أدوات الصورة»: امسح بالفرشاة · وسّع الصورة · ارفع الدقة (fal.ai) ─────────────
+// Edits of ONE picture (a result of «أعمالي» or an upload) through the same job, price, refund and «أعمالي» as any
+// generation. They are opened from «🖼️ أدوات الصورة» (a picture's card in «أعمالي», or a picture loaded in the studio),
+// never from the generator list. Hidden until the owner turns them on. The costs and their sources are in
+// config/jawad/image-tools.ts (each provider's own model page, checked on IMAGE_TOOLS_CHECKED).
+
+const toolSources = (slug: string, price: string) => [
+  { label: `fal.ai — ${slug} (schema)`, url: `https://fal.ai/models/${slug}/api`, checked: IMAGE_TOOLS_CHECKED },
+  { label: `fal.ai — ${slug} (price: ${price})`, url: `https://fal.ai/models/${slug}`, checked: IMAGE_TOOLS_CHECKED },
+];
+const TOOL_IMAGE_FILE = { mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 30 * MB, minSide: 64, maxSide: 8192 };
+const TRANSLATE_KEY = "translate";
+const translateLine = { key: TRANSLATE_KEY, label: "كتابة الوصف بالإنجليزية (Claude Haiku)", defaultCenti: centiFor(IMAGE_TOOL_USD.translate), basis: `سقف Claude Haiku 5.5: ٢٠٠٠ توكن دخل × $0.10/مليون + ١٠٠٠ توكن خرج × $0.50/مليون = $${IMAGE_TOOL_USD.translate}` };
+/** The picture being edited: the first picture of the request. */
+const pictureOf = (d: { refs: RefMeta[] }) => d.refs.find((r) => r.kind === "image");
+/** The translation's price line, when the description is not plain English. */
+const translated = (d: { prompt: string }, table: Record<string, number | null>, lines: { label: string; centi: number }[]): string | null => {
+  if (!needsEnglish(d.prompt)) return null;
+  const t = table[TRANSLATE_KEY];
+  if (t == null) return "سعر كتابة الوصف بالإنجليزية غير محدد بعد.";
+  lines.push({ label: "الوصف بالإنجليزية", centi: t });
+  return null;
+};
+
+/** Price key of «✨ تحديد ذكي» (SAM 3 on the picture, and Claude Haiku naming what to select in English). */
+export const SMART_SELECT_KEY = "select";
+export const INPAINT_ACTIONS = ["remove", "replace"] as const;
+const inpaintMode: ModeDef = {
+  id: "image_inpaint",
+  label: "عدّل جزء من الصورة",
+  refStyle: "references",
+  refs: { image: { min: 2, max: 2 } },
+  promptRequired: false,
+  prompt: { label: "بدّله بـ…", placeholder: "مثال: كوب قهوة أبيض · سماء وقت الغروب · شجرة نخل" },
+};
+const imageInpaint: GeneratorDef = {
+  id: IMG_INPAINT_ID,
+  name: "امسح بالفرشاة · عدّل هالجزء",
+  output: "image",
+  defaultSection: "images",
+  provider: { id: "fal", label: "fal.ai (إزالة الأشياء · FLUX.1 Fill [pro])" },
+  model: { id: IMAGE_TOOL_MODELS.erase, family: "Object Removal · FLUX.1 Fill [pro]", version: "fal" },
+  api: { name: "fal.ai queue", endpoint: `POST ${IMAGE_TOOL_MODELS.erase} · POST ${IMAGE_TOOL_MODELS.fill}`, tracking: "sync", progress: "none", cancel: "none" },
+  modes: [inpaintMode],
+  options: [
+    {
+      key: "action", label: "وش تبي بالجزء المحدد؟", kind: "choice", default: "remove",
+      values: [
+        { value: "remove", label: "امسحه", hint: "يختفي ويتعبّى مكانه طبيعي" },
+        { value: "replace", label: "بدّله بـ…", hint: "يتبدّل باللي تكتبه" },
+      ],
+    },
+  ],
+  files: { image: TOOL_IMAGE_FILE },
+  prompt: { label: "بدّله بـ…", placeholder: "مثال: كوب قهوة أبيض", max: 1000, arabic: true },
+  priceKeys: [
+    { key: "erase", label: "امسحه (للصورة)", defaultCenti: centiFor(IMAGE_TOOL_USD.erase), basis: `سعر fal المنشور لـ ${IMAGE_TOOL_MODELS.erase} بأعلى جودة (best_quality): $${IMAGE_TOOL_USD.erase} للصورة` },
+    { key: "fill:mp", label: "بدّله (كل ميجابكسل)", defaultCenti: centiFor(IMAGE_TOOL_USD.fillPerMp), basis: `سعر fal المنشور لـ ${IMAGE_TOOL_MODELS.fill}: $${IMAGE_TOOL_USD.fillPerMp} لكل ميجابكسل (يُقرّب للأعلى)؛ نرسل الصورة حتى ٤ ميجابكسل` },
+    translateLine,
+    { key: SMART_SELECT_KEY, label: "✨ تحديد ذكي (للمرة)", defaultCenti: centiFor(IMAGE_TOOL_USD.sam + IMAGE_TOOL_USD.translate), basis: `سعر fal المنشور لـ ${IMAGE_TOOL_MODELS.sam}: $${IMAGE_TOOL_USD.sam} للطلب + سقف Claude Haiku لكتابة الشيء بالإنجليزية` },
+  ],
+  modeFor: () => inpaintMode,
+  rules(d) {
+    const issues: Issue[] = [];
+    const pics = d.refs.filter((r) => r.kind === "image");
+    if (pics.length >= 2) {
+      const why = maskProblem(pics[0], pics[1]);
+      if (why) issues.push({ field: "refs", message: why });
+    }
+    if (d.settings.action === "replace" && !d.prompt.trim()) issues.push({ field: "prompt", message: "اكتب وش تبي يصير مكان الجزء المحدد." });
+    return {
+      options: opt(imageInpaint.options),
+      issues,
+      notes: [
+        "لوّن بالفرشاة على الجزء اللي تبي تغيّره، أو «✨ تحديد ذكي» واكتب اسمه.",
+        "«امسحه»: يختفي ويتعبّى مكانه كأنه ما كان. «بدّله بـ…»: يُرسم مكانه اللي تكتبه.",
+        "ما يتغيّر شي برا المنطقة اللي حددتها.",
+      ],
+    };
+  },
+  price(d, _mode, table) {
+    const pic = pictureOf(d);
+    if (!pic?.width || !pic.height) return { ok: false, reason: "أضف الصورة أولًا." };
+    const lines: { label: string; centi: number }[] = [];
+    if (d.settings.action === "replace") {
+      const per = table["fill:mp"];
+      if (per == null) return { ok: false, reason: "سعر التبديل غير محدد بعد." };
+      const mp = fillMegapixels(pic.width, pic.height);
+      lines.push({ label: `بدّله · ${mp} ميجابكسل`, centi: mp * per });
+      const why = translated(d, table, lines);
+      if (why) return { ok: false, reason: why };
+    } else {
+      const per = table.erase;
+      if (per == null) return { ok: false, reason: "سعر المسح غير محدد بعد." };
+      lines.push({ label: "امسحه", centi: per });
+    }
+    return total(lines, imageInpaint.costUsd(d, inpaintMode));
+  },
+  costUsd(d) {
+    const pic = pictureOf(d);
+    if (d.settings.action !== "replace") return IMAGE_TOOL_USD.erase;
+    if (!pic?.width || !pic.height) return null;
+    return fillMegapixels(pic.width, pic.height) * IMAGE_TOOL_USD.fillPerMp + (needsEnglish(d.prompt) ? IMAGE_TOOL_USD.translate : 0);
+  },
+  sources: [
+    ...toolSources(IMAGE_TOOL_MODELS.erase, "$0.024 best quality"),
+    ...toolSources(IMAGE_TOOL_MODELS.fill, "$0.05 / megapixel"),
+    ...toolSources(IMAGE_TOOL_MODELS.sam, "$0.005 / request"),
+  ],
+  verification: [
+    { item: "المسح", status: "verified", note: "image_url + mask_url (الأبيض = يُمسح) + model (best_quality) + mask_expansion (0–50، الافتراضي 15)." },
+    { item: "التبديل", status: "verified", note: "FLUX.1 Fill [pro]: prompt + image_url + mask_url بنفس المقاس؛ $0.05 لكل ميجابكسل يُقرّب للأعلى." },
+    { item: "اتجاه الماسك في FLUX Fill", status: "unverified", note: "الصفحة ما تقول صراحةً؛ نرسل الأبيض على الجزء اللي يُعدّل (عُرف FLUX Fill)، ونركّب الناتج داخل التحديد فقط." },
+    { item: "خارج التحديد", status: "verified", note: "نركّب الناتج على الأصل داخل التحديد (مع حافة ناعمة)؛ باقي الصورة بكسلاتها الأصلية." },
+    { item: "الحجم", status: "verified", note: "نرسل حتى ٤ ميجابكسل ونرجّع الجزء المعدّل على مقاس الأصل." },
+  ],
+  notes: ["طلب متزامن: يرجع بالصورة ونحفظها في «أعمالي» كنتيجة جديدة؛ الأصل يبقى."],
+};
+
+const outpaintMode: ModeDef = {
+  id: "image_outpaint",
+  label: "وسّع الصورة",
+  refStyle: "references",
+  refs: { image: { min: 1, max: 1 } },
+  promptRequired: false,
+  prompt: { label: "وش يضيف في الجوانب؟ (اختياري)", placeholder: "مثال: شارع بالليل وأضواء · بحر وسماء صافية" },
+};
+const imageOutpaint: GeneratorDef = {
+  id: IMG_OUTPAINT_ID,
+  name: "وسّع الصورة",
+  output: "image",
+  defaultSection: "images",
+  provider: { id: "fal", label: "fal.ai (Bria Expand)" },
+  model: { id: IMAGE_TOOL_MODELS.expand, family: "Bria Expand", version: "fal" },
+  api: { name: "fal.ai queue", endpoint: `POST ${IMAGE_TOOL_MODELS.expand}`, tracking: "sync", progress: "none", cancel: "none" },
+  modes: [outpaintMode],
+  options: [
+    { key: "shape", label: "الشكل الجديد", kind: "choice", ltr: false, default: "9:16", values: OUTPAINT_SHAPES.map((s) => ({ value: s, label: OUTPAINT_SHAPE_LABEL[s], hint: OUTPAINT_SHAPE_HINT[s] })) },
+  ],
+  files: { image: TOOL_IMAGE_FILE },
+  prompt: { label: "وش يضيف في الجوانب؟ (اختياري)", placeholder: "مثال: شارع بالليل وأضواء", max: 1000, arabic: true },
+  priceKeys: [
+    { key: "expand", label: "توسيع صورة", defaultCenti: centiFor(IMAGE_TOOL_USD.expand), basis: `سعر fal المنشور لـ ${IMAGE_TOOL_MODELS.expand}: $${IMAGE_TOOL_USD.expand} للصورة` },
+    translateLine,
+  ],
+  modeFor: () => outpaintMode,
+  rules(d) {
+    const pic = pictureOf(d);
+    const disabledValues: Record<string, string> = {};
+    if (pic?.width && pic.height) for (const s of OUTPAINT_SHAPES) if (!outpaintPlan(pic.width, pic.height, s)) disabledValues[s] = `الصورة أصلًا بشكل ${OUTPAINT_SHAPE_LABEL[s]}؛ اختر شكل ثاني أو «${OUTPAINT_SHAPE_LABEL.all}».`;
+    return {
+      options: opt(imageOutpaint.options, { shape: { disabledValues } }),
+      issues: [],
+      notes: ["الصورة تبقى في نصّها كما هي، والباقي يُرسم حولها يكمّلها.", "تقدر تكتب وش تبي يطلع في الجوانب، أو تتركه يكمّل لحاله."],
+    };
+  },
+  price(d, _mode, table) {
+    if (!pictureOf(d)?.width) return { ok: false, reason: "أضف الصورة أولًا." };
+    const per = table.expand;
+    if (per == null) return { ok: false, reason: "سعر التوسيع غير محدد بعد." };
+    const lines = [{ label: `وسّع إلى ${OUTPAINT_SHAPE_LABEL[String(d.settings.shape) as OutpaintShape] ?? d.settings.shape}`, centi: per }];
+    const why = translated(d, table, lines);
+    if (why) return { ok: false, reason: why };
+    return total(lines, imageOutpaint.costUsd(d, outpaintMode));
+  },
+  costUsd: (d) => IMAGE_TOOL_USD.expand + (needsEnglish(d.prompt) ? IMAGE_TOOL_USD.translate : 0),
+  sources: toolSources(IMAGE_TOOL_MODELS.expand, "$0.04 / generation"),
+  verification: [
+    { item: "المدخلات", status: "verified", note: "image_url + canvas_size (أقل من 5000×5000) + original_image_size + original_image_location + prompt (إنجليزي، اختياري) + negative_prompt." },
+    { item: "السعر", status: "verified", note: "$0.04 للصورة مهما كان المقاس." },
+    { item: "اللغة", status: "verified", note: "الوصف بالإنجليزية فقط؛ الوصف العربي يكتبه Claude Haiku بالإنجليزية أولًا." },
+  ],
+  notes: ["طلب متزامن: يرجع بالصورة الموسّعة ونحفظها في «أعمالي» كنتيجة جديدة."],
+};
+
+const upscaleMode: ModeDef = { id: "image_upscale", label: "ارفع الدقة", refStyle: "references", refs: { image: { min: 1, max: 1 } }, promptRequired: false };
+const imageUpscale: GeneratorDef = {
+  id: IMG_UPSCALE_ID,
+  name: "ارفع دقة الصورة",
+  output: "image",
+  defaultSection: "images",
+  provider: { id: "fal", label: "fal.ai (SeedVR2 · Topaz)" },
+  model: { id: IMAGE_TOOL_MODELS.seedvr, family: "SeedVR2 · Topaz Standard V2", version: "fal" },
+  api: { name: "fal.ai queue", endpoint: `POST ${IMAGE_TOOL_MODELS.seedvr} · POST ${IMAGE_TOOL_MODELS.topaz}`, tracking: "sync", progress: "none", cancel: "none" },
+  modes: [upscaleMode],
+  options: [
+    { key: "factor", label: "كم ضعف؟", kind: "choice", ltr: true, default: "2", values: [{ value: "2", label: "×2" }, { value: "4", label: "×4" }] },
+    {
+      key: "engine", label: "المحرك", kind: "choice", default: "seedvr",
+      values: [
+        { value: "seedvr", label: "اقتصادي", hint: "SeedVR2: حاد وطبيعي، أرخص بكثير" },
+        { value: "topaz", label: "Topaz", hint: "أدق في الوجوه والكتابة" },
+      ],
+    },
+  ],
+  files: { image: TOOL_IMAGE_FILE },
+  prompt: { label: "—", placeholder: "", max: 0, arabic: false },
+  priceKeys: [
+    { key: "seedvr:mp", label: "اقتصادي · كل ميجابكسل من الناتج", defaultCenti: centiFor(IMAGE_TOOL_USD.seedvrPerMp), basis: `سعر fal المنشور لـ ${IMAGE_TOOL_MODELS.seedvr}: $${IMAGE_TOOL_USD.seedvrPerMp} لكل ميجابكسل (نحسبه على الناتج، الأكبر)` },
+    ...IMAGE_TOOL_USD.topaz.map((t) => ({ key: `topaz:${t.upToMp}`, label: `Topaz · ناتج حتى ${t.upToMp} ميجابكسل`, defaultCenti: centiFor(t.usd), basis: `سعر fal المنشور لـ ${IMAGE_TOOL_MODELS.topaz}: $${t.usd} لصورة ناتجها حتى ${t.upToMp} ميجابكسل` })),
+  ],
+  modeFor: () => upscaleMode,
+  rules(d) {
+    const pic = pictureOf(d);
+    const engine = (d.settings.engine === "topaz" ? "topaz" : "seedvr") as UpscaleEngine;
+    const disabledValues: Record<string, string> = {};
+    const issues: Issue[] = [];
+    if (pic?.width && pic.height) {
+      for (const f of ["2", "4"]) if (upscaleUsd(pic.width, pic.height, Number(f), engine) == null) disabledValues[f] = `الناتج يصير أكبر من ${UPSCALE_MAX_MP} ميجابكسل${f === "4" ? "؛ اختر ×2" : ""}.`;
+      if (Object.keys(disabledValues).length === 2) issues.push({ field: "refs", message: "الصورة كبيرة أصلًا؛ ما نقدر نرفع دقتها أكثر." });
+    }
+    return { options: opt(imageUpscale.options, { factor: { disabledValues } }), issues, notes: ["يكبّر الصورة ×2 أو ×4 ويوضّح تفاصيلها بدون ما يغيّر محتواها.", "«اقتصادي» يكفي أغلب الصور؛ Topaz أدق في الوجوه والكتابة الصغيرة."] };
+  },
+  price(d, _mode, table) {
+    const pic = pictureOf(d);
+    if (!pic?.width || !pic.height) return { ok: false, reason: "أضف الصورة أولًا." };
+    const factor = Number(d.settings.factor) || 2;
+    const mp = upscaledMp(pic.width, pic.height, factor);
+    if (mp > UPSCALE_MAX_MP + 1e-9) return { ok: false, reason: `الناتج أكبر من ${UPSCALE_MAX_MP} ميجابكسل.` };
+    if (d.settings.engine === "topaz") {
+      const tier = topazTier(mp);
+      const per = tier ? table[`topaz:${tier.upToMp}`] : null;
+      if (!tier || per == null) return { ok: false, reason: "سعر Topaz لهذا المقاس غير محدد بعد." };
+      return total([{ label: `Topaz ×${factor} · حتى ${tier.upToMp} ميجابكسل`, centi: per }], imageUpscale.costUsd(d, upscaleMode));
+    }
+    const per = table["seedvr:mp"];
+    if (per == null) return { ok: false, reason: "سعر رفع الدقة غير محدد بعد." };
+    const units = Math.max(1, Math.ceil(mp - 1e-9));
+    return total([{ label: `×${factor} · ${units} ميجابكسل`, centi: units * per }], imageUpscale.costUsd(d, upscaleMode));
+  },
+  costUsd(d) {
+    const pic = pictureOf(d);
+    if (!pic?.width || !pic.height) return null;
+    return upscaleUsd(pic.width, pic.height, Number(d.settings.factor) || 2, d.settings.engine === "topaz" ? "topaz" : "seedvr");
+  },
+  sources: [...toolSources(IMAGE_TOOL_MODELS.seedvr, "$0.001 / megapixel"), ...toolSources(IMAGE_TOOL_MODELS.topaz, "$0.08 ≤24MP · $0.16 ≤48MP · $0.32 ≤96MP")],
+  verification: [
+    { item: "SeedVR2", status: "verified", note: "image_url + upscale_mode (factor) + upscale_factor + output_format (png)؛ $0.001 لكل ميجابكسل." },
+    { item: "ميجابكسل SeedVR2", status: "unverified", note: "الصفحة ما تقول هل السعر على المدخل أو الناتج؛ نحسبه على الناتج (الأكبر) كسقف." },
+    { item: "Topaz", status: "verified", note: "model «Standard V2» + upscale_factor + output_format (png)؛ $0.08 حتى 24 ميجابكسل، $0.16 حتى 48، $0.32 حتى 96." },
+    { item: "الحد", status: "unverified", note: `لا يذكر المزوّدان حدًا أعلى للمقاس؛ نوقف عند ${UPSCALE_MAX_MP} ميجابكسل للناتج.` },
+  ],
+  notes: ["طلب متزامن: يرجع بالصورة المكبّرة ونحفظها في «أعمالي» كنتيجة جديدة."],
+};
+
+export const GENERATORS: GeneratorDef[] = [gptImage2, gptImage26, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, kling4, kling4Edit, kling4Flash, kling4FlashEdit, wan3, geminiOmni, geminiOmni12, geminiOmni12Edit, miniTts, elevenV4, jawadVoice, elevenSfx, elevenMusic, smartSplit, imageInpaint, imageOutpaint, imageUpscale];
 export const generatorById = (id: string) => GENERATORS.find((g) => g.id === id);
 
 /** The settings a generator starts with. */

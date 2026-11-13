@@ -1,6 +1,6 @@
 // «Claude Code» pictures — the frame sizes and the art director's score sheet (pure: the page shows the scores too).
 
-export const PICTURE_SIZES: Record<string, [number, number]> = { "1:1": [1440, 1440], "16:9": [1920, 1080], "9:16": [1080, 1920], "3:2": [1800, 1200], "2:3": [1200, 1800], "4:5": [1440, 1800] };
+export const PICTURE_SIZES: Record<string, [number, number]> = { "1:1": [1440, 1440], "16:9": [1920, 1080], "9:16": [1080, 1920], "3:2": [1800, 1200], "2:3": [1200, 1800], "4:5": [1440, 1800], "3:4": [1536, 2048] };
 
 export const PICTURE_RUBRIC = [
   { id: "ask", ar: "الطلب", en: "It is exactly what the person asked for: the subject, every word written, the mood, the use (a post, a thumbnail, a poster)" },

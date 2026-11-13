@@ -3,7 +3,7 @@
 
 import { applyAll, CommandError, type Command } from "./commands";
 import { gradeBrief } from "./assistant-guide";
-import { clipEnd, clipLength, duration, ratioOf, type AssetInfo, type Timeline } from "./model";
+import { clipEnd, clipLength, duration, ratioOf, timelineTime, type AssetInfo, type Timeline } from "./model";
 
 export type Spoken = { s: number; e: number; w: string }[];
 
@@ -27,7 +27,7 @@ export function context(tl: Timeline, assets: ContextAsset[], transcripts: Map<s
       const kept = a ? transcripts.get(a.id) : undefined;
       // the transcript that covers most of this clip
       const words = kept ? (Object.values(kept).sort((x, y) => y.length - x.length)[0] ?? []) : [];
-      const inside = words.filter((w) => w.s >= c.in && w.s < c.out).map((w) => ({ s: Math.round(c.start + (w.s - c.in) / c.speed), e: Math.round(c.start + (w.e - c.in) / c.speed), w: w.w }));
+      const inside = words.filter((w) => w.s >= c.in && w.s < c.out).map((w) => ({ s: Math.round(timelineTime(c, w.s)), e: Math.round(timelineTime(c, w.e)), w: w.w }));
       if (!inside.length) continue;
       const phrases: [number, number, string][] = [];
       for (const w of inside) {
@@ -55,6 +55,9 @@ export function context(tl: Timeline, assets: ContextAsset[], transcripts: Map<s
       ...(t.muted ? { muted: true } : {}),
       ...(t.locked ? { locked: true } : {}),
       ...(t.duck ? { duck: true } : {}),
+      ...(t.hidden ? { hidden: true } : {}),
+      // «بدّل الكاميرات»: a synced camera's original (the cuts are made from it; multicam_angle swaps to it)
+      ...(t.angles ? { cameraAngles: true } : {}),
       clips: t.clips.map((c) => ({
         id: c.id,
         ...(c.assetId ? { assetId: c.assetId, name: byId.get(c.assetId)?.name ?? "" } : {}),
@@ -63,7 +66,8 @@ export function context(tl: Timeline, assets: ContextAsset[], transcripts: Map<s
         len: clipLength(c),
         in: c.in,
         out: c.out,
-        ...(c.speed !== 1 ? { speed: c.speed } : {}),
+        ...(c.speed !== 1 ? { speed: Math.round(c.speed * 100) / 100 } : {}),
+        ...(c.ramp ? { ramp: c.ramp } : {}),
         ...(c.volume !== 1 ? { volume: c.volume } : {}),
         ...(c.text ? { text: c.text.body.slice(0, 120) } : {}),
         ...(c.transition ? { transition: c.transition.kind } : {}),
@@ -79,6 +83,7 @@ export function context(tl: Timeline, assets: ContextAsset[], transcripts: Map<s
         ...(c.fx.length ? { fx: c.fx } : {}),
         ...(c.anim ? { anim: c.anim } : {}),
         ...(c.sound ? { sound: c.sound } : {}),
+        ...(c.angle ? { fromCamera: c.angle } : {}),
       })),
     })),
     library: assets.filter((a) => a.status === "ready").map((a) => ({ id: a.id, kind: a.kind, name: a.name, durationMs: a.durationMs, ...(a.kind === "video" ? { hasSound: a.hasAudio, size: a.width && a.height ? `${a.width}x${a.height}` : undefined } : {}) })),

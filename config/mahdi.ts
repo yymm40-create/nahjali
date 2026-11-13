@@ -190,8 +190,11 @@ export const MAHDI_LIMITS = {
  */
 export const COVER_ENHANCE = { model: "gpt-image-2-2026-04-21", size: "1024x1536", quality: "medium", costUsd: 0.108, coins: 4, perDay: 10 } as const;
 
-/** A book's PDF for download: one file per book, uploaded straight to storage (never through the website). */
-export const BOOK_PDF = { maxBytes: 50 * 1024 * 1024, perDay: 10 } as const;
+/**
+ * A book's PDF, read inside the platform or downloaded: one file per book, uploaded straight to storage (never through
+ * the website). No size limit (the owner, 10 November 2026): only the storage's own ceiling for one upload (R2: 5 GB).
+ */
+export const BOOK_PDF = { perDay: 10 } as const;
 
 /** Videos in posts and stories: off for now (the owner's choice). Photos and quotes stay; old videos still play. */
 export const SOCIAL_VIDEO = false;

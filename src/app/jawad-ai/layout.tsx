@@ -12,6 +12,7 @@ import { hasPurchased } from "@/lib/credits/orders";
 import { signupFreeImageAvailable } from "@/lib/jawad/server/free-image";
 import { loadCreditSettings } from "@/lib/credits/settings";
 import SubscribePopup from "@/components/jawad/SubscribePopup";
+import ConnectPopup from "@/components/jawad/ConnectPopup";
 import OfferBar from "@/components/jawad/OfferBar";
 import { loadSettings as loadCourseSettings } from "@/lib/course/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -96,6 +97,7 @@ export default async function JawadLayout({ children }: { children: React.ReactN
       {/* the page's robot introduces itself (a movable bubble afterwards) */}
       {!preview && <RobotGuide />}
       {popupPacks.length > 0 && <SubscribePopup packs={popupPacks} />}
+      {!preview && <ConnectPopup packsFirst={popupPacks.length > 0} />}
     </div>
   );
 }

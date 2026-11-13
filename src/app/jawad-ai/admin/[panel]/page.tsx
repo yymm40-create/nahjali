@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Stats from "@/app/admin/stats/page";
+import FeatureUse from "@/app/admin/use/page";
 import Spend from "@/app/admin/spend/page";
 import Profit from "@/app/admin/profit/page";
 import Access from "@/app/admin/access/page";
@@ -25,6 +26,7 @@ export default async function UnifiedAdminPanel({ params, searchParams }: { para
   const r = typeof query.r === "string" ? query.r : undefined;
   switch (panel) {
     case "stats": return <Stats searchParams={Promise.resolve({ r })} />;
+    case "use": return <FeatureUse searchParams={Promise.resolve({ r })} />;
     case "spend": return <Spend searchParams={Promise.resolve({ r })} />;
     case "profit": return <Profit searchParams={Promise.resolve({ r })} />;
     case "access": return <Access />;

@@ -3,7 +3,7 @@ import { handle, UserError } from "@/lib/api";
 import { requireDesignerUser } from "@/lib/designer/access";
 import { getChat } from "@/lib/designer/chats";
 import { fileLinks } from "@/lib/designer/files";
-import { codeBrief, failDesign, produceFromCode, retry } from "@/lib/designer/produce";
+import { codeBrief, failDesign, majlisGpt, produceFromCode, retry } from "@/lib/designer/produce";
 import { isAdmin } from "@config/site";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +31,13 @@ export const POST = handle(async (req: Request) => {
       const chat = await getChat(user.id, chatId);
       if (!chat) throw new UserError("ما لقينا هذي المحادثة.", 404);
       await retry(user.id, chat);
+    }
+    // a ready majlis design ordered from GPT Image 2.6 / 2: made here, on the server, and answered with the design
+    const waiting = typeof b.png !== "string" && typeof b.pngUpload !== "string" ? (await getChat(user.id, chatId))?.pending : null;
+    if (waiting?.majlis && waiting.majlisMaker && waiting.majlisMaker !== "code") {
+      const r = await majlisGpt(user.id, chatId, { email: user.email, origin: new URL(req.url).origin });
+      const links = await fileLinks(user.id, chatId);
+      return NextResponse.json({ ...r, design: { ...r.design, artworkUrl: r.design.artwork ? links.get(r.design.artwork) ?? null : null, layers: [] } });
     }
     // «حيدرا ماكس»: the page draws the design itself — first it gets the brief, then it sends the picture back
     if (typeof b.png !== "string" && typeof b.pngUpload !== "string") {

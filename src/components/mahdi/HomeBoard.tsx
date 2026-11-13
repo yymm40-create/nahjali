@@ -16,12 +16,15 @@ import { WIDGETS, homeWidgets, moveWidget, widgetDef, type WidgetId } from "@/li
 import type { Profile, Project } from "@/lib/mahdi/types";
 import BookletCard from "./BookletCard";
 import DailyCard from "./DailyCard";
+import PushPrompt from "./PushPrompt";
+import ReviewHints from "./ReviewHints";
 import DayBars from "./DayBars";
 import DayPriorities from "./DayPriorities";
 import DayTasks from "./DayTasks";
 import HabitRow from "./HabitRow";
 import HealthCard from "./health/HealthCard";
 import KhatmaCard from "./khatma/KhatmaCard";
+import FirstSteps from "./FirstSteps";
 import Icon from "./Icon";
 import ProgressRing from "./ProgressRing";
 import ProjectForm from "./ProjectForm";
@@ -146,6 +149,7 @@ export default function HomeBoard() {
           </button>
         </div>
       </header>
+      <FirstSteps />
       {where === "horizon" && <ShrineArt shrineId={look.shrine?.id ?? profile.shrineId} style={design.art} className="m-shrine-horizon" label={shrineName ? `رسمة ${shrineName}` : undefined} />}
 
       {/* «ملاحظاتي على أسبوعي»: at the top, once a week, on the day the person picked */}
@@ -160,6 +164,9 @@ export default function HomeBoard() {
           </button>
         </section>
       ) : null}
+
+      <PushPrompt />
+      <ReviewHints />
 
       <div className="m-board">
         {list.map((id) => (

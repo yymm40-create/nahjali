@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState } from "react";
+import Coined from "@/components/Coined";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import MicButton from "@/components/robots/MicButton";
 import { useClaudeModel } from "@/components/robots/claude-model";
@@ -40,7 +41,7 @@ export default function ActionBar({
       {/* on a phone: «اعتمد» across the width, the two other choices side by side under it */}
       <div className="flex flex-col gap-2 sm:flex-row">
         {onApprove && (
-          <button className="btn btn-primary flex-1" onClick={onApprove}>{approveLabel}</button>
+          <button className="btn btn-primary flex-1" onClick={onApprove}><Coined text={approveLabel} /></button>
         )}
         {send && (
           <div className="flex flex-1 gap-2">
