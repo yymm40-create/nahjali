@@ -18,6 +18,7 @@ import { DEFAULT_CREDIT_SETTINGS } from "@config/credits";
 import { LEARN } from "@config/learn";
 import { unifiedStudioNavigation } from "@config/jawad/sections";
 import { SECTIONS } from "@config/sections";
+import { thumbOf } from "@/lib/storage/public";
 
 export const dynamic = "force-dynamic";
 
@@ -75,7 +76,8 @@ export default async function JawadHome() {
       })
       .filter((t): t is LandingTool => !!t);
     const live = rt.generators.filter((g) => g.live);
-    const samples = [...new Set(live.map((g) => g.sampleUrl).filter((u): u is string => !!u && /\.(png|jpe?g|webp)(\?|$)/i.test(u)))].slice(0, 12);
+    // small WebPs kept by the CDN, not the 1–3 MB originals (lib/storage/public → app/files/thumb)
+    const samples = [...new Set(live.map((g) => g.sampleUrl).filter((u): u is string => !!u && /\.(png|jpe?g|webp)(\?|$)/i.test(u)))].slice(0, 12).map((u) => thumbOf(u, 480)!);
     const models = [...new Set(live.map((g) => g.name))].slice(0, 14);
     return (
       <>
