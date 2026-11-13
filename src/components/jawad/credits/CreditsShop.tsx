@@ -111,8 +111,10 @@ function features(credit: number, units: UnitPrices | null | undefined): string[
 }
 
 export default function CreditsShop({
-  packs, featured, bankOk = false, card: cardOn = false, gateway = "paylink", cardSoon = false, back = null, hasSupport, whatsapp = "", user, contactOk, balance, owner, waiting, initialPack, loginHref, units, exact = null,
+  packs, featured, bankOk = false, card: cardOn = false, gateway = "paylink", cardSoon = false, back = null, hasSupport, whatsapp = "", user, contactOk, balance, owner, waiting, initialPack, loginHref, units, exact = null, made = null,
 }: {
+  /** pictures and videos really made here in the last 30 days, rounded down (lib/jawad/server/social-proof), or null */
+  made?: number | null;
   /** «خلص رصيدك»: a top-up of exactly what an operation needed (and what it was for), shown above the packages */
   exact?: { pack: Pack; what: string } | null;
   packs: Pack[];
@@ -304,8 +306,9 @@ export default function CreditsShop({
           <span className="cr-kicker cr-reveal">الرصيد · الباقات</span>
           <h1 className="cr-reveal" style={{ ["--i" as string]: 1 }}>اشحن رصيدك <em>وابدأ تصنع</em></h1>
           <p className="cr-sub cr-reveal" style={{ ["--i" as string]: 2 }}>
-            صور وفيديوهات وأصوات وتصاميم بالذكاء الاصطناعي. اختر باقتك وادفع بضغطة وحدة، وكل ما كبرت الباقة زاد رصيدك المجاني.
+            صور وفيديوهات وأصوات وتصاميم بالذكاء الاصطناعي. اختر باقتك وادفع بضغطة وحدة: كل ريال تدفعه يصير ريال رصيد، وما له تاريخ انتهاء.
           </p>
+          {made != null && <p className="cs-proof">✨ <b dir="ltr">+{made.toLocaleString("en")}</b> صورة وفيديو انصنعت في الجواد آخر ٣٠ يوم</p>}
           {user && (
             <p className="cs-balance">
               رصيدك الحالي: {owner ? <b dir="ltr">∞</b> : <Riyal halalas={balance ?? 0} size={18} className="cs-bal" />}
@@ -359,7 +362,7 @@ export default function CreditsShop({
             </button>
             {error && errAt === exact.pack.id && <p className="pr-card-err" role="alert">{error}</p>}
           </article>
-          <p className="pr-pay">أو اختر باقة تحت، وكل ما كبرت زاد رصيدك المجاني 👇</p>
+          <p className="pr-pay">أو اختر باقة جاهزة تحت 👇</p>
         </section>
       )}
 
@@ -409,7 +412,7 @@ export default function CreditsShop({
           </button>
           {error && errAt === customId && <p className="pr-card-err" role="alert">{error}</p>}
         </article>
-        <p className="pr-pay">أو اختر باقة، وكل ما كبرت زاد رصيدك المجاني 👇</p>
+        <p className="pr-pay">أو اختر باقة جاهزة 👇</p>
       </section>
 
       <section className="pr" aria-label="الباقات">
