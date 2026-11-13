@@ -35,6 +35,7 @@ import { probeFile, putWithProgress } from "./upload";
 import WorksPanel from "./WorksPanel";
 import ImageTools, { type ImageSource } from "./ImageTools";
 import { isImageTool } from "@config/jawad/image-tools";
+import { isVoiceTool, VOICE_CHANGE_ID, VOICE_TOOL_TRACK } from "@config/jawad/voice-tools";
 import CompareGenerators from "./CompareGenerators";
 import { DEFAULT_VIEW, worksQuery, type WorksView } from "@/lib/jawad/works-organise";
 import StylePicker from "./StylePicker";
@@ -616,6 +617,8 @@ export default function Studio({ section, studioSections, generators: allGenerat
   const price = plan ? (plan.every((x) => x.ev.price.ok) ? plan.reduce((t, x) => t + (x.ev.price.ok ? x.ev.price.coins : 0), 0) : null) : ev?.price.ok ? ev.price.coins : null;
   async function submitAll() {
     track("studio.generate");
+    // «دبلجة» · «غيّر الصوت» · «حرّك الشفايف»
+    if (def && isVoiceTool(def.id)) track(VOICE_TOOL_TRACK[def.id]);
     if (!plan) return price != null && submit(price);
     for (const x of plan) if (x.ev.price.ok) await submit(x.ev.price.coins, { prompt: x.prompt, refs: x.refs });
   }
@@ -1236,7 +1239,7 @@ export default function Studio({ section, studioSections, generators: allGenerat
               ev={ev}
               values={ev.settings}
               onChange={setSetting}
-              voiceCoins={def?.provider.id === "jawad" ? voiceCoins({}, prices[def.id] ?? {}) : def && def.priceKeys.some((k) => k.key === VOICE_DESIGN_KEY) ? voiceCoins(prices[def.id] ?? {}, prices[JAWAD_VOICE_ID]) : undefined}
+              voiceCoins={def?.provider.id === "jawad" ? voiceCoins({}, prices[def.id] ?? {}) : def && def.priceKeys.some((k) => k.key === VOICE_DESIGN_KEY) ? voiceCoins(prices[def.id] ?? {}, prices[JAWAD_VOICE_ID]) : def?.id === VOICE_CHANGE_ID ? voiceCoins(prices["elevenlabs-eleven-v4"] ?? {}) : undefined}
               voiceProvider={def?.provider.id === "jawad" ? "jawad" : "elevenlabs"}
             />
           </div>

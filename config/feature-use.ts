@@ -54,6 +54,9 @@ export const FEATURES = [
   { id: "studio.smart_select", section: "studio", label: "«✨ تحديد ذكي» في أدوات الصورة" },
   { id: "studio.outpaint", section: "studio", label: "«وسّع الصورة» (إرسال)" },
   { id: "studio.upscale", section: "studio", label: "«ارفع دقة الصورة» (إرسال)" },
+  { id: "studio.dub", section: "studio", label: "«دبلجة» (إرسال)" },
+  { id: "studio.voice_change", section: "studio", label: "«غيّر الصوت» (إرسال)" },
+  { id: "studio.lipsync", section: "studio", label: "«حرّك الشفايف» (إرسال)" },
 
   // «حيدرة كت» (/jawad-ai/editor)
   { id: "editor.open", section: "editor", label: "فتح مشروع في حيدرة كت" },
