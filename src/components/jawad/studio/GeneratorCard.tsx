@@ -4,11 +4,13 @@ import { generatorById } from "@config/jawad/generators";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
 import type { StudioGenerator } from "./types";
+import { thumbOf } from "@/lib/storage/public";
 
-function Sample({ g, className }: { g: StudioGenerator; className: string }) {
+function Sample({ g, className, width = 480 }: { g: StudioGenerator; className: string; width?: 240 | 480 | 960 }) {
   return g.sampleUrl ? (
+    // a small WebP kept by the CDN (app/files/thumb), not the 1–3 MB original
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={g.sampleUrl} alt={`مثال من ${g.name}`} className={`${className} object-cover`} loading="lazy" />
+    <img src={thumbOf(g.sampleUrl, width)!} alt={`مثال من ${g.name}`} className={`${className} object-cover`} loading="lazy" decoding="async" />
   ) : (
     <div className={`${className} grid place-items-center bg-[radial-gradient(120%_120%_at_100%_0%,var(--jw-accent-soft),transparent_60%)]`}>
       <span className="text-xs text-jw-faint">لا توجد صورة نموذجية بعد</span>
@@ -22,7 +24,7 @@ export function GeneratorCard({ gen, onOpen, owner }: { gen: StudioGenerator; on
   return (
     <button type="button" onClick={onOpen} className="jw-panel group block w-full overflow-hidden text-start transition-colors hover:border-jw-line-strong" aria-haspopup="dialog" aria-label={`المولد: ${gen.name}. اضغط للتغيير`}>
       <div className="relative">
-        <Sample g={gen} className="aspect-[16/7] w-full" />
+        <Sample g={gen} className="aspect-[16/7] w-full" width={960} />
         {!gen.live && owner && <span className="jw-chip absolute start-2 top-2 bg-black/70 !text-white">مخفي عن المستخدمين</span>}
       </div>
       <div className="flex items-center justify-between gap-3 px-3.5 py-3">

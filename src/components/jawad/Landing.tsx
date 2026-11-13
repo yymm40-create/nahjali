@@ -93,8 +93,10 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
           <div className="ld-strip" aria-hidden>
             <div className="ld-track" style={{ ["--n" as string]: samples.length }}>
               {strip.map((u, i) => (
+                // the owner's sample pictures, as small WebPs kept by the CDN (app/files/thumb); decorative, so they never
+                // compete with the headline: low priority, decoded off the main thread, sized so nothing jumps
                 // eslint-disable-next-line @next/next/no-img-element -- the owner's sample pictures from storage
-                <img key={i} src={u} alt="" loading={i < 6 ? "eager" : "lazy"} />
+                <img key={i} src={u} alt="" width={210} height={280} loading={i < 4 ? "eager" : "lazy"} fetchPriority="low" decoding="async" />
               ))}
             </div>
           </div>
