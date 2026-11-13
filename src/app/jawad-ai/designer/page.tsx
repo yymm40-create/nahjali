@@ -8,7 +8,7 @@ import { DESIGNER } from "@config/designer";
 import "./designer.css";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: DESIGNER.name };
+export const metadata = { title: DESIGNER.name, description: "«كاظم» المصمم الذكي: تصاميم وبطاقات ودعوات وإعلانات بخطوط عربية جميلة، من وصفك بالعربي وبمقاسات انستقرام والطباعة." };
 
 /** «المصمم الذكي»: a chat with «كاظم». The owner always; others by the owner's switch and the «designer» permission. */
 export default async function DesignerPage({ searchParams }: { searchParams: Promise<{ chat?: string }> }) {
@@ -16,7 +16,14 @@ export default async function DesignerPage({ searchParams }: { searchParams: Pro
   const [{ user, owner }, rt] = await Promise.all([jawadSession(), loadRuntime()]);
   const section = rt.sections.find((s) => s.implementation === "designer");
   if (!section) notFound();
-  if (!user) return <DesignerChat name={section.name} persona={DESIGNER.persona} loginHref={jawadLogin(DESIGNER.base)} />;
+  // the page's one heading for search engines and screen readers (the chat draws its own look)
+  if (!user)
+    return (
+      <>
+        <h1 className="sr-only">كاظم: المصمم الذكي للتصاميم والدعوات بالعربي</h1>
+        <DesignerChat name={section.name} persona={DESIGNER.persona} loginHref={jawadLogin(DESIGNER.base)} />
+      </>
+    );
   if (!owner && !(await designerAllowed(user.email))) notFound();
   return <DesignerChat name={section.name} persona={DESIGNER.persona} loginHref={null} owner={owner} photo={await photoAllowed(user.email)} initialChat={typeof chat === "string" && /^[0-9a-f-]{36}$/i.test(chat) ? chat : null} />;
 }

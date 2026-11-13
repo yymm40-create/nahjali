@@ -8,7 +8,7 @@ import SectionClosed from "@/components/jawad/SectionClosed";
 import { STUDENT } from "@config/jawad/student";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "الطالب الذكي" };
+export const metadata = { title: "الطالب الذكي", description: "الطالب الذكي: ارفع ملف المادة PDF وخذ ملخصًا وشرحًا وخريطة ذهنية وأسئلة تدريب بالحل، بالعربي وخلال دقائق." };
 
 /** «الطالب الذكي»: the student's materials and a new one. */
 export default async function StudentPage() {
