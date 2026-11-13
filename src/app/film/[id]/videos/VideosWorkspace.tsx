@@ -3,6 +3,7 @@
 import VoiceDesigner from "../../VoiceDesigner";
 import { prepareLines, PREPARE_GROUP } from "../../prepare-lines";
 import { credits } from "@/lib/film/credits";
+import Coined from "@/components/Coined";
 import { REALFACE_LOW_RES, REALFACE_WARNING } from "@config/jawad/realface";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -809,7 +810,7 @@ export default function VideosWorkspace({
               <div className="space-y-1 rounded-2xl bg-surface-2 p-3">
                 <div className="flex items-center justify-between text-sm font-extrabold">
                   <label htmlFor={`sec-${g.id}`}>مدة الفيديو: <span dir="ltr">{sec}s</span></label>
-                  <span dir="ltr">≈ {usd(cost)}</span>
+                  <span dir="ltr">≈ <Coined text={usd(cost)} /></span>
                 </div>
                 <input
                   id={`sec-${g.id}`}

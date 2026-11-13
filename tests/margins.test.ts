@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { claudeHalalas, coinsFor, DEFAULT_PRICING, getPricing, marginFor, sellHalalas, sellKind, wasHalalas, wasMarginFor } from "@config/coins";
+import { claudeHalalas, coinsFor, DEFAULT_PRICING, getPricing, marginFor, sellKind } from "@config/coins";
 import { coinsOf, costOf, generatorById, priceKindOf } from "@config/jawad/generators";
 import { evaluate, priceTable } from "@/lib/jawad/engine";
 import { priceOf } from "@/lib/coins";
@@ -10,25 +10,30 @@ import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 
 const read = (p: string) => readFileSync(p, "utf8");
 
-describe("الربح حسب النوع: Claude وحيدرا ماكس ٦٠٪، GPT Image 2 ٣٠٪، الفيديو ٤٠٪، سيدنس الواقعي ١٠٪، الباقي ٤٠٪", () => {
-  it("has the owner's margins by default, and the struck price keeps the same gap above each", () => {
-    expect(DEFAULT_PRICING).toMatchObject({ marginPct: 40, wasMarginPct: 70, imageMarginPct: 30, videoMarginPct: 40 });
-    expect([marginFor("image"), marginFor("video"), marginFor("claude"), marginFor("max"), marginFor("other")]).toEqual([30, 40, 60, 60, 40]);
-    expect([wasMarginFor("image"), wasMarginFor("video"), wasMarginFor("other")]).toEqual([60, 70, 70]);
+describe("الربح: ٦٠٪ على كل شي في البرنامج، إلا روبوتات Claude (وحيدرا ماكس) ٣٠٪ — بدون خصم ولا سعر مشطوب", () => {
+  it("has the owner's margins by default", () => {
+    expect(DEFAULT_PRICING).toEqual({ usdToSar: 3.75, stepHalalas: 50, marginPct: 60 });
+    expect([marginFor("image"), marginFor("video"), marginFor("claude"), marginFor("max"), marginFor("other")]).toEqual([60, 60, 30, 30, 60]);
   });
 
-  it("prices each kind at its own margin (cost 1000 halalas)", () => {
-    expect(sellKind(1000, "image")).toBe(1000 + 300);
-    expect(sellKind(1000, "video")).toBe(1000 + 400);
-    expect(sellKind(1000, "other")).toBe(1000 + 400);
-    // Claude: the real cost + 60٪, to the halala, never rounded up to half a riyal; «حيدرا ماكس» the same
-    expect(sellKind(1000, "claude")).toBe(1600);
-    expect(sellKind(7, "claude")).toBe(12);
-    expect(sellKind(1000, "max")).toBe(1600);
+  it("prices each kind at its margin (cost 1000 halalas)", () => {
+    expect(sellKind(1000, "image")).toBe(1600);
+    expect(sellKind(1000, "video")).toBe(1600);
+    expect(sellKind(1000, "other")).toBe(1600);
+    // Claude: the real cost + 30٪, to the halala, never rounded up to half a riyal; «حيدرا ماكس» the same
+    expect(sellKind(1000, "claude")).toBe(1300);
+    expect(sellKind(7, "claude")).toBe(10);
+    expect(sellKind(1000, "max")).toBe(1300);
     expect(coinsFor(1, "claude")).toBe(claudeHalalas(1));
     expect(coinsFor(1, "max")).toBe(claudeHalalas(1, getPricing(), "max"));
-    expect(claudeHalalas(1, getPricing(), "max")).toBe(Math.ceil(375 * 1.6));
-    expect(wasHalalas(1000, getPricing(), "image")).toBe(sellHalalas(1000, getPricing(), 60));
+    expect(claudeHalalas(1, getPricing(), "max")).toBe(Math.ceil(375 * 1.3));
+  });
+
+  it("no discount anywhere: the offer week and the struck price are gone from the code", () => {
+    const coins = read("config/coins.ts");
+    expect(coins).not.toMatch(/PROMO|promoActive|wasHalalas|wasMarginPct/);
+    expect(read("config/jawad/types.ts")).not.toContain("was?: number");
+    expect(read("config/jawad/generators.ts")).not.toMatch(/wasOf|REALFACE_MARGIN_PCT|realFaceLift/);
   });
 
   it("a studio generator is priced by what it makes: GPT Image 2 «ربح الصور», the other picture models the general, a video 40٪, sound the general", () => {
@@ -41,7 +46,7 @@ describe("الربح حسب النوع: Claude وحيدرا ماكس ٦٠٪، GP
     if (e.price.ok) {
       const cost = costOf(e.price.lines.reduce((s, l) => s + l.centi, 0));
       expect(e.price.coins).toBe(sellKind(cost, "video"));
-      // the videos and the rest share 40٪ now (the owner, 21 October 2026)
+      // the videos and the rest share the one margin (60٪)
       expect(e.price.coins).toBe(sellKind(cost, "other"));
       expect(e.price.coins).toBe(coinsOf(e.price.lines.reduce((s, l) => s + l.centi, 0), "video"));
     }
@@ -73,40 +78,16 @@ describe("الربح حسب النوع: Claude وحيدرا ماكس ٦٠٪، GP
     expect(read("src/lib/jawad/server/smart-edit.ts")).toContain('coinsOf(sum(extra.filter((l) => l.claude)), "claude")');
     expect(read("src/lib/editor/upscale.ts")).toContain('"video")');
     expect(read("src/lib/mahdi/server/cover-enhance.ts")).toContain('"image")');
-    expect(read("src/lib/coins.ts")).toContain("price_image_margin_pct");
-    expect(read("src/lib/film/limits.ts")).toContain("price_video_margin_pct");
+    // one profit setting, under a new key (the old per-kind margins still stored no longer apply)
+    expect(read("src/lib/coins.ts")).toContain('price_profit_pct: "marginPct"');
+    expect(read("src/lib/coins.ts")).not.toContain('price_margin_pct: "marginPct"');
+    expect(read("src/lib/film/limits.ts")).toMatch(/price_profit_pct: \{[^}]*default: 60/);
   });
 
   it("is in what Claude knows about the site", () => {
-    expect(JAWAD_KNOWLEDGE).toContain("GPT Image 2's pictures 30٪");
-    expect(JAWAD_KNOWLEDGE).toContain("«حيدرا ماكس»'s programs 60٪");
-    expect(JAWAD_KNOWLEDGE).toContain("«أسبوع العرض»");
-  });
-});
-
-describe("«أسبوع العرض»: ١٠٪ على كل شي إلا شغل Claude (٦٠٪) حتى نهاية ١٦ نوفمبر ٢٠٢٦، بعدها يرجع الربح المعتاد", () => {
-  it("is 10٪ on every kind but Claude's during the week, over the owner's settings, and the struck price shows the usual one", async () => {
-    const { PROMO, promoActive, setPromoClock, setPricing } = await import("@config/coins");
-    setPricing({ marginPct: 50, imageMarginPct: 45, videoMarginPct: 55 });
-    setPromoClock(() => Date.parse("2026-10-27T12:00:00Z"));
-    try {
-      expect(promoActive()).toBe(true);
-      expect([marginFor("image"), marginFor("video"), marginFor("other"), marginFor("claude"), marginFor("max")]).toEqual([10, 10, 10, 60, 60]);
-      expect(sellKind(1000, "video")).toBe(1000 + 100);
-      expect(wasMarginFor("video")).toBe(10 + (getPricing().wasMarginPct - 50));
-      // «سيدنس الواقعي» stays at its own 10٪
-      const rf = generatorById("seedance-real-face");
-      if (rf) expect(priceKindOf(rf)).toBe("video");
-      // extended two weeks: still on the 16th, ends by itself at the end of it (Saudi time)
-      expect(PROMO.until).toBe(Date.parse("2026-11-16T21:00:00Z"));
-      setPromoClock(() => Date.parse("2026-11-16T20:59:00Z"));
-      expect(promoActive()).toBe(true);
-      setPromoClock(() => PROMO.until);
-      expect(promoActive()).toBe(false);
-      expect([marginFor("image"), marginFor("video"), marginFor("other"), marginFor("claude")]).toEqual([45, 55, 50, 60]);
-    } finally {
-      setPromoClock(() => Infinity);
-      setPricing(null);
-    }
+    expect(JAWAD_KNOWLEDGE).toContain("60٪ on EVERYTHING in the program");
+    expect(JAWAD_KNOWLEDGE).toContain("its real usage + 30٪");
+    expect(JAWAD_KNOWLEDGE).toContain("NO DISCOUNT");
+    expect(JAWAD_KNOWLEDGE).not.toContain("«أسبوع العرض» (the owner, 26 October");
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { credits, creditsRange } from "@/lib/film/credits";
+import Coined from "@/components/Coined";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useCallback, useTransition } from "react";
@@ -116,7 +117,7 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
         <button className="btn btn-primary w-full text-xl" disabled={!hasStory || busy} onClick={() => send({ action: "start" })}>
           {busy ? "نرسل…" : "ابدأ مع السيناريست"}
         </button>
-        <p className="text-xs font-bold text-muted">{COST_HINT}</p>
+        <p className="text-xs font-bold text-muted"><Coined text={COST_HINT} /></p>
         {error && <p className="error-box">{error}</p>}
       </div>
     );
@@ -145,7 +146,7 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
               </h2>
               <div className="flex gap-1">
                 {v.stale && <span className="chip bg-red-500 text-white">قد تكون قديمة</span>}
-                {typeof (v.data as { cost_usd?: unknown }).cost_usd === "number" && <span className="chip text-xs" title="تكلفة هذا الرد">{credits((v.data as { cost_usd: number }).cost_usd, "claude")}</span>}
+                {typeof (v.data as { cost_usd?: unknown }).cost_usd === "number" && <span className="chip text-xs" title="تكلفة هذا الرد"><Coined text={credits((v.data as { cost_usd: number }).cost_usd, "claude")} /></span>}
                 <span className={`chip ${chipClass(v.status)}`}>
                   {v.kind === "questions" && v.status === "approved" ? "تمت الإجابة" : STATUS_LABELS[v.status]}
                 </span>
@@ -232,7 +233,7 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
         </div>
       )}
 
-      {!running && <p className="text-center text-xs font-bold text-muted">{COST_HINT}</p>}
+      {!running && <p className="text-center text-xs font-bold text-muted"><Coined text={COST_HINT} /></p>}
       {error && <p className="error-box">{error}</p>}
     </div>
     </EditsLeftContext>

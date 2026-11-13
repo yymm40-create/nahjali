@@ -265,7 +265,7 @@ export default function ImageTools({
           <button type="button" className="jw-btn jw-btn-primary !min-h-11 flex-1 gap-2" disabled={!picture || coins == null || blockers.length > 0 || Boolean(busy)} onClick={() => coins != null && void send(coins)}>
             <Icon name={def ? TOOL_TAB[tool].icon : "sparkles"} size={16} />
             {busy || (tool === IMG_INPAINT_ID ? (s.action === "replace" ? "بدّله" : "امسحه") : tool === IMG_OUTPAINT_ID ? "وسّعها" : "ارفع الدقة")}
-            {coins != null && !busy && <Riyal halalas={coins} was={ev?.price.ok ? ev.price.was ?? null : null} size={14} free={owner} />}
+            {coins != null && !busy && <Riyal halalas={coins} size={14} free={owner} />}
           </button>
           <button type="button" className="jw-btn jw-btn-quiet !min-h-11" disabled={Boolean(busy)} onClick={onClose}>إلغاء</button>
         </div>
