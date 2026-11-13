@@ -20,7 +20,7 @@ export default function Home({ first, owner, userId, freeImageAvailable, section
   const works = `/jawad-ai/${sections.find((s) => s.output)?.id ?? "images"}?tab=works`;
   return (
     <div className="ld hm" dir="rtl">
-      <Link href={CREDITS.base} className="ld-promo">🎁 كل ما كبرت الباقة زاد رصيدك المجاني — <b>اشحن رصيدك</b></Link>
+      <Link href={CREDITS.base} className="ld-promo">🎁 بدون اشتراك: كل ريال تشحنه يصير ريال رصيد، وما ينتهي — <b>اشحن رصيدك</b></Link>
 
       <header className="ld-hero hm-hero">
         <div className="ld-in">
@@ -115,7 +115,7 @@ export default function Home({ first, owner, userId, freeImageAvailable, section
           <div className="hm-packs">
             <div>
               <b>رصيدك يخلص؟ اشحن بباقة 🎁</b>
-              <span>تحويل بنكي سهل، وكل ما كبرت الباقة زاد رصيدك المجاني.</span>
+              <span>بالبطاقة أو مدى أو Apple Pay، ورصيدك ما ينتهي.</span>
             </div>
             <Link href={CREDITS.base} className="ld-cta">شوف الباقات ←</Link>
           </div>

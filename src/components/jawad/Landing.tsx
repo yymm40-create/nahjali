@@ -26,7 +26,9 @@ export interface LandingTool {
   tint: string;
 }
 
-export default function Landing({ loginHref, samples, tools, models, packs, featured, freeImageOn = false, units = null, whatsapp = "" }: {
+export default function Landing({ loginHref, samples, tools, models, packs, featured, freeImageOn = false, units = null, whatsapp = "", made = null }: {
+  /** pictures and videos really made here in the last 30 days, rounded down (lib/jawad/server/social-proof), or null */
+  made?: number | null;
   loginHref: string;
   samples: string[];
   tools: LandingTool[];
@@ -62,7 +64,7 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
       ) : giftOpen() ? (
         <Link href={loginHref} className="ld-promo">🎁 سجّل الحين وخذ <b><Riyal halalas={SIGNUP_GIFT.halalas} size={14} /> مجانًا</b> في رصيدك — العرض لين ٦ الصبح بس</Link>
       ) : (
-        <Link href={CREDITS.base} className="ld-promo">🎁 كل ما كبرت الباقة زاد رصيدك المجاني — <b>شوف الباقات</b></Link>
+        <Link href={CREDITS.base} className="ld-promo">🎁 بدون اشتراك: كل ريال تشحنه يصير ريال رصيد، وما ينتهي — <b>شوف الباقات</b></Link>
       )}
 
       <header className="ld-hero">
@@ -83,6 +85,7 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
               {prices.map((p, i) => <span key={i}>{p}</span>)}
             </p>
           )}
+          {made != null && <p className="ld-proof">✨ <b dir="ltr">+{made.toLocaleString("en")}</b> صورة وفيديو انصنعت في الجواد آخر ٣٠ يوم</p>}
           <p className="ld-note">بدون اشتراك · تدفع بالريال · رصيدك ما ينتهي · يرد عليك إنسان</p>
           {JAWAD.heroVideoUrl && (
             <div className="ld-video">
@@ -176,7 +179,7 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
         <section className="ld-sec ld-alt">
           <div className="ld-in">
             <h2 className="ld-h">باقات تناسبك</h2>
-            <p className="ld-lead">تدفع مرة وحدة، وكل ما كبرت الباقة زاد رصيدك المجاني.</p>
+            <p className="ld-lead">تدفع مرة وحدة، ورصيدك ما ينتهي، وتصرف منه على قد اللي تسويه بس.</p>
             <div className="ld-packs">
               {show.map((p) => (
                 <Link key={p.id} href={`${CREDITS.base}?pack=${p.id}`} className={`ld-pack${p.id === featured ? " star" : ""}`}>

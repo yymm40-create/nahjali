@@ -19,6 +19,7 @@ import { LEARN } from "@config/learn";
 import { unifiedStudioNavigation } from "@config/jawad/sections";
 import { SECTIONS } from "@config/sections";
 import { thumbOf } from "@/lib/storage/public";
+import { madeLast30Days } from "@/lib/jawad/server/social-proof";
 import { SITE_URL } from "@config/site";
 import { SHARE } from "@config/share";
 
@@ -92,10 +93,11 @@ export default async function JawadHome() {
   if (!user) {
     // for a cold visitor from an ad: the packages and the owner's WhatsApp, today's unit prices, and whether an account made today
     // gets its first picture free — each one optional, the page never fails on them
-    const [settings, units, freeImageOn] = await Promise.all([
+    const [settings, units, freeImageOn, made] = await Promise.all([
       loadCreditSettings().catch(() => null),
       unitPrices().catch(() => null),
       signupFreeImageEligible(new Date().toISOString()).catch(() => false),
+      madeLast30Days().catch(() => null),
     ]);
     const credits = settings ?? DEFAULT_CREDIT_SETTINGS;
     const tools: LandingTool[] = unifiedStudioNavigation(rt.sections)
@@ -115,7 +117,7 @@ export default async function JawadHome() {
         {/* the same text for everyone (no person's data), escaped against «</script>» */}
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: STRUCTURED }} />
         <ContestWinners />
-        <Landing loginHref={jawadLogin(JAWAD.base)} samples={samples} tools={tools} models={models} packs={credits.packs} featured={credits.featured} whatsapp={credits.whatsapp} units={units} freeImageOn={freeImageOn} />
+        <Landing loginHref={jawadLogin(JAWAD.base)} samples={samples} tools={tools} models={models} packs={credits.packs} featured={credits.featured} whatsapp={credits.whatsapp} units={units} freeImageOn={freeImageOn} made={made} />
       </>
     );
   }
