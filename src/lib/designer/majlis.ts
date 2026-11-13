@@ -2,7 +2,7 @@
 // template as it was picked, with the person's photos in its frames and their words on its plates and boxes — the
 // faces untouched); for GPT Image 2.6 / 2, the prompt that rebuilds the picked design with them. Pure (server and page).
 
-import { baseUrl, maskUrl, ROLE_LABEL, titleUrl, wordText, type MajlisOrder, type MajlisTemplate } from "@config/designer-majlis";
+import { baseUrl, maskUrl, occasionOf, ROLE_LABEL, titleUrl, wordText, ZAHRA, zahraOnly, type MajlisOrder, type MajlisTemplate } from "@config/designer-majlis";
 
 /** The fonts the programs use (ids of the site's font catalogue): head, body, and the big numerals. */
 export const MAJLIS_FONTS = { head: "el-messiri", body: "readex-pro", lalezar: "lalezar", ruqaa: "aref-ruqaa" } as const;
@@ -148,6 +148,16 @@ const LABELS: Record<string, string> = { kh: "الاسم الأول", rd: "ال�
 const labelOf = (k: string) => LABELS[k] ?? k;
 
 /** What GPT Image 2.6 / 2 is told: rebuild the picked design (ref1) with the people (ref2…) and the exact words. */
+/**
+ * A design whose title belongs to Lady Fatima, ordered for another of the Ma'sumeen: the title calligraphy is replaced
+ * by the occasion's call («يا حسين»), in the same style and place; null when the title stays as it is.
+ */
+function retitle(t: MajlisTemplate, o: MajlisOrder): string | null {
+  const occ = occasionOf(o);
+  if (!zahraOnly(t) || occ.name === ZAHRA) return null;
+  return `the title calligraphy in the same place, size, colour, texture and calligraphy style as ref1's title, but it now reads «${occ.call}» (the old title «${t.title}» is gone; this invitation remembers the martyrdom of ${occ.name}, so leave out anything in the picture that belongs only to Lady Fatima, keeping the same sorrowful look)`;
+}
+
 export function majlisGptPrompt(t: MajlisTemplate, o: MajlisOrder): string {
   if (t.kind === "people") {
     // ref1 = the design without the men, ref2 = the picked design with the men's heads blurred (their pose only),
@@ -155,7 +165,7 @@ export function majlisGptPrompt(t: MajlisTemplate, o: MajlisOrder): string {
     const who = o.people.map((p, i) => `- ${t.slots.length > 1 ? (i === 0 ? "The FIRST man in ref2 (the bigger or right one)" : "The OTHER man in ref2") : "The man in ref2"} → the person of ref${i + 3} (${p.role === "kh" ? "a khateeb" : "a radood"}): put him in ref1 at EXACTLY that man's place, size and body pose — his body and head turned the same way (in profile, from the back, back to back with the other man, looking down — whatever ref2 shows), even when his own photo faces the camera. His face, beard, hair, glasses and features come ONLY from his photo ref${i + 3}, EXACTLY (seen from ref2's angle), in a plain black thobe. ${o.cut ? "His photo's background is removed: he is cleanly cut out and stands in the design's own scene." : "Keep his photo's own background around him, blended softly into the design."}`);
     const lines = [wordText(o, "names"), wordText(o, "detailsA"), wordText(o, "detailsB"), wordText(o, "extra")].filter((v) => v.trim());
     return [
-      `ref1 is the design to recreate EXACTLY — the same background, the same title calligraphy «${t.title}» in the same place, the same colours, light and composition. It has no people in it yet.`,
+      `ref1 is the design to recreate EXACTLY — the same background, ${retitle(t, o) ?? `the same title calligraphy «${t.title}» in the same place`}, the same colours, light and composition. It has no people in it yet.`,
       `ref2 is ONLY a guide for how the men stand in this design: their place, size and pose. Their heads are blurred on purpose — NEVER copy the men of ref2: not their faces, not their hair, not their beards, not who they are. Copy nothing else from ref2 either; the picture itself is ref1.`,
       `Put the person's own people into ref1, each standing exactly like his man in ref2:`,
       ...who,
@@ -177,10 +187,10 @@ export function majlisGptPrompt(t: MajlisTemplate, o: MajlisOrder): string {
     ["the women's box", wordText(o, "women")],
   ].filter(([, v]) => v.trim());
   return [
-    `Recreate the attached design ref1 EXACTLY: the same layout, background, title calligraphy «${t.title}», colours, ornaments, frames, name plates and boxes, in the same places. It is a mourning invitation to a Husseini majlis for the martyrdom of Lady Fatima al-Zahra; keep its sorrowful, dignified look.`,
+    `Recreate the attached design ref1 EXACTLY: the same layout, background, ${retitle(t, o) ?? `title calligraphy «${t.title}»`}, colours, ornaments, frames, name plates and boxes, in the same places. It is a mourning invitation to a Husseini majlis for the martyrdom of ${occasionOf(o).name}; keep its sorrowful, dignified look.`,
     "Fill it in:",
     ...frames,
     ...lines.map(([where, v]) => `- In ${where}, write exactly: «${v}».`),
-    "Every Arabic word is written exactly as given, letters joined right to left, crisp and readable; no other new words, numbers, logos or watermarks. No women anywhere. The title calligraphy stays as it is in ref1.",
+    `Every Arabic word is written exactly as given, letters joined right to left, crisp and readable; no other new words, numbers, logos or watermarks. No women anywhere. ${retitle(t, o) ? "The title is the new one given above, nothing of the old title stays." : "The title calligraphy stays as it is in ref1."}`,
   ].join("\n");
 }

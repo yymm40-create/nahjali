@@ -71,11 +71,15 @@ export const titleUrl = (id: string) => `${MAJLIS.dir}/${id}_title.png`;
 
 /** The designs that fit this many people: the invitations (دعوات ٢) first, the ones with people after, then the
  * designers' approved templates (`extra`). */
-export function templatesFor(kh: number, rd: number, extra: MajlisTemplate[] = []): MajlisTemplate[] {
+export function templatesFor(kh: number, rd: number, extra: MajlisTemplate[] = [], occ: string = ZAHRA): MajlisTemplate[] {
   const n = kh + rd;
   if (n < 1 || n > MAJLIS.maxPeople) return [];
-  return [...MAJLIS_ALL.filter((t) => t.slots.length === n).sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "invite" ? -1 : 1)), ...extra.filter((t) => t.slots.length === n)];
+  const all = [...MAJLIS_ALL.filter((t) => t.slots.length === n).sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "invite" ? -1 : 1)), ...extra.filter((t) => t.slots.length === n)];
+  // another occasion: the designs that fit it as they are first, then Lady Fatima's (GPT gives them the occasion's title)
+  return occ === ZAHRA ? all : [...all.filter((t) => !zahraOnly(t)), ...all.filter(zahraOnly)];
 }
+/** «حيدرا ماكس» draws the design exactly as it is, so a design of Lady Fatima for another occasion is GPT's only */
+export const codeFits = (t: MajlisTemplate, o: { fields: Partial<Record<string, string>> }) => !zahraOnly(t) || occasionOf(o).name === ZAHRA;
 
 const num4 = (v: unknown) => Math.round(Math.min(1, Math.max(0, Number(v) || 0)) * 10000) / 10000;
 const box = (v: unknown) => (Array.isArray(v) && v.length === 4 ? v.map(num4) : null);
@@ -113,7 +117,35 @@ export function readUserTemplate(raw: unknown): MajlisTemplate | null {
 export const templateOf = (o: { templateId: string; template?: MajlisTemplate }) => templateById(o.templateId) ?? (o.template && o.template.id === o.templateId ? o.template : null);
 
 /** The details the person fills (labels shown in the form; defaults put in when left empty). */
+/**
+ * Whose martyrdom the majlis remembers — any of the Ma'sumeen (peace be upon them), not only Lady Fatima: the
+ * occasion line of the invitation and, on a design whose title belongs to Lady Fatima, the new title GPT writes.
+ */
+export const MAJLIS_OCCASIONS = [
+  { name: "رسول الله محمد صلى الله عليه وآله", call: "يا رسول الله" },
+  { name: "أمير المؤمنين الإمام علي عليه السلام", call: "يا علي" },
+  { name: "السيدة فاطمة الزهراء عليها السلام", call: "يا زهراء" },
+  { name: "الإمام الحسن المجتبى عليه السلام", call: "يا حسن" },
+  { name: "الإمام الحسين عليه السلام", call: "يا حسين" },
+  { name: "الإمام علي بن الحسين السجاد عليه السلام", call: "يا سجاد" },
+  { name: "الإمام محمد الباقر عليه السلام", call: "يا باقر" },
+  { name: "الإمام جعفر الصادق عليه السلام", call: "يا صادق" },
+  { name: "الإمام موسى الكاظم عليه السلام", call: "يا كاظم" },
+  { name: "الإمام علي الرضا عليه السلام", call: "يا رضا" },
+  { name: "الإمام محمد الجواد عليه السلام", call: "يا جواد" },
+  { name: "الإمام علي الهادي عليه السلام", call: "يا هادي" },
+  { name: "الإمام الحسن العسكري عليه السلام", call: "يا عسكري" },
+] as const;
+export const ZAHRA = MAJLIS_OCCASIONS[2].name;
+/** the occasion of an order (orders made before the choice existed were all for Lady Fatima) */
+export const occasionOf = (o: { fields: Partial<Record<string, string>> }) => MAJLIS_OCCASIONS.find((x) => x.name === o.fields.occ) ?? MAJLIS_OCCASIONS[2];
+/** the ready designs whose title calls on no one in particular — they fit any occasion as they are */
+const ANY_TITLES = new Set(["عظّم الله أجوركم", "عزاء", "قريبًا", "جرحٌ لا يندمل"]);
+/** a ready design whose title (and look) belongs to Lady Fatima: for another occasion only GPT can make it, with a new title */
+export const zahraOnly = (t: MajlisTemplate) => t.source !== "user" && !ANY_TITLES.has(t.title);
+
 export const MAJLIS_FIELDS = [
+  { key: "occ", label: "المناسبة: ذكرى استشهاد", placeholder: "اختر", required: true },
   { key: "host", label: "اسم المأتم أو الحسينية", placeholder: "مأتم الإمام علي عليه السلام", required: true },
   { key: "invite", label: "كلمة الدعوة", placeholder: "يدعوكم", def: "يدعوكم" },
   { key: "pre", label: "المناسبة (السطر تحت الاسم)", placeholder: "لإحياء ذكرى شهادة", def: "لإحياء ذكرى شهادة" },
@@ -182,7 +214,7 @@ export function readOrder(raw: unknown): MajlisOrder | null {
   const fields: MajlisOrder["fields"] = {};
   for (const d of MAJLIS_FIELDS) {
     const v = clean(f[d.key]);
-    if (v) fields[d.key] = v;
+    if (v && (d.key !== "occ" || MAJLIS_OCCASIONS.some((x) => x.name === v))) fields[d.key] = v;
   }
   const people = (Array.isArray(o.people) ? o.people : [])
     .map((p) => (p && typeof p === "object" ? (p as Record<string, unknown>) : {}))
@@ -218,15 +250,15 @@ export function wordText(o: MajlisOrder, k: string): string {
     case "khLbl": return a ? ROLE_LABEL[a.role] : "";
     case "rdLbl": return b ? ROLE_LABEL[b.role] : "";
     case "hostShort": return field(o, "host");
-    case "occ": return "السيدة فاطمة الزهراء عليها السلام";
+    case "occ": return occasionOf(o).name;
     case "dateLine": return [field(o, "night"), field(o, "date")].filter(Boolean).join(" — ");
     case "timeLine": return [field(o, "time"), field(o, "ampm")].filter(Boolean).join(" ");
     case "names": return o.people.length > 1 ? o.people.map((p) => p.name).filter(Boolean).join("  ◆  ") : a ? `${ROLE_LABEL[a.role]}: ${a.name}` : "";
     case "roles": return o.people.length > 1 ? o.people.map((p) => ROLE_LABEL[p.role]).join("  ◆  ") : "";
-    case "detailsA": return [field(o, "invite"), field(o, "host"), field(o, "pre"), "السيدة فاطمة الزهراء عليها السلام"].filter(Boolean).join(" ");
+    case "detailsA": return [field(o, "invite"), field(o, "host"), field(o, "pre"), occasionOf(o).name].filter(Boolean).join(" ");
     case "detailsB": return [wordText(o, "dateLine"), wordText(o, "timeLine"), field(o, "place")].filter(Boolean).join("  ◆  ");
     case "extra": return [field(o, "women"), field(o, "live")].filter(Boolean).join("  ◆  ");
-    case "hostLine": return [field(o, "invite"), field(o, "host"), field(o, "pre"), "السيدة فاطمة الزهراء عليها السلام"].filter(Boolean).join(" ");
+    case "hostLine": return [field(o, "invite"), field(o, "host"), field(o, "pre"), occasionOf(o).name].filter(Boolean).join(" ");
     default: return MAJLIS_FIELDS.some((d) => d.key === k) ? field(o, k as MajlisFieldKey) : "";
   }
 }

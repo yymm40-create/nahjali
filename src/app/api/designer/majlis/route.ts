@@ -4,7 +4,7 @@ import { handle, UserError } from "@/lib/api";
 import { requireDesignerUser } from "@/lib/designer/access";
 import { getChat, saveChat, type PendingDesign, type Turn } from "@/lib/designer/chats";
 import { sizeOf, type Design } from "@/lib/designer/layers";
-import { isMajlisMaker, orderMissing, orderSummary, readOrder, templateOf } from "@config/designer-majlis";
+import { codeFits, isMajlisMaker, orderMissing, orderSummary, readOrder, templateOf } from "@config/designer-majlis";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -26,6 +26,7 @@ export const POST = handle(async (req: Request) => {
   if (!isMajlisMaker(b.maker)) throw new UserError("اختر مين يسوي التصميم.", 400);
   const maker = b.maker;
   const t = templateOf(order)!;
+  if (maker === "code" && !codeFits(t, order)) throw new UserError("هذا التصميم عنوانه للزهراء عليها السلام؛ لمناسبة ثانية يسويه جواد (GPT) بعنوان المناسبة، أو اختر تصميمًا عامًا.", 400);
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   const chat = chatId ? await getChat(user.id, chatId) : null;
   if (chatId && !chat) throw new UserError("ما لقينا هذي المحادثة.", 404);

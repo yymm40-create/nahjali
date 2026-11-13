@@ -6,7 +6,7 @@ import { majlisGptPrompt, majlisPhotos, majlisProgram } from "@/lib/designer/maj
 import { checkScene } from "@/lib/editor/scene/contract";
 
 const PUB = path.join(__dirname, "..", "..", "public", "designer", "majlis");
-const order = (id: string) => readOrder({ templateId: id, fields: { host: "مأتم الزهراء", night: "ليلة الجمعة", date: "١٥ جمادى الأولى", time: "٨:٣٠", place: "القطيف" }, people: [{ role: "kh", name: "الشيخ حسن", photo: "u1" }, { role: "rd", name: "الملا علي", photo: "u2" }], cut: false })!;
+const order = (id: string) => readOrder({ templateId: id, fields: { occ: "السيدة فاطمة الزهراء عليها السلام", host: "مأتم الزهراء", night: "ليلة الجمعة", date: "١٥ جمادى الأولى", time: "٨:٣٠", place: "القطيف" }, people: [{ role: "kh", name: "الشيخ حسن", photo: "u1" }, { role: "rd", name: "الملا علي", photo: "u2" }], cut: false })!;
 
 describe("«كاظم»'s ready majlis designs", () => {
   it("has the 60 invitations, each with its files, two frames and its words", () => {
@@ -85,5 +85,26 @@ describe("«كاظم»'s ready majlis designs", () => {
     const p = majlisGptPrompt(MAJLIS_TEMPLATES[0], order(MAJLIS_TEMPLATES[0].id));
     expect(p).toContain("«الشيخ حسن»");
     expect(p).toContain("EXACTLY as in his photo");
+  });
+});
+
+describe("«دعوة مجلس» for any of the Ma'sumeen", () => {
+  it("asks the occasion, writes it, and keeps Lady Fatima's designs to GPT for another occasion", async () => {
+    const { MAJLIS_OCCASIONS, ZAHRA, codeFits, zahraOnly, wordText } = await import("@config/designer-majlis");
+    const husain = MAJLIS_OCCASIONS.find((x) => x.call === "يا حسين")!.name;
+    const t = MAJLIS_PEOPLE.find((x) => x.id === "p28")!;
+    const base = { templateId: t.id, fields: { host: "مأتم", night: "ليلة", date: "١", time: "٨", place: "هنا" }, people: t.slots.map((s, i) => ({ role: s.who === "rd" ? "rd" : "kh", name: `ن${i}`, photo: "x" })), cut: true };
+    expect(orderMissing(readOrder(base)!)).toContain("المناسبة: ذكرى استشهاد");
+    const o = readOrder({ ...base, fields: { ...base.fields, occ: husain } })!;
+    expect(orderMissing(o)).toEqual([]);
+    expect(wordText(o, "detailsA")).toContain(husain);
+    expect(readOrder({ ...base, fields: { ...base.fields, occ: "غيره" } })!.fields.occ).toBeUndefined();
+    expect(zahraOnly(t)).toBe(true);
+    expect(codeFits(t, o)).toBe(false);
+    expect(codeFits(t, { fields: { occ: ZAHRA } })).toBe(true);
+    expect(majlisGptPrompt(t, o)).toContain("«يا حسين»");
+    expect(majlisGptPrompt(t, readOrder({ ...base, fields: { ...base.fields, occ: ZAHRA } })!)).toContain(`«${t.title}»`);
+    const list = templatesFor(1, 1, [], husain);
+    expect(zahraOnly(list[0])).toBe(false);
   });
 });

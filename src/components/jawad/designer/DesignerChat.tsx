@@ -170,6 +170,12 @@ const store = {
   },
 };
 
+/**
+ * «دعوة مجلس من تصميم جاهز» is not advertised (the owner, 13 November 2026): it comes to the person only when what he
+ * writes speaks of a majlis or a mourning occasion of the Ma'sumeen (peace be upon them).
+ */
+const MAJLIS_TALK = /مجلس|مجالس|مأتم|ماتم|حسيني|عزاء|استشهاد|شهادة|وفاة|ذكرى|خطيب|رادود|رواديد|ملا |نعي|رثاء|دعوة|دعوات|الزهراء|فاطمي|الحسين|المعصوم|الأئمة|الامام|الإمام|محرم|عاشوراء|أربعين|اربعين/;
+
 export default function DesignerChat({ name, persona, loginHref, owner, photo, initialChat }: { name: string; persona: string; loginHref: string | null; owner?: boolean; photo?: boolean; initialChat?: string | null }) {
   const router = useRouter();
   const [chats, setChats] = useState<ChatItem[]>([]);
@@ -503,7 +509,6 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
               <div className="dz-title">{name}</div>
               <div className="dz-muted" style={{ fontSize: 12 }}>تكلّم مع {persona} · حيدرا ماكس يصمم والكلام بخطك، وأي كلمة تتعدّل بطلب</div>
             </div>
-            {!loginHref && <button type="button" className="dz-mini mj-open" disabled={!!busy} onClick={() => { fresh(); setMaker(false); setMajlis(true); }}>🕯️ دعوة مجلس</button>}
             {!loginHref && <button type="button" className="dz-mini" disabled={!!busy} onClick={() => { fresh(); setMajlis(false); setMaker(true); }} title="للمصممين: ارفع قالبك وحدّد مكان الصور والكلام">🧩 ارفع قالبك</button>}
           </header>
 
@@ -517,6 +522,12 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
             </div>
           )}
 
+          {!loginHref && !majlis && !maker && !busy && (MAJLIS_TALK.test(q) || MAJLIS_TALK.test(msgs.filter((m) => m.role === "user").at(-1)?.text ?? "")) && (
+            <button type="button" className="mj-cta" style={{ margin: "10px 14px 0", width: "auto" }} onClick={() => { fresh(); setMaker(false); setMajlis(true); }}>
+              <b>🕯️ عندنا تصاميم جاهزة لدعوة المجلس</b>
+              <span>لذكرى استشهاد أي معصوم عليه السلام: حدّد عدد الخطباء والرواديد، اختر تصميمك، واكتب بياناتك — ويوصلك بنفس الشكل اللي اخترته</span>
+            </button>
+          )}
           <div className="dz-feed">
             {loginHref ? (
               <div className="dz-msg bot">
@@ -529,10 +540,6 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
               <MajlisPicker chatId={chatId} onClose={() => setMajlis(false)} onDone={(r) => void majlisDone(r)} />
             ) : msgs.length === 0 ? (
               <>
-                <button type="button" className="mj-cta" onClick={() => setMajlis(true)}>
-                  <b>🕯️ صمّم دعوة مجلس من تصميم جاهز</b>
-                  <span>حدّد عدد الخطباء والرواديد، اختر تصميمك، واكتب بياناتك — ويوصلك بنفس الشكل اللي اخترته</span>
-                </button>
                 <div className="dz-msg bot">
                   <h3>أهلًا، أنا {persona} 🎨</h3>
                   <p>قل لي وش تبي تصمّم: أسألك أقل ما يمكن، وتجاوب بضغطة أو بكلامك، وتقدر تغيّر أي قرار في أي لحظة. وبعد التصميم قل لي وش تبي يتغيّر (كلمة، لون، مكان) وأعدّله لك.</p>
