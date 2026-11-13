@@ -2,6 +2,8 @@ import type { MetadataRoute } from "next";
 import { SITE_URL } from "@config/site";
 import { CREATIVE_METHODS } from "@config/jawad/creative";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { livePages } from "@/lib/jawad/server/model-pages";
+import { MODELS_BASE } from "@config/jawad/model-pages";
 
 // rebuilt at most once an hour (a new published course or method appears without a deploy)
 export const revalidate = 3600;
@@ -18,6 +20,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { path: "/jawad-ai", changeFrequency: "daily", priority: 1 },
     { path: "/jawad-ai/credits", changeFrequency: "weekly", priority: 0.9 },
     { path: "/jawad-ai/images", changeFrequency: "weekly", priority: 0.9 },
+    { path: MODELS_BASE, changeFrequency: "weekly", priority: 0.9 },
     { path: "/jawad-ai/content", changeFrequency: "weekly", priority: 0.8 },
     { path: "/jawad-ai/designer", changeFrequency: "weekly", priority: 0.8 },
     { path: "/jawad-ai/editor", changeFrequency: "weekly", priority: 0.8 },
@@ -33,6 +36,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { path: "/terms", changeFrequency: "monthly", priority: 0.3 },
     { path: "/refund", changeFrequency: "monthly", priority: 0.3 },
   ];
+  // every generator live for users has its own page (lib/jawad/server/model-pages)
+  try {
+    for (const m of await livePages()) pages.push({ path: `${MODELS_BASE}/${m.id}`, changeFrequency: "weekly", priority: 0.8 });
+  } catch {
+    // no runtime at build time: without them
+  }
   // the published courses' own pages (each sells one course); the sitemap never fails on them
   try {
     const { data } = await createAdminClient().from("learn_courses").select("id").eq("published", true);
