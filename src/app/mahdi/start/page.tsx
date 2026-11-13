@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AndroidNews from "@/components/mahdi/AndroidNews";
 import BrandLogo from "@/components/mahdi/BrandLogo";
 import { redirect } from "next/navigation";
 import { getMahdiSession } from "@/lib/mahdi/server/session";
@@ -11,6 +12,8 @@ export default async function MahdiStart() {
   const { user } = await getMahdiSession();
   if (user) redirect("/mahdi");
   return (
+    <>
+      <AndroidNews floating />
     <main id="m-main" className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-end gap-8 px-5 pb-12 pt-[38vh]">
       <div className="space-y-4">
         <BrandLogo size={150} />
@@ -30,5 +33,6 @@ export default async function MahdiStart() {
         <Link href="/" className="m-btn m-btn-quiet m-shadow-text">{t.backToSite}</Link>
       </div>
     </main>
+    </>
   );
 }
