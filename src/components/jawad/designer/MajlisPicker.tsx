@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
-import { MAJLIS, MAJLIS_BG, MAJLIS_FIELDS, MAJLIS_MAKERS, ROLE_LABEL, templatesFor, viewUrl, type MajlisFieldKey, type MajlisMaker, type MajlisOrder, type MajlisTemplate } from "@config/designer-majlis";
+import { codeFits, MAJLIS, MAJLIS_BG, MAJLIS_FIELDS, MAJLIS_MAKERS, MAJLIS_OCCASIONS, ROLE_LABEL, templatesFor, viewUrl, ZAHRA, zahraOnly, type MajlisFieldKey, type MajlisMaker, type MajlisOrder, type MajlisTemplate } from "@config/designer-majlis";
 
 type Photo = { id: string; url: string | null } | null;
 export type MajlisDone = { chatId: string; mode: "code" | "gpt"; design?: unknown };
@@ -60,7 +60,7 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
       on = false;
     };
   }, []);
-  const [maker, setMaker] = useState<MajlisMaker>("code");
+  const [picked, setMaker] = useState<MajlisMaker>("code");
   // the person's own choice, always asked: remove the photos' background, or keep it
   const [cut, setCut] = useState<boolean | null>(null);
   const [busy, setBusy] = useState("");
@@ -71,7 +71,12 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
   useEffect(() => {
     api<{ approved: MajlisTemplate[] }>("/api/designer/templates").then((r) => setExtra(r.approved ?? [])).catch(() => null);
   }, []);
-  const list = useMemo(() => templatesFor(kh, rd, extra), [kh, rd, extra]);
+  const occ = fields.occ ?? "";
+  const list = useMemo(() => templatesFor(kh, rd, extra, occ || ZAHRA), [kh, rd, extra, occ]);
+  // a design of Lady Fatima for another occasion: GPT makes it (with the occasion's title), never the code
+  const codeOk = !tpl || codeFits(tpl, { fields });
+  const maker: MajlisMaker = !codeOk && picked === "code" ? "flare" : picked;
+
   // the people in the order of the frames: the khateebs first (the bigger frame), then the radoods
   const roles = useMemo(() => [...Array(kh).fill("kh"), ...Array(rd).fill("rd")] as ("kh" | "rd")[], [kh, rd]);
   const files = useRef<(HTMLInputElement | null)[]>([]);
@@ -126,12 +131,17 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
 
       {stage === "count" && (
         <div className="mj-body">
+          <p>المناسبة: ذكرى استشهاد مين؟</p>
+          <select className="mj-occ" value={occ} onChange={(e) => setFields((f) => ({ ...f, occ: e.target.value }))} style={{ width: "100%", height: 40, borderRadius: 10, border: "1px solid #d8dbe8", padding: "0 10px", fontFamily: "inherit" }}>
+            <option value="">اختر المعصوم عليه السلام</option>
+            {MAJLIS_OCCASIONS.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}
+          </select>
           <p>كم خطيب وكم رادود بيكونون في الدعوة؟</p>
           <Stepper label="الخطباء" value={kh} set={setKh} />
           <Stepper label="الرواديد" value={rd} set={setRd} />
           {total > MAJLIS.maxPeople && <p className="mj-note">التصاميم الحالية تتسع لشخصين بالكثير؛ المربعات الزيادة قريبًا إن شاء الله.</p>}
           {total === 1 && !list.length && <p className="mj-note">ما فيه تصاميم لشخص واحد حاليًا. اختر شخصين.</p>}
-          <button type="button" className="dz-send" disabled={!list.length} onClick={() => setStage("pick")}>اعرض التصاميم المناسبة ({list.length.toLocaleString("ar-EG")})</button>
+          <button type="button" className="dz-send" disabled={!list.length || !occ} onClick={() => setStage("pick")}>اعرض التصاميم المناسبة ({list.length.toLocaleString("ar-EG")})</button>
         </div>
       )}
 
@@ -142,7 +152,7 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
             {list.map((t) => (
               <button type="button" key={t.id} className={`mj-card ${tpl?.id === t.id ? "on" : ""}`} onClick={() => setTpl(t)} title={t.title}>
                 <img src={viewUrl(t.id)} alt={t.title} loading="lazy" />
-                <span>{t.source === "user" ? "🧩 " : t.kind === "people" ? "بأشخاص · " : ""}{t.source === "user" ? "" : `${t.id.slice(1)} · `}{t.title}</span>
+                <span>{t.source === "user" ? "🧩 " : t.kind === "people" ? "بأشخاص · " : ""}{t.source === "user" ? "" : `${t.id.slice(1)} · `}{t.title}{occ && occ !== ZAHRA && zahraOnly(t) ? " · العنوان يتغيّر لمناسبتك (بـ GPT)" : ""}</span>
               </button>
             ))}
           </div>
@@ -166,7 +176,7 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
             </div>
           ))}
           <div className="mj-fields">
-            {MAJLIS_FIELDS.map((d) => (
+            {MAJLIS_FIELDS.filter((d) => d.key !== "occ").map((d) => (
               <label key={d.key}>{d.label}{"required" in d && d.required ? " *" : ""}
                 <input value={fields[d.key] ?? ""} placeholder={d.placeholder} onChange={(e) => setFields((f) => ({ ...f, [d.key]: e.target.value }))} />
               </label>
@@ -193,8 +203,8 @@ export default function MajlisPicker({ chatId, onDone, onClose }: { chatId: stri
           <p>مين يسوي التصميم؟</p>
           <div className="mj-makers">
             {MAJLIS_MAKERS.map((m) => (
-              <button type="button" key={m.id} className={`mj-maker ${maker === m.id ? "on" : ""}`} onClick={() => setMaker(m.id)}>
-                <b>{m.name}</b>{m.hint && <span>{m.hint}</span>}
+              <button type="button" key={m.id} className={`mj-maker ${maker === m.id ? "on" : ""}`} disabled={m.id === "code" && !codeOk} onClick={() => setMaker(m.id)}>
+                <b>{m.name}</b>{m.id === "code" && !codeOk ? <span>عنوان هذا التصميم للزهراء عليها السلام — لمناسبتك يسويه جواد بعنوان «{MAJLIS_OCCASIONS.find((x) => x.name === occ)?.call}»</span> : m.hint && <span>{m.hint}</span>}
               </button>
             ))}
           </div>
