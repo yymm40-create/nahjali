@@ -16,6 +16,7 @@ import { WIDGETS, homeWidgets, moveWidget, widgetDef, type WidgetId } from "@/li
 import type { Profile, Project } from "@/lib/mahdi/types";
 import BookletCard from "./BookletCard";
 import DailyCard from "./DailyCard";
+import PushPrompt from "./PushPrompt";
 import ReviewHints from "./ReviewHints";
 import DayBars from "./DayBars";
 import DayPriorities from "./DayPriorities";
@@ -164,6 +165,7 @@ export default function HomeBoard() {
         </section>
       ) : null}
 
+      <PushPrompt />
       <ReviewHints />
 
       <div className="m-board">
