@@ -20,7 +20,7 @@
 .md-tag { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--jw-muted); border: 1px solid var(--jw-line-strong); border-radius: 999px; padding: 5px 12px; margin-bottom: 12px; }
 .md-price { border: 1px solid var(--jw-accent-line); background: var(--jw-accent-soft); border-radius: 18px; padding: 14px 16px; margin: 6px 0 16px; display: grid; gap: 4px; }
 .md-price b { font-size: 26px; display: inline-flex; align-items: center; gap: 6px; }
-.md-price span { color: var(--jw-muted); font-size: 13.5px; }
+.md-price > span { color: var(--jw-muted); font-size: 13.5px; }
 .md-cta { display: inline-flex; align-items: center; justify-content: center; min-height: 50px; padding: 0 22px; border-radius: 14px; border: 0; background: var(--jw-accent); color: #fff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer; text-decoration: none; }
 .md-cta:focus-visible, .md-ghost:focus-visible { outline: 3px solid var(--jw-accent); outline-offset: 2px; }
 .md-ghost { display: inline-flex; align-items: center; min-height: 50px; padding: 0 18px; border-radius: 14px; border: 1px solid var(--jw-line-strong); color: var(--jw-ink); text-decoration: none; font-weight: 600; }
