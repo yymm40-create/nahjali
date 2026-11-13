@@ -18,7 +18,7 @@ export interface Who {
 }
 
 /** The owner's per-unit prices that make a picture (the hook drawn by GPT Image 2) carry GPT Image 2's profit. */
-const PRICE_KIND: Partial<Record<LimitKey, PriceKind>> = { editor_price_hook: "image", editor_price_upscale: "video", editor_price_matte: "video", editor_price_translate: "claude" };
+const PRICE_KIND: Partial<Record<LimitKey, PriceKind>> = { editor_price_hook: "image", editor_price_upscale: "video", editor_price_matte: "video", editor_price_translate: "claude", editor_price_shorts: "claude" };
 
 /**
  * What a paid call will take, before it runs (the page shows it for a yes): `coins` the person pays (0 for the owner, or

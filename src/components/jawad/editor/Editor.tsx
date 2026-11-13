@@ -37,6 +37,8 @@ import type { Cue } from "@/lib/editor/scene/contract";
 import { placeStems } from "@/lib/editor/make";
 import CaptionsPanel from "./CaptionsPanel";
 import TranscriptPanel from "./TranscriptPanel";
+import ShortsPanel from "./ShortsPanel";
+import { askShorts } from "./shorts-ask";
 import TemplatesPanel from "./TemplatesPanel";
 import type { Template } from "@/lib/editor/templates";
 import { planSync } from "./sync";
@@ -164,6 +166,7 @@ const RAIL: { id: string; label: string; icon: string; tab?: InspectorTab; hint:
   { id: "transition", label: "انتقال", icon: "frames", tab: "transition", hint: "الانتقال للمقطع اللي بعده" },
   { id: "captions", label: "كابشن", icon: "type", hint: "كابشن تلقائي، مزامنة قصيدة، SRT" },
   { id: "transcript", label: "النص", icon: "book", hint: "عدّل من الكلام: احذف كلمات من النص تنحذف من الفيديو، وشيل الحشو" },
+  { id: "shorts", label: "مقاطع قصيرة", icon: "scissors", hint: "طلّع ريلز من فيديو طويل، وابحث عن أي كلمة قلتها في مقاطعك" },
   { id: "templates", label: "قوالب", icon: "grid", hint: "قوالب مونتاج جاهزة: حط مقاطعك في خاناتها وغيّر كلامها" },
   { id: "styles", label: "أساليب", icon: "sparkles", hint: "أساليب مونتاج جاهزة بضغطة" },
   { id: "project", label: "المشروع", icon: "ratio", hint: "المقاس، الخلفية، المغناطيس" },
@@ -195,8 +198,17 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const openTranscript = () => {
     setCaptioning(false);
+    setShortsOpen(false);
     setTemplatesOpen(false);
     setTranscriptOpen(true);
+  };
+  // «مقاطع قصيرة» / «ابحث في الكلام»: the same right column (opened through askShorts, which picks its tab)
+  const [shortsOpen, setShortsOpen] = useState(false);
+  const openShorts = () => {
+    setCaptioning(false);
+    setTranscriptOpen(false);
+    setTemplatesOpen(false);
+    setShortsOpen(true);
   };
   // «قوالب المونتاج»: the same right column (a template picked in the launcher opens it by itself)
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -205,6 +217,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const openTemplates = () => {
     setCaptioning(false);
     setTranscriptOpen(false);
+    setShortsOpen(false);
     setTemplatesOpen(true);
   };
   // files sent up from the templates window: they stay in the library and go into its slots
@@ -1707,6 +1720,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     if ("page" in a) return openPage(a.page);
     if (a.open === "captions") setCaptioning(true);
     else if (a.open === "transcript") openTranscript();
+    else if (a.open === "shorts" || a.open === "search") askShorts({ tab: a.open });
     else if (a.open === "templates") openTemplates();
     else if (a.open === "shortcuts") setKeysOpen("page");
     else if (a.open === "layout") setLayoutOpen(true);
@@ -1786,7 +1800,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     <nav className={`${RAIL_NAV[variant]} ${variant === "side" ? "lg:order-last" : ""}`} aria-label="أقسام المحرر">
       {RAIL.filter((r) => !r.tab || !seen.kind || rail !== "inspector" || TABS_OF[seen.kind].includes(r.tab)).map((r, i) => {
             const label = r.id === "edit" && seen.kind && rail === "inspector" ? EDIT_LABEL[seen.kind] : r.label;
-            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.id === "haidara" ? assisting : r.id === "transcript" ? transcriptOpen && !captioning : r.id === "templates" ? templatesOpen && !captioning && !transcriptOpen : r.tab ? rail === "inspector" && tab === r.tab : false;
+            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.id === "haidara" ? assisting : r.id === "transcript" ? transcriptOpen && !captioning : r.id === "shorts" ? shortsOpen && !captioning : r.id === "templates" ? templatesOpen && !captioning && !transcriptOpen : r.tab ? rail === "inspector" && tab === r.tab : false;
             return (
               <button
                 key={r.id}
@@ -1796,6 +1810,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                 onClick={() => {
                   if (r.id === "captions") return setCaptioning(true);
                   if (r.id === "transcript") return openTranscript();
+                  if (r.id === "shorts") return openShorts();
                   if (r.id === "templates") return openTemplates();
                   if (r.id === "haidara") return openClaude();
                   if (r.tab) {
@@ -1843,6 +1858,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         return setCaptioning(true);
       case "transcript":
         return openTranscript();
+      case "shorts":
+        return askShorts({ tab: "shorts" });
       case "templates":
         return openTemplates();
       case "claude":
@@ -2283,7 +2300,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
         {/* «كاب كت»: the right column — an option that needs its own window opens here (the captions, the export) */}
         {wide && !big && !colorRoom && (
-          <div ref={setRightEl} className={`cut-right jw-glass-lg my-2 min-h-0 w-[min(380px,30vw)] shrink-0 flex-col overflow-hidden rounded-2xl ${captioning || transcriptOpen || templatesOpen || exporting || logOpen ? "flex" : "hidden"}`} style={{ order: 1 }} />
+          <div ref={setRightEl} className={`cut-right jw-glass-lg my-2 min-h-0 w-[min(380px,30vw)] shrink-0 flex-col overflow-hidden rounded-2xl ${captioning || transcriptOpen || shortsOpen || templatesOpen || exporting || logOpen ? "flex" : "hidden"}`} style={{ order: 1 }} />
         )}
 
         {/* the rail of sections at the side (the blue and nature looks) */}
@@ -2429,6 +2446,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         }}
       />
       <CaptionsPanel dock={rightEl} open={captioning} onClose={() => setCaptioning(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} style0={captionStyle0} />
+      <ShortsPanel dock={rightEl} open={shortsOpen && !captioning} onOpen={openShorts} onClose={() => setShortsOpen(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} player={player} readOnly={readOnly} />
       <TranscriptPanel dock={rightEl} open={transcriptOpen && !captioning} onClose={() => setTranscriptOpen(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} player={player} readOnly={readOnly} />
       <TemplatesPanel
         dock={rightEl}

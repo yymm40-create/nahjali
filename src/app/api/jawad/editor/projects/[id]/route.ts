@@ -49,6 +49,7 @@ import { isAdmin } from "@config/site";
 import { planSeedanceExtend, startMake } from "@/lib/editor/make-any";
 import { smartMask } from "@/lib/editor/smart-mask";
 import { translateCaptions } from "@/lib/editor/translate";
+import { findShorts } from "@/lib/editor/shorts-find";
 
 // listening to a long clip can take a while
 // حيدرا ماكس's long answers (a big timeline, a few correction rounds) may run as long as the platform allows
@@ -75,7 +76,7 @@ export const PUT = handle(async (req: Request, ctx: Ctx) => {
   return NextResponse.json(await saveTimeline(p, { ...b, actor: pageActor(b.actor) }));
 });
 
-const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "lab_chat", "lab_search", "lab_cover_write", "lab_cover_review", "lab_picture", "upscale", "transcribe", "align", "translate_captions", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
+const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "lab_chat", "lab_search", "lab_cover_write", "lab_cover_review", "lab_picture", "upscale", "transcribe", "align", "translate_captions", "shorts", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
 
 /** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history, snapshot, rules. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
@@ -132,6 +133,9 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     // «ترجم الكابشن»: `quote` for the price first, then the lines translated (same times, a new track on the page)
     case "translate_captions":
       return NextResponse.json(await translateCaptions(p, who, b));
+    // «طلّع مقاطع قصيرة»: `quote` for the price (and the moments kept from last time), then the moments of a long file
+    case "shorts":
+      return NextResponse.json(await findShorts(p, who, b), noStore);
     // talking with حيدرا ماكس: what was said → text, and the reply → sound
     case "voice_in":
       return NextResponse.json(await voiceIn(p, who, b));
