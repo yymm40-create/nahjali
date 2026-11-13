@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import QuickReplies from "@/components/jawad/QuickReplies";
 import { Gallery, Questions, SlidesBox } from "@/components/jawad/content/ContentChat";
+import CarouselTable from "@/components/jawad/content/CarouselTable";
 
 // What the page draws, server-rendered (no browser here): the buttons, the swatches, the galleries, the carousel while
 // it is being drawn and after.
@@ -62,6 +63,32 @@ describe("the galleries", () => {
   });
 });
 
+describe("the table of carousel styles", () => {
+  const rows = [
+    { id: "notebook", n: 1, niche: "تعليمي وشرح", name: "الدفتر", description: "صفحة دفتر", bestFor: "الشرح", winner: true, realistic: true, cover: "/c/01-cover.webp", slide: "/c/01-slide.webp" },
+    { id: "white-text", n: 2, niche: "تعليمي وشرح", name: "الشريحة البيضاء", description: "أبيض", bestFor: "الأفكار", winner: false, realistic: false, cover: "/c/02-cover.webp", slide: "/c/02-slide.webp" },
+    { id: "editorial", n: 7, niche: "تسويق وبزنس", name: "الإديتوريال", description: "مجلة", bestFor: "التسويق", winner: true, realistic: true, cover: "/c/07-cover.webp", slide: "/c/07-slide.webp" },
+  ];
+  const niches = ["تعليمي وشرح", "تسويق وبزنس"];
+  const props = { items: rows, niches, onPick: noop, onHelp: noop, onOwn: noop };
+  it("shows every style by niche with its two slides, what it is, and the ways out", () => {
+    const html = renderToStaticMarkup(h(CarouselTable, props));
+    for (const t of ["تعليمي وشرح", "تسويق وبزنس", "1. الدفتر", "2. الشريحة البيضاء", "7. الإديتوريال", "/c/01-cover.webp", "/c/01-slide.webp", "صفحة دفتر", "يناسب: الشرح", "الأقوى في مجاله", "فيه صور واقعية", "اختر", "ما أعرف أختار، ساعدني", "أبي شيئًا غير الموجود"]) expect(html).toContain(t);
+    expect(html).not.toContain("ترشيحات محمد باقر");
+  });
+  it("shows his recommendations first when he made some", () => {
+    const html = renderToStaticMarkup(h(CarouselTable, { ...props, recommended: ["editorial", "nope"] }));
+    expect(html).toContain("ترشيحات محمد باقر لك");
+    expect(html.indexOf("7. الإديتوريال")).toBeLessThan(html.indexOf("1. الدفتر"));
+  });
+  it("opens by itself when it is asked, in place of a button to find", () => {
+    const gal = { templates: [], styles: [], carousels: rows, niches };
+    const html = renderToStaticMarkup(h(Questions, { questions: [{ label: "اختر ستايل الكاروسيل", kind: "carousels", options: [], multi: false }], gal, disabled: false, onSend: noop, onWrite: noop }));
+    expect(html).toContain("1. الدفتر");
+    expect(html).toContain("أغلق جدول الستايلات");
+  });
+});
+
 describe("the carousel", () => {
   const slide = (n: number, o: Record<string, unknown> = {}) => ({ n, fileId: `f${n}`, name: `slide-0${n}`, text: "t", url: `/s/${n}.png`, download: `/d/${n}.png`, ...o });
   const base = { aspect: "2:3", items: [], todo: [], failed: [], running: false, total: 0 };
@@ -76,6 +103,10 @@ describe("the carousel", () => {
     expect(html).toContain("/s/1.png");
     expect(html).toContain("aspect-ratio:2 / 3");
     expect(html).not.toContain("حمّل كل الشرائح");
+  });
+  it("names who is making it in the third way", () => {
+    const html = renderToStaticMarkup(h(SlidesBox, { ...props, s: { ...base, todo: [1], running: true, total: 1, maker: "code", mix: true } }));
+    expect(html).toContain("GPT Image 2 يرسم الصور وحيدرا ماكس يكتب عليها");
   });
   it("after it: the check badges, the flagged slides, the failed ones with their reason and a retry, the report", () => {
     const html = renderToStaticMarkup(

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { handle, requireApiUser, UserError } from "@/lib/api";
+import { BANK_TRANSFER_ENABLED } from "@config/pricing";
 import { markTransferred } from "@/lib/course/orders";
 import { loadSettings } from "@/lib/course/settings";
 import { isLadder } from "@config/course";
@@ -9,6 +10,7 @@ export const maxDuration = 30;
 
 /** «دورة الجواد الذكي» · «تم التحويل»: the owner is told at once and the group's link is given. Body: { orderId }. */
 export const POST = handle(async (req: Request) => {
+  if (!BANK_TRANSFER_ENABLED) throw new UserError("التحويل البنكي متوقف؛ ادفع بالبطاقة.", 410);
   const user = await requireApiUser();
   const b = (await req.json().catch(() => ({}))) as { orderId?: unknown };
   if (typeof b.orderId !== "string" || !/^[0-9a-f-]{36}$/i.test(b.orderId)) throw new UserError("طلب غير صحيح.", 400);

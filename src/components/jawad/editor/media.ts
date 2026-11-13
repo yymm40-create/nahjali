@@ -1,7 +1,7 @@
 // «حيدرة كت» — the browser side of media: what a file is (bytes + Mediabunny's reading of it), its upload, and
 // small pictures of videos for the timeline and the library.
 
-import { ALL_FORMATS, BlobSource, Input } from "mediabunny";
+import { ALL_FORMATS, BlobSource, Input, UrlSource } from "mediabunny";
 import { editorSniff, KIND_AR } from "@/lib/editor/media";
 import type { AssetKind } from "@/lib/editor/model";
 
@@ -51,6 +51,28 @@ export async function probe(file: File): Promise<Probed> {
   } catch (err) {
     if (err instanceof Error && err.message.startsWith("«")) throw err;
     throw new Error(`«${file.name}»: تعذّر قراءة الملف؛ قد يكون تالفًا.`);
+  } finally {
+    input.dispose();
+  }
+}
+
+/**
+ * The same reading for a file the desktop program already has on the computer (a video it downloaded from a link,
+ * served at haidara-media://…): only the parts asked for are read, never the whole file.
+ */
+export async function probeUrl(url: string, name: string): Promise<Probed> {
+  const head = await fetch(url, { headers: { Range: "bytes=0-63" } }).then((r) => r.arrayBuffer());
+  const s = editorSniff(new Uint8Array(head.slice(0, 64)));
+  if (!s || s.kinds[0] === "image") throw new Error(`«${name}»: نوع غير مقبول.`);
+  const input = new Input({ source: new UrlSource(url), formats: ALL_FORMATS });
+  try {
+    const [v, a, d] = await Promise.all([s.kinds.includes("video") ? input.getPrimaryVideoTrack() : null, input.getPrimaryAudioTrack(), input.computeDuration()]);
+    if (!v && !a) throw new Error(`«${name}»: ما فيه صورة ولا صوت نقدر نقرأه.`);
+    const playable = v ? await v.canDecode().catch(() => false) : await a!.canDecode().catch(() => false);
+    return { kind: v ? "video" : "audio", container: s.container, durationMs: Number.isFinite(d) && d > 0 ? Math.round(d * 1000) : null, width: v ? v.displayWidth : null, height: v ? v.displayHeight : null, hasAudio: !!a, playable };
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("«")) throw err;
+    throw new Error(`«${name}»: تعذّر قراءة الملف.`);
   } finally {
     input.dispose();
   }

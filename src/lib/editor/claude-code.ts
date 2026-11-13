@@ -11,14 +11,16 @@ import { checkProgram } from "@/lib/claude-code/compute";
 
 /** The two programs of the editor (the voice has its own, src/lib/claude-code/voice.ts). */
 type ProgramKind = "edit" | "grade";
-import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, EDIT_CONTRACT, EDIT_RUBRIC, GRADE_CONTRACT, GRADE_RUBRIC } from "@/lib/claude-code/skill";
+import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, lastRound, EDIT_CONTRACT, EDIT_RUBRIC, GRADE_CONTRACT, GRADE_RUBRIC } from "@/lib/claude-code/skill";
 import { context, type Spoken } from "./assistant-core";
 import { COMMANDS_GUIDE } from "./assistant-commands";
-import { GRADING_KNOW_HOW } from "./assistant-guide";
+import { GRADING_KNOW_HOW, gradeBrief } from "./assistant-guide";
 import { lookParts, readLook } from "./assistant";
 import { readTimeline } from "./model";
 import { claudeCharged, type Who } from "./pricing";
 import { assetViews, stillOpen, type EditorProject } from "./server";
+import { standingRules } from "./changes";
+import { rulesNote } from "./changes-core";
 
 const db = () => createAdminClient();
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
@@ -51,15 +53,17 @@ const reviewSchema = (kind: ProgramKind) => ({
   },
 });
 
-async function ask<T>(who: Who, model: unknown, kind: ProgramKind, label: string, parts: ClaudePart[], schema: object, maxTokens: number) {
+/** `rules`: the page's copy of «تعليماتي الدايمة» (the kept ones win), in the turn note — a cut or a look follows them too. */
+async function ask<T>(who: Who, model: unknown, kind: ProgramKind, label: string, parts: ClaudePart[], schema: object, maxTokens: number, rules?: unknown) {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
   const deadline = AbortSignal.timeout(300_000);
+  const turnNote = rulesNote(await standingRules(who.id, rules)) || undefined;
   return claudeCharged(
     who,
     model,
     label,
     () =>
-      callClaudeJson<T>({ system: SYSTEM[kind], turns: [{ role: "user", content: parts }], schema, maxTokens, effort: "high", fallback: true, signal: deadline }).catch((e) => {
+      callClaudeJson<T>({ system: SYSTEM[kind], turns: [{ role: "user", content: parts }], turnNote, schema, maxTokens, effort: "medium", fallback: true, signal: deadline }).catch((e) => {
         console.error("claude code", label, e);
         if (deadline.aborted) throw new UserError("خدمة الذكاء الاصطناعي تأخرت. أعد الطلب.", 504);
         throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يكمل الشغل بالكود الحين. جرّب مرة ثانية.", who.email), 502);
@@ -110,7 +114,7 @@ ${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the sandbox or 
 Write the COMPLETE program.`,
     },
   ];
-  const r = await ask<{ code: string; notes: string }>(who, b.model, "edit", previous ? "حيدرا ماكس · تصليح التقطيع" : "حيدرا ماكس · برنامج التقطيع", parts, WRITE_SCHEMA, 32_000);
+  const r = await ask<{ code: string; notes: string }>(who, b.model, "edit", previous ? "حيدرا ماكس · تصليح التقطيع" : "حيدرا ماكس · برنامج التقطيع", parts, WRITE_SCHEMA, 32_000, b.rules);
   const chk = checkProgram("edit", r.data.code);
   return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), facts, coins: r.coins, model: r.model };
 }
@@ -128,7 +132,7 @@ export async function codeEditReview(p: EditorProject, who: Who, b: Record<strin
   const parts: ClaudePart[] = [
     {
       type: "text",
-      text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}. Be a HARSH editor, not a proud author. Judge what the program DID (the timeline after), not what it intends.
+      text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}.${lastRound(round)} Be a HARSH editor, not a proud author. Judge what the program DID (the timeline after), not what it intends.
 THE REQUEST: ${request}
 Score every criterion 1–10: ${scoresLine("edit")}. Name the worst problems and the exact fix. If ANY score is below ${CODE_PASS}, return the COMPLETE revised program; otherwise code = "".
 THE PROGRAM:
@@ -140,7 +144,7 @@ THE TIMELINE AFTER (the same shape):
 ${JSON.stringify(after.facts)}`,
     },
   ];
-  const r = await ask<Record<string, unknown>>(who, b.model, "edit", `حيدرا ماكس · مراجعة التقطيع ${round}`, parts, reviewSchema("edit"), 32_000);
+  const r = await ask<Record<string, unknown>>(who, b.model, "edit", `حيدرا ماكس · مراجعة التقطيع ${round}`, parts, reviewSchema("edit"), 32_000, b.rules);
   const review = readReview("edit", r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkProgram("edit", r.data.code) : null;
   return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };
@@ -150,6 +154,21 @@ ${JSON.stringify(after.facts)}`,
 
 const looksOf = (raw: unknown, tl: ReturnType<typeof readTimeline>) =>
   (Array.isArray(raw) ? raw : []).slice(0, 4).map((l) => readLook(l, tl)).filter((l): l is NonNullable<ReturnType<typeof readLook>> => !!l);
+
+/**
+ * A clip as the colourist meets it: what grading it already has (a log undone on a layer changes what c
+ * is: then it is a display picture, not log), so step 0 of the method («measure first») starts from the facts. (His own layer «حيدرا ماكس» is the one he rewrites.)
+ */
+function clipLine(tl: ReturnType<typeof readTimeline>, clipId: string, i: number) {
+  for (const t of tl.tracks)
+    for (const c of t.clips)
+      if (c.id === clipId) {
+        const own = c.grades.filter((g) => g.name !== "حيدرا ماكس");
+        const grades = own.map(gradeBrief).filter((g) => Object.keys(g).length);
+        return `CLIP ${i + 1} (${clipId}) — grades now (under your layer): ${grades.length ? JSON.stringify(grades) : "none (the pictures are the file as it is)"}:`;
+      }
+  return `CLIP ${i + 1} (${clipId}):`;
+}
 
 /** WRITE (or FIX) the grade program, from the clips as filmed (pictures and scopes) and the request. */
 export async function codeGradeWrite(p: EditorProject, who: Who, b: Record<string, unknown>) {
@@ -166,13 +185,14 @@ export async function codeGradeWrite(p: EditorProject, who: Who, b: Record<strin
       type: "text",
       text: `${previous ? "FIX the grade program below." : "WRITE the grade program for this request."}
 THE REQUEST (the person's words): ${request}
-THE CLIPS (${looks.length}): their moments as they look NOW, each with its scope, below (a picture marked "as filmed" already carries any grading the clip had — your program grades on top of it). Grade them to ONE look that fits them all.
+THE CLIPS (${looks.length}): their moments as they look NOW, each with its scope and its Oklab line, below (a picture marked "as filmed" already carries any grading the clip had — your program grades on top of it). Grade them to ONE look that fits them all.
+Follow THE COLOURIST'S METHOD: measure first (write what you read in the numbers at the top of the program), then light, then colour.
 ${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the sandbox — fix exactly this):\n${errors || "(no error text)"}` : ""}
 Write the COMPLETE program.`,
     },
-    ...looks.flatMap((l, i): ClaudePart[] => [{ type: "text", text: `CLIP ${i + 1} (${l.clipId}):` }, ...lookParts(l)]),
+    ...looks.flatMap((l, i): ClaudePart[] => [{ type: "text", text: clipLine(tl, l.clipId, i) }, ...lookParts(l)]),
   ];
-  const r = await ask<{ code: string; notes: string }>(who, b.model, "grade", previous ? "حيدرا ماكس · تصليح التلوين" : "حيدرا ماكس · برنامج التلوين", parts, WRITE_SCHEMA, 24_000);
+  const r = await ask<{ code: string; notes: string }>(who, b.model, "grade", previous ? "حيدرا ماكس · تصليح التلوين" : "حيدرا ماكس · برنامج التلوين", parts, WRITE_SCHEMA, 24_000, b.rules);
   const chk = checkProgram("grade", r.data.code);
   return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), coins: r.coins, model: r.model };
 }
@@ -190,15 +210,16 @@ export async function codeGradeReview(p: EditorProject, who: Who, b: Record<stri
   const parts: ClaudePart[] = [
     {
       type: "text",
-      text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}. Be a HARSH colourist, not a proud author. Judge what you SEE after the grade (and the scopes), against the same moments before it (marked "as filmed": the clip as it looked before your program).
+      text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}.${lastRound(round)} Be a HARSH colourist, not a proud author. Judge what you SEE after the grade (and the scopes), against the same moments before it (marked "as filmed": the clip as it looked before your program).
+Step 6 of the method: compare the AFTER numbers (IRE, cast, the Oklab line: skin h and burning, clipped channels, chroma, near-whites) with BEFORE and with the targets, then your eyes. A number off its target is a problem to fix even when the picture looks fine at a glance.
 THE REQUEST: ${request}
 Score every criterion 1–10: ${scoresLine("grade")}. Name the worst problems and the exact fix. If ANY score is below ${CODE_PASS}, return the COMPLETE revised program; otherwise code = "".
 THE PROGRAM:
 ${code}`,
     },
-    ...looks.flatMap((l, i): ClaudePart[] => [{ type: "text", text: `CLIP ${i + 1} (${l.clipId}):` }, ...lookParts(l)]),
+    ...looks.flatMap((l, i): ClaudePart[] => [{ type: "text", text: clipLine(tl, l.clipId, i) }, ...lookParts(l)]),
   ];
-  const r = await ask<Record<string, unknown>>(who, b.model, "grade", `حيدرا ماكس · مراجعة التلوين ${round}`, parts, reviewSchema("grade"), 24_000);
+  const r = await ask<Record<string, unknown>>(who, b.model, "grade", `حيدرا ماكس · مراجعة التلوين ${round}`, parts, reviewSchema("grade"), 24_000, b.rules);
   const review = readReview("grade", r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkProgram("grade", r.data.code) : null;
   return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };

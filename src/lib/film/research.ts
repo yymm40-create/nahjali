@@ -71,6 +71,13 @@ export function addFindings(r: Research, found: Finding[]): Research {
   return { ...r, items: items.filter((f) => (drop > 0 && f.status !== "pending" ? (drop--, false) : true)) };
 }
 
+/** Whether this scope was searched already (same words, spaces aside): a repeated scope is not paid for again. */
+export const searchedBefore = (r: Research, scope: string) => {
+  const norm = (x: string) => x.replace(/\s+/g, " ").trim().slice(0, RESEARCH_LIMITS.scopeMax);
+  const s = norm(scope);
+  return !!s && r.items.some((f) => norm(f.scope) === s);
+};
+
 export const pendingFindings = (r: Research) => r.items.filter((f) => f.status === "pending");
 export const approvedFindings = (r: Research) => r.items.filter((f) => f.status === "approved");
 

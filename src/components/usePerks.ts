@@ -9,9 +9,13 @@ import type { ClaudeModelKey } from "@config/claude-models";
 
 export interface PagePerks {
   atCost: boolean;
+  /** «🔴 النقود الحمراء»: the owner put this e-mail on the platform's-own-price list — the same cost prices, a RED coin */
+  red: boolean;
   claudeModel: ClaudeModelKey | null;
+  /** the robots' replies cost this person nothing (the owner, an unlimited account): a conversation shows its value instead */
+  free: boolean;
 }
-const NONE: PagePerks = { atCost: false, claudeModel: null };
+const NONE: PagePerks = { atCost: false, red: false, claudeModel: null, free: false };
 const KEY = "jw-perks";
 const KEEP_MS = 120_000;
 
@@ -40,7 +44,7 @@ function start() {
   fetch("/api/access/perks", { cache: "no-store" })
     .then((r) => (r.ok ? (r.json() as Promise<Partial<PagePerks>>) : NONE))
     .then((j) => {
-      value = { atCost: j.atCost === true, claudeModel: (j.claudeModel as ClaudeModelKey | null | undefined) ?? null };
+      value = { atCost: j.atCost === true, red: j.red === true, claudeModel: (j.claudeModel as ClaudeModelKey | null | undefined) ?? null, free: j.free === true };
       try {
         sessionStorage.setItem(KEY, JSON.stringify({ v: value, at: Date.now() }));
       } catch {
@@ -72,5 +76,12 @@ export function usePerks(): PagePerks {
   );
 }
 
-/** Whether every price this person sees is the tool's own cost (their coin is orange). */
+/** Whether every price this person sees is the tool's own cost (their coin is orange, or red). */
 export const useAtCost = () => usePerks().atCost;
+
+/** The colour of this person's coin: red (the owner's platform's-own-price list), orange (a code at cost), or the usual sky-blue. */
+export type CoinTone = "sky" | "orange" | "red";
+export const useCoinTone = (): CoinTone => {
+  const p = usePerks();
+  return p.red ? "red" : p.atCost ? "orange" : "sky";
+};

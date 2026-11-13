@@ -417,6 +417,28 @@ html:has(.jw) body {
 .jw-course-pill { background: #f6f5f1; color: #141414; border: 1px solid #fff; box-shadow: 0 6px 18px -8px rgba(232, 87, 42, 0.7); text-decoration: none; transition: transform .15s; }
 .jw-course-pill:hover { transform: translateY(-1px); }
 
+/* «الجواد في كلاود وشات جي بي تي»: the header's one moving pill (Claude's clay to ChatGPT's green), with «جديد» */
+.jw-connect-pill {
+  color: #fff;
+  text-decoration: none;
+  background: linear-gradient(110deg, #d97757, #c2410c 30%, #10a37f 70%, #d97757);
+  background-size: 250% 100%;
+  box-shadow: 0 6px 18px -6px rgba(217, 119, 87, 0.8), inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  animation: jw-connect-flow 5s linear infinite;
+  transition: transform .15s;
+}
+.jw-connect-pill:hover { transform: translateY(-1px); }
+.jw-connect-new {
+  border-radius: 9999px;
+  background: #fff;
+  color: #c2410c;
+  padding: 1px 6px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+@keyframes jw-connect-flow { to { background-position: -250% 0; } }
+@media (prefers-reduced-motion: reduce) { .jw-connect-pill { animation: none; } }
+
 /* «.jw-paper»: a page of JAWAD drawn LIGHT (the owner: «مانبي صفحات سواد») — the same --jw-* tokens, so every jw-panel, chip,
    button and text colour of the page follows; the warm paper with a faint dot grid of the shop. */
 .jw-paper {

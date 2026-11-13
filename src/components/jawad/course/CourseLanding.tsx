@@ -3,8 +3,9 @@
 // «دورة الجواد الذكي» — the sales page, made for the phone first (most buyers pay from one): the end result, the owner's reel and, right
 // under it, ONE big buying panel (the price that climbs with the clock, struck usual price, the gift of زهرات, a count down and a big
 // button); then the problem, the three days, what removes the risk and how to pay, as full-width bands instead of boxes; a bar with the
-// price and the button stays at the bottom of a phone's screen. The payment: sign in, name and phone, the bank data to copy and
-// «تم التحويل» — which tells the owner at once. Public: anyone with the link sees it; paying needs an account.
+// price and the button stays at the bottom of a phone's screen. The payment (since 5 November 2026, the owner: the new way everywhere):
+// sign in, name and phone, then Moyasar's own page (card, mada, Apple Pay); coming back, the course is unlocked by itself. Public:
+// anyone with the link sees it; paying needs an account.
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -12,7 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import AgreeTerms from "@/components/jawad/AgreeTerms";
 import Coined from "@/components/Coined";
 import Riyal from "@/components/Riyal";
-import { COURSE, countdown, embedOf, hasLifetimeAccess, isLadder, offersAt, PRODUCT_ACCESS, PRODUCT_LABEL, type Bank, type Offer, type Product } from "@config/course";
+import { COURSE, codedOffer, countdown, embedOf, hasLifetimeAccess, isLadder, offersAt, PRODUCT_ACCESS, PRODUCT_LABEL, type Offer, type Product } from "@config/course";
 import { LEARN } from "@config/learn";
 import type { PublicCourse } from "@/lib/course/settings";
 
@@ -68,34 +69,7 @@ function Timer({ ms }: { ms: number }) {
   );
 }
 
-function Copy({ label, value }: { label: string; value: string }) {
-  const [done, setDone] = useState(false);
-  if (!value) return null;
-  return (
-    <div className="cr-bankrow">
-      <span>{label}</span>
-      <b dir="ltr">{value}</b>
-      <button
-        type="button"
-        className="cr-copy"
-        aria-label={`انسخ ${label}`}
-        onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(value);
-            setDone(true);
-            setTimeout(() => setDone(false), 1800);
-          } catch {
-            /* the value is on screen: it can be selected by hand */
-          }
-        }}
-      >
-        {done ? "✓ تم" : "نسخ"}
-      </button>
-    </div>
-  );
-}
-
-export default function CourseLanding({ s, courseId, title, price, was, serverNow, user, orders, unlocked, buy, loginHref }: { s: PublicCourse; courseId: string; title: string; price: number; was: number; serverNow: number; user: { email: string } | null; orders: OrderView[]; unlocked: Unlocked | null; buy: Product | null; loginHref: string }) {
+export default function CourseLanding({ s, courseId, title, price, was, serverNow, user, orders, unlocked, buy, loginHref, back }: { s: PublicCourse; courseId: string; title: string; price: number; was: number; serverNow: number; user: { email: string } | null; orders: OrderView[]; unlocked: Unlocked | null; buy: Product | null; loginHref: string; /** coming back from the payment page: paid (unlocked already), not paid yet, or the buyer cancelled */ back: "paid" | "unpaid" | "cancelled" | null }) {
   const router = useRouter();
   const [skew] = useState(() => serverNow - Date.now());
   const [now, setNow] = useState(serverNow);
@@ -108,17 +82,14 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
   const video = useMemo(() => (s.videoFileUrl ? null : embedOf(s.videoUrl)), [s.videoFileUrl, s.videoUrl]);
 
   // coming back from signing in (?buy=…): the payment sheet is already open
-  const [sheet, setSheet] = useState<{ product: Product; step: "form" | "bank" | "done" } | null>(() => (buy && user && offersAt(s, serverNow, price, was, courseId).offers.some((o) => o.product === buy) ? { product: buy, step: "form" } : null));
+  const [sheet, setSheet] = useState<{ product: Product } | null>(() => (buy && user && offersAt(s, serverNow, price, was, courseId).offers.some((o) => o.product === buy) ? { product: buy } : null));
   const last = orders[0];
   const [name, setName] = useState(last?.name ?? "");
   const [phone, setPhone] = useState(last?.phone ?? "");
-  const [order, setOrder] = useState<OrderView | null>(null);
-  const [bank, setBank] = useState<Bank | null>(null);
   const [busy, setBusy] = useState(false);
   // the terms are agreed to before the subscription starts
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState("");
-  const [group, setGroup] = useState("");
   // «عندك كود خصم؟»: the code and the price it gives (checked by the server)
   const [codeText, setCodeText] = useState("");
   const [coded, setCoded] = useState<{ code: string; price: number } | null>(null);
@@ -139,45 +110,28 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
       router.push(`${loginHref}?next=${encodeURIComponent(`${COURSE.base}/${courseId}?buy=${product}`)}`);
       return;
     }
-    setSheet({ product, step: "form" });
+    setSheet({ product });
   }
   async function start() {
     if (!sheet) return;
     setBusy(true);
     setError("");
     try {
-      const r = await post<{ order: OrderView; bank: Bank }>("/api/course/order", { courseId, name, phone, code: coded?.code, product: sheet.product });
-      setOrder(r.order);
-      setBank(r.bank);
-      setSheet({ ...sheet, step: "bank" });
+      const r = await post<{ url: string }>("/api/course/moyasar", { courseId, name, phone, code: coded?.code, product: coded && ladder ? "combo" : sheet.product });
+      // Moyasar's own page: the button stays busy while the browser leaves
+      window.location.href = r.url;
     } catch (e) {
       setError((e as Error).message);
-    } finally {
       setBusy(false);
     }
   }
-  async function transferred() {
-    if (!order) return;
-    setBusy(true);
-    setError("");
-    try {
-      const r = await post<{ groupLink?: string }>("/api/course/transferred", { orderId: order.id });
-      setGroup(r.groupLink ?? "");
-      setSheet((x) => (x ? { ...x, step: "done" } : x));
-      router.refresh();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
 
   const statusOf = (p: Product) => orders.find((o) => o.product === p || (o.product === "combo" && o.status === "confirmed"));
   const left = cur.endsAt ? cur.endsAt - now : null;
-  const lock = order ? Math.max(0, new Date(order.lockedUntil).getTime() - now) : 0;
+  // on the clock course a code buys the whole course (live + recorded) at its price, whatever was picked
+  const sheetProduct: Product | null = sheet ? (coded && ladder ? "combo" : sheet.product) : null;
   const offerBase = sheet ? cur.offers.find((o) => o.product === sheet.product) : null;
-  const offer = offerBase && coded ? { ...offerBase, price: coded.price, was: Math.max(offerBase.was, offerBase.price) } : offerBase;
+  const offer = coded && ladder ? codedOffer(s, now, coded.price, price, was, courseId) : offerBase && coded ? { ...offerBase, price: coded.price, was: Math.max(offerBase.was, offerBase.price) } : offerBase;
 
   // the offer being bought: the one chosen, else the one with a gift, else the first
   const [picked, setPicked] = useState<Product | null>(null);
@@ -248,6 +202,23 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
         </section>
       )}
 
+      {back === "unpaid" && (
+        <section className="cr-ok" aria-live="polite">
+          <div className="cr-in">
+            <h2>⏳ ما وصلنا تأكيد الدفع للحين</h2>
+            <p>إذا انخصم المبلغ من بطاقتك فلا تدفع مرة ثانية؛ حدّث الصفحة بعد دقيقة، وإذا ما ظهر اشتراكك تواصل معنا وبنأكده لك.</p>
+          </div>
+        </section>
+      )}
+      {back === "cancelled" && (
+        <section className="cr-ok" aria-live="polite">
+          <div className="cr-in">
+            <h2>تم إلغاء الدفع</h2>
+            <p>ما انخصم منك شي. تقدر تكمل الاشتراك متى ما تبي.</p>
+          </div>
+        </section>
+      )}
+
       <header className="cr-hero">
         <div className="cr-in">
           <span className="cr-kicker cr-reveal">{ladder ? `${title} · مباشرة + مسجلة` : "الدورة · مسجلة"}</span>
@@ -300,10 +271,10 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
                   {!s.payable && <p className="cr-urgent">الدفع يفتح بعد قليل.</p>}
                   {urgency}
                   <ul className="cr-trust">
-                    <li>🔒 تحويل بنكي مباشر</li>
+                    <li>🔒 دفع آمن بالبطاقة · مدى · Apple Pay</li>
                     {hasLifetimeAccess(sel.product) && <li>♾️ تسجيل الدورة مدى الحياة</li>}
                     {sel.product !== "recorded" && <li>🎥 حضور مباشر{ladder && s.liveWhen ? ` · ${s.liveWhen}` : ""}</li>}
-                    {hasLifetimeAccess(sel.product) ? <li>📚 تظهر في «دوراتي» بعد التأكيد</li> : <li>💬 رابط مجموعة البث بعد التحويل</li>}
+                    {hasLifetimeAccess(sel.product) ? <li>📚 تظهر في «دوراتي» مباشرة بعد الدفع</li> : <li>💬 رابط مجموعة البث بعد الدفع</li>}
                   </ul>
                 </div>
               </>
@@ -372,8 +343,8 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
           <ol className="cr-steps">
             <li><b>١</b>سجّل دخولك في الموقع (عشان نسجّل إيميلك).</li>
             <li><b>٢</b>اكتب اسمك ورقم جوالك، واضغط «اشترك الآن».</li>
-            <li><b>٣</b>تظهر لك بيانات الحساب (الآيبان والسويفت): انسخها وحوّل المبلغ.</li>
-            <li><b>٤</b>ارجع واضغط «تم التحويل»: بعد ما يتأكد المالك من التحويل تظهر لك الدورة مباشرة في «دوراتي».</li>
+            <li><b>٣</b>تفتح لك صفحة الدفع الآمنة: ادفع بالبطاقة أو مدى أو Apple Pay.</li>
+            <li><b>٤</b>أول ما يتم الدفع يتأكد اشتراكك تلقائيًا وتظهر لك الدورة مباشرة في «دوراتي».</li>
           </ol>
         </div>
       </section>
@@ -406,15 +377,9 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
         <div className="cr-modal" role="dialog" aria-modal="true" aria-label="الدفع">
           <div className="cr-sheet">
             <button type="button" className="cr-x" aria-label="إغلاق" onClick={() => setSheet(null)}>✕</button>
-            <ol className="cr-prog" aria-label="خطوات الدفع">
-              {["البيانات", "التحويل", "تم"].map((t, i) => {
-                const at = sheet.step === "form" ? 0 : sheet.step === "bank" ? 1 : 2;
-                return <li key={t} className={i < at ? "past" : i === at ? "now" : ""}><b>{i < at ? "✓" : NUM[i]}</b>{t}</li>;
-              })}
-            </ol>
-            {sheet.step === "form" && (
+            {(
               <>
-                <h3>{PRODUCT_LABEL[sheet.product]}</h3>
+                <h3>{PRODUCT_LABEL[sheetProduct ?? sheet.product]}</h3>
                 {offer && (
                   <div className="cr-sheet-price">
                     <Price o={offer} size={30} />
@@ -425,39 +390,14 @@ export default function CourseLanding({ s, courseId, title, price, was, serverNo
                   <input dir="ltr" value={codeText} onChange={(e) => { setCodeText(e.target.value); setCoded(null); }} placeholder="كود الخصم (إن وجد)" maxLength={40} />
                   <button type="button" className="cr-btn" disabled={!codeText.trim()} onClick={() => void applyCode()}>طبّق</button>
                 </div>
-                {coded && <p className="cr-gift">✅ انطبق الكود، سعرك <Coined text={`¤${coded.price}`} size={14} /></p>}
-                <label>الاسم الثلاثي<input value={name} onChange={(e) => setName(e.target.value)} placeholder="كما في حسابك البنكي" autoComplete="name" maxLength={80} /></label>
+                {coded && <p className="cr-gift">✅ انطبق الكود{ladder ? " على الدورة كاملة (مباشرة + مسجلة)" : ""}، سعرك <Coined text={`¤${coded.price}`} size={14} /></p>}
+                <label>الاسم الثلاثي<input value={name} onChange={(e) => setName(e.target.value)} placeholder="اسمك الكامل" autoComplete="name" maxLength={80} /></label>
                 <label>رقم الجوال (واتساب)<input dir="ltr" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="05xxxxxxxx" autoComplete="tel" /></label>
                 <label>الإيميل<input dir="ltr" value={user?.email ?? ""} readOnly /></label>
                 {error && <p className="cr-error" role="alert">{error}</p>}
                 {s.terms && <p className="cr-mute">⚠️ {s.terms}</p>}
                 <AgreeTerms on={agree} onChange={setAgree} what="الاشتراك" />
-                <button type="button" className="cr-cta" disabled={busy || !agree || name.trim().length < 2 || phone.trim().length < 8} onClick={() => void start()}>{busy ? "…" : <span className="cr-cta-main">التالي: بيانات التحويل</span>}</button>
-              </>
-            )}
-            {sheet.step === "bank" && order && bank && (
-              <>
-                <h3>حوّل المبلغ</h3>
-                <p className="cr-amount"><Riyal halalas={hal(order.amount)} size={38} /></p>
-                <p className="cr-mute">{PRODUCT_LABEL[order.product]}{order.bonus > 0 ? ` · + ${order.bonus} زهرة هدية` : ""} · السعر محفوظ لك {countdown(lock)}</p>
-                <div className="cr-bank">
-                  <Copy label="اسم صاحب الحساب" value={bank.holder} />
-                  <Copy label="البنك" value={bank.bank} />
-                  <Copy label="رقم الآيبان" value={bank.iban} />
-                  <Copy label="رقم الحساب" value={bank.account} />
-                  <Copy label="رمز السويفت" value={bank.swift} />
-                </div>
-                <p className="cr-mute">حوّل ثم ارجع هنا واضغط الزر. لا تضغطه قبل ما تحوّل.</p>
-                {error && <p className="cr-error" role="alert">{error}</p>}
-                <button type="button" className="cr-cta" disabled={busy} onClick={() => void transferred()}>{busy ? "…" : <span className="cr-cta-main">✅ تم التحويل</span>}</button>
-              </>
-            )}
-            {sheet.step === "done" && (
-              <>
-                <h3>وصلنا طلبك ✅</h3>
-                <p>راح نتأكد من التحويل، وبعدها {hasLifetimeAccess(sheet.product) ? "تظهر لك الدورة مباشرة في «دوراتي»" : "يوصلك رابط البث المباشر في المجموعة"}{phone ? <> (وقد نتواصل معك على <b dir="ltr">{phone}</b>)</> : null}.</p>
-                {group && <a className="cr-cta" href={group} target="_blank" rel="noreferrer"><span className="cr-cta-main">اطلب الانضمام لمجموعة الواتساب</span></a>}
-                <button type="button" className="cr-btn" onClick={() => setSheet(null)}>تمام</button>
+                <button type="button" className="cr-cta" disabled={busy || !agree || name.trim().length < 2 || phone.trim().length < 8} onClick={() => void start()}>{busy ? "…" : <span className="cr-cta-main">💳 ادفع بالبطاقة</span>}</button>
               </>
             )}
           </div>

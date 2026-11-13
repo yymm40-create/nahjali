@@ -13,6 +13,8 @@ export interface Reply {
   chatId: string;
   text: string;
   usd: number;
+  /** what this conversation had taken from the wallet BEFORE this turn (halalas); the route adds this turn's charge */
+  spentHalalas: number;
 }
 
 /**
@@ -34,5 +36,5 @@ export async function say(userId: string, chatId: string | null, message: string
   const text = withNote(r.text, mem.fresh);
   const usd = r.usd + mem.usd;
   const id = await saveChat(userId, chatId, [...history, { role: "assistant", text } as Turn], usd, mode && mode !== chat?.mode ? mode : null);
-  return { chatId: id, text, usd };
+  return { chatId: id, text, usd, spentHalalas: chat?.spentHalalas ?? 0 };
 }

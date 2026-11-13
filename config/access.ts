@@ -44,6 +44,8 @@ export interface Access {
   unlimited: boolean;
   /** what the codes this person entered (and that still open) give besides sections: see `perksByCodes` */
   perks: Perks;
+  /** «🔴 النقود الحمراء»: the owner put this e-mail on the platform's-own-price list (/admin/access): `perks.atCost` is on and the coin is red */
+  redCoin: boolean;
 }
 
 /** The gift side of the codes a person entered: pricing at cost, a Claude ceiling, Seedance 2.0 generations. */

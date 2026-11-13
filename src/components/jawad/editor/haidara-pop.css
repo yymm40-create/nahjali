@@ -14,8 +14,9 @@
   z-index: 75;
   inset-inline-start: 12px;
   bottom: calc(12px + env(safe-area-inset-bottom));
-  width: min(420px, calc(100vw - 24px));
-  height: min(640px, calc(100dvh - 90px));
+  /* a computer: a real conversation window (the owner, 3 November 2026: it was squeezed in the left column) */
+  width: min(600px, calc(100vw - 24px));
+  height: min(860px, calc(100dvh - 90px));
   display: flex;
   flex-direction: column;
   border-radius: 1.2rem;
@@ -135,4 +136,119 @@
 .hd-pop textarea::placeholder,
 .hd-pop input::placeholder {
   color: #6b7280;
+}
+
+/* ───────── حيدرا ماكس's conversation, laid out like Claude's chat (2 November 2026) ───────── */
+.hm .hm-icon {
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 999px;
+  color: var(--jw-muted);
+  transition: background 0.15s, color 0.15s;
+}
+.hm .hm-icon:hover:not(:disabled) { background: var(--jw-surface-3); color: var(--jw-ink); }
+.hm .hm-icon:disabled { opacity: 0.4; }
+.hm .hm-chip {
+  border: 1px solid var(--jw-line);
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  font-size: 13px;
+  color: var(--jw-ink);
+  background: transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+.hm .hm-chip:hover:not(:disabled) { background: var(--jw-surface-2); border-color: var(--jw-line-strong); }
+.hm .hm-chip:disabled { opacity: 0.5; }
+.hm .hm-composer {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--jw-line-strong, var(--jw-line));
+  border-radius: 1.6rem;
+  background: var(--jw-surface-2);
+  box-shadow: 0 6px 24px -12px rgba(0, 0, 0, 0.6);
+}
+.hm .hm-composer:focus-within { border-color: color-mix(in srgb, var(--jw-accent) 45%, transparent); }
+.hm .hm-input {
+  width: 100%;
+  min-height: 3.1rem;
+  max-height: 220px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--jw-ink);
+  font-size: 15px;
+  line-height: 1.6;
+  padding: 0.85rem 1rem 0.35rem;
+}
+.hm .hm-input::placeholder { color: var(--jw-muted); }
+.hm .hm-send {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  background: var(--jw-accent);
+  color: var(--jw-on-accent);
+  transition: opacity 0.15s;
+}
+.hm .hm-send:disabled { opacity: 0.3; }
+.hm .hm-pop {
+  display: block;
+  border: 1px solid var(--jw-line-strong, var(--jw-line));
+  border-radius: 1rem;
+  background: var(--jw-surface-2);
+  padding: 0.35rem;
+  box-shadow: 0 18px 50px -18px rgba(0, 0, 0, 0.8);
+}
+.hm .hm-shimmer {
+  background: linear-gradient(90deg, var(--jw-muted) 20%, var(--jw-ink) 50%, var(--jw-muted) 80%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: hm-shimmer 1.8s linear infinite;
+}
+@keyframes hm-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .hm .hm-shimmer { animation: none; color: var(--jw-muted); } }
+.hm .hm-strip {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  padding: 0.15rem 0.1rem 0.35rem;
+  scrollbar-width: thin;
+}
+.hm .hm-strip-item {
+  position: relative;
+  flex: none;
+  scroll-snap-align: start;
+  border-radius: 0.75rem;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  opacity: 0.85;
+  transition: opacity 0.15s, outline-color 0.15s;
+}
+.hm .hm-strip-item:hover { opacity: 1; }
+.hm .hm-strip-item.on { outline-color: var(--jw-accent); opacity: 1; }
+.hm .hm-strip-check {
+  position: absolute;
+  inset-inline-end: 3px;
+  top: 3px;
+  display: grid;
+  place-items: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 999px;
+  background: var(--jw-accent);
+  color: var(--jw-on-accent);
+  font-size: 10px;
+  font-weight: 700;
+}
+/* his conversation has its own space: on a phone it fills the screen, like the Claude app */
+@media (max-width: 1023px) {
+  .hd-pop:not(.dock) { inset: 0; width: auto; height: auto; border-radius: 0; border: 0; }
 }

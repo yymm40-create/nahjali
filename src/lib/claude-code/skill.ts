@@ -8,7 +8,19 @@ import { AUDIO_KIT_API, EDIT_KIT_API, GRADE_KIT_API, GRADE_LUT_SIZE, LAYOUT_KIT_
 
 /** Every round of a program: write → run → (fix) → look → score; it is applied only when every score is ≥ PASS. */
 export const CODE_PASS = 8;
-export const CODE_ROUNDS = 3;
+/** One review and at most one rewrite (the owner, 2 November 2026: a grade must not cost 6 riyals) */
+export const CODE_ROUNDS = 2;
+/**
+ * What one program job (write + its reviews and fixes) may spend, in halalas the person pays: once a job has spent this
+ * the page stops asking for more rounds and applies the best it has. Shown with the result.
+ */
+export const CODE_BUDGET_HALALAS = 150;
+
+/**
+ * The last review round's instruction: nothing runs after it, so no rewritten program is asked for (it was written in
+ * full, with its thinking, and then thrown away by the page — the most expensive part of the round).
+ */
+export const lastRound = (round: number) => (round >= CODE_ROUNDS ? " THIS IS THE LAST ROUND: score and judge only — return code as an empty string (no rewrite runs after this round)." : "");
 /** Fixes of a program that threw (or broke a rule) before it is looked at. */
 export const CODE_FIXES = 2;
 
@@ -17,8 +29,8 @@ export const CLAUDE_CODE_WAY = `THE CLAUDE CODE WAY (how you execute): you do no
 export const GRADE_RUBRIC = [
   { id: "ask", ar: "الطلب", en: "It is what the person asked for (the look, the mood, the reference) — clearly, not a timid half of it" },
   { id: "skin", ar: "البشرة", en: "Skin stays natural and alive: no orange, grey, green or magenta faces; skin sits on the skin line" },
-  { id: "tone", ar: "الإضاءة", en: "Tonal range: deep but not crushed blacks, highlights rolled off not clipped, mids with separation; nothing banded or posterised" },
-  { id: "color", ar: "الألوان", en: "Colour discipline: a coherent palette, neutrals neutral (or deliberately tinted), no neon over-saturation, no muddy colours" },
+  { id: "tone", ar: "الإضاءة", en: "Tonal range: clean, deep blacks (not lifted or faded unless a fade was asked) but not crushed, highlights rolled off to white (never clipped, never pink or orange on skin), mids with separation; nothing banded or posterised" },
+  { id: "color", ar: "الألوان", en: "Colour discipline: a coherent palette, vivid where wanted but never «فاقع» (no clipped channels, no neon chroma) and never washed out, neutrals and near-whites neutral or deliberately tinted (a white wall not peach, pink or green)" },
   { id: "match", ar: "التطابق", en: "Every graded clip looks like the same film (shot to shot), and the grade holds across the moments of each clip" },
   { id: "finish", ar: "اللمسة", en: "The finish of a paid colourist: depth, separation of subject and background, a look a viewer would call cinematic" },
 ] as const;
@@ -34,16 +46,49 @@ export const EDIT_RUBRIC = [
 export const GRADE_CONTRACT = `THE GRADE PROGRAM YOU WRITE — one JavaScript program (no HTML, no imports) that defines:
 
 function grade(c, K) {
-  // c = { r, g, b }: one colour of the picture as it is now, each channel 0…1 (display Rec.709)
-  // return [r, g, b] (or { r, g, b }) 0…1: the same colour after your grade
+  // c = { r, g, b }: one colour of the picture as it is now, each channel 0…1 (what the screen shows: display values)
+  // return [r, g, b] (or { r, g, b }) 0…1: the same colour after your grade (display values: K.encode gives them)
 }
+// optional — only what a LUT cannot hold (it depends on where a pixel is in the frame), put on the same layer:
+function finish(K) { return { vignette: { amount: 0.15 }, halation: { amount: 0, threshold: 0.8, size: 0.5 }, grain: { amount: 0, size: 0.5 }, sharpen: 0 }; }
 
 The page samples grade() at ${GRADE_LUT_SIZE}³ colours into a 3D LUT and puts the LUT on the clip(s) as its own grading layer, so:
-- It is a pure function of the colour: no position, no time, no state. A change that must depend on where something is in the frame is not possible here — say so.
-- It must be smooth: no hard thresholds (use K.smoothstep and the soft masks), or the LUT bands and posterises.
-- Protect skin (K.skin) whenever you push hue or saturation; keep neutrals neutral unless the look tints them on purpose.
-- Roll highlights off (K.filmic / a curve shoulder) instead of clipping; never crush blacks to 0 unless asked.
-- Build it like a colourist, in this order: balance (temperature/tint, wheels) → contrast (curve/contrast around a pivot) → colour (saturation/vibrance, split tone, hue bands) → finish (a gentle roll-off). Comment each block in one short line.
+- It is a pure function of the colour: no position, no time, no state. Anything that depends on where a pixel is goes in finish(K) (vignette, halation, grain, sharpen) or is not possible here — say so.
+- It must be smooth: no hard thresholds (K.smoothstep, K.hueBand and the soft keys), or the LUT bands and posterises.
+
+THE COLOURIST'S METHOD — measure, then light, then colour (this is how you grade; follow it step by step and comment each block in one short line):
+0. MEASURE FIRST. Every picture comes with its scope and its Oklab line (the same units as K.oklch). Before writing a number, read them and write what you found as a comment at the top of the program:
+   - Is it undecoded log? («LOOKS LIKE UNDECODED LOG», or p2 ≥ ~10 IRE with p98 ≤ ~92 and chroma mean < 0.03.) Do the clip's own layers already undo a log (its "grades now" show log)? Which camera (the person's words, the file name, the picture)?
+   - THIS skin: its Oklab h (usually 40–65°), C and L, and the skin-coloured light at the top of the range (burning faces, or sun on a warm wall: look which). On undecoded log the skin h is the flat picture's: after decoding it moves (often to ~48–58°) — key it wide (width 26–30) and correct the centre from the AFTER numbers.
+   - The greens (foliage is often olive, h ≈ 90–100°), the bright near-whites (a wall at h 50–65° turns peach-pink when colour is added), the cast numbers, how colourful the frame is (chroma mean / p95), clipped channels.
+   Your key centres, gains and amounts come from THESE numbers, not from habit.
+1. LIGHT, IN SCENE TERMS. Undecoded log → K.scene(c, { log, gamut, range }) with the camera's log (Canon R5/R6 II/R7/R8/C70 → "clog3", Cinema Gamut = "camera"; Sony → "slog3"; iPhone → "applelog"; DJI → "dlog"…; not sure → the likeliest, and say it in notes). A display picture (phone, Rec.709, or a clip whose layers already undo its log) → K.scene(c) (log "none"). Exposure in stops and the white balance as PRINTER LIGHTS: per-channel gains on scene light (like a film lab's R/G/B points) — neutralise the measured cast with its inverse; a warm afternoon sun ≈ [1.06, 1, 0.88]. Balance is done on light, before any curve.
+2. TONE ON LUMINANCE ONLY. From log/scene light: K.display(lin, { grey, contrast, peak, toe, black, white }) — grey 0.10–0.115 (where the scene's middle lands), contrast 1.45–1.65; clean blacks (toe ≤ 0.004, black ≈ 0.004 takes the flare out) unless a faded/matte look is asked (toe 0.01–0.02); the path to white keeps faces from burning pink. Lower exposure until no FACE burns (the skin-coloured light at the top is a face's, not a sunlit wall's — look). From a display picture (already toned): don't tone-map again — shape contrast gently on Oklab L around ~0.6 (L += k·(L − 0.6)·bell), never per channel.
+3. COLOUR, IN OKLAB (o = K.oklch(display light)):
+   a. SKIN IS THE REFERENCE: skin = K.skinKey(o, the measured skin h). Pull its hue ~30% toward ~54° (onto the skin line, an even, healthy face); change its chroma only a little (−6…+10%). Everything else moves around it.
+   b. QUALIFY what you change, away from skin (× (1 − skin), and only where C > ~0.01): greens K.hueBand(h, ~115, 34) with the olive side (~92, 14): rotate +6…+10° toward a verdant green and raise chroma; reds K.hueBand(h, 25, 22): +2–3° toward orange (never toward magenta); bright warm near-whites (L > 0.72, C < 0.06, h 25–85): rotate +12…+16° toward a golden cream BEFORE adding colour, or they go peach.
+   c. SATURATION IS VIBRANCE, never a flat multiply: C = K.vibrant(C, amount) (0.3–0.5 natural, 0.6–0.75 vivid; skin gets ~⅓ of it), then K.ceiling(C, ~0.24; reds ~0.20, greens ~0.26): vivid, never neon. «فاقع» is a clipped channel or neon chroma; «باهت / فيد» is lifted blacks or flat chroma — avoid both unless the person asks for one.
+   d. SUBTRACTIVE DENSITY: L *= 1 − k·min(C, 0.3)·(1 − 0.7·skin) with k 0.28 (clean vivid) … 0.55 (film): colourful things sit deeper, like film dyes — rich, not fluorescent.
+   e. SPLIT TONE, tiny, in a/b: highlights b +0.006…+0.016, deep shadows b −0.004…−0.01 (a −0.002…−0.006): colour contrast, not a tint.
+4. STAY IN GAMUT: return K.encode(K.inGamut({ L, C, h })). Never clamp a channel you pushed out yourself (that is what makes colours jump and look loud).
+5. FINISH (finish(K), optional): cinematic — halation 0.15–0.3 (threshold 0.8), grain 0.1–0.2, vignette 0.15–0.25; clean and vivid — vignette ≤ 0.12, no halation, grain ≤ 0.05.
+6. LOOK AGAIN (the review): the AFTER pictures come with the same numbers — compare them with BEFORE and with the targets: blacks p2 ≈ 2–6 IRE (unless a fade was asked), no face burning (the skin-coloured light at the top: is it on a face?), clipped channels ≤ ~1% (sun on a white wall may be more), skin Oklab h within ~45–62°, chroma up or down as the request says, near-whites not peach (h < 45° with C > 0.03) or green; then judge with your eyes: the faces, the greens, the whites, the depth. Fix what the numbers and the eyes show.
+
+THE SHAPE (log footage, a vivid natural look — every number here must come from YOUR measurements):
+function grade(c, K) {
+  // measured: C-Log3 (flat, p2 22 IRE), skin h 51° C 0.05 burning 0%, greens olive h 96°, wall h 58° C 0.02
+  var lin = K.scene(c, { log: "clog3", gamut: "camera", exposure: -1.4, printer: [1.065, 1, 0.885] }); // light + balance
+  var o = K.oklch(K.display(lin, { grey: 0.108, contrast: 1.68, toe: 0.003, black: 0.0045 }));        // tone on luminance
+  var skin = K.skinKey(o, 51), h = o.h + (54 - o.h) * 0.3 * skin;                                      // skin onto its line
+  var green = Math.max(K.hueBand(h, 115, 34), 0.7 * K.hueBand(h, 92, 14)) * (1 - skin) * K.smoothstep(0.01, 0.03, o.C);
+  var red = K.hueBand(h, 25, 22) * (1 - skin);
+  var cream = K.hueBand(h, 55, 30) * K.smoothstep(0.72, 0.85, o.L) * (1 - K.smoothstep(0.03, 0.06, o.C));
+  h += 9 * green + 2 * red + 16 * cream;                                                               // verdant, never magenta, golden walls
+  var C = K.vibrant(o.C, 0.72 + 0.6 * green - 0.55 * skin);                                            // vibrance, not saturation
+  C = K.ceiling(C, 0.24 - 0.04 * red + 0.02 * green);                                                  // vivid, never neon
+  var L = o.L * (1 - 0.28 * Math.min(C, 0.3) * (1 - 0.8 * skin));                                      // dye density
+  return K.encode(K.inGamut({ L: L, C: C, h: h }));                                                    // inside the display
+}
 
 ${GRADE_KIT_API}`;
 

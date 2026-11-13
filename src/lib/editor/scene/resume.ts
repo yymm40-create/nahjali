@@ -46,7 +46,7 @@ YOUR REPLY WAS CUT OFF BEFORE IT ENDED. THIS IS EXACTLY WHAT YOU HAD ALREADY WRI
 <<<WRITTEN
 ${written}
 WRITTEN>>>
-Now output ONLY the remaining characters of that same JSON reply, as plain text: begin at the very next character after the last one above (even in the middle of a word, a string, an escape or a line), never restart, never repeat anything already written, no code fences, no commentary. The written part followed by your output must be one complete, valid JSON document that satisfies the schema you were given.`;
+Now output ONLY the remaining characters of that same JSON reply, as plain text: begin at the very next character after the last one above (even in the middle of a word, a string, an escape or a line), never restart, never repeat anything already written, no code fences, no commentary. The written part followed by your output must be one complete, valid JSON document that satisfies the schema you were given (the same {"result": {"kind": …, …}} you began).`;
 
 /** The effort below this one (the next request thinks less when a whole request went by with nothing written). */
 export const lowerEffort = (e: string): "low" | "medium" | "high" | "xhigh" => (e === "xhigh" ? "high" : e === "high" ? "medium" : "low");

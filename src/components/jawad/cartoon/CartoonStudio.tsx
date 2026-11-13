@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CARTOON_CHOICES, cartoonStyleLabel, CARTOON_PRICE, CARTOON_STYLES, CARTOON_AGES, CARTOON_AUDIENCES, CARTOON_MODES, CARTOON_MOVES, movementAsked, nearestAspect, type CartoonInput } from "@config/jawad/cartoon";
 import Riyal from "@/components/Riyal";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import { stageLabel, type JobView } from "@/lib/jawad/labels";
 import { uploadImage } from "../studio/upload";
 import type { UploadView } from "../studio/types";
@@ -27,6 +28,8 @@ export default function CartoonStudio({ userId }: { userId: string }) {
   const [error, setError] = useState("");
   const [quote, setQuote] = useState<{ value: Quote; snapshot: string; free: boolean } | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
+  // the person's Claude model: «المخرج الخارق» writes the film's parts with it (never dearer than the fixed price)
+  const [claude] = useClaudeModel();
   // the looks' pictures (drawn once by the owner; none yet = a coloured tile)
   const [pictures, setPictures] = useState<Record<string, string>>({});
   // the places' environment sheets drawn by the owner, by «place--look» (a place without one shows its icon)
@@ -103,7 +106,7 @@ export default function CartoonStudio({ userId }: { userId: string }) {
         setQuote({ value: data.quote, free: data.free, snapshot });
       } else {
         requestKey.current ??= crypto.randomUUID();
-        await api({ action: "start", input, uploads: uploads.map(upload => upload.id), key: requestKey.current, expectedCoins: validQuote.value.totalCoins });
+        await api({ action: "start", input, uploads: uploads.map(upload => upload.id), key: requestKey.current, expectedCoins: validQuote.value.totalCoins, model: claude.id });
         const data = await api<{ runs: Run[]; firstFree?: boolean }>();
         setRuns(data.runs);
         setFirstFree(data.firstFree === true);

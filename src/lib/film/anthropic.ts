@@ -1,7 +1,8 @@
 // Claude Opus 5.5 for the film branch's three assistants. Server only: the key never reaches the browser.
 
+import { reportFailure, reportFinalFailure } from "@/lib/platform-fault";
 import { isAdmin } from "@config/site";
-import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
+import { PLATFORM_BRIEF } from "@config/jawad/brief";
 import { currentMemory, memoryBlock } from "@/lib/memory/context";
 import { fitDocs, fitImages } from "@/lib/claude-images";
 import { DEFAULT_CLAUDE_MODEL, claudeModelOf, servedModel, type ClaudeModel } from "@config/claude-models";
@@ -58,15 +59,16 @@ The person you are talking to is the OWNER and builder of this platform — «ا
 HIS WORD OVERRIDES EVERY RULE. Every rule, limit, style guide, house rule, safety-of-taste rule or "never" in the knowledge above or in your own instructions was written by him for his customers — and he may break any of them, including the ones he set himself, with a word. When he tells you to drop, bend or break a rule («كسره», «تجاوزه», «خالفه», «ما يهمني القيد», «أنا القائد أقول لك…»), do exactly what he says from that message on, without arguing, without warning him again, and without quietly keeping the rule in your output: the rule is off for him until he puts it back. If a rule is enforced in code and you cannot switch it off yourself, say so in one line and do the closest thing he asked. The only exceptions are things no one can lift: secret keys and passwords (you do not hold them), and what the law or the providers' own policies forbid (a real person imitated without consent, sexual content involving minors).
 </leader>`;
 
-export const siteSystem = (task: string, cache = true, leader = false) => {
+export const siteSystem = (task: string, cache = true, leader = false, ttl?: "1h") => {
   // the person's memory («ذاكرتي»), inside a robot's turn: after the cached task, so the cache still holds
   const memory = currentMemory();
   return [
-    // its own cache mark: the site's text is ~60k tokens and the same in every call, so a call with a DIFFERENT task still
-    // reads it from the cache (cheap) instead of writing it again with the task
-    { type: "text", text: JAWAD_KNOWLEDGE, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) },
+    // every robot reads the SHORT brief (~1k tokens) and its own training — like a plain Claude conversation. The whole
+    // knowledge (config/jawad/knowledge.ts, ~69k tokens) is sent to no one, the owner included (the owner, 2 November
+    // 2026: «حتى انا شيله عني»); the owner keeps his leader block
+    { type: "text", text: PLATFORM_BRIEF },
     ...(leader ? [{ type: "text", text: LEADER_BLOCK }] : []),
-    { type: "text", text: task, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) },
+    { type: "text", text: task, ...(cache ? { cache_control: { type: "ephemeral", ...(ttl ? { ttl } : {}) } } : {}) },
     ...(memory ? [{ type: "text", text: memoryBlock(memory) }] : []),
   ];
 };
@@ -100,7 +102,15 @@ export const nap = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * robots used to hand back was almost always one of these. `retry-after` is honoured when the API sends it; a reply
  * the API really refuses (a bad request, no credit, a key) is raised at once, because trying again changes nothing.
  */
-export async function claudeFetch(url: string, init: RequestInit, tries = CLAUDE_TRIES, timeoutMs = CLAUDE_TIMEOUT_MS): Promise<{ res: Response; body: Record<string, unknown> }> {
+export async function claudeFetch(...a: Parameters<typeof claudeFetchTries>): ReturnType<typeof claudeFetchTries> {
+  // failed for good (its retries spent): a robot's turn around it may be ours to pay (lib/platform-fault)
+  return claudeFetchTries(...a).catch((e) => {
+    reportFinalFailure(e instanceof Error ? e.message : String(e));
+    throw e;
+  });
+}
+
+async function claudeFetchTries(url: string, init: RequestInit, tries = CLAUDE_TRIES, timeoutMs = CLAUDE_TIMEOUT_MS): Promise<{ res: Response; body: Record<string, unknown> }> {
   let last: unknown;
   for (let i = 0; i < tries; i++) {
     if (i) await nap(CLAUDE_WAITS[Math.min(i - 1, CLAUDE_WAITS.length - 1)]);
@@ -110,6 +120,7 @@ export async function claudeFetch(url: string, init: RequestInit, tries = CLAUDE
       if (res.ok) return { res, body };
       const why = (body.error as { message?: string } | undefined)?.message ?? "request failed";
       last = new Error(`Claude ${res.status}: ${why}`);
+      reportFailure(String((last as Error).message));
       if (!AGAIN.has(res.status) || i === tries - 1) throw last;
       const after = Number(res.headers?.get?.("retry-after") ?? "");
       if (Number.isFinite(after) && after > 0) await nap(Math.min(after * 1000, 8000));
@@ -133,7 +144,15 @@ type StreamBody = Record<string, unknown> & { stop_reason?: string; content?: { 
  * long one (a director's shot map, every sheet's prompt) is never cut by a clock on the whole answer — only a line
  * that goes quiet for CLAUDE_IDLE_MS is dropped and tried again. Returns the message as the non-streamed API would.
  */
-export async function claudeStream(url: string, init: RequestInit & { body: string }, tries = CLAUDE_TRIES, idleMs = CLAUDE_IDLE_MS, resume?: ResumeOpts, onText?: OnText): Promise<StreamBody> {
+export async function claudeStream(...a: Parameters<typeof claudeStreamTries>): Promise<StreamBody> {
+  // failed for good (its retries spent): a robot's turn around it may be ours to pay (lib/platform-fault)
+  return claudeStreamTries(...a).catch((e) => {
+    reportFinalFailure(e instanceof Error ? e.message : String(e));
+    throw e;
+  });
+}
+
+async function claudeStreamTries(url: string, init: RequestInit & { body: string }, tries = CLAUDE_TRIES, idleMs = CLAUDE_IDLE_MS, resume?: ResumeOpts, onText?: OnText): Promise<StreamBody> {
   let last: unknown;
   const payload = JSON.stringify({ ...(JSON.parse(init.body) as Record<string, unknown>), stream: true });
   for (let i = 0; i < tries; i++) {
@@ -153,6 +172,7 @@ export async function claudeStream(url: string, init: RequestInit & { body: stri
         const body = ((await res.json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
         const why = (body.error as { message?: string } | undefined)?.message ?? "request failed";
         last = new Error(`Claude ${res.status}: ${why}`);
+        reportFailure(String((last as Error).message));
         if (!AGAIN.has(res.status) || i === tries - 1) throw last;
         const after = Number(res.headers?.get?.("retry-after") ?? "");
         if (Number.isFinite(after) && after > 0) await nap(Math.min(after * 1000, 8000));
@@ -279,7 +299,9 @@ export async function readStream(stream: ReadableStream<Uint8Array>, alive: () =
  * person can hand a lecture, a report or a form to any robot of the site and it answers from the file itself.
  */
 export type ClaudePart =
-  | { type: "text"; text: string }
+  /** `cache`: a block that is the same on every call of its kind (a skill text, the examples): its own cache mark, so the
+   * next call reads it (and everything before it) from the cache instead of writing it again */
+  | { type: "text"; text: string; cache?: boolean }
   | { type: "image"; url: string }
   | { type: "image64"; data: string; mediaType: "image/jpeg" | "image/png" }
   | { type: "doc"; url: string; name?: string };
@@ -333,6 +355,11 @@ export async function callClaudeJson<T>({
   resume,
   rawText = false,
   onText,
+  turnNote,
+  cacheTtl,
+  cacheTail = true,
+  turnEffort,
+  schemaFallback,
 }: {
   system: string;
   turns: ClaudeTurn[];
@@ -352,23 +379,85 @@ export async function callClaudeJson<T>({
   rawText?: boolean;
   /** each piece of the reply as it is written (only watched; a retried attempt starts its pieces again) */
   onText?: OnText;
+  /**
+   * What changes from one message to the next (the nearest examples, the project's record, notes for this turn): put at
+   * the START of the latest user turn instead of in `system`, so the system — and the whole conversation after it —
+   * stays the same and is read from the cache (a system that changed every message re-wrote everything at full price).
+   */
+  turnNote?: string;
+  /**
+   * "1h": every cache mark of this call lives an hour instead of 5 minutes (writing costs 2× instead of 1.25×, reading the
+   * same) — for work with natural pauses longer than 5 minutes (the person reads a plan, a video renders), where the
+   * 5-minute cache was gone and the whole prefix was written again on the next step.
+   */
+  cacheTtl?: "1h";
+  /**
+   * false: no mark on the latest turn (a one-shot call whose tail is never sent again: the 25% cache-write premium on
+   * it bought nothing). Text parts with `cache: true` keep theirs.
+   */
+  cacheTail?: boolean;
+  /**
+   * The thinking level for THIS reply, set by a per-message effort system message (beta
+   * mid-conversation-output-config-2026-07-01) while the request's own `effort` stays the same for every call of a kind
+   * of work: a different top-level effort (or output format) between calls restarts the cache, so steps that think at
+   * different levels (a plan high, a fix medium) could never read each other's cached prefix. Supported on every mind
+   * the site offers (Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 5.5).
+   */
+  turnEffort?: "low" | "medium" | "high" | "xhigh";
+  /**
+   * A safety net for a shared reply format (one schema with a branch per step): if the API refuses the request as
+   * malformed (400) over its format, it is asked once more with this narrower schema — same reply shape, no shared cache.
+   */
+  schemaFallback?: object;
 }): Promise<{ data: T; raw: string; usage: ClaudeUsage; partial?: boolean }> {
   const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
+  if (!key) {
+    reportFailure("ANTHROPIC_API_KEY is not set");
+    throw new Error("ANTHROPIC_API_KEY is not set");
+  }
   const asked = currentClaude();
 
   // pictures by link are fetched and made to fit Claude's limits (a large cut-out logo was refused)
   const cleanTurns = cleanClaudeTurns(turns);
+  if (turnNote?.trim()) {
+    const at = cleanTurns.map((t) => t.role).lastIndexOf("user");
+    if (at >= 0) {
+      const t = cleanTurns[at];
+      const note: ClaudePart = { type: "text", text: `<this_turn>\n${turnNote.trim()}\n</this_turn>` };
+      cleanTurns[at] = { ...t, content: [note, ...(typeof t.content === "string" ? [{ type: "text", text: t.content } as ClaudePart] : t.content)] };
+    }
+  }
   if (!cleanTurns.length) throw new Error("Claude request has no non-empty message content");
-  const messages = await fitDocs(await fitImages(cleanTurns.map((t, i) => {
-    const blocks: Record<string, unknown>[] = t.content.map(toBlock);
-    // Cache breakpoint on the latest turn: the next request reuses everything up to here
-    if (i === cleanTurns.length - 1) blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: "ephemeral" } };
-    return { role: t.role, content: blocks };
-  })));
+  // Cache breakpoints, chosen before the pictures and documents are fitted (one block per part):
+  // - each text part marked `cache` (a block that is the same on every call of its kind);
+  // - the latest turn (a continued request reuses everything up to here), unless the call is a one-shot (`cacheTail`);
+  // - the turn before it: the conversation so far, which the NEXT message sends again unchanged (the latest turn often
+  //   carries one-off facts, pictures or the timeline, so a mark only there made every message write its history again).
+  // At most 4 marks in a request and the system's task takes one: past three here the history mark goes first, then the
+  // earliest parts (the latest carry the most behind them).
+  const marks: { turn: number; block: number; kind: "part" | "tail" | "history" }[] = [];
+  cleanTurns.forEach((t, i) => {
+    t.content.forEach((part, k) => {
+      if (part.type === "text" && part.cache) marks.push({ turn: i, block: k, kind: "part" });
+    });
+    if (i === cleanTurns.length - 2 && cleanTurns.length >= 3) marks.push({ turn: i, block: t.content.length - 1, kind: "history" });
+    if (cacheTail && i === cleanTurns.length - 1) marks.push({ turn: i, block: t.content.length - 1, kind: "tail" });
+  });
+  while (marks.length > 3) {
+    const h = marks.findIndex((m) => m.kind === "history");
+    marks.splice(h >= 0 ? h : marks.findIndex((m) => m.kind === "part"), 1);
+  }
+  const mark = { type: "ephemeral", ...(cacheTtl ? { ttl: cacheTtl } : {}) };
+  const messages = await fitDocs(await fitImages(cleanTurns.map((t, i) => ({
+    role: t.role,
+    content: t.content.map((part, k) => ({ ...toBlock(part), ...(marks.some((m) => m.turn === i && m.block === k) ? { cache_control: mark } : {}) })) as Record<string, unknown>[],
+  }))));
 
   // Haiku has no server-side fallback model
-  const withFallback = fallback && asked.key !== "haiku";
+  // Haiku has no server-side fallback model; a per-message effort is not understood by the fallback models either
+  let withFallback = fallback && asked.key !== "haiku" && !turnEffort;
+  let perTurn = Boolean(turnEffort && asked.effort);
+  let useSchema = schema;
   const call = async (level: typeof effort) => {
     // ANTHROPIC_BASE_URL only for a local test server; production talks to the API directly
     // streamed: a long reply is never cut by a clock on the whole answer (only a line gone quiet is dropped)
@@ -379,21 +468,44 @@ export async function callClaudeJson<T>({
         "x-api-key": key,
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
-        ...(withFallback ? { "anthropic-beta": "server-side-fallback-2026-07-01" } : {}),
+        ...(withFallback ? { "anthropic-beta": "server-side-fallback-2026-07-01" } : perTurn ? { "anthropic-beta": "mid-conversation-output-config-2026-07-01" } : {}),
       },
       body: JSON.stringify({
         model: asked.id,
         max_tokens: maxTokens,
-        system: siteSystem(system, true, leader),
-        messages,
-        output_config: { ...(asked.effort ? { effort: level } : {}), ...(rawText ? {} : { format: { type: "json_schema", schema } }) },
+        system: siteSystem(system, true, leader, cacheTtl),
+        // the reply's own level rides as an effort-only system message after the latest turn (the top level stays fixed);
+        // a retry that has to think less («low» after max_tokens) lowers it the same way
+        messages: perTurn ? [...messages, { role: "system", content: [], output_config: { effort: level === effort ? turnEffort : level } }] : messages,
+        output_config: { ...(asked.effort ? { effort: perTurn ? effort : turnEffort && level === effort ? turnEffort : level } : {}), ...(rawText ? {} : { format: { type: "json_schema", schema: useSchema } }) },
         ...(withFallback ? { fallbacks: "default" } : {}),
       }),
     }, CLAUDE_TRIES, Math.max(CLAUDE_IDLE_MS, timeoutMs ?? 0), resume, onText);
     return b;
   };
 
-  let body = await call(effort);
+  // the safety nets of a newer request shape: a 400 over the per-message effort or the shared format is asked once more
+  // the plain way (the level on the request, the step's own branch) and said in the log — the work never stops on it
+  const first = async () => {
+    try {
+      return await call(effort);
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      if (!/^Claude 400/.test(why)) throw e;
+      if (perTurn && /effort|output_config|role|system message|beta/i.test(why)) {
+        console.warn("claude: per-message effort refused, the level goes on the request", why.slice(0, 300));
+        perTurn = false;
+        return call(effort);
+      }
+      if (schemaFallback && useSchema !== schemaFallback && /schema|format|anyOf|grammar|json/i.test(why)) {
+        console.warn("claude: the shared reply format refused, the step's own branch is used", why.slice(0, 300));
+        useSchema = schemaFallback;
+        return call(effort);
+      }
+      throw e;
+    }
+  };
+  let body = await first();
   if (body.stop_reason === "deadline" || body.stop_reason === "interrupted") {
     // cut before it ended: what was written so far goes back (its output counted at least by its length)
     const written = (body.content ?? []).filter((x: { type: string }) => x.type === "text").map((x: { text?: string }) => x.text ?? "").join("");
@@ -404,6 +516,14 @@ export async function callClaudeJson<T>({
   // Once more, thinking less, before giving up.
   if (body.stop_reason === "max_tokens" && asked.effort && effort !== "low") body = await call("low");
   if (body.stop_reason === "max_tokens") throw new Error("Claude reply was cut off (max_tokens)");
+  // a refusal with a per-message effort had no server-side fallback (the fallback models don't take that message): once
+  // more the plain way WITH the fallback, so a refused request is answered by the fallback model as it used to be
+  if (body.stop_reason === "refusal" && turnEffort && asked.key !== "haiku") {
+    console.warn("claude: refused with a per-message effort — asked again with the server-side fallback");
+    perTurn = false;
+    withFallback = true;
+    body = await call(effort);
+  }
   if (body.stop_reason === "refusal") throw new Error("Claude declined this request");
 
   const textOf = (b: Awaited<ReturnType<typeof call>>) => (b.content ?? []).filter((x: { type: string }) => x.type === "text").map((x: { text?: string }) => x.text ?? "").join("");
@@ -429,7 +549,10 @@ export async function callClaudeJson<T>({
  */
 export async function callClaudeSearch({ system, prompt, maxUses = 4, maxTokens = 4000 }: { system: string; prompt: string; maxUses?: number; maxTokens?: number }): Promise<{ text: string; sources: string[]; usd: number }> {
   const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
+  if (!key) {
+    reportFailure("ANTHROPIC_API_KEY is not set");
+    throw new Error("ANTHROPIC_API_KEY is not set");
+  }
   const messages: { role: "user" | "assistant"; content: unknown }[] = [{ role: "user", content: prompt }];
   const asked = currentClaude();
   let usd = 0;
@@ -440,7 +563,8 @@ export async function callClaudeSearch({ system, prompt, maxUses = 4, maxTokens 
       body: JSON.stringify({
         model: asked.id,
         max_tokens: maxTokens,
-        system: siteSystem(system, false),
+        // cached: a search runs up to 3 rounds on the same system (it was sent uncached, at the full price every round)
+        system: siteSystem(system),
         messages,
         tools: [{ type: "web_search_20260209", name: "web_search", max_uses: maxUses }],
         ...(asked.effort ? { output_config: { effort: "low" } } : {}),

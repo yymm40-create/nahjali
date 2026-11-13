@@ -57,7 +57,7 @@ export interface CourseSettings {
   hoursA: number;
   hoursB: number;
   /** riyals, to the halala (49.99); 0 = not on sale in that phase (the first day's whole course is always on sale) */
-  prices: { comboA: number; liveB: number; recordedB: number; comboB: number; liveC: number; recordedC: number };
+  prices: { comboA: number; liveB: number; recordedB: number; comboB: number; liveC: number; recordedC: number; comboC: number };
   /** the usual prices (struck through when the price is lower) */
   was: { live: number; recorded: number };
   /** the gift of زهرات (riyals of balance) that comes with an offer; 0 = none */
@@ -95,7 +95,7 @@ export const DEFAULT_SETTINGS: CourseSettings = {
   hoursA: 24,
   hoursB: 48,
   // the owner's ladder (29 October 2026): day one the whole course 49.99; day two live 49 or the whole 100; then live 80, recorded 150
-  prices: { comboA: 49.99, liveB: 49, recordedB: 0, comboB: 100, liveC: 80, recordedC: 150 },
+  prices: { comboA: 49.99, liveB: 49, recordedB: 0, comboB: 100, liveC: 80, recordedC: 150, comboC: 0 },
   was: { live: 80, recorded: 150 },
   bonus: { comboA: 0, recordedB: 0, recordedC: 0 },
   headline: "تعلّم الجواد الذكاء الاصطناعي بفيديوهات مسجلة تشوفها وقت ما تبي",
@@ -198,6 +198,7 @@ export function readSettings(raw: unknown): CourseSettings {
       comboB: money(pr.comboB, 0, 100000, d.prices.comboB),
       liveC: money(pr.liveC, 0, 100000, d.prices.liveC),
       recordedC: money(pr.recordedC, 0, 100000, d.prices.recordedC),
+      comboC: money(pr.comboC, 0, 100000, d.prices.comboC),
     },
     was: { live: money(wa.live, 1, 100000, d.was.live), recorded: money(wa.recorded, 1, 100000, d.was.recorded) },
     bonus: { comboA: num(bo.comboA, 0, 100000, 0), recordedB: num(bo.recordedB, 0, 100000, 0), recordedC: num(bo.recordedC, 0, 100000, 0) },
@@ -263,10 +264,21 @@ function ladderAt(s: Clock, now: number): Offers {
   const say = (xs: [Product, number][]) => xs.filter(([, n]) => n > 0).map(([k, n]) => `${k === "combo" ? "الكاملة" : k === "live" ? "المباشرة" : "المسجلة"} ¤${n}`).join(" و");
   const h = (now - at) / 3_600_000;
   const B: [Product, number][] = [["combo", p.comboB], ["live", p.liveB], ["recorded", p.recordedB]];
-  const C: [Product, number][] = [["recorded", p.recordedC], ["live", p.liveC]];
+  const C: [Product, number][] = [["combo", p.comboC], ["recorded", p.recordedC], ["live", p.liveC]];
   if (h < s.hoursA) return { phase: "A", offers: list([["combo", p.comboA]]), endsAt: at + s.hoursA * 3_600_000, next: `بعدها: ${say(B)}` };
   if (h < s.hoursB) return { phase: "B", offers: list(B), endsAt: at + s.hoursB * 3_600_000, next: `بعدها: ${say(C)}` };
   return { phase: "C", offers: list(C), endsAt: null, next: "" };
+}
+
+/**
+ * The limited price every visitor is told about (the bar over the whole site): the clock course's day-one price while it runs, with
+ * the usual price struck and when it ends. Null when the clock is not on that phase, so the bar goes away by itself.
+ */
+export function saleBarAt(s: Clock, now: number): { courseId: string; price: number; was: number; endsAt: number } | null {
+  if (!s.ladderCourseId) return null;
+  const o = offersAt(s, now, 0, 0, s.ladderCourseId);
+  const first = o.offers[0];
+  return o.phase === "A" && o.endsAt && first ? { courseId: s.ladderCourseId, price: first.price, was: first.was, endsAt: o.endsAt } : null;
 }
 
 /** What is on sale at `now`: the clock course follows its phases; every other course sells its recorded course at its one price. */
@@ -278,6 +290,13 @@ export function offersAt(s: Clock, now: number, price: number = COURSE.price, wa
 
 /** The offer for a product right now, or null when it is not on sale in this phase. */
 export const offerFor = (s: Clock, product: Product, now: number, price?: number, was?: number, courseId?: string | null): Offer | null => offersAt(s, now, price, was, courseId).offers.find((o) => o.product === product) ?? null;
+
+/** A discount code on the clock course buys the WHOLE course (live + recorded) at the code's price, in any phase once the clock started. */
+export function codedOffer(s: Clock, now: number, codePrice: number, price?: number, was?: number, courseId?: string | null): Offer | null {
+  if (offersAt(s, now, price, was, courseId).phase === "soon") return null;
+  const whole = Math.round((s.was.live + s.was.recorded) * 100) / 100;
+  return { product: "combo", label: PRODUCT_LABEL.combo, price: codePrice, was: Math.max(whole, codePrice), bonus: 0 };
+}
 
 /** The saving in percent when `was` is higher than `price`. */
 export const savingPct = (o: Pick<Offer, "price" | "was">) => (o.was > o.price ? Math.round((1 - o.price / o.was) * 100) : 0);

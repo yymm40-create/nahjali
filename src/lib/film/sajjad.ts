@@ -10,18 +10,18 @@ import { remember, withNote } from "@/lib/robot-handoff";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isLeader, callClaudeJson, callClaudeSearch, claudeCost, claudeTrouble, totalTokens, type ClaudeTurn, type ClaudeUsage } from "./anthropic";
-import { addFindings, decideFindings, parseFindings, pendingFindings, readResearch, researchText, RESEARCH_LIMITS, type Research } from "./research";
+import { addFindings, decideFindings, parseFindings, pendingFindings, readResearch, researchText, searchedBefore, RESEARCH_LIMITS, type Research } from "./research";
 import { addEpisode, addScene, canEditBible, episodesOf, membersOf, openSeries, scenesOf, usernames, type FilmSeries, type SeriesPlan } from "./series";
 import { castOf, upsertCast } from "./series-cast";
 import { seriesPaid } from "./series-pay";
 import { getOwnedProject } from "./access";
 import { rewindSummary, REWIND_POINTS, type RewindPoint } from "./rewind";
-import { failJob, startJob, succeedJob } from "./usage";
+import { failJob, logReplyTokens, startJob, succeedJob } from "./usage";
+import { addChatSpent } from "@/lib/chat-spend";
 import { rightsText } from "./team-rights";
 import { FILM_STAGES } from "@config/film";
 import { CHAT_GUIDANCE } from "@config/jawad/chat-guidance";
 import type { FilmProject } from "./types";
-import { managedAgentConfigured, managedAgentTurn, managedJson } from "@/lib/managed-agent";
 import { journeyIntakeText, normalizeJourneyIntake } from "./intake";
 
 const db = () => createAdminClient();
@@ -64,10 +64,10 @@ export interface SajjadAction {
 type Scope = { kind: "series"; series: FilmSeries; canEdit: boolean } | { kind: "film"; project: FilmProject; series: FilmSeries | null };
 const scopeKey = (s: Scope) => (s.kind === "series" ? `series:${s.series.id}` : `film:${s.project.id}`);
 
-async function loadChat(key: string): Promise<{ messages: SajjadMessage[]; memory: string[] }> {
-  const { data, error } = await db().from("sajjad_chats").select("messages,memory").eq("scope", key).maybeSingle();
+async function loadChat(key: string): Promise<{ messages: SajjadMessage[]; memory: string[]; spentHalalas: number }> {
+  const { data, error } = await db().from("sajjad_chats").select("messages,memory,spent_halalas").eq("scope", key).maybeSingle();
   if (error) throw new UserError("تعذّر تحميل محادثتك السابقة؛ جرّب مرة ثانية حتى نكمل من نفس المكان.", 503);
-  return { messages: (data?.messages as SajjadMessage[] | undefined) ?? [], memory: (data?.memory as string[] | undefined) ?? [] };
+  return { messages: (data?.messages as SajjadMessage[] | undefined) ?? [], memory: (data?.memory as string[] | undefined) ?? [], spentHalalas: Math.max(0, Number(data?.spent_halalas ?? 0)) };
 }
 
 async function saveChat(key: string, messages: SajjadMessage[], memory: string[]) {
@@ -322,8 +322,8 @@ async function resolveScope(kind: unknown, id: unknown, userId: string): Promise
 /** The conversation so far (and whether this person may develop the series with him). */
 export async function sajjadChat(kind: unknown, id: unknown, userId: string) {
   const scope = await resolveScope(kind, id, userId);
-  const { messages, memory } = await loadChat(scopeKey(scope));
-  return { messages, memory, canEdit: scope.kind === "series" && scope.canEdit, plan: scope.kind === "series" ? (scope.series.pending_plan ?? null) : null, research: researchOf(scope), canDecide: canDecideResearch(scope) };
+  const { messages, memory, spentHalalas } = await loadChat(scopeKey(scope));
+  return { messages, memory, canEdit: scope.kind === "series" && scope.canEdit, plan: scope.kind === "series" ? (scope.series.pending_plan ?? null) : null, research: researchOf(scope), canDecide: canDecideResearch(scope), spent: spentHalalas };
 }
 
 /** One question or message to سجاد: he answers from everything he knows and (where allowed) develops the series. */
@@ -332,50 +332,33 @@ export async function askSajjad(kind: unknown, id: unknown, user: { id: string; 
   if (!text) throw new UserError("اكتب سؤالك أو ردّك.", 400);
   const scope = await resolveScope(kind, id, user.id);
   const key = scopeKey(scope);
-  const { messages, memory } = await loadChat(key);
+  const { messages, memory, spentHalalas } = await loadChat(key);
   const me = (await usernames([user.id])).get(user.id) ?? null;
   const context = scope.kind === "series" ? await seriesContext(scope.series) : await filmContext(scope.project, scope.series);
   const rules = scope.kind === "film" ? FILM_ONLY : scope.canEdit ? SERIES_EDITOR : SERIES_VIEWER;
-  const system = `${PERSONA}\n\n${rules}${researchState(scope)}\n\n=== CONTEXT (read fresh each time) ===\n${context}\n\n=== YOUR NOTES ===\n${memory.length ? memory.map((m) => `- ${m}`).join("\n") : "(none yet)"}`;
+  // the system is the same every message (his persona and what this person may do); the work's CONTEXT, his NOTES and
+  // the research state change whenever the work does, so they go with the latest message (turnNote) — in the system they
+  // re-wrote the whole cached conversation at full price each time anything in the work moved
+  const system = `${PERSONA}\n\n${rules}\n\nCONTEXT (the work, read fresh), YOUR NOTES and RESEARCH come at the start of the person's latest message.`;
+  const turnNote = `${researchState(scope).trim()}\n\n=== CONTEXT (read fresh each time) ===\n${context}\n\n=== YOUR NOTES ===\n${memory.length ? memory.map((m) => `- ${m}`).join("\n") : "(none yet)"}`.trim();
   // his answer, and — when he was asked to research — the search itself, paid together
   const call = async () => {
     const mem = await turnsOf(key, user.id, messages, text, me);
     const turns = mem.turns;
-    let r: { data: Reply; usage: ClaudeUsage };
-    let usd = mem.usd;
-    if (managedAgentConfigured()) {
-      try {
-        const ownerId = scope.kind === "series" ? scope.series.user_id : scope.project.user_id;
-        const managed = await managedAgentTurn({
-          userId: ownerId,
-          contextType: "sajjad",
-          contextKey: key,
-          title: scope.kind === "series" ? `سجاد · ${scope.series.title}` : `سجاد · ${scope.project.title}`,
-          timeoutMs: 115_000,
-          content: [
-            {
-              type: "text",
-              text: `أنت الآن سجاد داخل المشروع المحدد فقط. اقرأ سياق المشروع الطازج في كل رسالة، ولا تنقل معلومات من أي مشروع آخر. ${isLeader(user.email) ? "المستخدم هو قائد المنصة." : ""}\n\nأعد كائن JSON واحد فقط بلا Markdown مطابقًا للمخطط التالي:\n${JSON.stringify(SCHEMA)}\n\nتعليمات وسياق سجاد:\n${system}\n\nآخر المحادثة:\n${turns.map((turn) => `${turn.role === "user" ? "المستخدم" : "سجاد"}: ${turn.content}`).join("\n\n")}`,
-            },
-          ],
-        });
-        r = { data: managedJson<Reply>(managed.text), usage: managed.usage };
-        usd += managed.usd;
-      } catch (error) {
-        console.error("managed sajjad fallback", String(error).slice(0, 300));
-        const fallback = await callClaudeJson<Reply>({ system, turns, schema: SCHEMA, maxTokens: 16000, effort: "medium", leader: isLeader(user.email) });
-        r = fallback;
-        usd += claudeCost(fallback.usage);
-      }
-    } else {
-      const fallback = await callClaudeJson<Reply>({ system, turns, schema: SCHEMA, maxTokens: 16000, effort: "medium", leader: isLeader(user.email) });
-      r = fallback;
-      usd += claudeCost(fallback.usage);
-    }
+    // the plain Messages API: the Managed Agent path posted the whole system, schema and conversation again into a session
+    // that already held every earlier copy (quadratic), was always priced as Opus, and on a failure paid twice
+    // an hour's cache: the person works on the scene between questions (often more than 5 minutes), and the 5-minute cache
+    // was gone by the next one — the whole conversation was written again each time. No mark on the latest turn: it
+    // starts with this message's CONTEXT (turnNote), which is never stored, so the next question's prefix differs there
+    // and the write (2× on the hour's cache) was never read; the mark on the turn before it is what the next one reads
+    let r: { data: Reply; usage: ClaudeUsage } = await callClaudeJson<Reply>({ system, turns, turnNote, schema: SCHEMA, maxTokens: 16000, effort: "medium", leader: isLeader(user.email), cacheTtl: "1h", cacheTail: false });
+    logReplyTokens("sajjad", key, r.usage);
+    let usd = mem.usd + claudeCost(r.usage);
     if (mem.fresh) r = { ...r, data: { ...r.data, reply: withNote(r.data.reply, true) } };
     let found: Research | null = null;
     const scopeText = r.data.research.trim().slice(0, RESEARCH_LIMITS.scopeMax);
-    if (scopeText) {
+    // the same scope searched already (he repeated it in a later reply): its findings are in the cards, not searched again
+    if (scopeText && !searchedBefore(researchOf(scope), scopeText)) {
       const s = await runResearch(scopeText, context);
       usd += s.usd;
       found = addFindings(researchOf(scope), s.findings);
@@ -383,16 +366,21 @@ export async function askSajjad(kind: unknown, id: unknown, user: { id: string; 
     return { value: { ...r, found }, usd };
   };
   let r: Awaited<ReturnType<typeof call>>["value"];
+  // exactly what this turn took from the wallet (whoever paid: the series' owner or team, or the film's) — added to
+  // this chat's running «أُخذ منك» total
+  let charged = 0;
   try {
     if (scope.kind === "series") {
-      r = await seriesPaid(scope.series, user, ESTIMATE_USD, "سؤال لسجاد", call);
+      const sp = await seriesPaid(scope.series, user, ESTIMATE_USD, "سؤال لسجاد", call);
+      r = sp.value;
+      charged = sp.charged;
     } else {
       // a film's (or scene's) question is one of its jobs: its owner, or the team series it belongs to, pays
       const { job } = await startJob({ projectId: scope.project.id, user, service: "anthropic", operation: "sajjad", idempotencyKey: `sajjad:${crypto.randomUUID()}`, estimateUsd: ESTIMATE_USD, units: 0, unit: "tokens" });
       try {
         const got = await call();
         r = got.value;
-        await succeedJob(job.id, { costUsd: got.usd, units: totalTokens(r.usage) });
+        charged = await succeedJob(job.id, { costUsd: got.usd, units: totalTokens(r.usage) });
       } catch (e) {
         await failJob(job.id, e);
         throw e;
@@ -422,7 +410,9 @@ export async function askSajjad(kind: unknown, id: unknown, user: { id: string; 
   const known = new Set(memory);
   const notes = [...memory, ...d.remember.map((m) => m.trim()).filter((m) => m && !known.has(m))];
   await saveChat(key, next, notes);
-  return { message: next.at(-1)!, changes, plan: scope.kind === "series" && scope.canEdit && d.plan.episodes.length ? d.plan : null, research: r.found };
+  // exactly what this conversation has taken from the wallet now (never an estimate), read back next time too
+  const spent = await addChatSpent("sajjad_chats", "scope", key, spentHalalas, charged);
+  return { message: next.at(-1)!, changes, plan: scope.kind === "series" && scope.canEdit && d.plan.episodes.length ? d.plan : null, research: r.found, spent };
 }
 
 // ───────────── «تدخّل سجاد»: the work itself changed, after the person sees what it costs ─────────────
@@ -723,12 +713,12 @@ ${await seriesContext(series)}
 === YOUR NOTES ===
 ${memory.length ? memory.map((m) => `- ${m}`).join("\n") : "(none)"}`;
   try {
-    return await seriesPaid(series, who, ESTIMATE_USD, "سجاد يجهّز مشهد", async () => {
+    return (await seriesPaid(series, who, ESTIMATE_USD, "سجاد يجهّز مشهد", async () => {
       const r = await callClaudeJson<SceneUnderstanding>({ system, turns: [{ role: "user", content: ask }], schema: SCENE_SCHEMA, maxTokens: 12000, effort: "medium" });
       const d = r.data;
       if (mode === "mine") d.story = text;
       return { value: { ...d, number }, usd: claudeCost(r.usage) };
-    });
+    })).value;
   } catch (e) {
     if (e instanceof UserError) throw e;
     console.error("sajjad scene failed", e);

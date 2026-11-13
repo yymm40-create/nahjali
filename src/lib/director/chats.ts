@@ -177,6 +177,14 @@ export async function getDirectorChat(userId: string, id: string): Promise<Direc
   return data ? view(data as Record<string, unknown>) : null;
 }
 
+/** The managed-agent session that holds this conversation (null: its next message starts a new one). */
+export async function directorSessionId(userId: string, chatId: string | null): Promise<string | null> {
+  if (!chatId) return null;
+  const { data, error } = await db().from("jawad_agent_sessions").select("session_id").eq("user_id", userId).eq("context_type", "director").eq("context_key", chatId.trim().slice(0, 200)).maybeSingle();
+  if (error) throw error;
+  return (data?.session_id as string | undefined) ?? null;
+}
+
 export async function createDirectorChat(userId: string, messages: DirectorTurn[], parentChatId: string | null = null) {
   const first = messages.find((turn) => turn.role === "user")?.text ?? "";
   const { data, error } = await db().from("jawad_director_chats").insert({ user_id: userId, parent_chat_id: parentChatId, title: titleOf(first), messages }).select("id").single();

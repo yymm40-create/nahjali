@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { goalProgress, type ReadingMetric } from "@/lib/mahdi/engine";
+import { guideCount } from "@/lib/mahdi/guide";
 import { fmtNum, fmtPct, t } from "@/lib/mahdi/i18n";
 import { duration, flushPending, loadTimer, pendingCount, type TimerState } from "@/lib/mahdi/client/reading";
 import BookCover from "@/components/mahdi/BookCover";
@@ -151,6 +152,19 @@ export default function ReadingPage() {
           </Link>
         )}
       </section>
+
+      <Link href="/mahdi/reading/guide" className="m-card flex items-center gap-4 p-4">
+        <span className="m-soft grid size-12 shrink-0 place-items-center rounded-2xl">
+          <Icon name="search" className="m-gold" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold">{t.reading.guide.link}</span>
+          <span className="m-muted block text-sm">
+            {t.reading.guide.by} · {t.reading.guide.linkHint(guideCount())}
+          </span>
+        </span>
+        <Icon name="chevronLeft" size={18} />
+      </Link>
 
       <nav className="grid gap-2 sm:grid-cols-2" aria-label={t.reading.title}>
         <Link href="/mahdi/reading/shelf" className="m-card flex items-center gap-3 p-4 font-semibold">

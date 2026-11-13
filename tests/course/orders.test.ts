@@ -53,7 +53,28 @@ const notify = vi.fn(async () => true);
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: (t: string) => builder(t) }) }));
 vi.mock("@/lib/coins", () => ({ grantCoins: (...a: unknown[]) => grant(...(a as [])) }));
 vi.mock("@/lib/course/settings", () => ({ loadSettings: async () => settings }));
-vi.mock("@/lib/course/telegram", () => ({ notifyTransfer: (...a: unknown[]) => notify(...(a as [])) }));
+const notifyPaid = vi.fn(async () => true);
+vi.mock("@/lib/course/telegram", () => ({ notifyTransfer: (...a: unknown[]) => notify(...(a as [])), notifyPaid: (...a: unknown[]) => notifyPaid(...(a as [])) }));
+// Moyasar: the invoices live in a small table here; a test marks one «paid» the way Moyasar's own page would
+const invoices: Record<string, { id: string; amount: number; currency: string; status: string; url: string }> = {};
+const made: { amount: number; callbackUrl: string; successUrl: string; backUrl: string; description: string }[] = [];
+vi.mock("@/lib/credits/moyasar", async (orig) => {
+  const real = await orig<typeof import("@/lib/credits/moyasar")>();
+  return {
+    ...real,
+    moyasarEnabled: () => true,
+    createInvoice: async (i: (typeof made)[number]) => {
+      made.push(i);
+      const id = `inv-${made.length}`;
+      invoices[id] = { id, amount: real.halalas(i.amount), currency: "SAR", status: "initiated", url: `https://pay.example/${id}` };
+      return { id, url: invoices[id].url };
+    },
+    getInvoice: async (id: string) => {
+      if (!invoices[id]) throw new Error("no such invoice");
+      return invoices[id];
+    },
+  };
+});
 
 const T0 = Date.parse("2026-10-10T12:00:00Z");
 const H = 3_600_000;
@@ -70,6 +91,9 @@ beforeEach(() => {
   tables.learn_courses = [{ id: A, title: "دورة الجواد الأولى", published: true, price_sar: 60 }, { id: B, title: "الدورة الثانية", published: true, price_sar: 90 }];
   grant.mockClear();
   notify.mockClear();
+  notifyPaid.mockClear();
+  made.length = 0;
+  for (const k of Object.keys(invoices)) delete invoices[k];
   settings = readSettings({ ...DEFAULT_SETTINGS, launchAt: new Date(T0).toISOString(), bank, bonus: { comboA: 0, recordedB: 30, recordedC: 20 } });
 });
 
@@ -105,6 +129,18 @@ describe("«ادفع الآن»", () => {
     const b = await startOrder(U, { courseId: B, ...who }, T0);
     await confirmOrder(b.order.id, "owner");
     expect(tables.learn_grants.map((g) => g.course_id)).toEqual([A, B]);
+  });
+
+  it("on the clock course a discount code buys the whole course (live + recorded) at its price, even on the days the whole isn't sold", async () => {
+    const { startOrder } = await import("@/lib/course/orders");
+    settings = readSettings({ ...settings, ladderCourseId: A });
+    tables.learn_codes = [{ course_id: A, code: "MOTION", price_sar: 80 }];
+    const t = T0 + 60 * H; // the third day on: only live 80 and recorded 150 are on sale
+    const r = await startOrder(U, { courseId: A, code: "motion", product: "recorded", ...who }, t);
+    expect(r.order).toMatchObject({ product: "combo", amount: 80, was: 230, bonus: 0, code: "MOTION" });
+    // without the code the person gets what they picked, at today's price
+    const plain = await startOrder({ id: "u-9" }, { courseId: A, product: "recorded", ...who }, t);
+    expect(plain.order).toMatchObject({ product: "recorded", amount: 150 });
   });
 
   it("a course's discount code gives its price; a wrong code, another course's code or none changes nothing", async () => {
@@ -259,5 +295,73 @@ describe("«أكّد»", () => {
     await expect(rejectOrder(a.order.id, "owner")).rejects.toThrow(/ما عاد قابل/);
     await confirmOrder(a.order.id, "owner");
     await expect(rejectOrder(a.order.id, "owner")).rejects.toThrow(/ما عاد قابل/);
+  });
+});
+
+describe("«ادفع بالبطاقة» (Moyasar)", () => {
+  const ORIGIN = "https://www.aljawadai.app";
+
+  it("opens an invoice for the order's price without any bank data, and keeps its id in the order", async () => {
+    const { startCardOrder } = await import("@/lib/course/orders");
+    settings = readSettings({ ...DEFAULT_SETTINGS, launchAt: new Date(T0).toISOString(), bank: { holder: "", iban: "", account: "", swift: "", bank: "" } });
+    const r = await startCardOrder(U, { courseId: A, ...who }, ORIGIN);
+    expect(r.url).toBe("https://pay.example/inv-1");
+    expect(made[0]).toMatchObject({ amount: 60, callbackUrl: `${ORIGIN}/api/course/moyasar/webhook?order=${r.order.id}`, successUrl: `${ORIGIN}/api/course/moyasar/return?order=${r.order.id}` });
+    expect(made[0].backUrl).toBe(`${ORIGIN}/jawad-ai/course/${A}?cancelled=1`);
+    expect(tables.course_orders[0].note).toBe("moyasar:inv-1");
+    expect(tables.course_orders[0].status).toBe("started");
+  });
+
+  it("unlocks only after Moyasar says it is paid, then opens the course once and tells the owner once", async () => {
+    const { startCardOrder, settleCardOrder } = await import("@/lib/course/orders");
+    const { order } = await startCardOrder(U, { courseId: A, ...who }, ORIGIN);
+    expect((await settleCardOrder(order.id))?.paid).toBe(false);
+    expect(tables.learn_grants).toHaveLength(0);
+    invoices["inv-1"].status = "paid";
+    const done = await settleCardOrder(order.id);
+    expect(done).toMatchObject({ paid: true, order: { status: "confirmed" } });
+    expect(tables.learn_grants.map((g) => [g.course_id, g.email])).toEqual([[A, "buyer@example.com"]]);
+    expect(notifyPaid).toHaveBeenCalledTimes(1);
+    // the return and the callback both come: nothing happens twice
+    await settleCardOrder(order.id);
+    await settleCardOrder(order.id);
+    expect(tables.learn_grants).toHaveLength(1);
+    expect(notifyPaid).toHaveBeenCalledTimes(1);
+  });
+
+  it("a paid invoice for another amount, another currency or another order unlocks nothing", async () => {
+    const { startCardOrder, settleCardOrder } = await import("@/lib/course/orders");
+    const { order } = await startCardOrder(U, { courseId: A, ...who }, ORIGIN);
+    invoices["inv-1"].status = "paid";
+    invoices["inv-1"].amount = 100;
+    expect((await settleCardOrder(order.id))?.paid).toBe(false);
+    invoices["inv-1"].amount = 6000;
+    invoices["inv-1"].currency = "USD";
+    expect((await settleCardOrder(order.id))?.paid).toBe(false);
+    invoices["inv-1"].currency = "SAR";
+    // an order that never made an invoice cannot be settled by someone else's paid one
+    const other = await (await import("@/lib/course/orders")).startOrder({ id: "u-5", email: "x@example.com" }, { courseId: B, ...who }, T0, false);
+    expect((await settleCardOrder(other.order.id))?.paid).toBe(false);
+    expect(tables.learn_grants).toHaveLength(0);
+    expect(await settleCardOrder("not-an-id")).toBeNull();
+  });
+
+  it("a buyer who pressed pay twice and paid the FIRST page is still unlocked", async () => {
+    const { startCardOrder, settleCardOrder } = await import("@/lib/course/orders");
+    const first = await startCardOrder(U, { courseId: A, ...who }, ORIGIN);
+    await startCardOrder(U, { courseId: A, ...who }, ORIGIN);
+    expect(tables.course_orders).toHaveLength(1);
+    expect(tables.course_orders[0].note).toBe("moyasar:inv-1,inv-2");
+    invoices["inv-1"].status = "paid";
+    expect((await settleCardOrder(first.order.id))?.paid).toBe(true);
+  });
+
+  it("keeps the invoice ids of an order in its note (the last five)", async () => {
+    const { cardInvoiceIds, addCardInvoice } = await import("@/lib/course/orders");
+    expect(cardInvoiceIds("")).toEqual([]);
+    expect(cardInvoiceIds("owner: rejected")).toEqual([]);
+    let n = "";
+    for (const id of ["a", "b", "c", "d", "e", "f", "b"]) n = addCardInvoice(n, id);
+    expect(cardInvoiceIds(n)).toEqual(["c", "d", "e", "f", "b"]);
   });
 });

@@ -13,10 +13,10 @@ export const dynamic = "force-dynamic";
  */
 export const POST = handle(async (req: Request) => {
   const user = await requireApiUser();
-  const b = (await req.json().catch(() => ({}))) as { pack?: unknown; source?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { pack?: unknown; source?: unknown; code?: unknown };
   // the name and WhatsApp number come from the account («الحساب الشخصي»), never from the payment form
   const contact = contactOf(user);
   if (!contactComplete(contact)) throw new UserError("كمّل اسمك ورقم جوالك في حسابك الشخصي أولًا.", 409);
   const ad = adContext(req);
-  return NextResponse.json(await startCreditOrder({ id: user.id, email: user.email }, { pack: b.pack, name: contact.name, phone: contact.phone, source: b.source ?? ad.source }, ad));
+  return NextResponse.json(await startCreditOrder({ id: user.id, email: user.email }, { pack: b.pack, name: contact.name, phone: contact.phone, source: b.source ?? ad.source, code: b.code }, ad));
 });

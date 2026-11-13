@@ -1,7 +1,6 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost } from "./anthropic";
-import { managedAgentConfigured, managedAgentTurn, managedJson } from "@/lib/managed-agent";
 import { getOwnedProject } from "./access";
 import { requireSeries } from "./series";
 
@@ -36,6 +35,8 @@ export interface JourneyIntakeBody {
   previous?: unknown;
   intake?: unknown;
   action?: unknown;
+  /** the Claude model the person chose (config/claude-models.ts) */
+  model?: unknown;
 }
 
 const string = { type: "string" } as const;
@@ -100,20 +101,27 @@ export async function understandJourney(user: { id: string; email?: string | nul
   const kind = cleanKind(body.kind);
   const targetType = body.targetType === "series" ? "series" : body.targetType === "project" ? "project" : "draft";
   const targetId = text(body.targetId, 80);
-  const draftId = text(body.draftId, 120) || targetId || crypto.randomUUID();
   const context = await existingContext(user.id, targetType, targetId);
   const answers = body.answers && typeof body.answers === "object" ? JSON.stringify(body.answers).slice(0, 8000) : "{}";
   const previous = body.previous && typeof body.previous === "object" ? JSON.stringify(body.previous).slice(0, 16000) : "{}";
-  const prompt = `أنت سجاد في بوابة الرحلة السينمائية الجديدة. مهمتك الآن الفهم والتحقق فقط، لا تبدأ كتابة السيناريو ولا تولّد صورًا أو فيديو.
-
-نوع العمل: ${kind === "scene" ? "مشهد قصير مستقل" : kind === "film" ? "فيلم سينمائي كامل" : "مسلسل كامل"}
+  const prompt = `نوع العمل: ${kind === "scene" ? "مشهد قصير مستقل" : kind === "film" ? "فيلم سينمائي كامل" : "مسلسل كامل"}
 العنوان المبدئي: ${text(body.title, 80)}
 فكرة المستخدم/قصته: ${text(body.story, 20000)}
 الثوابت التي كتبها: ${text(body.fixedFacts, 5000)}
 المدة المقترحة: ${text(body.targetDurationSec, 20) || "غير محددة"}
 إجابات المستخدم على أسئلتك السابقة: ${answers}
 فهمك السابق الذي يجب تحديثه بدل البدء من الصفر: ${previous}
-${context ? `\n${context}` : ""}
+${context ? `\n${context}` : ""}`;
+
+  // one plain call: the rules are the (cached) system, the reply's shape is enforced by the schema. The Managed Agent path
+  // added the whole prompt + schema to a session that kept every earlier pass, was priced as Opus whatever the person
+  // chose, and on a failure paid twice
+  const r = await callClaudeJson<JourneyIntake>({ system: INTAKE_RULES, turns: [{ role: "user", content: prompt }], schema: SCHEMA, maxTokens: 12000, effort: "medium" });
+  return { intake: normalizeJourneyIntake(r.data), usd: claudeCost(r.usage) };
+}
+
+/** سجاد's rules at the journey's gate (the same every pass, so they are read from the cache). */
+const INTAKE_RULES = `أنت سجاد في بوابة الرحلة السينمائية الجديدة. مهمتك الآن الفهم والتحقق فقط، لا تبدأ كتابة السيناريو ولا تولّد صورًا أو فيديو. لا تخمّن، وافصل الأسئلة المانعة عن الفهم المؤكد.
 
 القواعد:
 - حافظ على فكرة المستخدم ونهايته وما أنجزه سابقًا. لا تستبدله ولا تخترع قرارًا.
@@ -126,22 +134,7 @@ ${context ? `\n${context}` : ""}
 - لا تستخدم أسماء فنانين أحياء كاختصار للستايل.
 - understanding ملخص عربي بسيط لما فهمته وما سيُثبّت بعد التأكيد.
 - concept صياغة كاملة أمينة تصلح لتسليمها للسيناريست، وليست فكرة جديدة منك.
-- fixedFacts للقرارات التي يجب ألا تتغير فقط.
-
-أعد JSON فقط مطابقًا للمخطط:
-${JSON.stringify(SCHEMA)}`;
-
-  if (managedAgentConfigured()) {
-    try {
-      const managed = await managedAgentTurn({ userId: user.id, contextType: "sajjad", contextKey: `intake:${targetType}:${draftId}`.slice(0, 200), title: `سجاد · تجهيز ${kind}`, content: [{ type: "text", text: prompt }], timeoutMs: 115_000 });
-      return { intake: normalizeJourneyIntake(managedJson<JourneyIntake>(managed.text)), usd: managed.usd };
-    } catch (error) {
-      console.error("managed intake fallback", String(error).slice(0, 300));
-    }
-  }
-  const fallback = await callClaudeJson<JourneyIntake>({ system: "أنت سجاد في بوابة رحلة صناعة الأفلام. لا تخمّن، وافصل الأسئلة المانعة عن الفهم المؤكد.", turns: [{ role: "user", content: prompt }], schema: SCHEMA, maxTokens: 12000, effort: "medium" });
-  return { intake: normalizeJourneyIntake(fallback.data), usd: claudeCost(fallback.usage) };
-}
+- fixedFacts للقرارات التي يجب ألا تتغير فقط.`;
 
 export function journeyIntakeText(intake: JourneyIntake) {
   const parts = [`فهم سجاد المعتمد للرحلة الجديدة:\n${intake.understanding}`, `الصياغة المعتمدة:\n${intake.concept}`];

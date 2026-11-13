@@ -8,6 +8,8 @@ import { stylePicturesSafe } from "@/lib/film/style-pictures";
 import { MOODS, MOTION_STYLES } from "@/lib/editor/motion-styles";
 import { previewUri } from "@/lib/editor/motion-preview";
 import { CONTENT_PALETTES } from "@config/content-palettes";
+import { CAROUSEL_NICHES, CAROUSEL_STYLES, carouselSample } from "@config/content-carousel-styles";
+import { CONTENT_FONTS, FONT_GROUPS } from "@config/content-fonts";
 
 const KIND_AR: Record<string, string> = { title: "عنوان", points: "نقاط", stat: "رقم كبير", quote: "اقتباس", steps: "خطوات", compare: "مقارنة", statement: "جملة", outro: "ختام", kinetic: "كلمات طائرة" };
 const PACE_GROUP = { fast: "إيقاع سريع", normal: "إيقاع متوسط", calm: "هادئ وفخم" } as const;
@@ -24,7 +26,7 @@ function motionItems() {
 export const dynamic = "force-dynamic";
 
 /**
- * «صانع المحتوى» · the two galleries a person picks from: the carousel templates (each with the one picture the owner had
+ * «صانع المحتوى» · the galleries a person picks from: the table of 104 carousel styles, the list of 50 fonts, the carousel templates (each with the one picture the owner had
  * drawn for it, the same for everyone; a template without one shows its palette), the library's 100 styles in 14
  * families (their pictures; a new style not drawn yet shows its family's icon), and the 100 four-colour palettes.
  */
@@ -34,6 +36,12 @@ export const GET = handle(async () => {
   return NextResponse.json(
     {
       templates: CAROUSEL_TEMPLATES.map((t) => ({ id: t.id, group: t.group, name: t.name, description: t.description, bestFor: t.bestFor, structures: t.structures.map(structureName), palettes: t.palettes, image: images[t.id] ?? null })),
+      // the table of 104 carousel styles by niche: its two sample slides, what it is and what it suits (never its prompts)
+      carousels: CAROUSEL_STYLES.map((s) => ({ id: s.id, n: s.n, niche: s.niche, name: s.name, description: s.description, bestFor: s.bestFor, winner: !!s.winner, realistic: !!s.photoIdea, cover: carouselSample(s, "cover"), slide: carouselSample(s, "slide"), ...(s.font ? { font: s.font } : {}) })),
+      niches: CAROUSEL_NICHES,
+      // the list of 50 Arabic fonts after the style (each drawn on the page in its own file)
+      fonts: CONTENT_FONTS.map((f) => ({ id: f.id, name: f.name, group: f.group, feel: f.feel, bestFor: f.bestFor, top: !!f.top, ...(f.seen ? { seen: f.seen } : {}) })),
+      fontGroups: FONT_GROUPS,
       ...motionItems(),
       // the 100 four-colour palettes (Color Hunt): the four colours are the picture
       palettes: CONTENT_PALETTES.map((p, i) => ({ id: p.id, group: p.group, name: `${i + 1}. ${p.name}`, description: p.colors.join(" · "), bestFor: p.group, image: null, swatch: p.colors })),

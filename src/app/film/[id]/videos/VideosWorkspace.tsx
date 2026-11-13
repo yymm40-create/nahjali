@@ -1,6 +1,7 @@
 "use client";
 
 import VoiceDesigner from "../../VoiceDesigner";
+import { prepareLines, PREPARE_GROUP } from "../../prepare-lines";
 import { credits } from "@/lib/film/credits";
 import { REALFACE_LOW_RES, REALFACE_WARNING } from "@config/jawad/realface";
 import Link from "next/link";
@@ -328,14 +329,20 @@ export default function VideosWorkspace({
 
   async function speakLines(keys: string[]) {
     setVoiceError("");
-    for (const key of keys) {
-      setSpeaking(key);
-      try {
-        await postJson(voicesUrl, { action: "speak", key, idempotencyKey: crypto.randomUUID(), emotion: feel[key] ?? "" });
-        setVoice(await api<VoiceState>(voicesUrl));
-      } catch (e) {
-        setVoiceError((e as Error).message);
-        break;
+    // many lines: their pronunciation prepared together first (one Claude call per group, not one per line)
+    groups: for (let g = 0; g < keys.length; g += PREPARE_GROUP) {
+      const group = keys.slice(g, g + PREPARE_GROUP);
+      setSpeaking(group[0]);
+      const prepared = await prepareLines(voicesUrl, group, { model: claude.id });
+      for (const key of group) {
+        setSpeaking(key);
+        try {
+          await postJson(voicesUrl, { action: "speak", key, idempotencyKey: crypto.randomUUID(), emotion: feel[key] ?? "", model: claude.id, ...(prepared[key] ? { prepared: prepared[key] } : {}) });
+          setVoice(await api<VoiceState>(voicesUrl));
+        } catch (e) {
+          setVoiceError((e as Error).message);
+          break groups;
+        }
       }
     }
     setSpeaking(null);
@@ -369,7 +376,7 @@ export default function VideosWorkspace({
       useVoices = true;
     }
     const sec = secOf(g);
-    await send({ action: "generate_video", genId: g.id, resolution, ratio, durationSec: sec, model, useVoices, voiceSource: voiceChoice(g).voiceSource, arabicInPrompt });
+    await send({ action: "generate_video", genId: g.id, resolution, ratio, durationSec: sec, videoModel: model, useVoices, voiceSource: voiceChoice(g).voiceSource, arabicInPrompt });
   }
   const runningNow = videos.filter((v) => v.status === "generating").length;
   const notStarted = generations.filter((g) => !videos.some((v) => v.ref_key === g.id && v.status !== "rejected" && v.status !== "failed") && !g.questions && !g.revision);
@@ -685,7 +692,7 @@ export default function VideosWorkspace({
                 </details>
                 <ActionBar
                   busy={busy || writing}
-                  onApprove={() => send({ action: "approve_and_generate", versionId: g.revision!.id, resolution, ratio, durationSec: sec, model, ...voiceChoice(g) })}
+                  onApprove={() => send({ action: "approve_and_generate", versionId: g.revision!.id, resolution, ratio, durationSec: sec, videoModel: model, ...voiceChoice(g) })}
                   approveLabel={`اعتمد وولّد من جديد · ≈ ${usd(cost)}`}
                   onSend={(mode, text) => send({ action: "revise", text, versionId: g.revision!.id, mode })}
                 />

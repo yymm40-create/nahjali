@@ -10,7 +10,7 @@ import { callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn, type Clau
 import { SUPER_DIRECTOR } from "@config/film-prompts/director";
 import { DIRECTOR_PRICE_KEY, directorOffered, generatorById } from "@config/jawad/generators";
 import type { GeneratorDef, RefKind, RefRole, RefStyle, Settings } from "@config/jawad/types";
-import { DIRECTOR_LIMITS, directorProblems, directorPrompt, salvageDirector, type DirectorOutput } from "../director";
+import { directorProblems, directorPrompt, missingLines, salvageDirector, type DirectorOutput } from "../director";
 import { evaluate } from "../engine";
 import { cleanRefName, defaultRefName } from "../mentions";
 import { JAWAD_BUCKET, loadRuntime } from "./runtime";
@@ -22,17 +22,30 @@ const LABEL = "JAWAD AI · المخرج الخارق";
 const ROLES: RefRole[] = ["first_frame", "last_frame", "reference"];
 /** Images Claude looks at (the rest of the references are described in text). */
 const MAX_IMAGES = 8;
+/** The one video generator that can't read Arabic: its spoken Arabic is transliterated in Latin letters. */
+const SEEDANCE_2_0 = "byteplus-seedance-2-0";
 
-/** The website's rules for every Super Director prompt (develop or edit); they override the skill where they differ. */
-export const WEBSITE_RULES = `Website rules (they override the skill wherever they differ):
+/**
+ * The website's rules for every Super Director prompt (develop or edit); they override the skill where they differ.
+ * `arabic`: spoken Arabic stays in Arabic script, diacritized, as in the film maker's director (never transliterated);
+ * otherwise it is transliterated in Latin letters, for a generator that can't read Arabic (Seedance 2.0).
+ */
+export const websiteRules = (arabic = false) => `Website rules (they override the skill wherever they differ):
 1. Output the final EN/ZH pair as the JSON object {"en": "...", "zh": "..."} (instead of the array), with the same content rules.
-2. Length: "en" at most ${DIRECTOR_LIMITS.en} characters and "zh" at most ${DIRECTOR_LIMITS.zh} characters, each counted WITHOUT the spoken lines (rule 4). Trim in the skill's order (Narrative Summary, then Static Description, then Style & Mood) and keep the Dynamic Description.
+2. There is NO length limit. Write the prompt as long as the story needs. Never shorten, merge or drop anything (story, actions, camera directions, dialogue) to make it shorter.
 3. The settings chosen in the website are binding. They override the user's text and the skill's defaults: model version, duration, aspect ratio, resolution, sound on/off and reference mode. State the duration naturally in both prompts.
-4. Spoken lines (dialogue, voice-over, singing): any Arabic line is written in Latin letters as a faithful transliteration of the same Arabic words — the prompts must contain NO Arabic script at all. Put every spoken line inside straight double quotes "..." (the same text in "en" and "zh"); use double quotes for nothing else. Lines in other languages stay in their original language, also in double quotes. When sound is off, write no spoken lines and no Audio section.
+4. Spoken lines (dialogue, voice-over, singing): ${
+  arabic
+    ? `every spoken Arabic line is written in Arabic script, exactly as the user wrote it, fully diacritized except the last letter of each word — NEVER transliterated into Latin letters. Do not tell the generator to "say" or "pronounce" a word: the line is simply written between the quotes in the Audio part.`
+    : `any Arabic line is written in Latin letters as a faithful transliteration of the same Arabic words — the prompts must contain NO Arabic script at all.`
+} Put every spoken line inside straight double quotes "..." (the same text in "en" and "zh"); use double quotes for nothing else. Lines in other languages stay in their original language, also in double quotes. When sound is off, write no spoken lines and no Audio section.
 5. References: the user's attachments have names. Refer to each one only as @name, exactly as given — these are the website's attachment labels and replace <<<image_n>>>, <<<video_n>>> and <<<audio_n>>>. Never invent a reference or a name. Images among them are attached to the message so you can see them; videos and audio are described.`;
 
-/** «طوّر البرومبت»: the website's task, after the skill (both fixed, so the whole system prompt is cached across requests). */
-const WEBSITE_TASK = `
+/** The same rules with spoken Arabic transliterated (smart edit and cartoon). */
+export const WEBSITE_RULES = websiteRules(false);
+
+/** «طوّر البرومبت»: the website's task, after the skill (fixed per language mode, so the whole system prompt is cached across requests). */
+export const developTask = (arabic: boolean) => `
 
 ---
 
@@ -40,8 +53,9 @@ const WEBSITE_TASK = `
 
 You run in the background of the JAWAD AI video studio; the user never sees this exchange. They wrote a prompt for an AI video generator (the model is named in the settings: Seedance, Wan…) and asked the Super Director to develop it. This message IS the final prompt-delivery stage: deliver the final prompt now. Do not ask questions, do not explain, add no approval gates.
 
-${WEBSITE_RULES}
-6. Keep the user's story, characters, actions, camera directions and dialogue (only transliterating Arabic); improve the direction, do not change what happens.`;
+${websiteRules(arabic)}
+6. Keep the user's story, characters, actions, camera directions and dialogue${arabic ? "" : " (only transliterating Arabic)"}; improve the direction, do not change what happens.
+7. Dialogue is never cut. Every spoken line the user wrote (when sound is on) appears in full, word for word, in the Audio part of both prompts. The skill's dialogue word limit and its dialogue-reduction rule do NOT apply: never trim a line, never turn a line into physical behavior, never keep only some of the lines.`;
 
 /** «التعديل الذكي»: the Super Director makes a video again as a fresh generation (same ideas and references, the change built in, the old one never mentioned). */
 export const EDIT_TASK = `
@@ -78,6 +92,8 @@ export interface DirectorBody {
   prompt?: unknown;
   refs?: unknown;
   expectedCoins?: unknown;
+  /** the Claude model the person chose (config/claude-models.ts) */
+  model?: unknown;
 }
 
 export type DirectorResult = { kind: "done"; prompt: string; coins: number; balance: number | null } | { kind: "price_changed"; coins: number };
@@ -90,7 +106,7 @@ const MODE_EN: Record<string, string> = {
   omni_reference: "multiple references",
 };
 
-/** «المخرج الخارق»: checks, charges, asks Claude (once more if the answer breaks a rule), refunds on any failure. */
+/** «المخرج الخارق»: checks, charges, asks Claude (once more if the answer breaks a rule it can't be repaired of), refunds on any failure. */
 export async function improvePrompt(user: { id: string }, owner: boolean, b: DirectorBody): Promise<DirectorResult> {
   const key = String(b.idempotencyKey ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
@@ -163,7 +179,11 @@ export async function improvePrompt(user: { id: string }, owner: boolean, b: Dir
     }
     parts.push({ type: "text", text: `The user's prompt:\n<<<\n${prompt}\n>>>` });
 
-    const r = await directorRun(WEBSITE_TASK, parts, names);
+    // Spoken Arabic stays Arabic (the film maker's rule), except for Seedance 2.0, which can't read it
+    const arabic = def.id !== SEEDANCE_2_0;
+    // the person's own quoted lines must all still be there (a developed prompt never cuts the dialogue)
+    const cut = (out: string) => (arabic && s.audio ? missingLines(prompt, { en: out, zh: "" }).map((l) => `The user's spoken line "${l}" is missing or changed. Every spoken line of the user's prompt must appear in full, word for word (only diacritics may be added), inside double quotes, in both prompts.`) : []);
+    const r = await directorRun(developTask(arabic), parts, names, cut, arabic);
     console.info("jawad director", { user: user.id, generator: def.id, attempts: r.attempts, usd: Number(r.usd.toFixed(4)) });
     return { kind: "done", prompt: r.prompt, coins: charged ? coins : 0, balance };
   } catch (err) {
@@ -191,32 +211,46 @@ export function settingsText(def: GeneratorDef, s: Settings, modeId: string, met
 }
 
 /**
- * Asks the Super Director (the skill + a website task) for an EN/ZH prompt, once more if the answer breaks a
- * website rule. Throws when it fails twice.
+ * A fault a machine repairs safely (the skill's <<<image_n>>> labels, an @name that is not a reference — salvageDirector):
+ * repaired at once instead of asking Claude again, which re-sent the whole skill and wrote the whole prompt again.
  */
-export async function directorRun(task: string, parts: ClaudePart[], names: string[], extra?: (prompt: string) => string[]): Promise<{ prompt: string; usd: number; attempts: number }> {
+const MECHANICAL = /not one of the given references|never <<<image_n>>>/;
+export const mechanicalOnly = (problems: string[]) => problems.length > 0 && problems.every((p) => MECHANICAL.test(p));
+
+/** How many times the Super Director is asked at most (the second only for a fault a machine can't repair). */
+export const DIRECTOR_TRIES = 2;
+
+/**
+ * Asks the Super Director (the skill + a website task) for an EN/ZH prompt, once more if the answer breaks a website rule
+ * that cannot be repaired here. Throws when even the repaired answer is empty.
+ */
+export async function directorRun(task: string, parts: ClaudePart[], names: string[], extra?: (prompt: string) => string[], arabic = false): Promise<{ prompt: string; usd: number; attempts: number }> {
   let turns: ClaudeTurn[] = [{ role: "user", content: parts }];
   const usage: ClaudeUsage[] = [];
   let last: DirectorOutput | null = null;
   let left: string[] = [];
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= DIRECTOR_TRIES; attempt++) {
     const r = await callClaudeJson<DirectorOutput>({ system: SUPER_DIRECTOR + task, turns, schema: SCHEMA, maxTokens: 16000 });
     usage.push(r.usage);
     last = r.data;
-    left = directorProblems(r.data, names);
+    left = directorProblems(r.data, names, { arabic });
+    if (mechanicalOnly(left)) {
+      const fixed = salvageDirector(r.data, names);
+      if (fixed) [last, left] = [fixed, []];
+    }
     // the caller's own checks (e.g. the smart edit's locks), once the website's rules hold
-    if (!left.length && extra && r.data.en && r.data.zh) left = extra(directorPrompt(r.data));
-    if (!left.length) return { prompt: directorPrompt(r.data), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: attempt };
+    if (!left.length && extra && last.en && last.zh) left = extra(directorPrompt(last));
+    if (!left.length) return { prompt: directorPrompt(last), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: attempt };
     // Once more, with what to fix
     turns = [...turns, { role: "assistant", content: r.raw }, { role: "user", content: `Fix these and return the complete JSON again:\n- ${left.join("\n- ")}` }];
   }
-  // still off after three tries: repaired where it is safe and used (an edit that works beats a refusal)
+  // still off after the second try: repaired where it is safe and used (an edit that works beats a refusal)
   const saved = last ? salvageDirector(last, names) : null;
   if (saved) {
     console.warn("director answer used after repair", { problems: left });
-    return { prompt: directorPrompt(saved), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: 3 };
+    return { prompt: directorPrompt(saved), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: DIRECTOR_TRIES };
   }
-  throw new Error(`director answer broke the website rules three times: ${left.join(" | ").slice(0, 400)}`);
+  throw new Error(`director answer broke the website rules ${DIRECTOR_TRIES} times: ${left.join(" | ").slice(0, 400)}`);
 }
 
 async function refund(userId: string, coins: number, ref: string) {

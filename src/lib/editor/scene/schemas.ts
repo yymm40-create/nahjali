@@ -1,5 +1,5 @@
-// «مختبر الموشن» — the JSON shapes حيدرا ماكس answers in (plan, program, review, chat): the server asks Claude for them and the agent's
-// definition (config/editor/agent) is generated from them. Pure.
+// «مختبر الموشن» — the JSON shapes حيدرا ماكس answers in (plan, program, review, chat): the server asks Claude for them, as branches of ONE
+// format (LAB_SCHEMA, below), and the agent's definition (config/editor/agent) is generated from them. Pure.
 
 import { COVER_PASS, COVER_RUBRIC } from "./cover-rubric";
 import { PASS, RUBRIC } from "./skill";
@@ -7,12 +7,26 @@ import { PASS, RUBRIC } from "./skill";
 export const PLAN_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["title", "idea", "hook", "format", "wow", "intensity", "seconds", "bpm", "palette", "fonts", "shots", "assets", "pictures", "music", "narration", "skillRefs", "say"],
+  required: ["understanding", "variety", "title", "idea", "hook", "format", "wow", "intensity", "seconds", "bpm", "palette", "fonts", "shots", "assets", "pictures", "music", "narration", "skillRefs", "say"],
   properties: {
+    // written FIRST (the owner: «كلاود كود هو الحاكم»): the request understood before any recipe, format or reference is chosen
+    understanding: {
+      type: "object",
+      additionalProperties: false,
+      required: ["subject", "audience", "feeling", "surprise"],
+      description: "BEFORE anything else, from the request and what you know: the piece's own starting point (no format, recipe or reference yet)",
+      properties: {
+        subject: { type: "string", description: "what the subject really is — its specific nature, material, world and details, not its category" },
+        audience: { type: "string", description: "who it is for and what they already know or expect" },
+        feeling: { type: "string", description: "the ONE feeling it should leave" },
+        surprise: { type: "string", description: "what would genuinely surprise this audience about this subject" },
+      },
+    },
+    variety: { type: "string", description: "what is clearly NEW this time against the person's recent pieces (idea, structure, opening, motion and transition language, palette, type) — or \"first piece\", or which piece they asked to repeat or continue" },
     title: { type: "string" },
     idea: { type: "string", description: "the one idea in one sentence" },
     hook: { type: "string", description: "what is on frame 1 and why it stops the scroll" },
-    format: { type: "string", description: "the viral format (or your own)" },
+    format: { type: "string", description: "the form of THIS piece in a few words — your own, from the understanding; name a library format only if you truly built on one" },
     wow: { type: "string", description: "the one moment nobody has seen in a template" },
     intensity: { type: "integer" },
     seconds: { type: "number" },
@@ -40,7 +54,7 @@ export const PLAN_SCHEMA = {
       description: "only when the person records their own voice: the lines they will read, in order, with the seconds planned for each; otherwise []",
       items: { type: "object", additionalProperties: false, required: ["text", "from", "to"], properties: { text: { type: "string" }, from: { type: "number" }, to: { type: "number" } } },
     },
-    skillRefs: { type: "array", items: { type: "string" }, description: "ids from <skill-catalogue> to have open, word for word, while writing and reviewing this piece (≤ 12)" },
+    skillRefs: { type: "array", items: { type: "string" }, description: "optional: ids from <skill-catalogue> whose craft you want open, word for word, while writing and reviewing this piece (≤ 12) — references, not a style to follow" },
     say: { type: "string", description: "to the person, in Gulf Arabic, 1–2 sentences: the idea and why it will stop the scroll" },
   },
 };
@@ -78,6 +92,38 @@ export const CHAT_SCHEMA = {
   },
 };
 
+/** A change as exact search/replace edits on the program shown (src/lib/patch.ts): the output is the dear part of a call,
+ * and a note («خلّ اللون ذهبي») is a few lines of a 10–40k-token program. */
+const EDITS = {
+  type: "array",
+  description: "exact search/replace edits on THE CURRENT PROGRAM, applied in order (each on the program as the edits before it left it): `old` is copied character for character from it (same spaces and indentation) and occurs in it EXACTLY ONCE — take a line or two around the spot when needed; `new` replaces it",
+  items: { type: "object", additionalProperties: false, required: ["old", "new"], properties: { old: { type: "string" }, new: { type: "string" } } },
+};
+
+/** CHAT_SCHEMA when there is a program: a change comes back as `edits` (the whole program only when most of it changes). */
+export const CHAT_EDIT_SCHEMA = {
+  ...CHAT_SCHEMA,
+  required: [...CHAT_SCHEMA.required, "edits"],
+  properties: {
+    ...CHAT_SCHEMA.properties,
+    action: { ...CHAT_SCHEMA.properties.action, description: "none = only talk; plan = (re)write the scenario from `brief`; code = change the program: `edits` (or, only when the change rewrites most of it, the complete program in `code`); cover = design the piece's cover now; render = make the final film now" },
+    edits: { ...EDITS, description: `action code: ${EDITS.description}; else []` },
+    code: { type: "string", description: "action code, ONLY when the change rewrites most of the program (a new structure): the COMPLETE revised program, with edits []; else empty" },
+  },
+};
+
+/** A fix of a program that threw, as `edits` on it (the whole program only when most of it changes). */
+export const PATCH_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["edits", "code", "notes"],
+  properties: {
+    edits: { ...EDITS, description: EDITS.description.replace("THE CURRENT PROGRAM", "THE PROGRAM") },
+    code: { type: "string", description: "ONLY when the fix rewrites most of the program: the complete program, with edits []; else empty" },
+    notes: CODE_SCHEMA.properties.notes,
+  },
+};
+
 export const COVER_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -100,3 +146,62 @@ export const COVER_REVIEW_SCHEMA = {
     code: { type: "string", description: `the COMPLETE revised cover program when any score is below ${COVER_PASS}; empty otherwise` },
   },
 };
+
+/**
+ * ONE reply format for every call on the lab's system (the owner: «وحد الصيغة لكل الخطوات، نفس كلود»): a different
+ * output format between calls is a different prompt cache, so the plan, the write, the review and the chat each wrote the
+ * 37.8k-token system (and their fixed files) to the cache on their own and never read each other's. Now every step answers
+ * `{ "result": … }` where `result` is one of the shapes above, told apart by its `kind` (written first) — the request names
+ * the kind it wants. The shapes themselves are unchanged (the agent's definition is generated from them).
+ */
+type Shape = { type: string; additionalProperties: boolean; required: string[]; properties: Record<string, unknown> };
+const branch = (kind: string, s: Shape) => ({
+  ...s,
+  required: ["kind", ...s.required],
+  properties: { kind: { type: "string", enum: [kind] }, ...s.properties },
+});
+const oneOf = (kinds: Record<string, Shape>) => ({
+  type: "object",
+  additionalProperties: false,
+  required: ["result"],
+  properties: { result: { description: "your answer: the shape whose kind this request names", anyOf: Object.entries(kinds).map(([k, s]) => branch(k, s)) } },
+});
+
+/** The lab's steps by the kind of their answer: plan · write (the whole program) · patch (a fix as edits) · review · chat · chat_edit (a chat with a program: changes as edits). */
+export const LAB_KINDS = { plan: PLAN_SCHEMA, write: CODE_SCHEMA, patch: PATCH_SCHEMA, review: REVIEW_SCHEMA, chat: CHAT_SCHEMA, chat_edit: CHAT_EDIT_SCHEMA };
+export type LabKind = keyof typeof LAB_KINDS;
+export const LAB_SCHEMA = oneOf(LAB_KINDS);
+
+/** The cover's calls (their own system): the design (or its fix) and the review, one format the same way. */
+export const COVER_KINDS = { cover: COVER_SCHEMA, cover_review: COVER_REVIEW_SCHEMA };
+export type CoverKind = keyof typeof COVER_KINDS;
+export const COVER_LAB_SCHEMA = oneOf(COVER_KINDS);
+
+/**
+ * The same `{ result }` reply with only the one branch asked: the safety net if the API ever refuses the shared format
+ * (callClaudeJson's `schemaFallback`) — the step still works, only without sharing the cache with the others.
+ */
+export const soloSchema = (kind: LabKind | CoverKind) => oneOf({ [kind]: ({ ...LAB_KINDS, ...COVER_KINDS } as Record<string, Shape>)[kind] });
+
+/** The line each request ends with: which shape to answer in. */
+export const kindAsk = (kind: LabKind | CoverKind) => `ANSWER IN THE SHAPE result.kind = "${kind}" (your whole reply is {"result": {"kind": "${kind}", …}}).`;
+
+/** The step's answer out of a `{ result }` reply, or null when it is missing or another kind than the one asked. */
+export function resultOf<T>(data: unknown, kind: LabKind | CoverKind): T | null {
+  const r = (data as { result?: unknown } | null | undefined)?.result;
+  return r && typeof r === "object" && (r as { kind?: unknown }).kind === kind ? (r as T) : null;
+}
+
+/**
+ * One call whose answer must be of `kind`: a reply of another kind is treated like a reply that is not the JSON asked
+ * for — asked once more, then given up with the same error (claudeWhy says it to the person). `wasted`: the replies
+ * thrown away (they were paid for). A cut reply (`partial`) and a continued one (`raw`, no format) are checked by the caller.
+ */
+export async function askKind<R extends { data: unknown; partial?: boolean }>(kind: LabKind | CoverKind, ask: () => Promise<R>, raw = false): Promise<R & { wasted: R[] }> {
+  const first = await ask();
+  if (raw || first.partial || resultOf(first.data, kind)) return { ...first, wasted: [] };
+  const again = await ask();
+  if (again.partial || resultOf(again.data, kind)) return { ...again, wasted: [first] };
+  const got = (again.data as { result?: { kind?: unknown } } | null)?.result?.kind;
+  throw new Error(`Claude reply was not the JSON asked for (kind ${String(got)} instead of ${kind})`);
+}

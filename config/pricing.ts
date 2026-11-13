@@ -17,8 +17,10 @@ export const DEFAULT_QUALITY: QualityKey = "medium";
 /**
  * Free trial mode: no payment step, orders are free and the UI says "جرّب مجانًا".
  * Each account can make at most FREE_TRIAL_MAX_ORDERS free orders in total; those «السماح» lets into the booklet have no limit.
+ * OFF (the owner, 3 November 2026): no free booklet per account — the booklet lives in «كتيب الجداول الذكي» and is paid
+ * from the balance there; the old order route (/api/orders) now makes an unpaid order that only a real payment opens.
  */
-export const FREE_TRIAL = true;
+export const FREE_TRIAL = false;
 export const FREE_TRIAL_MAX_ORDERS = 1;
 
 /** How many times a customer may generate their base character. */
@@ -58,14 +60,15 @@ export const ESTIMATED_COST_USD: Record<QualityKey, number> = {
 export const isQuality = (q: unknown): q is QualityKey => typeof q === "string" && q in QUALITY_TIERS;
 
 /**
- * The bank-transfer way of paying on «اشحن رصيدك» (the bank data, «تم التحويل», the owner's confirm). On for everyone while card payment is being
- * tested; set to false to hide it once the card works.
+ * The bank-transfer way of paying on «اشحن رصيدك» and on the course page (the bank data, «تم التحويل», the owner's confirm). Off since 4 November
+ * 2026 (the owner: «شل طريقة التحويل»; and on 5 November: payment everywhere by the new way): the card through Moyasar is open to
+ * everyone; set to true to bring the transfer back (the course page's routes /api/course/order and /transferred answer only then).
  */
-export const BANK_TRANSFER_ENABLED = true;
+export const BANK_TRANSFER_ENABLED = false;
 
 /**
  * Card payment (Moyasar, or Paylink without Moyasar's key) for EVERYONE. While false, only the owners see the card button (to test it) and
  * everyone else sees «الدفع بالبطاقة يتفعّل قريبًا إن شاء الله» and pays by bank transfer; the server refuses card payment to
  * anyone else too. Set to true once a test payment went through.
  */
-export const CARD_PAYMENT_PUBLIC = false;
+export const CARD_PAYMENT_PUBLIC = true;

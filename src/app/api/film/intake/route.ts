@@ -10,6 +10,7 @@ export const POST = handle(async (req: Request) => {
   const user = await requireFilmApiUser();
   const body = (await req.json().catch(() => ({}))) as JourneyIntakeBody;
   if (body.action === "confirm_upgrade") return NextResponse.json(await confirmJourneyUpgrade(user.id, body));
-  const result = await robotTurn(user, "claude-opus-5-5", "سجاد يجهّز رحلة العمل", () => understandJourney(user, body), undefined, { memory: "isolated" });
+  // the person's model (the page sends it; none = the default), not a hard-coded Opus
+  const result = await robotTurn(user, body.model, "سجاد يجهّز رحلة العمل", () => understandJourney(user, body), undefined, { memory: "isolated" });
   return NextResponse.json(result);
 });

@@ -7,6 +7,7 @@ import type { Evaluation } from "@/lib/jawad/engine";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
 import RefAdder, { type WorkSource } from "./RefAdder";
+import VideoTrim from "./VideoTrim";
 import type { LibraryItem } from "../library/LibraryPage";
 import type { RefItem } from "./types";
 
@@ -16,6 +17,20 @@ const ROLE_AR: Record<RefRole, string> = { first_frame: "الإطار الأول
 const STYLE_AR: Record<RefStyle, string> = { none: "بدون", frames: "إطار أول / أخير", references: "مراجع متعددة" };
 
 const sec = (ms: number | null) => (ms ? `${(ms / 1000).toFixed(1)} ث` : "");
+/** A video waiting in «قص المرجع»: from the device (`file`) or a reference already added (`replace`: its id). */
+interface TrimJob {
+  id: string;
+  src: File | string;
+  name: string;
+  role?: RefRole;
+  /** Only a frame can be taken (the generator, or this slot, takes no video). */
+  frameOnly: boolean;
+  reason?: string;
+  /** The video fits as it is (device file): it can go in without cutting. */
+  keep?: () => void;
+  replace?: string;
+}
+
 const mb = (b: number) => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)}MB` : `${Math.round(b / 1024)}KB`);
 
 interface Props {
@@ -145,6 +160,8 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
   const [preview, setPreview] = useState<RefItem | null>(null);
   const [drag, setDrag] = useState(false);
   const [dropError, setDropError] = useState("");
+  // «قص المرجع»: one video at a time (several dropped at once wait their turn)
+  const [trims, setTrims] = useState<TrimJob[]>([]);
 
   if (!ev.refStyles.length) return null;
 
@@ -156,12 +173,21 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
   const problems = refs.flatMap((r) => (ev.refProblems[r.uploadId ?? r.localId] ? [{ r, msg: ev.refProblems[r.uploadId ?? r.localId] }] : []));
   const refIssues = ev.issues.filter((i) => i.field === "refs");
 
+  const videoRule = def.files.video;
+  const imageOk = Boolean(def.files.image) && ev.refKinds.image.allowed;
+  const videoOk = Boolean(videoRule) && ev.refKinds.video.allowed;
+  // A video already in the list can be cut whenever this generator takes videos at all (its slots may be full)
+  const takesVideo = Boolean(videoRule);
+  const limitText = (ms: number) => `${Math.round(ms / 10) / 100} ث`;
+
   /** Files from the device (picker or drop): each goes in by what it really is (its first bytes). */
   async function addFiles(files: File[], role?: RefRole, only?: RefKind) {
     setDropError("");
     if (!canUpload) return setDropError(uploadBlockedReason ?? "");
     const { sniff } = await import("@/lib/jawad/media");
+    const { probeFile } = await import("./upload");
     let nextRole = role;
+    const queue: TrimJob[] = [];
     for (const f of files) {
       const s = sniff(new Uint8Array(await f.slice(0, 64).arrayBuffer()));
       if (!s) {
@@ -172,9 +198,33 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
         setDropError(`«${f.name}»: ملف PDF ما ينفع كمرجع للتوليد — أرفقه في محادثة أي روبوت وهو يقرأه.`);
         continue;
       }
+      // A video where only pictures go (a frame slot, a picture generator): a frame can be taken from it
+      if (s.kind === "video" && (only === "image" || !videoOk) && (only === "image" || imageOk)) {
+        const r = frames ? nextRole ?? (roleItem("first_frame") ? "last_frame" : "first_frame") : undefined;
+        queue.push({ id: crypto.randomUUID(), src: f, name: f.name, role: r, frameOnly: true, reason: only === "image" ? "هنا صورة فقط: وقّف الفيديو على اللقطة اللي تبيها وخذها كصورة." : `${def.name} ما ياخذ فيديو، بس تقدر تاخذ منه فريم كصورة مرجعية.` });
+        if (r === "first_frame") nextRole = "last_frame";
+        continue;
+      }
       if (only && s.kind !== only) {
         setDropError(`«${f.name}»: هنا ${KIND_AR[only]} فقط.`);
         continue;
+      }
+      // A video outside this generator's length opens «قص المرجع» on its allowed part
+      if (s.kind === "video" && videoOk && videoRule && (videoRule.maxMs || videoRule.minMs)) {
+        const ms = (await probeFile(f, "video").catch(() => null))?.durationMs ?? 0;
+        if (ms && ((videoRule.maxMs && ms > videoRule.maxMs) || (videoRule.minMs && ms < videoRule.minMs))) {
+          const over = Boolean(videoRule.maxMs && ms > videoRule.maxMs);
+          queue.push({
+            id: crypto.randomUUID(),
+            src: f,
+            name: f.name,
+            frameOnly: false,
+            reason: over
+              ? `المقطع ${limitText(ms)} والحد في ${def.name} ${limitText(videoRule.maxMs!)}: اختر الجزء اللي تبيه واضغط «قص واستخدم».`
+              : `المقطع ${limitText(ms)} وأقل حد في ${def.name} ${limitText(videoRule.minMs!)}.`,
+          });
+          continue;
+        }
       }
       if (!ev.refKinds[s.kind].allowed) {
         setDropError(`«${f.name}»: ${ev.refKinds[s.kind].reason}`);
@@ -185,7 +235,17 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
       // A second picture picked for the first frame goes to the last frame
       if (r === "first_frame") nextRole = "last_frame";
     }
+    if (queue.length) setTrims((t) => [...t, ...queue]);
   }
+
+  /** «قص» / «خذ فريم» on a video reference already in the list (from the device or from the works). */
+  function trimRef(r: RefItem) {
+    if (!r.url) return;
+    setPreview(null);
+    setTrims((t) => [...t, { id: crypto.randomUUID(), src: r.url!, name: r.fileName || `${r.name}.mp4`, frameOnly: !takesVideo, replace: r.localId }]);
+  }
+  const trim = trims[0];
+  const nextTrim = () => setTrims((t) => t.slice(1));
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -294,7 +354,14 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
         <ul className="space-y-1 text-xs text-jw-danger" role="alert">
           {dropError && <li>{dropError}</li>}
           {problems.map(({ r, msg }) => (
-            <li key={r.localId}>«{r.fileName || KIND_AR[r.kind]}»: {r.error ?? msg}</li>
+            <li key={r.localId}>
+              «{r.fileName || KIND_AR[r.kind]}»: {r.error ?? msg}
+              {r.kind === "video" && r.url && (takesVideo || imageOk) && (
+                <button type="button" onClick={() => trimRef(r)} className="ms-2 inline-flex items-center gap-1 font-semibold underline">
+                  <Icon name="scissors" size={12} /> {takesVideo ? "قصّه" : "خذ منه فريم"}
+                </button>
+              )}
+            </li>
           ))}
           {refIssues.map((i) => (
             <li key={i.message}>{i.message}</li>
@@ -328,12 +395,41 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
                 ))}
               </div>
             )}
-            <div className="flex justify-end">
+            <div className="flex flex-wrap justify-end gap-2">
+              {preview.kind === "video" && preview.url && (takesVideo || imageOk) && (
+                <button type="button" className="jw-btn" onClick={() => trimRef(preview)}>
+                  <Icon name="scissors" size={16} /> {takesVideo ? (imageOk ? "قص أو خذ فريم" : "قص") : "خذ فريم"}
+                </button>
+              )}
               <button type="button" className="jw-btn" onClick={() => (onRemove(preview.localId), setPreview(null))}><Icon name="trash" size={16} /> حذف المرجع</button>
             </div>
           </div>
         )}
       </Dialog>
+
+      {trim && (
+        <VideoTrim
+          key={trim.id}
+          src={trim.src}
+          name={trim.name}
+          minMs={videoRule?.minMs}
+          maxMs={videoRule?.maxMs}
+          canClip={!trim.frameOnly && takesVideo}
+          canFrame={trim.frameOnly || imageOk}
+          reason={trim.reason}
+          onKeep={trim.src instanceof File && !trim.replace ? () => (onAdd("video", [trim.src as File]), nextTrim()) : undefined}
+          onClip={(file) => {
+            onAdd("video", [file]);
+            if (trim.replace) onRemove(trim.replace);
+            nextTrim();
+          }}
+          onFrame={(file) => {
+            onAdd("image", [file], trim.role);
+            nextTrim();
+          }}
+          onClose={nextTrim}
+        />
+      )}
     </section>
   );
 }

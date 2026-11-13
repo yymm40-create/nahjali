@@ -131,3 +131,18 @@ describe("«في حضرة السيدة زينب (ع)»", () => {
     expect(JAWAD_KNOWLEDGE).toContain("«جواد» WRITES THE PROMPT");
   });
 });
+
+describe("«جواد»'s Zaynab prompt: what the site can mend is not asked for again", () => {
+  it("names Image 1 and adds a missing greeting line word for word, then passes the checks", async () => {
+    const { mendZaynab } = await import("@/lib/jawad/server/zaynab");
+    const input = zaynabInput(ok);
+    const prompt = `A festive night scene. ${ZAYNAB_GREETING[0]}`;
+    expect(zaynabPromptProblems(prompt, input).length).toBeGreaterThan(0);
+    const mended = mendZaynab(prompt, input);
+    expect(zaynabPromptProblems(mended, input)).toEqual([]);
+    expect(mended.split(ZAYNAB_GREETING[0]).length).toBe(2);
+    // nothing to mend: the prompt is left as it was
+    const good = `Image 1 is the sheet. ${ZAYNAB_GREETING.join(" ")}`;
+    expect(mendZaynab(good, input)).toBe(good);
+  });
+});

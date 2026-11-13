@@ -17,7 +17,7 @@ import SequenceTabs from "./SequenceTabs";
 import { DEFAULT_LAYOUT, firstRect, onScreen, PANELS, readLayout, saveLayout, type Layout, type PanelId, type Rect } from "./layout";
 import { ATTRS, copyClips, pasteable, type Attr } from "./clipboard";
 import { gradeView, setGradeView } from "./grade-gl";
-import { allTracks, flatten, clipEnd, duration, findClip, formatTime, mainTrack, type AssetInfo, type Clip, type Timeline as TL, type TrackKind } from "@/lib/editor/model";
+import { allTracks, flatten, clipEnd, duration, findClip, formatTime, mainTrack, type AssetInfo, type CaptionStyle, type Clip, type Timeline as TL, type TrackKind } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
 import Icon, { type IconName } from "../Icon";
 import AssistantPanel from "./AssistantPanel";
@@ -32,13 +32,20 @@ import { familyOf, loadFont, loadFontsOf } from "./fontload";
 import { MOTION_KINDS, type MotionKind } from "@/lib/editor/motion-elements";
 import { makeMusicAsset, separateAsset, stemQuality } from "./make";
 import { type LabSource } from "./MotionLab";
-import MotionLabTabs from "./MotionLabTabs";
 import { sourceOf, type FootageSource } from "./lab-footage";
 import type { Cue } from "@/lib/editor/scene/contract";
 import { placeStems } from "@/lib/editor/make";
 import CaptionsPanel from "./CaptionsPanel";
+import TranscriptPanel from "./TranscriptPanel";
+import TemplatesPanel from "./TemplatesPanel";
+import type { Template } from "@/lib/editor/templates";
 import { planSync } from "./sync";
+import { defaultSound, multicamCameras, planMulticam } from "./multicam-run";
+import { nextAngle } from "./MulticamBox";
+import { MULTICAM } from "@/lib/editor/multicam";
 import ExportPanel from "./ExportPanel";
+import ChangeLog from "./ChangeLog";
+import type { PageActor } from "@/lib/editor/changes-core";
 import Handles from "./Handles";
 import Inspector, { type SceneCutRun, type InspectorTab } from "./Inspector";
 import { peaksOf, waveImage } from "./peaks";
@@ -70,6 +77,7 @@ import { diagNote, startDiag } from "./diag";
 import { startMaking, useMaking } from "./making";
 import type { MakePlan } from "@/lib/editor/make-any";
 import Coined from "@/components/Coined";
+import { track } from "@/lib/feature-track";
 
 type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict";
 interface Step {
@@ -107,14 +115,15 @@ const THEMES = {
 type ThemeId = keyof typeof THEMES;
 const RAIL_NAV = {
   // «كاب كت»: the menus as tabs at the top of the left column, their contents under them
-  tabs: "cut-tabs hidden lg:grid",
+  // one thin row that scrolls sideways (the owner, 3 November 2026: the menus took the column's room)
+  tabs: "cut-tabs jw-scroll hidden lg:flex",
   side: "jw-glass jw-scroll my-2 hidden w-[4.25rem] shrink-0 flex-col gap-0.5 overflow-y-auto rounded-2xl p-1 lg:flex",
   clouds: "jw-scroll mx-2 mt-1 hidden gap-2 overflow-x-auto px-1 pb-2 pt-1 lg:flex",
   pages: "jw-glass jw-scroll mx-2 mb-2 hidden gap-px overflow-x-auto p-0.5 lg:flex",
   // (the phone keeps its own tool bar)
 } as const;
 const RAIL_ITEM = {
-  tabs: "flex-col justify-center gap-0.5 rounded-lg px-0.5 py-1.5 text-[10.5px] leading-tight",
+  tabs: "gap-1 rounded-full px-2.5 py-1 text-[11.5px] leading-none",
   side: "flex-col gap-0.5 rounded-xl px-0.5 py-1 text-[10px] leading-tight",
   clouds: "min-w-[4.75rem] flex-col justify-center gap-0.5 rounded-full px-3 py-2 text-xs font-bold",
   pages: "gap-1.5 rounded-sm px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide",
@@ -154,6 +163,8 @@ const RAIL: { id: string; label: string; icon: string; tab?: InspectorTab; hint:
   { id: "sound", label: "الصوت", icon: "volume", tab: "sound", hint: "عزل الضوضاء، محسّن الصوت، المؤثرات" },
   { id: "transition", label: "انتقال", icon: "frames", tab: "transition", hint: "الانتقال للمقطع اللي بعده" },
   { id: "captions", label: "كابشن", icon: "type", hint: "كابشن تلقائي، مزامنة قصيدة، SRT" },
+  { id: "transcript", label: "النص", icon: "book", hint: "عدّل من الكلام: احذف كلمات من النص تنحذف من الفيديو، وشيل الحشو" },
+  { id: "templates", label: "قوالب", icon: "grid", hint: "قوالب مونتاج جاهزة: حط مقاطعك في خاناتها وغيّر كلامها" },
   { id: "styles", label: "أساليب", icon: "sparkles", hint: "أساليب مونتاج جاهزة بضغطة" },
   { id: "project", label: "المشروع", icon: "ratio", hint: "المقاس، الخلفية، المغناطيس" },
   { id: "haidara", label: "حيدرا ماكس", icon: "sparkles", hint: "حيدرا ماكس: قل له وش تبي ويعدّل المونتاج" },
@@ -180,8 +191,31 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [keysOpen, setKeysOpen] = useState<false | "first" | "page">(false);
   const importInput = useRef<HTMLInputElement>(null);
   const [captioning, setCaptioning] = useState(false);
+  // «النص» (editing from the transcript): in the same right column as «الكابشن» (one of them at a time)
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const openTranscript = () => {
+    setCaptioning(false);
+    setTemplatesOpen(false);
+    setTranscriptOpen(true);
+  };
+  // «قوالب المونتاج»: the same right column (a template picked in the launcher opens it by itself)
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [startTemplate, setStartTemplate] = useState<Template | null>(null);
+  const [captionStyle0, setCaptionStyle0] = useState<CaptionStyle | null>(null);
+  const openTemplates = () => {
+    setCaptioning(false);
+    setTranscriptOpen(false);
+    setTemplatesOpen(true);
+  };
+  // files sent up from the templates window: they stay in the library and go into its slots
+  const tplWaits = useRef(new Map<string, (a: EditorAsset) => void>());
+  // a number for each batch of files sent up (their placements share it)
+  const uploadSeq = useRef(0);
+  // «سجل التغييرات» (the top bar, the «تعديل» menu, and حيدرا ماكس's window)
+  const [logOpen, setLogOpen] = useState(false);
   // Claude: open beside the work from the start on a computer; on a phone it opens over it when asked
-  const [assisting, setAssisting] = useState(false);
+  // (opened by itself on a conversation the address names: «?lab=»)
+  const [assisting, setAssisting] = useState(() => Boolean(labChat && !project.purged));
   const [chat, setChat] = useState(false);
   // the left side's section (a computer): the library, a clip's settings, the ready styles, the project
   const [rail, setRail] = useState<"media" | "inspector" | "styles" | "project" | "haidara">("media");
@@ -273,22 +307,14 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
   const [layoutOpen, setLayoutOpen] = useState(false);
   // «🎬 مختبر الموشن»: open, with a brief (from حيدرا ماكس's chat or empty)
-  const [lab, setLab] = useState<{ brief: string; seconds?: number; clipId?: string | null; chatId?: string | null; source?: { assetId: string; source: LabSource; params?: Record<string, string>; auto?: boolean } | null } | null>(() => (labChat && !project.purged ? { brief: "", chatId: labChat } : null));
-  // the lab's uploads: a picture attached in its conversation (library only), and its finished film (with its scene)
+  // «🎬 مختبر الموشن» runs inside حيدرا ماكس's conversations now (one window): the editor only asks his window to open
+  // one of them — a kept conversation («?lab=») or a film of the timeline to work on again (sent once per `n`)
+  const [haidaraOpen, setHaidaraOpen] = useState<{ n: number; chatId?: string | null; source?: { assetId: string; source: LabSource; params?: Record<string, string>; auto?: boolean } } | null>(() => (labChat && !project.purged ? { n: 1, chatId: labChat } : null));
+  // the lab's uploads: a picture attached in its conversation (library only), and its finished film (with its scene;
+  // `placed` hears the film's file once it is on the timeline, `muted` the clips it muted under it with their volume)
   const labWaits = useRef(new Map<string, { ok: (a: EditorAsset) => void; no: (e: Error) => void; progress?: (p: number) => void }>());
-  const labFilms = useRef(new Map<string, { source: LabSource; replaceAssetId: string | null }>());
-  // the lab folded to its pill: kept here, so «مختبر الموشن» in the toolbar brings the same work back instead of
-  // looking like a dead button (the window stays mounted while it is folded, and the work carries on)
-  const [labMin, setLabMin] = useState(false);
-  // the clips the lab can build on (kept in a ref: the list is computed further down)
-  const footageRef = useRef<FootageSource[]>([]);
-  const openLab = (brief = "", seconds?: number, clipId?: string | null) => {
-    setLabMin(false);
-    // the lab is linked to the timeline: opened on a video clip the person has selected, it loads that clip by itself
-    // (the clips it can build on are the ones listed in `footageRef`)
-    const picked = clipId ?? (selected.length === 1 ? (footageRef.current.find((c) => c.clipId === selected[0])?.clipId ?? null) : null);
-    setLab((now) => (now && !brief && !clipId ? now : { brief, seconds, clipId: picked }));
-  };
+  const labFilms = useRef(new Map<string, { source?: LabSource; replaceAssetId: string | null; placed?: (id: string | null) => void; muted?: { clipId: string; volume: number }[] }>());
+  const placedMutes = useRef(new Map<string, { clipId: string; volume: number }[]>());
   // «🩺 تشخيص»: the owner's browser keeps a record of what goes wrong while the editor is open
   useEffect(() => {
     if (owner) startDiag();
@@ -611,16 +637,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     }
   };
   const openClaude = (on?: boolean) => {
-    // a computer: حيدرا ماكس is one of the menus at the top left (his conversation shows under them)
-    if (wideRef.current) {
-      const open = on ?? railRef.current !== "haidara";
-      if (open) {
-        setAssisting(true);
-        setChat(true);
-        setRail("haidara");
-      } else if (railRef.current === "haidara") setRail("media");
-      return;
-    }
+    // حيدرا ماكس's conversation is a window over the work on a computer too (the owner, 3 November 2026: in the left
+    // column it was squeezed); his tab in the menus opens and closes it
     setAssisting((v) => on ?? !v);
     setChat((v) => on ?? !v);
   };
@@ -648,6 +666,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const tlRef = useRef(tl);
   const titleRef = useRef(title);
   const labelRef = useRef("");
+  // «سجل التغييرات»: who made the change waiting to be saved (the person, a turn of حيدرا ماكس, a «ارجع لهنا») and its steps
+  const byRef = useRef<{ actor: PageActor; steps: string[] }>({ actor: "user", steps: [] });
   const versionRef = useRef(project.version);
   const infos = useRef(new Map(initialAssets.map((a) => [a.id, info(a)])));
   const dirty = useRef(false);
@@ -676,12 +696,19 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       if (!dirty.current || versionRef.current <= 0) return;
       dirty.current = false;
       setSave("saving");
+      // who made what is sent now (a title typed after it is the person's again)
+      const by = byRef.current;
+      byRef.current = { actor: "user", steps: [] };
+      // not sent: kept for the next try, unless a newer change is waiting with its own
+      const keepBy = () => {
+        if (byRef.current.actor === "user" && !byRef.current.steps.length) byRef.current = by;
+      };
       const run = (async () => {
         try {
           const r = await api<{ ok: boolean; version: number }>(`/api/jawad/editor/projects/${project.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ timeline: tlRef.current, version: versionRef.current, label: labelRef.current, title: titleRef.current }),
+            body: JSON.stringify({ timeline: tlRef.current, version: versionRef.current, label: labelRef.current, title: titleRef.current, actor: by.actor, steps: by.steps }),
           });
           if (r.ok) {
             versionRef.current = r.version;
@@ -690,10 +717,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             // someone (another tab) saved in between: nothing is overwritten until the person decides
             dirty.current = true;
             versionRef.current = -r.version;
+            keepBy();
             setSave("conflict");
           }
         } catch {
           dirty.current = true;
+          keepBy();
           setSave("error");
           timer.current = setTimeout(() => void go(), 5000);
         }
@@ -742,18 +771,28 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   }, [flush]);
 
   // ---------- every change: one command (or several as one step), with undo ----------
+  // `by`: a change of حيدرا ماكس or a «ارجع لهنا» is saved at once and on its own (what the person changed before it is
+  // saved first as theirs), so «سجل التغييرات» says who did what and the document before it can be kept to come back to
   const commit = useCallback(
-    (next: TL, label: string) => {
+    (next: TL, label: string, by?: { actor: PageActor; steps?: string[] }) => {
+      const actor = by?.actor ?? "user";
+      const waiting = dirty.current && byRef.current.actor === actor;
+      if (dirty.current && !waiting) void flush();
+      // several steps of one turn waiting together: all their steps, under the turn's own name
+      const steps = [...(waiting && actor !== "user" ? byRef.current.steps : []), ...(by?.steps ?? [])].slice(-60);
+      const head = waiting && actor === "haidara" && /^حيدرا ماكس:/.test(labelRef.current);
       tlRef.current = next;
-      labelRef.current = label;
+      if (!head) labelRef.current = label;
+      byRef.current = { actor, steps };
       setTl(next);
       markDirty();
+      if (actor !== "user") void flush();
     },
-    [markDirty],
+    [markDirty, flush],
   );
 
   const run = useCallback(
-    (cmd: Command | Command[], opts: { label?: string; coalesce?: string } = {}): Applied | null => {
+    (cmd: Command | Command[], opts: { label?: string; coalesce?: string; by?: "haidara" } = {}): Applied | null => {
       if (readOnly) return null;
       const cur = tlRef.current;
       let r: Applied;
@@ -769,12 +808,14 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       const merge = !!opts.coalesce && lastStep.current.key === opts.coalesce && now - lastStep.current.at < 1500;
       lastStep.current = { key: opts.coalesce ?? null, at: now };
       if (!merge) setHist((h) => ({ past: [...h.past.slice(-99), { tl: cur, label: r.label }], future: [] }));
-      commit(r.timeline, r.label);
+      commit(r.timeline, r.label, opts.by ? { actor: opts.by, steps: r.steps?.length ? r.steps : [r.label] } : undefined);
       if (r.select) setSelected(r.select);
       return r;
     },
     [readOnly, commit, flash],
   );
+  // «استخدام المزايا»: a change made by the person's own hand (the settings, the timeline, the handles on the picture)
+  const handRun = useCallback<typeof run>((cmd, opts) => (track("editor.edit"), run(cmd, opts)), [run]);
 
   const undo = () => {
     const step = hist.past.at(-1);
@@ -789,6 +830,29 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     setHist({ past: [...hist.past, { tl: tlRef.current, label: step.label }], future: hist.future.slice(1) });
     commit(step.tl, step.label);
     flash(`أعدت: ${step.label}`);
+  };
+  // «ارجع لهنا» (سجل التغييرات): a kept point's timeline put on as a NEW change — one undo takes it back, it is saved with
+  // the version check like any edit (another window's newer save still asks first), and the log shows it
+  const restoreTo = async (version: number, label: string) => {
+    if (readOnly) return false;
+    await flush();
+    if (versionRef.current <= 0) {
+      flash("انحفظت نسخة أحدث من نافذة ثانية؛ اختر فوق وش تبي قبل ترجع.", true);
+      return false;
+    }
+    try {
+      const r = await postJson<{ timeline: TL }>(`/api/jawad/editor/projects/${project.id}`, { action: "snapshot", version });
+      const cur = tlRef.current;
+      setHist((h) => ({ past: [...h.past.slice(-99), { tl: cur, label }], future: [] }));
+      setSelected([]);
+      commit(r.timeline, label, { actor: "restore" });
+      await flush();
+      flash(label);
+      return true;
+    } catch (e) {
+      flash(e instanceof Error ? e.message : String(e), true);
+      return false;
+    }
   };
 
   // ---------- media ----------
@@ -875,6 +939,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         setAssets((xs) => xs.map((x) => (x.id === known.id ? { ...x, width: known.width, height: known.height, durationMs: known.durationMs } : x)));
       }
       if (Math.max(a.width!, a.height!) >= 3800) return flash(`«${a.name}» دقته ${a.width}×${a.height} — هذا 4K أصلًا.`, true);
+      track("editor.upscale");
       if (!window.confirm(`أرفع دقة «${a.name}» (${a.width}×${a.height}) إلى ${target === "4k" ? "4K" : "1080p"} بالذكاء الاصطناعي (Topaz)؟\nياخذ من دقايق لأكثر على حسب طوله، وتقدر تكمل شغلك. النسخة الجديدة تنضاف للمكتبة والأصلي يظل.`)) return;
       try {
         const r = await postJson<{ asset: EditorAsset; coins: number }>(`/api/jawad/editor/projects/${project.id}`, { action: "upscale", assetId, target, width: a.width, height: a.height, durationMs: a.durationMs });
@@ -891,6 +956,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // the timeline); it is sent to be upscaled whole, and the 4K file downloads by itself when it is ready
   const upscaleWhole = useCallback(
     async (a: EditorAsset, target: "4k" | "1080p", file: string) => {
+      track("editor.upscale");
       try {
         const r = await postJson<{ asset: EditorAsset; coins: number }>(`/api/jawad/editor/projects/${project.id}`, { action: "upscale", assetId: a.id, target, width: a.width, height: a.height, durationMs: a.durationMs });
         addAssets([r.asset]);
@@ -906,14 +972,15 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // one above the other («stack»); the line goes on from the end of the last one placed
   const cursor = useRef<{ group: string; at: number } | null>(null);
   const placeAsset = useCallback(
-    (a: EditorAsset, p?: Placement) => {
-      if (!p) return run({ type: "add_clip", assetId: a.id });
+    (a: EditorAsset, p?: Placement, by?: "haidara") => {
+      track("editor.clip_add");
+      if (!p) return run({ type: "add_clip", assetId: a.id }, { by });
       const want = a.kind === "audio" ? "audio" : "video";
       const onTrack = p.trackId === "new" ? "new" : p.trackId ? tlRef.current.tracks.find((x) => x.id === p.trackId && x.kind === want && !x.locked)?.id : undefined;
       let at = p.at;
       if (p.mode === "line" && cursor.current?.group === p.group) at = cursor.current.at;
       const trackId = p.mode === "stack" && !p.first ? "new" : onTrack;
-      const r = run({ type: "add_clip", assetId: a.id, at, ...(trackId ? { trackId } : {}) });
+      const r = run({ type: "add_clip", assetId: a.id, at, ...(trackId ? { trackId } : {}) }, { by });
       const made = r?.select?.[0] ? findClip(r.timeline, r.select[0]) : null;
       if (made && p.mode === "line") cursor.current = { group: p.group, at: clipEnd(made.clip) };
       return r;
@@ -933,6 +1000,13 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           void upscaleWhole(a, target === "1080p" ? "1080p" : "4k", name.join(":"));
           return;
         }
+        // «قوالب المونتاج»: a file for a slot stays in the library; the window puts it in its slot
+        if (place?.group.startsWith("tpl:")) {
+          const w = tplWaits.current.get(place.group.slice(4));
+          tplWaits.current.delete(place.group.slice(4));
+          w?.(a);
+          return;
+        }
         // «مختبر الموشن»: a picture attached in its conversation stays in the library (the lab is told it is up)
         if (place?.group.startsWith("lib:")) {
           const w = labWaits.current.get(place.group.slice(4));
@@ -944,11 +1018,16 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         if (place?.group.startsWith("lab:")) {
           const f = labFilms.current.get(place.group.slice(4));
           labFilms.current.delete(place.group.slice(4));
-          if (f) void postJson(`/api/jawad/editor/projects/${project.id}`, { action: "lab_source_save", assetId: a.id, source: f.source }).then(() => addAssets([{ ...a, lab: true }])).catch(() => flash("نزل المقطع، بس ما انحفظ مشهده للتعديل بعدين.", true));
+          if (f?.source) void postJson(`/api/jawad/editor/projects/${project.id}`, { action: "lab_source_save", assetId: a.id, source: f.source }).then(() => addAssets([{ ...a, lab: true }])).catch(() => flash("نزل المقطع، بس ما انحفظ مشهده للتعديل بعدين.", true));
+          if (f?.muted?.length) placedMutes.current.set(a.id, f.muted);
           if (f?.replaceAssetId) {
-            if (!run({ type: "swap_asset", from: f.replaceAssetId, to: a.id }, { label: "عدّلت قطعة الموشن" })) placeAsset(a, place);
+            if (!run({ type: "swap_asset", from: f.replaceAssetId, to: a.id }, { label: "عدّلت قطعة الموشن", by: "haidara" })) placeAsset(a, place, "haidara");
+            f.placed?.(a.id);
             return;
           }
+          placeAsset(a, place, "haidara");
+          f?.placed?.(a.id);
+          return;
         }
         // a saved project's file: kept until all are up, then its timeline comes back pointing at them
         const w = pkgWait.current;
@@ -967,6 +1046,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     ),
     // a failed upload for the lab (a picture, or a video that has to be on the server): the lab is told, it does not wait for ever
     useCallback((place?: { group: string }, message?: string) => {
+      // the lab's film did not go up: the conversation is told it is not on the timeline
+      if (place?.group.startsWith("lab:")) {
+        labFilms.current.get(place.group.slice(4))?.placed?.(null);
+        labFilms.current.delete(place.group.slice(4));
+        return;
+      }
       if (!place?.group.startsWith("lib:")) return;
       const k = place.group.slice(4);
       labWaits.current.get(k)?.no(new Error(message || "تعذّر الرفع."));
@@ -980,7 +1065,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [dropAsk, setDropAsk] = useState<{ files: File[]; at: number; trackId: string | null } | null>(null);
   const dropFiles = (files: File[], at: number, trackId: string | null, mode?: "stack" | "line") => {
     if (files.length > 1 && !mode) return setDropAsk({ files, at, trackId });
-    const group = Math.random().toString(36).slice(2);
+    // (a counter, not Math.random: the React compiler reads this as possibly running while drawing)
+    const group = `drop-${++uploadSeq.current}`;
     uploads.add(files, files.map((_, i) => ({ at, trackId, mode: mode ?? "one", group, first: i === 0 })));
     flash(files.length > 1 ? `نرفع ${files.length} ملفات وننزّلها في التايملاين…` : "نرفع الملف وننزّله في مكانه…");
   };
@@ -988,6 +1074,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // already in the library go on the timeline the same way
   // open again from «حيدرة كت» after visiting other sections, until the person leaves it
   useEffect(() => rememberOpen(project.id), [project.id]);
+  useEffect(() => track("editor.open"), []);
   const kitTaken = useRef(false);
 
   useEffect(() => {
@@ -1012,6 +1099,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       return () => clearTimeout(t);
     }
     const t = setTimeout(() => {
+      // «قوالب المونتاج»: a template picked in the launcher opens on its slots
+      if (k.template) {
+        setStartTemplate(k.template);
+        setTemplatesOpen(true);
+      }
       if (k.assets.length) {
         addAssets(k.assets);
         const group = `kit-${project.id}`;
@@ -1065,6 +1157,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [syncing, setSyncing] = useState(false);
   const syncClips = async (ids: string[]) => {
     if (syncing) return;
+    track("editor.sync");
     setSyncing(true);
     try {
       const plan = await planSync(tlRef.current, ids, new Map(assets.map((x) => [x.id, x])), (text) => flash(text));
@@ -1076,11 +1169,30 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       setSyncing(false);
     }
   };
+  // «بدّل الكاميرات تلقائياً» from the right-click menu: the usual settings (2 s shots, no wide camera), progress in the bar
+  const [switching, setSwitching] = useState(false);
+  const autoSwitch = async (ids: string[]) => {
+    if (switching) return;
+    const map = new Map(assets.map((x) => [x.id, x]));
+    const cams = multicamCameras(tlRef.current, map, ids);
+    if (cams.length < 2) return flash("اختر كاميرتين أو أكثر (مقاطع فيديو متزامنة).", true);
+    track("editor.multicam");
+    setSwitching(true);
+    try {
+      const r = await planMulticam(cams, { minShotMs: MULTICAM.minShotMs, wide: null, faces: false, sound: defaultSound(tlRef.current, cams, map) }, (text) => flash(text));
+      if (run(r.command, { label: `بدّل الكاميرات (${r.shots.length} لقطة)` })) flash(`بدّلت بين الكاميرات: ${r.notes.join(" ")} للكاميرا الواسعة وطول اللقطة: إعدادات المشروع.`);
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "تعذّر التبديل.", true);
+    } finally {
+      setSwitching(false);
+    }
+  };
   const dropAsset = (id: string, at: number, trackId: string | null) => {
     const a = assets.find((x) => x.id === id);
     if (a) placeAsset(a, { at, trackId, mode: "one", group: "", first: true });
   };
   const addToTimeline = (a: EditorAsset) => {
+    track("editor.clip_add");
     const r = run({ type: "add_clip", assetId: a.id, at: player?.ms ?? 0 });
     // like CapCut: the playhead moves to the end of what was added, so the next one goes after it
     const added = r?.select?.[0] ? findClip(r.timeline, r.select[0]) : null;
@@ -1097,21 +1209,35 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       // no clock of its own: it ends when the file is up, or when the upload fails
       uploads.add([file], [{ at: 0, trackId: null, mode: "one", group: `lib:${key}`, first: true }]);
     });
-  /** «✏️ عدّل» on a film made in the lab: the lab opens on its scene (or renders it again with new values at once) */
+  /** «✏️ عدّل» on a film made in the lab: حيدرا ماكس's window opens a conversation on its scene (or renders it again with
+   * new values at once, in the background — his pill shows it) */
   const editLabPiece = (assetId: string, source: LabSource, params: Record<string, string>, auto: boolean) => {
-    setLabMin(auto);
-    setLab({ brief: "", source: { assetId, source, params, auto } });
+    setHaidaraOpen((o) => ({ n: (o?.n ?? 0) + 1, source: { assetId, source, params, auto } }));
+    if (!auto) openClaude(true);
   };
-  const placeFilm = async (film: File, cues: Cue[], music: { prompt: string; ms: number } | null, place?: { at: number; muteClipIds: string[] }, labOf?: { source: LabSource; replaceAssetId: string | null }) => {
+  /** «↩️ تراجع» on a piece حيدرا ماكس put on the timeline: off it (the clip it replaced back, the clips it muted heard again) */
+  const unplaceFilm = (assetId: string, replaced: string | null) => {
+    const now = tlRef.current;
+    const ids = now.tracks.flatMap((t) => t.clips.filter((c) => c.assetId === assetId).map((c) => c.id));
+    if (!ids.length) return false;
+    if (replaced && assets.some((a) => a.id === replaced)) return !!run({ type: "swap_asset", from: assetId, to: replaced }, { label: "رجّعت قطعة الموشن اللي قبل" });
+    const muted = (placedMutes.current.get(assetId) ?? []).filter((m) => findClip(now, m.clipId));
+    return !!run([{ type: "delete", clipIds: ids, ripple: false }, ...muted.map((m) => ({ type: "update_clip" as const, clipId: m.clipId, patch: { volume: m.volume } }))], { label: "شلت قطعة الموشن" });
+  };
+  const placeFilm = async (film: File, cues: Cue[], music: { prompt: string; ms: number } | null, place?: { at: number; muteClipIds: string[] }, labOf?: { source: LabSource; replaceAssetId: string | null }): Promise<string | null> => {
     const at = Math.round(place?.at ?? player?.ms ?? 0);
     const key = Math.random().toString(36).slice(2);
-    if (labOf) labFilms.current.set(key, labOf);
+    // the film's file once it is on the timeline (or null when its upload failed)
+    const muted = (place?.muteClipIds ?? []).flatMap((id) => {
+      const f = findClip(tlRef.current, id);
+      return f ? [{ clipId: id, volume: f.clip.volume }] : [];
+    });
+    const placed = new Promise<string | null>((ok) => labFilms.current.set(key, { source: labOf?.source, replaceAssetId: labOf?.replaceAssetId ?? null, placed: ok, muted }));
     // built on the person's own clip: the piece lands on its own track over it, and the clip under it is muted (its
     // voice is inside the piece already); a film opened again from the timeline takes the old one's place instead
     uploads.add([film], [{ at, trackId: place ? "new" : null, mode: "one", group: `lab:${key}`, first: true }]);
-    for (const id of place?.muteClipIds ?? []) if (findClip(tlRef.current, id)) run({ type: "update_clip", clipId: id, patch: { volume: 0 } }, { label: "مختبر الموشن على فيديوك" });
-    flash("🎬 نرفع المقطع وننزّله عند مؤشر الوقت…");
-    // the lab's tabs close their finished tab themselves (the lab stays for the others)
+    for (const m of muted) run({ type: "update_clip", clipId: m.clipId, patch: { volume: 0 } }, { label: "مختبر الموشن على فيديوك", by: "haidara" });
+    flash(labOf?.replaceAssetId ? "🎬 نرفع النسخة الجديدة ونبدّلها في التايملاين…" : "🎬 نرفع المقطع وننزّله عند مؤشر الوقت…");
     if (cues.length) {
       try {
         const ids = [...new Set(cues.map((c) => c.sfx))];
@@ -1126,11 +1252,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           const when = at + Math.round(c.t * 1000);
           const free = lanes.find((l) => l.end <= when);
           const lane = free ?? (lanes.length < 4 ? null : lanes.reduce((x, y) => (y.end < x.end ? y : x)));
-          const added = run({ type: "add_clip", assetId: a.id, at: when, trackId: lane?.trackId ?? "new" }, { label: "مؤثرات الموشن" });
+          const added = run({ type: "add_clip", assetId: a.id, at: when, trackId: lane?.trackId ?? "new" }, { label: "مؤثرات الموشن", by: "haidara" });
           const id = added?.select?.[0];
           const f = id && added ? findClip(added.timeline, id) : null;
           if (!f) continue;
-          if (c.vol < 0.99) run({ type: "update_clip", clipId: id!, patch: { volume: c.vol } }, { label: "مؤثرات الموشن", coalesce: `lab-vol-${id}` });
+          if (c.vol < 0.99) run({ type: "update_clip", clipId: id!, patch: { volume: c.vol } }, { label: "مؤثرات الموشن", coalesce: `lab-vol-${id}`, by: "haidara" });
           const end = clipEnd(f.clip);
           if (lane) lane.end = end;
           else lanes.push({ trackId: f.track.id, end });
@@ -1144,16 +1270,17 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         flash("🎵 نصنع الموسيقى على الإيقاع…");
         const a = await makeMusicAsset(project.id, music.prompt, Math.max(10_000, music.ms));
         addAssets([a]);
-        const added = run({ type: "add_clip", assetId: a.id, at, trackId: "new" }, { label: "موسيقى الموشن" });
+        const added = run({ type: "add_clip", assetId: a.id, at, trackId: "new" }, { label: "موسيقى الموشن", by: "haidara" });
         const id = added?.select?.[0];
         if (id) {
-          run({ type: "trim_clip", clipId: id, edge: "end", to: at + music.ms }, { label: "موسيقى الموشن" });
-          run({ type: "update_clip", clipId: id, patch: { volume: 0.55, fadeOut: 600 } }, { label: "موسيقى الموشن" });
+          run({ type: "trim_clip", clipId: id, edge: "end", to: at + music.ms }, { label: "موسيقى الموشن", by: "haidara" });
+          run({ type: "update_clip", clipId: id, patch: { volume: 0.55, fadeOut: 600 } }, { label: "موسيقى الموشن", by: "haidara" });
         }
       } catch (e) {
         flash(e instanceof Error ? `الموسيقى: ${e.message}` : "ما قدرنا نصنع الموسيقى.", true);
       }
     }
+    return placed;
   };
   const removeAsset = async (a: EditorAsset) => {
     if (allTracks(tlRef.current).some((t) => t.clips.some((c) => c.assetId === a.id))) return flash("هذا الملف مستخدم في أحد التسلسلات؛ احذف مقاطعه أول.", true);
@@ -1324,7 +1451,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       const f = findClip(tlRef.current, id);
       return f && ms > f.clip.start && ms < clipEnd(f.clip);
     });
-    run({ type: "split", at: ms, clipIds: under.length ? under : undefined });
+    handRun({ type: "split", at: ms, clipIds: under.length ? under : undefined });
   };
   const remove = (ripple: boolean) => (selected.length ? run({ type: "delete", clipIds: selected, ripple }) : flash("اختر مقطعًا أول (اضغط عليه).", true));
   const duplicate = () => (selected[0] ? run({ type: "duplicate", clipId: selected[0] }) : flash("اختر مقطعًا أول.", true));
@@ -1401,6 +1528,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       ...(f?.clip.seq ? [{ label: "افتح التسلسل المتداخل", onClick: () => run({ type: "seq_open", id: f.clip.seq! }) }] : []),
       { label: "تقسيم عند المؤشر", keys: "S", onClick: split, disabled: !can },
       ...(ids.length > 1 ? [{ label: syncing ? "أزامن الصوت…" : `🎯 زامن الصوت (${ids.length} مقاطع)`, onClick: () => void syncClips(ids), disabled: !can || syncing }] : []),
+      ...(ids.length > 1 ? [{ label: switching ? "أبدّل الكاميرات…" : `🎬 بدّل الكاميرات تلقائيًا (${ids.length})`, onClick: () => void autoSwitch(ids), disabled: !can || switching }] : []),
+      ...(f?.clip.angle && nextAngle(tlRef.current, f.clip.id) ? [{ label: "🎬 بدّل الزاوية", onClick: () => run({ type: "multicam_angle", clipId: f.clip.id, cam: nextAngle(tlRef.current, f.clip.id)! }), disabled: !can }] : []),
       ...(video ? [{ label: "فصل صوت الفيديو لمسار", onClick: () => run({ type: "extract_audio", clipId: m.clipId! }), disabled: !can }] : []),
       ...(a && a.kind !== "image" && a.hasAudio ? [{ label: "فصل الكلام والموسيقى والمؤثرات", onClick: () => void separateClip(m.clipId!).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true)), disabled: !can }] : []),
       ...(f && !f.clip.text && f.track.kind === "video" ? [{ label: "التلوين", onClick: () => { setWantTab("color"); pick([m.clipId!]); } }] : []),
@@ -1409,11 +1538,13 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     ];
   };
   const addText = () => {
+    track("editor.text");
     run({ type: "add_text", at: at() });
     if (!wide) setSheet("inspector");
   };
   // «مسار الموشن»: an element at the playhead, on the motion track, its settings open
   const addMotion = (kind: MotionKind) => {
+    track("editor.motion_track");
     run({ type: "add_motion", kind, at: at() });
     if (!wide) setSheet("inspector");
   };
@@ -1543,6 +1674,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         return flash("شلت منطقة التصدير؛ التصدير على المشروع كله.");
     }
   };
+  // a section of the settings opened by the person (counted in «استخدام المزايا»; one that follows the chosen clip is not)
+  const openTab = (t: InspectorTab) => {
+    track(`editor.tab.${t}`);
+    setTab(t);
+  };
   // «واجهات البرامج»: a page, and what a menu item does
   const openPage = (p: PageId) => {
     if (p === "captions") return setCaptioning(true);
@@ -1560,7 +1696,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         return;
       }
       setWantTab(info.tab);
-      setTab(info.tab);
+      openTab(info.tab);
       pick([id]);
       setRail("inspector");
     }
@@ -1570,8 +1706,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     if ("key" in a) return keyDo(a.key, keysFrom ?? "jawad");
     if ("page" in a) return openPage(a.page);
     if (a.open === "captions") setCaptioning(true);
+    else if (a.open === "transcript") openTranscript();
+    else if (a.open === "templates") openTemplates();
     else if (a.open === "shortcuts") setKeysOpen("page");
     else if (a.open === "layout") setLayoutOpen(true);
+    else if (a.open === "log") setLogOpen(true);
     else if (a.open === "haidara") openClaude();
     else if (a.open === "haidaraDock") {
       const on = !(assisting && chatDock);
@@ -1626,9 +1765,6 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       ),
     [tl.tracks, assetMap],
   );
-  useEffect(() => {
-    footageRef.current = footageClips;
-  }, [footageClips]);
   const total = duration(tl);
   const exportRange = rangeIO.from == null && rangeIO.to == null ? null : { from: Math.max(0, rangeIO.from ?? 0), to: Math.min(total, rangeIO.to ?? total) };
   const one = selected.length === 1 ? findClip(tl, selected[0]) : null;
@@ -1650,7 +1786,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     <nav className={`${RAIL_NAV[variant]} ${variant === "side" ? "lg:order-last" : ""}`} aria-label="أقسام المحرر">
       {RAIL.filter((r) => !r.tab || !seen.kind || rail !== "inspector" || TABS_OF[seen.kind].includes(r.tab)).map((r, i) => {
             const label = r.id === "edit" && seen.kind && rail === "inspector" ? EDIT_LABEL[seen.kind] : r.label;
-            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.id === "haidara" ? rail === "haidara" : r.tab ? rail === "inspector" && tab === r.tab : false;
+            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.id === "haidara" ? assisting : r.id === "transcript" ? transcriptOpen && !captioning : r.id === "templates" ? templatesOpen && !captioning && !transcriptOpen : r.tab ? rail === "inspector" && tab === r.tab : false;
             return (
               <button
                 key={r.id}
@@ -1659,16 +1795,18 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                 title={r.hint}
                 onClick={() => {
                   if (r.id === "captions") return setCaptioning(true);
-                  if (r.id === "haidara") return openClaude(true);
+                  if (r.id === "transcript") return openTranscript();
+                  if (r.id === "templates") return openTemplates();
+                  if (r.id === "haidara") return openClaude();
                   if (r.tab) {
-                    setTab(r.tab);
+                    openTab(r.tab);
                     setRail("inspector");
                   } else setRail(r.id as "media" | "styles" | "project");
                   if (variant === "tabs") setSheet(null);
                 }}
                 className={`jw-3d flex shrink-0 items-center ${RAIL_ITEM[variant]} ${on ? "jw-rail-on" : variant === "clouds" ? `jw-cloud-${i % 5} text-jw-ink` : "bg-jw-surface text-jw-muted hover:text-jw-ink"}`}
               >
-                <Icon name={r.icon} size={variant === "clouds" ? 22 : variant === "pages" ? 14 : 16} />
+                <Icon name={r.icon} size={variant === "clouds" ? 22 : variant === "pages" || variant === "tabs" ? 14 : 16} />
                 <span className="whitespace-nowrap">{label}</span>
               </button>
             );
@@ -1703,13 +1841,17 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         return addText();
       case "captions":
         return setCaptioning(true);
+      case "transcript":
+        return openTranscript();
+      case "templates":
+        return openTemplates();
       case "claude":
         return openClaude(true);
       case "ask":
         openClaude(true);
         return setAsk((q) => ({ text: a.text, n: (q?.n ?? 0) + 1 }));
       case "tab":
-        setTab(a.tab);
+        openTab(a.tab);
         return setSheet("inspector");
       case "project":
         setSelected([]);
@@ -1785,6 +1927,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         return;
       case "color":
         if (selected[0]) {
+          track("editor.tab.color");
           setWantTab("color");
           pick([selected[0]]);
         }
@@ -1945,6 +2088,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             <span className="jw-spinner !h-3 !w-3" /> حيدرا ماكس يصنع {making.length === 1 ? `«${making[0].name.slice(0, 24)}»` : `${making.length} أشياء`}
           </span>
         )}
+        {/* «🕘 سجل التغييرات»: what changed, by whom (you or حيدرا ماكس), and «ارجع لهنا» (a phone: in «المزيد») */}
+        <button type="button" className={`jw-btn jw-3d hidden shrink-0 sm:inline-flex ${logOpen ? "border-jw-accent text-jw-accent" : ""}`} onClick={() => setLogOpen((v) => !v)} aria-pressed={logOpen} title="سجل التغييرات: وش تغيّر ومين غيّره، وارجع لأي نقطة">
+          <Icon name="clock" size={16} /> <span className="hidden xl:inline">السجل</span>
+        </button>
         {/* «⋯ المزيد»: what is used now and then (the shortcuts, the app, the editor's size) — one button instead of four */}
         <div className="relative shrink-0">
           <button type="button" className={`jw-btn jw-3d ${picking ? "border-jw-accent text-jw-accent" : ""}`} onClick={() => setPicking((v) => !v)} aria-expanded={picking} title="المزيد: الاختصارات، التطبيق، حجم الواجهة">
@@ -1954,6 +2101,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             <div role="menu" aria-label="المزيد" className="jw-glass absolute end-0 top-full z-50 mt-2 w-[20rem] max-w-[90vw] space-y-2 rounded-2xl p-2">
               <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-start text-sm hover:bg-jw-surface-2" onClick={() => { setPicking(false); setKeysOpen("page"); }}>
                 <Icon name="keyboard" size={15} /> الاختصارات (بريمير، دافنشي، كاب كت، فاينل كت)
+              </button>
+              <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-start text-sm hover:bg-jw-surface-2" onClick={() => { setPicking(false); setLogOpen(true); }}>
+                <Icon name="clock" size={15} /> سجل التغييرات (ارجع لأي نقطة)
               </button>
               <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-sm">
                 <span>حجم الواجهة</span>
@@ -2007,10 +2157,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           </MovableBubble>
         )}
 
-        {assisting && !wide && (
-          <aside className={`hd-pop ${chatBig ? "big" : ""}`} ref={sizeChat} aria-label="حيدرا ماكس" dir="rtl">
+        {/* always there (hidden while closed): a conversation at work — a motion piece rendering — goes on, and its pill
+            brings the window back */}
+        {(
+          <aside className={`hd-pop ${chatBig ? "big" : ""}`} ref={sizeChat} aria-label="حيدرا ماكس" dir="rtl" style={assisting ? undefined : { display: "none" }}>
             <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
-              <Guard name="حيدرا ماكس"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} onDock={wide ? () => setChatDock(true) : undefined} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => (setChatBig(false), openClaude(false))} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number, clipId?: string | null) => openLab(brief, secs, clipId)} /></Guard>
+              <Guard name="حيدرا ماكس"><AssistantPanel big={chatBig} onLog={() => setLogOpen(true)} onBig={() => setChatBig((v) => !v)} onDock={wide ? () => setChatDock(true) : undefined} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => (setChatBig(false), openClaude(false))} readOnly={readOnly} diag={owner ? diagApp : undefined} lab={{ width: tl.width, height: tl.height, assets, footageClips, onUpload: labUpload, onFilm: placeFilm, onUnplace: unplaceFilm }} open={haidaraOpen} hidden={!assisting} onShow={() => openClaude(true)} /></Guard>
             </div>
           </aside>
         )}
@@ -2025,7 +2177,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
               className={`jw-screen rounded-xl ${pz === "fit" || full ? "max-h-full max-w-full" : "m-auto shrink-0"}`}
               style={pz === "fit" || full ? { aspectRatio: `${tl.width} / ${tl.height}` } : { aspectRatio: `${tl.width} / ${tl.height}`, ...sizeOf(previewSize(stageBox.w, stageBox.h, tl.width, tl.height, pz)) }}
             />
-            <Guard name="الإمساك"><Handles tl={tl} canvas={canvasEl} selected={colorRoom ? [] : selected} onSelect={pick} assets={assetMap} run={run} readOnly={readOnly} player={player} /></Guard>
+            <Guard name="الإمساك"><Handles tl={tl} canvas={canvasEl} selected={colorRoom ? [] : selected} onSelect={pick} assets={assetMap} run={handRun} readOnly={readOnly} player={player} /></Guard>
             <button
               type="button"
               className={`jw-glass jw-3d absolute end-3 top-3 z-20 items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold ${full ? "hidden" : "flex"}`}
@@ -2078,11 +2230,6 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             its parts stay the bottom sheets they were (display: contents) */}
         <div className={`cut-left ${colorRoom || big ? "contents" : "contents lg:relative lg:my-2 lg:flex lg:min-h-0 lg:shrink-0 lg:flex-col lg:overflow-hidden lg:rounded-2xl jw-glass-lg"}`} style={wide && !colorRoom && !big ? { order: 3, width: layout.panelW } : undefined}>
           {wide && !big && !colorRoom && railNav("tabs")}
-          {wide && assisting && !big && !colorRoom && (
-            <div className={`hd-left min-h-0 flex-1 flex-col ${rail === "haidara" ? "flex" : "hidden"}`} aria-label="حيدرا ماكس" dir="rtl">
-              <Guard name="حيدرا ماكس"><AssistantPanel big={false} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number, clipId?: string | null) => openLab(brief, secs, clipId)} /></Guard>
-            </div>
-          )}
         <aside
           className={`${sheet === "library" ? "fixed inset-x-0 bottom-0 z-50 flex h-[72dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:relative lg:z-auto ${rail === "media" && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl ${rail === "media" ? floatCls("panel") : ""}`}
           style={placeStyle("panel", { width: layout.panelW })}
@@ -2098,6 +2245,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             thumbs={thumbs}
             uploads={uploads.items}
             onPick={(f) => uploads.add(f)}
+            onLink={(l) => void uploads.addLink(l)}
             onDismiss={uploads.dismiss}
             onAdd={addToTimeline}
             onImported={(list) => {
@@ -2120,7 +2268,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
           <div className={`jw-scroll min-h-0 flex-1 ${colorRoom && one ? "overflow-hidden" : "overflow-y-auto"}`}>
             {colorRoom && !one && <p className="room-empty p-6 text-center">اختر لقطة من الشريط فوق عشان تلوّنها.</p>}
-            <Guard name="الإعدادات"><Inspector page={bigPage} projectId={project.id} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onUpscale={readOnly ? undefined : upscale} onLabEdit={readOnly ? undefined : editLabPiece} onExtend={readOnly ? undefined : extendClip} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
+            <Guard name="الإعدادات"><Inspector page={bigPage} projectId={project.id} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} tl={tl} selected={selected} assets={assetMap} run={handRun} readOnly={readOnly} player={player} tab={tab} onTab={openTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onUpscale={readOnly ? undefined : upscale} onLabEdit={readOnly ? undefined : editLabPiece} onExtend={readOnly ? undefined : extendClip} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
           </div>
         </aside>
 
@@ -2135,7 +2283,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
         {/* «كاب كت»: the right column — an option that needs its own window opens here (the captions, the export) */}
         {wide && !big && !colorRoom && (
-          <div ref={setRightEl} className={`cut-right jw-glass-lg my-2 min-h-0 w-[min(380px,30vw)] shrink-0 flex-col overflow-hidden rounded-2xl ${captioning || exporting ? "flex" : "hidden"}`} style={{ order: 1 }} />
+          <div ref={setRightEl} className={`cut-right jw-glass-lg my-2 min-h-0 w-[min(380px,30vw)] shrink-0 flex-col overflow-hidden rounded-2xl ${captioning || transcriptOpen || templatesOpen || exporting || logOpen ? "flex" : "hidden"}`} style={{ order: 1 }} />
         )}
 
         {/* the rail of sections at the side (the blue and nature looks) */}
@@ -2202,9 +2350,6 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             <Icon name="magnet" size={16} /> كل المسارات
           </button>
         )}
-        <button type="button" className={`${toolBtn} flex ${lab ? "text-jw-accent" : ""} ${labMin ? "animate-pulse" : ""}`} onClick={() => openLab()} disabled={readOnly} title="مختبر الموشن: حيدرا ماكس يصمم الموشن ويكتبه بالكود، يراجعه كمخرج، وينزله في التايملاين">
-          🎬 <span className="hidden sm:inline">مختبر الموشن</span>
-        </button>
         <div className="flex items-center gap-0.5 rounded-lg border border-violet-500/40 p-0.5" role="group" aria-label="عناصر الموشن: تنضاف عند المؤشر">
           {(Object.entries(MOTION_KINDS) as [MotionKind, (typeof MOTION_KINDS)[MotionKind]][]).map(([k, v]) => (
             <button key={k} type="button" className="rounded-md px-1.5 py-1 text-[11px] text-jw-muted hover:bg-violet-500/15 hover:text-jw-ink disabled:opacity-40" onClick={() => addMotion(k)} disabled={readOnly} title={`+ ${v.label}: ${v.hint} (عند المؤشر، على مسار الموشن)`}>
@@ -2217,7 +2362,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       {false && assisting && chatDock && wide && (
         <aside className="hd-pop dock" ref={sizeChat} aria-label="حيدرا ماكس" dir="rtl">
           <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
-            <Guard name="حيدرا ماكس"><AssistantPanel big={false} docked onDock={() => setChatDock(false)} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number, clipId?: string | null) => openLab(brief, secs, clipId)} /></Guard>
+            <Guard name="حيدرا ماكس"><AssistantPanel big={false} onLog={() => setLogOpen(true)} docked onDock={() => setChatDock(false)} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} /></Guard>
           </div>
         </aside>
       )}
@@ -2229,7 +2374,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         )}
         {wide && <SequenceTabs tl={tl} run={run} readOnly={readOnly} />}
         <div className="min-h-0 flex-1">
-        <Guard name="التايملاين"><Timeline range={exportRange} tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} run={run} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onMenu={wide ? openMenu : undefined} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
+        <Guard name="التايملاين"><Timeline range={exportRange} tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} run={handRun} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onMenu={wide ? openMenu : undefined} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
           setWantTab("transition");
           pick([id]);
           if (!wide) setSheet("inspector");
@@ -2241,7 +2386,6 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       {/* the phone's tool bar (CapCut's way): a row of tools; a section or a selected clip brings its own row */}
       <PhoneTools selected={oneKind} hasAudio={!!oneAsset?.hasAudio} total={total} readOnly={readOnly} on={phoneAct} />
 
-      {lab && !readOnly && <MotionLabTabs projectId={project.id} width={tl.width} height={tl.height} assets={assets} lab={lab} footageClips={footageClips} onUpload={labUpload} onFilm={placeFilm} onClose={() => (setLab(null), setLabMin(false))} minimized={labMin} onMinimize={setLabMin} />}
       {dropAsk && (
         <div className="fixed inset-0 z-[60] grid place-items-center bg-black/50 p-4" onClick={() => setDropAsk(null)}>
           <div role="dialog" aria-modal="true" aria-label="كيف أرتّب الملفات؟" className="w-full max-w-sm space-y-3 rounded-2xl border border-jw-line bg-jw-surface p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -2284,7 +2428,33 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           if (files.length && !readOnly) dropFiles(files, at(), null);
         }}
       />
-      <CaptionsPanel dock={rightEl} open={captioning} onClose={() => setCaptioning(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} />
+      <CaptionsPanel dock={rightEl} open={captioning} onClose={() => setCaptioning(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} style0={captionStyle0} />
+      <TranscriptPanel dock={rightEl} open={transcriptOpen && !captioning} onClose={() => setTranscriptOpen(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} player={player} readOnly={readOnly} />
+      <TemplatesPanel
+        dock={rightEl}
+        open={templatesOpen && !captioning && !transcriptOpen}
+        onClose={() => setTemplatesOpen(false)}
+        tl={tl}
+        assets={assets}
+        thumbs={thumbs}
+        run={run}
+        flash={flash}
+        readOnly={readOnly}
+        start={startTemplate}
+        upload={(files, each) => {
+          const places = files.map((_, i) => {
+            const key = String(++uploadSeq.current);
+            tplWaits.current.set(key, (a) => each(a, i));
+            return { at: 0, trackId: null, mode: "one" as const, group: `tpl:${key}`, first: i === 0 };
+          });
+          uploads.add(files, places);
+        }}
+        onCaptions={(style) => {
+          setCaptionStyle0(style);
+          setCaptioning(true);
+        }}
+      />
+      <ChangeLog dock={rightEl} open={logOpen} onClose={() => setLogOpen(false)} projectId={project.id} flush={flush} onRestore={restoreTo} readOnly={readOnly} />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       <ExportPanel
         dock={rightEl}
@@ -2300,6 +2470,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         onRange={(r) => setRangeIO(r ? { from: r.from, to: r.to } : { from: null, to: null })}
         player={player}
         onExported={() => undefined}
+        onReshape={readOnly ? undefined : (r) => {
+          run({ type: "set_ratio", ratio: r });
+          flash(`صار مقاس المشروع ${r}؛ شيّك على مكان الصور والكتابة قبل التصدير (تقدر ترجع بالتراجع).`);
+        }}
         onUpscaleExport={readOnly ? undefined : (file, target, name) => {
           uploads.add([file], [{ at: 0, trackId: null, mode: "one", group: `expup:${target}:${name}`, first: true }]);
           flash("نرفع الفيديو المصدَّر ونرسله لرفع الدقة…");

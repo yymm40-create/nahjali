@@ -1,32 +1,36 @@
 "use client";
 
 // «صانع المحتوى» — the desk and the conversation with «محمد باقر»: chats on the side, cards to start from, his
-// questions as buttons (and the two galleries: carousel templates and the 24 cartoon styles), the messages with the
+// questions as buttons (the table of 104 carousel styles, the list of 50 fonts, and the galleries), the messages with the
 // person's attachments, the carousel's slides appearing as they are drawn (each downloadable, each with its check and
 // a way to draw it again), and the edit rooms he opens in «حيدرة كت». The look is content.css.
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import MicButton from "@/components/robots/MicButton";
 import { useClaudeModel } from "@/components/robots/claude-model";
 import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
-import { answerLine, DELEGATE_LINE, moodLine, motionLine, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
+import { answerLine, decisionsOf, pathLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, DELEGATE_LINE, FONT_AUTO_LINE, fontLine, fontStyleLine, moodLine, MOTION_CAROUSEL_HELP_LINE, motionCarouselLine, motionCarouselOwnLine, motionLine, PALETTE_LABEL, PALETTE_STYLE_LINE, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
+import { CONTENT_PATHS, findPath, type ContentPath } from "@config/content-paths";
+import CarouselTable, { type CarouselItem } from "./CarouselTable";
+import FontTable, { type FontItem } from "./FontTable";
+import MotionCarouselTable from "./MotionCarouselTable";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
-import { drawWithCode, smallJpeg } from "@/components/claude-code/draw";
+import { drawWithCode, pngBody, smallJpeg } from "@/components/claude-code/draw";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
-interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean }
+interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean; video?: string; videoUrl?: string | null; videoDownload?: string | null }
 interface FailView { n: number; reason: string; detail?: string; text: string }
-interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code" }
+interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code"; mix?: boolean; motion?: unknown }
 interface MediaView {
   id: string; kind: "image" | "video"; name: string; aspect: string; refs?: string[]; state: "todo" | "running" | "done" | "failed";
   url?: string | null; download?: string | null; error?: string; detail?: string; transient?: boolean; tries?: number;
   desk?: { generator: string; coins: number; free: boolean };
 }
-interface Question { label: string; kind: "choice" | "templates" | "styles" | "motion" | "moods" | "palettes"; options: string[]; multi: boolean }
+interface Question { label: string; kind: "choice" | "templates" | "styles" | "motion" | "moods" | "palettes" | "carousels" | "fonts" | "motioncarousels"; options: string[]; multi: boolean }
 interface Msg {
   role: "user" | "assistant";
   text: string;
@@ -36,12 +40,14 @@ interface Msg {
   media?: { items: MediaView[] };
   editor?: { id: string; title: string; lab?: string };
   error?: boolean;
+  /** written on this page (the opening of a path), never saved with the conversation */
+  local?: boolean;
 }
 interface ChatItem { id: string; title: string }
 interface Pending { total: number; mode: "all" | "fix"; todo: number[] }
 interface Palette { name: string; bg: string; text: string; primary: string; accent: string }
 interface GalleryItem { id: string; group: string; name: string; description: string; bestFor: string; image: string | null; icon?: string; palettes?: Palette[]; structures?: string[]; swatch?: string[] }
-interface Galleries { templates: GalleryItem[]; styles: GalleryItem[]; motion?: GalleryItem[]; moods?: GalleryItem[]; palettes?: GalleryItem[] }
+interface Galleries { templates: GalleryItem[]; styles: GalleryItem[]; motion?: GalleryItem[]; moods?: GalleryItem[]; palettes?: GalleryItem[]; carousels?: (CarouselItem & { font?: string })[]; niches?: string[]; fonts?: FontItem[]; fontGroups?: string[] }
 type GalleryKind = "templates" | "styles" | "motion" | "moods" | "palettes";
 
 /** What each gallery says on its buttons, and the line a pick becomes in the message. */
@@ -53,13 +59,7 @@ const GALLERY: Record<GalleryKind, { open: string; none: string; line: (p: { id:
   palettes: { open: "🎨 افتح معرض الألوان (١٠٠ لوحة)", none: "🎲 اختر لي الألوان الأنسب", line: paletteLine },
 };
 
-const STARTS = [
-  { ic: "🖼️", t: "كاروسيل", d: "من فكرة أو نص إلى شرائح جاهزة بالصور", m: "أبي كاروسيل. اسألني عن اللي تحتاجه عشان نبدأ.", c: "#f6b73c" },
-  { ic: "🎬", t: "سكربت ريل", d: "هوك قوي ونص منطوق وتوجيهات تصوير", m: "أبي سكربت ريل. اسألني عن اللي تحتاجه.", c: "#ff7a59" },
-  { ic: "✂️", t: "ريل منتج", d: "من مقاطعي إلى ريل جاهز مع حيدرا ماكس", m: "أبي ريل منتج من مقاطعي. اسألني عن اللي تحتاجه، وبرفع لك الملفات هنا.", c: "#35c4b5" },
-  { ic: "✨", t: "موشن جرافيكس", d: "مشاهد وحركة وصوت، ينفّذها حيدرا ماكس", m: "أبي موشن جرافيكس. اسألني عن اللي تحتاجه.", c: "#a78bfa" },
-  { ic: "🔁", t: "أعد توظيف محتوى", d: "محتوى واحد إلى عدة مخرجات مترابطة", m: "عندي محتوى وأبي أعيد توظيفه في أكثر من مخرج. اسألني عن اللي تحتاجه.", c: "#fbbf24" },
-];
+// the start cards are the four paths (config/content-paths.ts)
 
 const KIND_IC = { image: "🖼️", video: "🎞️", audio: "🎧", doc: "📄" } as const;
 
@@ -67,6 +67,8 @@ const KIND_IC = { image: "🖼️", video: "🎞️", audio: "🎧", doc: "📄"
 function Rich({ text }: { text: string }) {
   const inline = (s: string) =>
     s.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((p, i) => (/^\*\*[^*]+\*\*$/.test(p) ? <b key={i}>{p.slice(2, -2)}</b> : /^`[^`]+`$/.test(p) ? <code key={i}>{p.slice(1, -1)}</code> : <Swatches key={i} text={p} cls="ct" />));
+  // a line break the model writes inside a table cell («<br>») is a break, never shown as code
+  const cell = (s: string) => s.split(/<br\s*\/?>/i).map((p, i) => <Fragment key={i}>{i > 0 && <br />}{inline(p.trim())}</Fragment>);
   const out: React.ReactNode[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
   let table: string[][] | null = null;
@@ -80,8 +82,8 @@ function Rich({ text }: { text: string }) {
       const [head, ...rows] = table;
       out.push(
         <table key={out.length}>
-          <thead><tr>{head.map((c, i) => <th key={i}>{inline(c)}</th>)}</tr></thead>
-          <tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j}>{inline(c)}</td>)}</tr>)}</tbody>
+          <thead><tr>{head.map((c, i) => <th key={i}>{cell(c)}</th>)}</tr></thead>
+          <tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j}>{cell(c)}</td>)}</tr>)}</tbody>
         </table>,
       );
       table = null;
@@ -212,12 +214,26 @@ export function Gallery({ kind, items, onPick, onNone, onWrite }: { kind: Galler
   );
 }
 
+/** The carousel style picked in the messages before message `at` (its [كاروسيل:id] mark), for the font that comes with it. */
+const styleBefore = (msgs: Msg[], at: number) => {
+  for (let k = at - 1; k >= 0; k--) {
+    if (msgs[k].role !== "user") continue;
+    const id = [...msgs[k].text.matchAll(/\[كاروسيل:([a-z0-9-]+)\]/g)].at(-1)?.[1];
+    if (id) return id;
+  }
+  return null;
+};
+
 /** The questions of an answer as buttons. One plain question sends on a press; a batch collects the answers first. */
-export function Questions({ questions, gal, disabled, onSend, onWrite }: { questions: Question[]; gal: Galleries | null; disabled: boolean; onSend: (text: string) => void; onWrite: () => void }) {
+export function Questions({ questions, gal, styleId, disabled, onSend, onWrite }: { questions: Question[]; gal: Galleries | null; styleId?: string | null; disabled: boolean; onSend: (text: string) => void; onWrite: () => void }) {
   const [picked, setPicked] = useState<Record<number, string[]>>({});
   const [other, setOther] = useState<Record<number, string>>({});
   const [openOther, setOpenOther] = useState<Record<number, boolean>>({});
-  const [gallery, setGallery] = useState<number | null>(null);
+  // the table of carousel styles (or the list of fonts) opens by itself: it is the question
+  const [gallery, setGallery] = useState<number | null>(() => {
+    const i = questions.findIndex((x) => x.kind === "carousels" || x.kind === "fonts" || x.kind === "motioncarousels");
+    return i < 0 ? null : i;
+  });
   const [lines, setLines] = useState<Record<number, string>>({});
 
   // one plain question: a press sends it
@@ -239,6 +255,15 @@ export function Questions({ questions, gal, disabled, onSend, onWrite }: { quest
   const answered = questions.map((_, i) => answerOf(i)).filter((x): x is string => !!x);
   const send = (delegate: boolean) => onSend([...answered, ...(delegate ? [DELEGATE_LINE] : [])].join("\n"));
   const chosenName = (qi: number) => (lines[qi] ? stripMarks(lines[qi]).replace(/^•\s*[^:]+:\s*/, "") : "");
+  // the chosen style's ready font, offered first in the list of fonts
+  const readyId = styleId ? gal?.carousels?.find((c) => c.id === styleId)?.font : undefined;
+  const readyFont = readyId ? (gal?.fonts?.find((f) => f.id === readyId) ?? null) : null;
+  // a pick in the table: alone it sends at once; with other questions it waits for their answers
+  const pickCarousel = (qi: number, line: string) => {
+    if (questions.length === 1) return onSend(line);
+    setLines((s) => ({ ...s, [qi]: line }));
+    setGallery(null);
+  };
 
   return (
     <div className="ct-qs">
@@ -255,10 +280,83 @@ export function Questions({ questions, gal, disabled, onSend, onWrite }: { quest
               <button type="button" className="ct-opt ct-opt-write" aria-pressed={!!openOther[qi]} disabled={disabled} onClick={() => setOpenOther((s) => ({ ...s, [qi]: !s[qi] }))}>✍️ غير ذلك</button>
               {openOther[qi] && <input className="ct-inline" dir="auto" value={other[qi] ?? ""} placeholder="اكتب إجابتك" onChange={(e) => setOther((s) => ({ ...s, [qi]: e.target.value.slice(0, 200) }))} />}
             </div>
-          ) : (
+          ) : q.kind === "fonts" ? (
             <div className="ct-opts">
               <button type="button" className="ct-opt" aria-pressed={gallery === qi} disabled={disabled} onClick={() => setGallery(gallery === qi ? null : qi)}>
-                {GALLERY[q.kind as GalleryKind].open}
+                🔤 {gallery === qi ? "أغلق قائمة الخطوط" : "افتح قائمة الخطوط (٥٠ خطًا عربيًا)"}
+              </button>
+              {chosenName(qi) && (
+                <span className="ct-chip ct-picked">✓ {chosenName(qi)} <button type="button" aria-label="ألغِ" onClick={() => setLines((s) => { const n = { ...s }; delete n[qi]; return n; })}>✕</button></span>
+              )}
+              {gallery === qi && (
+                gal?.fonts ? (
+                  <FontTable
+                    items={gal.fonts}
+                    groups={gal.fontGroups ?? []}
+                    ready={readyFont}
+                    recommended={q.options}
+                    disabled={disabled}
+                    onPick={(f) => pickCarousel(qi, fontLine({ id: f.id, name: f.name }))}
+                    onReady={(f) => pickCarousel(qi, fontStyleLine(f.name))}
+                    onAuto={() => pickCarousel(qi, FONT_AUTO_LINE)}
+                  />
+                ) : (
+                  <p className="muted">جاري تحميل الخطوط…</p>
+                )
+              )}
+            </div>
+          ) : q.kind === "motioncarousels" ? (
+            <div className="ct-opts">
+              <button type="button" className="ct-opt" aria-pressed={gallery === qi} disabled={disabled} onClick={() => setGallery(gallery === qi ? null : qi)}>
+                🎬 {gallery === qi ? "أغلق جدول الحركة" : "افتح جدول ستايلات الحركة (٢٢ ستايل)"}
+              </button>
+              {chosenName(qi) && (
+                <span className="ct-chip ct-picked">✓ {chosenName(qi)} <button type="button" aria-label="ألغِ" onClick={() => setLines((s) => { const n = { ...s }; delete n[qi]; return n; })}>✕</button></span>
+              )}
+              {gallery === qi && (
+                <MotionCarouselTable
+                  recommended={q.options}
+                  disabled={disabled}
+                  onPick={(m) => pickCarousel(qi, motionCarouselLine({ id: m.id, name: m.name }))}
+                  onHelp={() => onSend([...answered, MOTION_CAROUSEL_HELP_LINE].join("\n"))}
+                  onOwn={(what) => pickCarousel(qi, motionCarouselOwnLine(what))}
+                />
+              )}
+            </div>
+          ) : q.kind === "carousels" ? (
+            <div className="ct-opts">
+              <button type="button" className="ct-opt" aria-pressed={gallery === qi} disabled={disabled} onClick={() => setGallery(gallery === qi ? null : qi)}>
+                📋 {gallery === qi ? "أغلق جدول الستايلات" : "افتح جدول الستايلات (١٠٤ ستايل حسب المجال)"}
+              </button>
+              {chosenName(qi) && (
+                <span className="ct-chip ct-picked">✓ {chosenName(qi)} <button type="button" aria-label="ألغِ" onClick={() => setLines((s) => { const n = { ...s }; delete n[qi]; return n; })}>✕</button></span>
+              )}
+              {gallery === qi && (
+                gal?.carousels ? (
+                  <CarouselTable
+                    items={gal.carousels}
+                    niches={gal.niches ?? []}
+                    recommended={q.options}
+                    disabled={disabled}
+                    onPick={(i) => pickCarousel(qi, carouselLine({ id: i.id, name: i.name }))}
+                    onHelp={() => onSend([...answered, CAROUSEL_HELP_LINE].join("\n"))}
+                    onOwn={(what) => pickCarousel(qi, carouselOwnLine(what))}
+                  />
+                ) : (
+                  <p className="muted">جاري تحميل الجدول…</p>
+                )
+              )}
+            </div>
+          ) : (
+            <div className="ct-opts">
+              {q.kind === "palettes" && q.label === PALETTE_LABEL && (
+                // the colour step after the carousel style: its own colours are the default, the gallery changes them
+                <button type="button" className="ct-opt" aria-pressed={lines[qi] === PALETTE_STYLE_LINE} disabled={disabled} onClick={() => { setLines((s) => ({ ...s, [qi]: PALETTE_STYLE_LINE })); setGallery(null); }}>
+                  ✅ ألوان الستايل نفسها (الافتراضي)
+                </button>
+              )}
+              <button type="button" className="ct-opt" aria-pressed={gallery === qi} disabled={disabled} onClick={() => setGallery(gallery === qi ? null : qi)}>
+                {q.kind === "palettes" && q.label === PALETTE_LABEL ? "🎨 غيّر الألوان من المعرض (١٠٠ لوحة)" : GALLERY[q.kind as GalleryKind].open}
               </button>
               {chosenName(qi) && (
                 <span className="ct-chip ct-picked">✓ {chosenName(qi)} <button type="button" aria-label="ألغِ" onClick={() => setLines((s) => { const n = { ...s }; delete n[qi]; return n; })}>✕</button></span>
@@ -289,8 +387,17 @@ export function Questions({ questions, gal, disabled, onSend, onWrite }: { quest
   );
 }
 
+/** A rendered slide's MP4 put up as the person's upload (signed, then checked by the server); its upload id. */
+async function putVideo(blob: Blob, fileName: string): Promise<string> {
+  const signed = await postJson<{ id: string; signedUrl: string }>("/api/jawad/uploads", { kind: "video", mime: "video/mp4", bytes: blob.size, fileName });
+  await putWithProgress(signed.signedUrl, new File([blob], fileName, { type: "video/mp4" }), "video/mp4", () => {});
+  const conf = await postJson<{ upload: { id: string; status: string; error: string | null } }>("/api/jawad/uploads/confirm", { id: signed.id });
+  if (conf.upload?.status !== "ready") throw new Error(conf.upload?.error ?? "تعذّر رفع فيديو الشريحة.");
+  return conf.upload.id;
+}
+
 /** The carousel of an answer: tiles in order, the drawing ones as moving placeholders, each made one with its check. */
-export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; step?: string | null }) {
+export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; step?: string | null }) {
   const ns = [...new Set([...s.items.map((i) => i.n), ...s.todo])].sort((a, b) => a - b);
   const done = s.items.filter((i) => !s.todo.includes(i.n)).length;
   const aspect = s.aspect.replace(":", " / ") || "1 / 1";
@@ -300,7 +407,17 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, step }: { s:
         <div className="ct-progress" role="status" aria-live="polite">
           <span className="ct-spin" aria-hidden />
           <div>
-            {s.maker === "code" ? (
+            {s.motion ? (
+              <>
+                <b>🎬 حيدرا ماكس يصنع الموشن كاروسيل… ({done} من {s.total})</b>
+                <small>{step ? `${step} — ` : ""}يكتب كل شريحة مشهدًا متحركًا، ويشوف فريماتها ويصلّحها، ثم تطلع هنا فيديو MP4 بصوته (دقايق للشريحة). لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
+              </>
+            ) : s.maker === "code" && s.mix ? (
+              <>
+                <b>🖼️ GPT Image 2 يرسم الصور وحيدرا ماكس يكتب عليها… ({done} من {s.total})</b>
+                <small>{step ? `${step} — ` : ""}جواد يولّد صورة كل شريحة بدون كتابة، وحيدرا ماكس يكتب عليها الكلام العربي بالكود ويراجعه. لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
+              </>
+            ) : s.maker === "code" ? (
               <>
                 <b>🧑‍💻 حيدرا ماكس يرسم الشرائح بالكود… ({done} من {s.total})</b>
                 <small>{step ? `${step} — ` : ""}يكتب برنامج كل شريحة ويرسمها هنا في صفحتك ويشوفها ويعيد كتابتها لين تنجح (دقايق للشريحة). لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
@@ -318,17 +435,18 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, step }: { s:
       <div className="ct-slides">
         {ns.map((n) => {
           const item = s.items.find((i) => i.n === n);
-          const drawing = s.todo.includes(n);
+          // waiting slides spin only while they are being drawn; stopped (a wallet ran out…) they wait for «كمّل الرسم»
+          const drawing = s.todo.includes(n) && s.running;
           return (
             <figure key={n} className={`ct-slide ${drawing ? "drawing" : ""} ${item?.flag ? "flag" : ""}`} style={{ aspectRatio: aspect }}>
-              {item?.url && <img src={item.url} alt={item.text} loading="lazy" />}
+              {item?.videoUrl ? <video src={item.videoUrl} poster={item.url ?? undefined} autoPlay muted loop playsInline controls preload="metadata" aria-label={item.text} /> : item?.url && <img src={item.url} alt={item.text} loading="lazy" />}
               <span className="n">{n}</span>
               {drawing && <span className="shimmer" aria-label={`الشريحة ${n} قيد الرسم`}><span className="ct-spin" /></span>}
               {item && !drawing && (
                 <>
                   {item.flag ? <span className="badge warn" title={item.flag}>⚠️</span> : item.fixed ? <span className="badge fixed" title="أُعيد رسمها بعد أن وُجد فيها خطأ">🔁✓</span> : <span className="badge ok" title="سليمة في الفحص الآلي">✓</span>}
                   <span className="tools">
-                    {item.download && <a href={item.download} download={`${item.name}.png`}>⬇️</a>}
+                    {item.videoDownload ? <a href={item.videoDownload} download={`${item.name}.mp4`} title="حمّل الفيديو">⬇️</a> : item.download && <a href={item.download} download={`${item.name}.png`}>⬇️</a>}
                     <button type="button" disabled={busy} onClick={() => onRetry([n])} title="أعد رسم هذه الشريحة">🔁</button>
                   </span>
                 </>
@@ -357,6 +475,13 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, step }: { s:
           {s.failed.length > 1 && <button type="button" className="ct-mini" disabled={busy} onClick={() => onRetry("failed")}>أعد محاولة كل الفاشلة</button>}
         </div>
       )}
+      {!s.running && s.todo.length > 0 && onResume && (
+        <div className="ct-failed">
+          <b>⏸️ وقف الرسم عند {s.todo.length === 1 ? `الشريحة ${s.todo[0]}` : `${s.todo.length} شرائح باقية (${s.todo.join("، ")})`}.</b>
+          <small> نكمّلها بنفس التصميم والشخصيات اللي انرسمت، بدون ما تشرح من جديد.</small>
+          <button type="button" className="ct-mini" disabled={busy} onClick={onResume}>▶️ كمّل الرسم</button>
+        </div>
+      )}
       {s.report && <pre className="ct-report">{s.report}</pre>}
       {!s.running && s.items.length > 0 && (
         <div className="ct-actions">
@@ -368,10 +493,17 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, step }: { s:
 }
 
 /** The pictures and videos «محمد باقر» handed to جواد: who took each request, what it costs, its state, and the result. */
-export function MediaBox({ items, busy, owner, onRetry }: { items: MediaView[]; busy: boolean; owner: boolean; onRetry: (ids: string[] | "failed") => void }) {
+export function MediaBox({ items, busy, owner, onRetry, onResume }: { items: MediaView[]; busy: boolean; owner: boolean; onRetry: (ids: string[] | "failed") => void; onResume?: () => void }) {
   const ST = { todo: "بانتظار جواد", running: "جواد يولّده الحين…", done: "جاهز", failed: "تعذّر" } as const;
   return (
     <div className="ct-media">
+      {!busy && onResume && items.some((x) => x.state === "todo") && (
+        <div className="ct-failed">
+          <b>⏸️ وقف التوليد قبل ما يخلص.</b>
+          <small> نكمّل نفس الطلبات كما هي، بدون ما تشرح من جديد.</small>
+          <button type="button" className="ct-mini" onClick={onResume}>▶️ كمّل التوليد</button>
+        </div>
+      )}
       {items.map((x) => (
         <figure key={x.id} className={`ct-mediacard ${x.state}`}>
           <figcaption>
@@ -402,12 +534,18 @@ export function MediaBox({ items, busy, owner, onRetry }: { items: MediaView[]; 
   );
 }
 
+/** After a drawing or a generation stopped (a wallet ran out, the network…): how to go on without losing the work. */
+const STOPPED = "\n\nاللي انرسم محفوظ، والباقي ينتظر. بعد ما ينحل السبب (مثلًا يشحن صاحب الرصيد) اضغط «▶️ كمّل» تحت، أو اكتب «كمّل»: يكمل بنفس التصميم والشخصيات بدون ما تشرح من جديد.";
+
 // the conversation that was open, and what was being typed in it, are kept on this device: leaving the page (to top up
 // a wallet that ran out, a reload, a phone closing the tab) brings the person back to the same conversation with
 // محمد باقر — never to an empty one that knows nothing (the owner, 28 October 2026)
 const OPEN_KEY = "jw-content-open";
+const VERBOSE_KEY = "jw-content-verbose";
 const draftKey = (id: string | null) => `jw-content-draft:${id ?? "new"}`;
 const UUID_RE = /^[0-9a-f-]{36}$/i;
+/** a message that carries a pick of a gallery is changed by picking again (the chips), not by editing its words */
+const PICK_MARK = /\[(?:قالب|ستايل|موشن|مزاج|ألوان|كاروسيل|خط|حركة):/;
 const store = {
   get: (k: string) => {
     try {
@@ -430,6 +568,9 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  // exactly what was taken from the wallet in THIS conversation so far (halalas, not an estimate); read back from
+  // the server with the chat, so it survives a reload — 0 for a new one
+  const [spent, setSpent] = useState(0);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<"" | "writing" | "producing">("");
   /** what «Claude Code» is doing on the slide it draws now */
@@ -440,6 +581,13 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const [pending, setPending] = useState<FileView[]>([]);
   const [uploading, setUploading] = useState(false);
   const [gal, setGal] = useState<Galleries | null>(null);
+  /** the path opened before the conversation began (its mark goes with the first message) */
+  const [pathId, setPathId] = useState<string | null>(null);
+  const [pathMenu, setPathMenu] = useState(false);
+  /** the longer talk (the default is short, to cost less); remembered on this device */
+  const [verbose, setVerbose] = useState(false);
+  /** an old message being edited: the talk goes on from it */
+  const [editFrom, setEditFrom] = useState<number | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -454,6 +602,11 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     } catch { /* the list is a convenience */ }
   }, [loginHref]);
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    const t = window.setTimeout(() => setVerbose(store.get(VERBOSE_KEY) === "1"), 0);
+    return () => window.clearTimeout(t);
+  }, []);
+  const toggleVerbose = () => setVerbose((v) => { store.set(VERBOSE_KEY, v ? null : "1"); return !v; });
   useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs, busy]);
 
   // the galleries load once, when a message first asks for one
@@ -480,39 +633,57 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       return copy;
     });
 
+  // one drawing loop per conversation: opening it again (the address, then the list) must not start a second one,
+  // or both draw the same slide and the second is refused («هذي الشريحة مو بانتظار الرسم», 5 Nov 2026)
+  const looping = useRef(new Set<string>());
+
   /** The produce step: the server draws a few slides a call; this asks again while it says `running`. */
   const runProduce = useCallback(async (id: string, retry?: number[] | "failed") => {
+    if (looping.current.has(`p:${id}`)) return;
+    looping.current.add(`p:${id}`);
     setBusy("producing");
     let first = true;
-    type Step = { aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[] } };
-    const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}) }));
+    type Step = { spent?: number; aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number }; sfx?: Record<string, string> } };
+    const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}), ...(r.code?.mix || old?.mix ? { mix: true } : {}), ...(r.code?.motion || old?.motion ? { motion: r.code?.motion ?? old?.motion } : {}) }));
     try {
       for (let guard = 0; guard < 80; guard++) {
         let r = await postJson<Step>("/api/content/produce", { chatId: id, ...(first && retry ? { retry } : {}) });
         first = false;
         show(r);
+        if (typeof r.spent === "number") setSpent(r.spent);
         if (r.code) {
           // «حيدرا ماكس»: the slide is drawn here in code (its painted picture placed in it), looked at and rewritten, then sent back
           const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
           if (r.code.photos?.length) setCodeStep(`🖼️ صورة الشريحة ${r.code.n} جاهزة من GPT Image 2 (بدون كتابة)`);
-          const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "content", onStep: (st) => setCodeStep(st.text) });
+          const motion = r.code.motion ? { n: r.code.n, ...r.code.motion, sfx: r.code.sfx } : null;
+          const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "content", motion, onStep: (st) => setCodeStep(st.text) });
+          // a motion slide: its MP4 goes up as the person's upload, and the server records it with the slide
+          let video: string | undefined;
+          if (drawn.video) {
+            setCodeStep(`⬆️ أرفع فيديو الشريحة ${r.code.n}…`);
+            video = await putVideo(drawn.video, `slide-${String(r.code.n).padStart(2, "0")}.mp4`);
+          }
           setCodeStep(null);
-          r = await postJson<Step>("/api/content/produce", { chatId: id, n: r.code.n, png: drawn.png, rounds: drawn.rounds, scores: drawn.scores });
+          r = await postJson<Step>("/api/content/produce", { chatId: id, n: r.code.n, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(video ? { video } : {}) });
           show(r);
+          if (typeof r.spent === "number") setSpent(r.spent);
         }
         if (!r.running) break;
       }
     } catch (e) {
       setCodeStep(null);
-      putSlides((old) => ({ aspect: old?.aspect ?? "", items: old?.items ?? [], todo: [], failed: old?.failed ?? [], running: false, total: old?.total ?? 0, report: old?.report }));
-      setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر إنتاج الشرائح.", error: true }]);
+      putSlides((old) => ({ ...(old ?? { aspect: "", items: [], failed: [], total: 0 }), todo: old?.todo ?? [], running: false } as SlidesView));
+      setMsgs((m) => [...m, { role: "assistant", text: `${e instanceof Error ? e.message : "تعذّر إنتاج الشرائح."}${STOPPED}`, error: true }]);
     } finally {
+      looping.current.delete(`p:${id}`);
       setBusy("");
     }
   }, []);
 
   /** The media step: جواد takes what «محمد باقر» handed him; this asks again while he works (a video takes minutes). */
   const runMedia = useCallback(async (id: string, retry?: string[] | "failed") => {
+    if (looping.current.has(`m:${id}`)) return;
+    looping.current.add(`m:${id}`);
     setBusy("producing");
     let first = true;
     const put = (items: MediaView[]) =>
@@ -525,25 +696,31 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       });
     try {
       for (let guard = 0; guard < 120; guard++) {
-        const r = await postJson<{ items: MediaView[]; running: boolean }>("/api/content/generate", { chatId: id, ...(first && retry ? { retry } : {}) });
+        const r = await postJson<{ items: MediaView[]; running: boolean; spent?: number }>("/api/content/generate", { chatId: id, ...(first && retry ? { retry } : {}) });
         first = false;
         put(r.items);
+        if (typeof r.spent === "number") setSpent(r.spent);
         if (!r.running) break;
         await new Promise((res) => setTimeout(res, r.items.some((x) => x.kind === "video" && x.state === "running") ? 8000 : 1500));
       }
     } catch (e) {
-      setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر التوليد.", error: true }]);
+      setMsgs((m) => [...m, { role: "assistant", text: `${e instanceof Error ? e.message : "تعذّر التوليد."}${STOPPED}`, error: true }]);
     } finally {
+      looping.current.delete(`m:${id}`);
       setBusy("");
     }
   }, []);
 
   async function open(id: string, quiet = false) {
     setSide(false);
+    setPathId(null);
+    setPathMenu(false);
+    setEditFrom(null);
     try {
-      const r = await api<{ chat: { id: string; messages: Msg[]; pending: Pending | null } }>(`/api/content/chats?id=${id}`);
+      const r = await api<{ chat: { id: string; messages: Msg[]; pending: Pending | null; spent?: number } }>(`/api/content/chats?id=${id}`);
       setChatId(r.chat.id);
       setMsgs(r.chat.messages);
+      setSpent(Math.max(0, Number(r.chat.spent) || 0));
       setQ(store.get(draftKey(r.chat.id)) ?? "");
       // a carousel ordered before the page was left: drawn on from where it stopped
       if (r.chat.pending) void runProduce(r.chat.id);
@@ -558,7 +735,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       setMsgs([{ role: "assistant", text: e instanceof Error ? e.message : "تعذّر فتح المحادثة.", error: true }]);
     }
   }
-  const fresh = () => { setChatId(null); setMsgs([]); setQ(store.get(draftKey(null)) ?? ""); setPending([]); setSide(false); };
+  const fresh = () => { setPathId(null); setPathMenu(false); setEditFrom(null); setChatId(null); setMsgs([]); setQ(store.get(draftKey(null)) ?? ""); setPending([]); setSide(false); setSpent(0); };
 
   // back on the page: the conversation of the address (?chat=) or of the last visit opens again
   useEffect(() => {
@@ -614,19 +791,55 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     claudeId.current = claude.id;
   }, [claude.id]);
 
-  async function send(text = q) {
-    const message = text.trim();
-    if ((!message && !pending.length) || busy || uploading) return;
-    const files = pending;
+  /** A path opened: its first questions appear at once (written here, so opening one costs nothing); the person answers by a press or by writing. */
+  function openPath(path: ContentPath) {
+    setPathId(path.id);
+    setPathMenu(false);
+    setMsgs([{ role: "assistant", text: path.opening, questions: path.first, local: true }]);
+    window.setTimeout(() => box.current?.focus(), 0);
+  }
+  /** Another path in the middle of the talk: its mark goes with the message, and the last mark wins. */
+  function switchPath(path: ContentPath) {
+    setPathMenu(false);
+    if (!chatId) openPath(path);
+    else void send(pathLine(path.id, `خلنا نحوّل إلى مسار «${path.name}»`));
+  }
+  function startEdit(i: number) {
+    const m = msgs[i];
+    if (!m || busy) return;
+    setEditFrom(i);
+    setQ(stripMarks(m.text).replace("(ملفات مرفقة)", "").trim());
+    setPending(m.files ?? []);
+    box.current?.focus();
+  }
+  function cancelEdit() {
+    setEditFrom(null);
     setQ("");
     setPending([]);
+  }
+
+  async function send(text = q) {
+    const typed = text.trim();
+    if ((!typed && !pending.length) || busy || uploading) return;
+    const files = pending;
+    // the first message of a path carries its mark; an edited old message keeps the mark it had, and the talk goes on from there
+    const editing = editFrom;
+    const keepPath = editing != null ? (msgs[editing]?.text.match(/\[مسار:[a-z0-9-]+\]/)?.[0] ?? "") : "";
+    const message = editing != null ? `${typed} ${keepPath}`.trim() : !chatId && pathId ? pathLine(pathId, typed || "(ملفات مرفقة)") : typed;
+    const from = editing != null ? msgs.slice(0, editing).filter((x) => !x.local && !x.error).length : undefined;
+    const before = msgs;
+    setQ("");
+    setPending([]);
+    setEditFrom(null);
     setBusy("writing");
-    setMsgs((m) => [...m, { role: "user", text: message || "(ملفات مرفقة)", files: files.length ? files : undefined }]);
+    const mine: Msg = { role: "user", text: message || "(ملفات مرفقة)", files: files.length ? files : undefined };
+    setMsgs((m) => (editing != null ? [...m.slice(0, editing), mine] : [...m, mine]));
     let produceId: string | null = null;
     let mediaId: string | null = null;
     try {
-      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string; lab?: string } | null; media: MediaView[] | null }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id), model: claude.id });
+      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string; lab?: string } | null; media: MediaView[] | null; spent?: number }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id), model: claude.id, verbose, ...(from !== undefined ? { from } : {}) });
       setChatId(r.chatId);
+      setSpent(Math.max(0, Number(r.spent) || 0));
       setMsgs((m) => {
         const copy = [...m];
         const reply: Msg = { role: "assistant", text: r.text, questions: r.questions ?? undefined, editor: r.editor ?? undefined, ...(r.media ? { media: { items: r.media } } : {}) };
@@ -644,10 +857,11 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     } catch (e) {
       // not answered (the wallet ran out, the network…): the message goes back into the box with its files, ready to
       // send again — the conversation itself stays as it was on the server
-      setQ((now) => now || message);
+      setQ((now) => now || typed);
+      if (editing != null) setEditFrom(editing);
       setPending((now) => (now.length ? now : files));
       setMsgs((m) => [
-        ...m.slice(0, -1),
+        ...(editing != null ? before : m.slice(0, -1)),
         { role: "assistant", text: `${e instanceof Error ? e.message : "تعذّر الرد."}\n\nرسالتك رجعت في الخانة تحت، والمحادثة محفوظة كما هي: ${e instanceof Error && /رصيد/.test(e.message) ? "اشحن وارجع لهنا، وأرسلها" : "أرسلها مرة ثانية"} ويكمل محمد باقر من نفس المكان.`, error: true },
       ]);
     } finally {
@@ -666,17 +880,25 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
 
   const downloadAll = (items: SlideView[]) => {
     items.forEach((s, i) => {
-      if (!s.download) return;
+      // a motion slide downloads as its video
+      const href = s.videoDownload ?? s.download;
+      if (!href) return;
       setTimeout(() => {
         const a = document.createElement("a");
-        a.href = s.download!;
-        a.download = `${s.name}.png`;
+        a.href = href;
+        a.download = `${s.name}.${s.videoDownload ? "mp4" : "png"}`;
         a.click();
       }, i * 400);
     });
   };
 
   const lastAssistant = msgs.map((x) => x.role).lastIndexOf("assistant");
+  // what they decided so far, from the marks of their messages (the path opened but not yet sent counts too)
+  const decisions = (() => {
+    const d = decisionsOf(msgs.filter((m) => m.role === "user").map((m) => m.text));
+    const open = findPath(pathId);
+    return !d.some((x) => x.key === "path") && open ? [{ key: "path" as const, label: "المسار", name: open.name, id: open.id, change: "" }, ...d] : d;
+  })();
 
   return (
     <div className="ct" ref={root} onPointerMove={move}>
@@ -713,6 +935,23 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
             </div>
           </header>
 
+          {!loginHref && decisions.length > 0 && (
+            <div className="ct-decs" role="group" aria-label="قراراتك (اضغط أي واحد لتغيّره)">
+              {decisions.map((d) => (
+                <button key={d.key} type="button" className="ct-dec" disabled={!!busy} onClick={() => (d.key === "path" ? setPathMenu((v) => !v) : void send(d.change))} title="غيّره">
+                  {d.label}: <b>{d.name}</b> ✎
+                </button>
+              ))}
+              {pathMenu && (
+                <div className="ct-pathmenu" role="menu">
+                  {CONTENT_PATHS.map((x) => (
+                    <button key={x.id} type="button" role="menuitem" className="ct-mini" onClick={() => switchPath(x)}>{x.ic} {x.name}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="ct-feed">
             {loginHref ? (
               <div className="ct-msg bot">
@@ -723,14 +962,14 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
               <>
                 <div className="ct-msg bot">
                   <h3>أهلًا، أنا {persona} ✍️</h3>
-                  <p>أرافقك من الفكرة أو النص إلى محتوى جاهز: كاروسيل بالصور، سكربت ريل، ريل منتج أو موشن جرافيكس مع حيدرا ماكس، وعناوين وكابشن. اختر نقطة بداية أو اكتب لي مباشرة، وارفق ملفاتك بزر 📎.</p>
+                  <p>اختر مسارك: أسألك أقل ما يمكن، وتجاوب بضغطة أو بكلامك، وتقدر تغيّر أي قرار في أي لحظة. ولو تبي سكربت ريل أو عناوين أو إعادة توظيف، اكتب لي مباشرة.</p>
                 </div>
                 <div className="ct-start">
-                  {STARTS.map((s, i) => (
-                    <button key={s.t} className="ct-card" style={{ ["--c" as string]: s.c, animationDelay: `${i * 90}ms` }} onClick={() => send(s.m)}>
-                      <span className="ic">{s.ic}</span>
-                      <b>{s.t}</b>
-                      <small>{s.d}</small>
+                  {CONTENT_PATHS.map((x, i) => (
+                    <button key={x.id} className="ct-card" style={{ ["--c" as string]: x.color, animationDelay: `${i * 90}ms` }} onClick={() => openPath(x)}>
+                      <span className="ic">{x.ic}</span>
+                      <b>{x.name}</b>
+                      <small>{x.short}</small>
                     </button>
                   ))}
                 </div>
@@ -756,20 +995,24 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                       owner={!!owner}
                       onRetry={(ns) => chatId && void runProduce(chatId, ns)}
                       onDownloadAll={() => downloadAll(m.slides!.items)}
+                      onResume={() => chatId && void runProduce(chatId)}
                       step={codeStep}
                     />
                   )}
-                  {m.media && <MediaBox items={m.media.items} busy={!!busy} owner={!!owner} onRetry={(ids) => chatId && void runMedia(chatId, ids)} />}
+                  {m.media && <MediaBox items={m.media.items} busy={!!busy} owner={!!owner} onRetry={(ids) => chatId && void runMedia(chatId, ids)} onResume={() => chatId && void runMedia(chatId)} />}
                   {m.editor && (
                     <div className="ct-actions">
                       <Link className="ct-mini" href={`/jawad-ai/editor/${m.editor.id}${m.editor.lab ? `?lab=${m.editor.lab}` : ""}`}>{m.editor.lab ? `🎬 افتح «${m.editor.title}» في مختبر الموشن` : `🎬 افتح غرفة المونتاج «${m.editor.title}» مع حيدرا ماكس`}</Link>
                     </div>
                   )}
                   {i === lastAssistant && !busy && !loginHref && m.questions?.length ? (
-                    <Questions key={`q${i}-${msgs.length}`} questions={m.questions} gal={gal} disabled={!!busy} onSend={(t) => void send(t)} onWrite={() => box.current?.focus()} />
+                    <Questions key={`q${i}-${msgs.length}`} questions={m.questions} gal={gal} styleId={styleBefore(msgs, i)} disabled={!!busy} onSend={(t) => void send(t)} onWrite={() => box.current?.focus()} />
                   ) : null}
-                  {m.role === "assistant" && !m.error && (
+                  {m.role === "assistant" && !m.error && !m.local && (
                     <div className="ct-actions"><button className="ct-mini" onClick={() => navigator.clipboard?.writeText(m.text).catch(() => null)}>انسخ</button></div>
+                  )}
+                  {m.role === "user" && !busy && !loginHref && !PICK_MARK.test(m.text) && (
+                    <div className="ct-actions"><button className="ct-mini" onClick={() => startEdit(i)}>✏️ عدّل</button></div>
                   )}
                 </div>
               ))
@@ -796,7 +1039,18 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                   ))}
                 </div>
               )}
-              <ClaudeModelPicker className="ct-claude" disabled={!!busy} />
+              {editFrom != null && (
+                <div className="ct-editbar">
+                  ✏️ تعدّل رسالتك: المحادثة ترجع من هنا وتنحذف الردود اللي بعدها.
+                  <button type="button" className="ct-mini" onClick={cancelEdit}>إلغاء</button>
+                </div>
+              )}
+              <div className="ct-compose-opts">
+                <ClaudeModelPicker className="ct-claude" disabled={!!busy} spent={spent} />
+                <button type="button" className={`ct-mini ct-verbose${verbose ? " on" : ""}`} aria-pressed={verbose} onClick={toggleVerbose} title="الافتراضي مختصر لتوفير رصيدك؛ المفصّلة فيها شرح وبدائل وأسئلة أعمق">
+                  {verbose ? "📝 محادثة مفصّلة ✓" : "📝 خلّها مفصّلة"}
+                </button>
+              </div>
               <div className="ct-compose-row">
                 <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/mpeg,audio/wav,application/pdf" onChange={(e) => void attach(e.target.files)} />
                 <button type="button" className="ct-attach" aria-label="أرفق حتى 20 ملفًا" title="أرفق حتى 20 صورة أو فيديو أو صوت أو PDF" disabled={uploading || !!busy || pending.length >= JAWAD_ATTACHMENT_LIMIT} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
@@ -808,7 +1062,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                   rows={1}
                   value={q}
                   maxLength={8000}
-                  placeholder={busy === "producing" ? "الشرائح قيد الرسم…" : `اكتب لـ${persona}…`}
+                  placeholder={busy === "producing" ? "الشرائح قيد الرسم…" : !chatId && pathId ? "اكتب فكرتك أو الصق نصك هنا…" : `اكتب لـ${persona}…`}
                   onChange={(e) => setQ(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }}
                 />

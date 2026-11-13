@@ -73,7 +73,8 @@ export function fileProblem(def: GeneratorDef, r: RefMeta): string | null {
     const ms = r.durationMs ?? 0;
     if (!ms) return "تعذّر قراءة مدة الملف.";
     if (rule.minMs && ms < rule.minMs) return `المدة أقل من ${fmtSec(rule.minMs)}.`;
-    if (rule.maxMs && ms > rule.maxMs) return `المدة أطول من ${fmtSec(rule.maxMs)}.`;
+    // the real length to the hundredth (15.01 s reads «15.01», not «15»), and how to fix it
+    if (rule.maxMs && ms > rule.maxMs) return `المدة ${Math.round(ms / 10) / 100} ث، أطول من ${fmtSec(rule.maxMs)}${r.kind === "video" ? ": قصّه واختر الجزء اللي تبيه" : ""}.`;
   }
   if (r.kind === "video" && r.fps != null) {
     if ((rule.minFps && r.fps < rule.minFps - 0.5) || (rule.maxFps && r.fps > rule.maxFps + 0.5)) {

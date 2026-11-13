@@ -115,6 +115,15 @@ export const CONTENT_PALETTES: ContentPalette[] = [
 
 export const findPalette = (id: string) => CONTENT_PALETTES.find((p) => p.id === id) ?? null;
 
+/** A palette's four colours, darkest first. */
+export const darkToLight = (p: ContentPalette) => [...p.colors].sort((a, b) => lightness(a) - lightness(b));
+
+/** What every slide is told when the person changed the style's colours to a palette: its layout stays, its colours give way. */
+export function paletteBlock(p: ContentPalette): string {
+  const [dark, d2, l2, light] = darkToLight(p);
+  return `CLIENT COLOURS (these replace the carousel style's colours; keep everything else of the style: layout, type, shapes, margins). Use only these four colours, by their codes: ${dark} · ${d2} · ${l2} · ${light} (darkest to lightest). The darkest or the lightest is the background, its opposite the text, the other two the main colour and the highlight, always with contrast that reads.`;
+}
+
 /** Perceived lightness 0..1 of a #rrggbb colour (for darkest → lightest). */
 export function lightness(hex: string) {
   const n = parseInt(hex.slice(1), 16);

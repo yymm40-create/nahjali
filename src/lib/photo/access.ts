@@ -6,10 +6,10 @@ import { requireApiUser, UserError } from "@/lib/api";
 import { can, hasAnyAccess, unlimitedFor } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isPublicOpen } from "@/lib/launch";
-import { DEFAULT_PHOTO_VISIBILITY, PHOTO_KV, type PhotoVisibility } from "@config/photo";
+import { DEFAULT_PHOTO_VISIBILITY, PHOTO_KV, PHOTO_OFF, type PhotoVisibility } from "@config/photo";
 import { isAdmin } from "@config/site";
 
-const CLOSED = "«زهراء فوتو ماستر» مقفلة لحسابك حاليًا.";
+const CLOSED = "«زهراء فوتو ماستر» متوقفة حاليًا.";
 
 export async function getVisibility(): Promise<PhotoVisibility> {
   const { data } = await createAdminClient().from("photo_kv").select("value").eq("key", PHOTO_KV.visibility).maybeSingle();
@@ -25,9 +25,9 @@ export async function setVisibility(v: PhotoVisibility) {
   if (error) throw error;
 }
 
-/** May this person open it now? (the owner always) */
+/** May this person open it now? Nobody while it is turned off (the owner's order, 11 November 2026: «عطّل المصممة زهراء تماما»). */
 export async function photoAllowed(email: string | null | undefined): Promise<boolean> {
-  if (!email) return false;
+  if (PHOTO_OFF || !email) return false;
   if (isAdmin(email)) return true;
   const v = await getVisibility();
   if (v === "all") return hasAnyAccess(email);

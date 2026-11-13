@@ -12,6 +12,8 @@ import { unpackProject } from "./package";
 import { forgetOpen, openProject } from "./open-project";
 import { useDesktop } from "./desktop";
 import type { EditorAsset, ImportItem, ProjectSummary } from "./types";
+import TemplateCard from "./TemplateCard";
+import { READY_TEMPLATES, type Template } from "@/lib/editor/templates";
 
 const ago = (iso: string, now: number) => {
   const m = Math.round((now - new Date(iso).getTime()) / 60_000);
@@ -31,21 +33,31 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState<number | null>(null);
   const [wizard, setWizard] = useState(false);
+  const [gallery, setGallery] = useState(false);
   const onDesktop = useDesktop();
   useEffect(() => {
     const t = setTimeout(() => setNow(Date.now()), 0);
     return () => clearTimeout(t);
   }, []);
 
-  // a project left open (the person went to another section without leaving it): straight back into it
+  // the project left open last time (another section, the back button, a closed tab): offered as «كمّل» at the top,
+  // never opened by itself — jumping there on its own sent the person back to the old project every time they came
+  // to start a new one
+  const [lastOpen, setLastOpen] = useState<ProjectSummary | null>(null);
   useEffect(() => {
     const id = openProject();
     if (!id) return;
-    if (projects?.some((p) => p.id === id)) router.replace(`/jawad-ai/editor/${id}`);
-    else forgetOpen();
+    const p = projects?.find((x) => x.id === id);
+    if (!p) return forgetOpen();
+    const t = setTimeout(() => setLastOpen(p), 0);
+    return () => clearTimeout(t);
     // once, when «حيدرة كت» opens
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const dismissLast = () => {
+    forgetOpen();
+    setLastOpen(null);
+  };
 
   const startNew = () => (loginHref ? router.push(loginHref) : setWizard(true));
 
@@ -112,6 +124,19 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
           </p>
         )}
         {error && <p className="error-box text-sm">{error}</p>}
+        {lastOpen && (
+          <div className="jw-panel flex items-center gap-3 p-3">
+            <span className="text-2xl" aria-hidden>↩️</span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[11px] text-jw-muted">آخر مشروع كنت فيه</span>
+              <span className="block truncate text-sm font-bold">{lastOpen.title}</span>
+            </span>
+            <Link href={`/jawad-ai/editor/${lastOpen.id}`} className="jw-btn jw-btn-primary shrink-0 text-xs">كمّل</Link>
+            <button type="button" onClick={dismissLast} className="jw-btn jw-btn-quiet jw-btn-icon shrink-0" aria-label="أخفِ" title="أخفِ">
+              <Icon name="x" size={14} />
+            </button>
+          </div>
+        )}
 
         <section aria-labelledby="ed-mine" className="space-y-3">
           <h2 id="ed-mine" className="text-sm font-bold">مشاريعي</h2>
@@ -126,6 +151,13 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
                   </span>
                   <span className="font-bold">مشروع جديد</span>
                   <span className="text-[11px] text-jw-muted">سمّه واختر مقاطعك وابدأ</span>
+                </button>
+              </li>
+              <li>
+                <button type="button" onClick={() => (loginHref ? router.push(loginHref) : setGallery(true))} className="group flex aspect-[4/5] w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-jw-line bg-jw-surface/60 p-3 text-center transition hover:border-jw-accent">
+                  <span className="grid h-12 w-12 place-items-center rounded-full bg-jw-surface-2 text-2xl transition group-hover:scale-110" aria-hidden>🧩</span>
+                  <span className="font-bold">قوالب المونتاج</span>
+                  <span className="text-[11px] text-jw-muted">{READY_TEMPLATES.length} قالب جاهز: حط مقاطعك وخلاص</span>
                 </button>
               </li>
               <li>
@@ -185,6 +217,7 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
 
       </div>
       {wizard && <NewProject onClose={() => setWizard(false)} />}
+      {gallery && <TemplateGallery onClose={() => setGallery(false)} />}
     </div>
   );
 }
@@ -356,6 +389,70 @@ function NewProject({ onClose }: { onClose: () => void }) {
         <button type="button" className="jw-btn jw-btn-primary w-full" disabled={!ready || busy} onClick={go}>
           {busy ? <span className="jw-spinner" /> : <Icon name="scissors" size={16} />} ابدأ المونتاج
         </button>
+      </div>
+    </div>
+  );
+}
+
+/** «قوالب المونتاج» from the launcher: a template picked starts a project in its shape, and the editor opens on its slots. */
+function TemplateGallery({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const [mine, setMine] = useState<Template[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    api<{ templates: Template[] }>("/api/jawad/editor/templates")
+      .then((r) => live && setMine(r.templates))
+      .catch(() => null);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", key);
+    return () => {
+      live = false;
+      window.removeEventListener("keydown", key);
+    };
+  }, [onClose]);
+  const use = async (t: Template) => {
+    setBusy(t.id);
+    setError(null);
+    try {
+      const { id } = await postJson<{ id: string }>("/api/jawad/editor/projects", { kind: t.ratio === "16:9" ? "horizontal" : "reel", title: t.name });
+      leaveStartKit({ projectId: id, files: [], assets: [], template: t });
+      router.push(`/jawad-ai/editor/${id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "تعذّر.");
+      setBusy(null);
+    }
+  };
+  const grid = (list: Template[]) => (
+    <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+      {list.map((t) => (
+        <li key={t.id} className={busy && busy !== t.id ? "pointer-events-none opacity-50" : ""}>
+          <TemplateCard t={t} on={busy === t.id} onPick={() => void use(t)} />
+        </li>
+      ))}
+    </ul>
+  );
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-labelledby="tg-title" onClick={(e) => e.target === e.currentTarget && !busy && onClose()}>
+      <div className="jw-panel jw-scroll max-h-[92dvh] w-full max-w-3xl space-y-4 overflow-y-auto rounded-b-none p-4 sm:rounded-2xl">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 id="tg-title" className="text-lg font-black">قوالب المونتاج</h2>
+            <p className="text-xs text-jw-muted">اختر قالب، ويفتح المحرر على خاناته: حط مقاطعك وغيّر الكلام.</p>
+          </div>
+          <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon" onClick={onClose} disabled={!!busy} aria-label="إغلاق">
+            <Icon name="x" size={18} />
+          </button>
+        </div>
+        {error && <p className="error-box text-xs">{error}</p>}
+        {grid(READY_TEMPLATES)}
+        {mine.length > 0 && (
+          <section className="space-y-2">
+            <h3 className="text-sm font-bold">قوالبي</h3>
+            {grid(mine)}
+          </section>
+        )}
       </div>
     </div>
   );

@@ -14,7 +14,7 @@ import { AGENT_IDS, DELIVER_KINDS, findAgent, KHARQ, KHARQ_STAGES, ROAD_IDS, typ
 import { cleanHistory, consultRoundsSinceUser, getChat, pendingConsult, readConsult, readDeliver, readQuestions, saveChat, type Attachment, type Chat, type Deliver, type Turn } from "./chats";
 import { runConsults, type Consult } from "./agents";
 import { attachmentsOf, uploadLinks } from "./files";
-import { getPersona, systemText } from "./persona";
+import { briefBlock, getPersona, systemText } from "./persona";
 
 export const ANSWER_SCHEMA = {
   type: "object",
@@ -108,8 +108,8 @@ interface Answer {
 const KIND_AR: Record<Attachment["kind"], string> = { image: "صورة", video: "مقطع", audio: "صوت", doc: "ملف PDF" };
 
 /** One turn of the conversation as he receives it: the words, and the attachments he can look at or read. */
-function turnFor(t: Turn, links: Map<string, string>): ClaudeTurn {
-  const said = t.role === "assistant" ? assistantText(t) : t.text;
+function turnFor(t: Turn, links: Map<string, string>, old = false): ClaudeTurn {
+  const said = t.role === "assistant" ? assistantText(t, old) : t.text;
   if (!t.files?.length) return { role: t.role, content: said };
   const parts: ClaudePart[] = [];
   const named = t.files.map((f) => `- ${KIND_AR[f.kind]}: «${f.name}»${f.durationMs ? ` (${Math.round(f.durationMs / 1000)} ث)` : ""} [id ${f.id}]`).join("\n");
@@ -125,17 +125,20 @@ function turnFor(t: Turn, links: Map<string, string>): ClaudeTurn {
 }
 
 /** What he said, with what he delivered written back into it (so he knows what is already in the person's hands). */
-export function assistantText(t: Turn): string {
+export function assistantText(t: Turn, old = false): string {
+  // an OLD turn (not among the latest few) keeps the head of each answer and deliverable: whole consult answers (up to
+  // 40k chars) and deliverables (up to 120k) were sent again on every turn for the whole window
+  const cut = (x: string, n: number) => (old && x.length > n ? `${x.slice(0, n)}\n… (مختصر — النص كامل عند العميل)` : x);
   const parts = [t.text];
   // what his team answered: he reads it back on every turn after (the person sees only that he asked)
   for (const c of t.consult ?? []) {
     const name = findAgent(c.agent)?.name ?? c.agent;
-    parts.push(c.state === "done" ? `— جواب «${name}» على مهمتك («${c.task.slice(0, 300)}»):\n${c.answer ?? ""}` : c.state === "failed" ? `— «${name}» ما قدر يجاوب على مهمتك.` : `— سألتَ «${name}» وما رجع جوابه بعد.`);
+    parts.push(c.state === "done" ? `— جواب «${name}» على مهمتك («${c.task.slice(0, 300)}»):\n${cut(c.answer ?? "", 1500)}` : c.state === "failed" ? `— «${name}» ما قدر يجاوب على مهمتك.` : `— سألتَ «${name}» وما رجع جوابه بعد.`);
   }
   const d = t.deliver;
   if (!d) return parts.filter(Boolean).join("\n\n");
   parts.push(`— سلّمتَ في هذه الرسالة (${d.kind}): «${d.title}»`);
-  if (d.text) parts.push(d.text);
+  if (d.text) parts.push(cut(d.text, 2500));
   if (d.table) parts.push([d.table.columns.join(" | "), ...d.table.rows.map((r) => r.join(" | "))].join("\n"));
   if (d.media.length) parts.push(d.media.map((m) => `• ${m.kind === "video" ? "فيديو" : "صورة"} «${m.name}» — ${m.state === "done" ? "ولّدها جواد بعد موافقة العميل" : m.state === "failed" ? `فشل التوليد: ${m.error ?? ""}` : m.state === "running" ? "قيد التوليد" : "معروضة عليه بسعرها، ما وافق عليها بعد"}`).join("\n"));
   return parts.filter(Boolean).join("\n\n").slice(0, d.kind === "code" ? KHARQ.codeMax : KHARQ.textMax);
@@ -169,6 +172,8 @@ export interface Reply {
   turn: Turn;
   stage: KharqStage;
   usd: number;
+  /** what this conversation had taken from the wallet BEFORE this turn (halalas); the route adds this turn's charge */
+  spentHalalas: number;
 }
 
 /** A line added to his system text this turn: the person's own switch, and where his team stands. */
@@ -197,8 +202,13 @@ async function answer(o: { userId: string; email: string | null; origin: string;
   const persona = await getPersona();
 
   const { data, usage } = await callClaudeJson<Answer>({
-    system: systemText(persona.text, o.before?.brief ?? "", turnNotes({ auto: o.auto, rounds, continuing: o.continuing })),
-    turns: [...mem.lead, ...sent.map((t) => turnFor(t, links))],
+    // the same system on every call (cached); the brief and this turn's notes ride with the turn — they differ between
+    // «say» and «go», so in the system they made every call re-write the whole conversation at full price
+    system: systemText(persona.text),
+    turnNote: [briefBlock(o.before?.brief ?? ""), turnNotes({ auto: o.auto, rounds, continuing: o.continuing })].filter(Boolean).join("\n\n"),
+    // every reply but his latest is sent short (its answers and deliverables cut to their head): the same bytes every
+    // turn, so the conversation before the latest reply is read from the cache
+    turns: [...mem.lead, ...sent.map((t, i) => turnFor(t, links, t.role === "assistant" && i < sent.map((x) => x.role).lastIndexOf("assistant")))],
     schema: ANSWER_SCHEMA,
     maxTokens: KHARQ.maxTokens,
     // the owner asked for the strongest minds on this branch: it thinks hard every turn
@@ -227,7 +237,7 @@ async function answer(o: { userId: string; email: string | null; origin: string;
   const brief = typeof data.brief === "string" && data.brief.trim() ? data.brief.trim() : (o.before?.brief ?? "");
 
   const chatId = await saveChat(o.userId, o.chatId, [...o.history, turn], usd, { brief, stage });
-  return { chatId, turn, stage, usd };
+  return { chatId, turn, stage, usd, spentHalalas: o.before?.spentHalalas ?? 0 };
 }
 
 /**
@@ -251,11 +261,11 @@ export async function say(o: { userId: string; chatId: string | null; message: s
  * His team, in the background: the last answer's consultations are run (each agent with its whole knowledge) and kept
  * with the conversation. The page then asks him to go on (`goOn`). Two steps, so neither waits on the other's clock.
  */
-export async function consultTeam(o: { userId: string; chatId: string; email: string | null }): Promise<{ consult: Consult[]; usd: number }> {
+export async function consultTeam(o: { userId: string; chatId: string; email: string | null }): Promise<{ consult: Consult[]; usd: number; spentHalalas: number }> {
   const chat = await getChat(o.userId, o.chatId);
   if (!chat) throw new UserError("ما لقينا هذي المحادثة.", 404);
   const waiting = pendingConsult(chat);
-  if (!waiting) return { consult: chat.messages[chat.messages.length - 1]?.consult ?? [], usd: 0 };
+  if (!waiting) return { consult: chat.messages[chat.messages.length - 1]?.consult ?? [], usd: 0, spentHalalas: chat.spentHalalas };
   const recent = chat.messages
     .slice(-8, -1)
     .map((t) => `${t.role === "user" ? "العميل" : "محمد"}: ${t.text.replace(/\s+/g, " ").slice(0, 900)}`)
@@ -263,7 +273,7 @@ export async function consultTeam(o: { userId: string; chatId: string; email: st
   const { list, usd } = await runConsults(waiting.consult, { userId: o.userId, email: o.email, brief: chat.brief, recent, leader: isLeader(o.email) });
   const messages = chat.messages.map((t, i) => (i === waiting.turn ? { ...t, consult: list } : t));
   await saveChat(o.userId, o.chatId, messages, usd);
-  return { consult: list, usd };
+  return { consult: list, usd, spentHalalas: chat.spentHalalas };
 }
 
 /** After his team answered: he goes on, as himself, in a new answer. */

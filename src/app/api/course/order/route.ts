@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { handle, requireApiUser } from "@/lib/api";
+import { handle, requireApiUser, UserError } from "@/lib/api";
+import { BANK_TRANSFER_ENABLED } from "@config/pricing";
 import { startOrder } from "@/lib/course/orders";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
  * the order). Returns the order (its price is kept for a few hours) and the bank data to transfer to.
  */
 export const POST = handle(async (req: Request) => {
+  if (!BANK_TRANSFER_ENABLED) throw new UserError("التحويل البنكي متوقف؛ ادفع بالبطاقة.", 410);
   const user = await requireApiUser();
   const b = (await req.json().catch(() => ({}))) as { courseId?: unknown; name?: unknown; phone?: unknown; code?: unknown; product?: unknown };
   const r = await startOrder({ id: user.id, email: user.email }, { courseId: b.courseId, name: b.name, phone: b.phone, code: b.code, product: b.product });

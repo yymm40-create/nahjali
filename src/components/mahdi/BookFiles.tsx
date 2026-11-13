@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { BOOK_PDF } from "@config/mahdi";
 import { fmtNum, t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { shrinkImage } from "@/lib/mahdi/client/reading";
@@ -208,7 +207,6 @@ export function PdfPicker({ file, onChange, disabled }: { file: File | null; onC
           e.target.value = "";
           if (!f) return;
           if (!(f.type === "application/pdf" || /\.pdf$/i.test(f.name))) return setError(R.pdf.badType);
-          if (f.size > BOOK_PDF.maxBytes) return setError(R.pdf.tooBig);
           setError("");
           onChange(f);
         }}

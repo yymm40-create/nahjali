@@ -1,3 +1,4 @@
+import { contentSpent } from "@/lib/content/spent";
 import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { requireContentUser } from "@/lib/content/access";
@@ -17,20 +18,22 @@ export const GET = handle(async (req: Request) => {
   if (!UUID.test(id)) throw new UserError("محادثة غير صحيحة.", 400);
   const chat = await getChat(user.id, id);
   if (!chat) throw new UserError("ما لقينا هذي المحادثة.", 404);
-  const [ups, links, downloads] = await Promise.all([
+  const [ups, links, downloads, spent] = await Promise.all([
     uploadLinks(user.id, chat.messages.flatMap((m) => (m.files ?? []).filter((f) => f.kind === "image").map((f) => f.id))),
     producedLinks(user.id, id),
     producedLinks(user.id, id, true),
+    // «أُخذ منك في هذي المحادثة»: everything it took, worked out from the records (also before this was counted)
+    contentSpent(user.id, id).catch(() => null),
   ]);
   const messages = chat.messages.map((m) => ({
     ...m,
     files: m.files?.map((f) => ({ ...f, url: ups.get(f.id) ?? null })),
     slides: m.slides
-      ? { ...m.slides, items: m.slides.items.map((s) => ({ ...s, url: links.get(s.fileId) ?? null, download: downloads.get(s.fileId) ?? null })), failed: m.slides.failed.map(({ n, reason, detail, text }) => ({ n, reason, text, ...(isAdmin(user.email) ? { detail } : {}) })) }
+      ? { ...m.slides, items: m.slides.items.map((s) => ({ ...s, url: links.get(s.fileId) ?? null, download: downloads.get(s.fileId) ?? null, ...(s.video ? { videoUrl: links.get(s.video) ?? null, videoDownload: downloads.get(s.video) ?? null } : {}) })), failed: m.slides.failed.map(({ n, reason, detail, text }) => ({ n, reason, text, ...(isAdmin(user.email) ? { detail } : {}) })) }
       : undefined,
     media: m.media ? { items: m.media.items.map((x) => ({ ...x, url: x.fileId ? links.get(x.fileId) ?? null : null, download: x.fileId ? downloads.get(x.fileId) ?? null : null, ...(isAdmin(user.email) ? {} : { detail: undefined }) })) } : undefined,
   }));
-  return NextResponse.json({ chat: { id: chat.id, title: chat.title, messages, pending: chat.pending ? { total: chat.pending.slides.length, mode: chat.pending.mode, todo: chat.pending.slides.map((x) => x.n) } : null, record: chat.record } });
+  return NextResponse.json({ chat: { id: chat.id, title: chat.title, messages, pending: chat.pending ? { total: chat.pending.slides.length, mode: chat.pending.mode, todo: chat.pending.slides.map((x) => x.n) } : null, record: chat.record, spent: spent ?? chat.spentHalalas } });
 });
 
 export const DELETE = handle(async (req: Request) => {

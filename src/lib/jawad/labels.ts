@@ -78,6 +78,9 @@ export interface JobView {
   error: string | null;
   cancellable: boolean;
   outputs: OutputView[];
+  /** «ترتيب أعمالي» (when its table exists): the folder this work sits in, and ⭐. Absent: not known. */
+  folderId?: string | null;
+  favourite?: boolean;
 }
 
 /** A picture or video made in the film maker, shown in the studio and linked to its project. */
@@ -92,6 +95,8 @@ export interface FilmItemView {
   projectTitle: string;
   refKey: string;
   href: string;
+  folderId?: string | null;
+  favourite?: boolean;
 }
 
 export type WorkItem = JobView | FilmItemView;

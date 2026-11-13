@@ -5,7 +5,8 @@
 // pictures follow the clock, drawn on one canvas with the same drawFrame the export uses. Only clips near the playhead
 // hold an element, so long projects stay light.
 
-import { clipEnd, duration, gainAt, hasSoundFx, sourceTime, voiceSpans, type Clip, type Timeline } from "@/lib/editor/model";
+import { clipEnd, duration, gainAt, hasSoundFx, sourceTime, speedAt, voiceSpans, type Clip, type Timeline } from "@/lib/editor/model";
+import { rampKey, rampSamples } from "@/lib/editor/ramp";
 import { drawFrame, getPreviewScale, layersAt, setPreviewScale, type Frame } from "./render";
 import { gradeView } from "./grade-gl";
 import { Masker } from "./segment";
@@ -263,10 +264,17 @@ export class Player {
   private bufferOf(clip: Clip, a: PlayerAsset) {
     const worked = hasSoundFx(clip) ? this.workedOf(clip, a) : null;
     if (worked) {
+      // «منحنى السرعة»: the worked sound stretched along the clip's curve (pitch kept), whole clip at once
+      if (clip.ramp) {
+        const buf = this.rampedOf(worked.buf, worked.key, clip);
+        return buf ? { buf, worked: { ...worked, key: `${worked.key}@${rampKey(clip.ramp)}` } } : null;
+      }
       if (clip.speed === 1) return { buf: worked.buf, worked };
       const buf = this.stretchedOf(worked.buf, worked.key, clip.speed);
       return buf ? { buf, worked: { ...worked, key: `${worked.key}@${clip.speed}` } } : null;
     }
+    // (a plain sound on a speed curve plays from its element too, its rate following the curve)
+    if (clip.ramp) return null;
     if (clip.speed !== 1) return null;
     const buf = this.soundOf(a);
     return buf ? { buf, worked: null } : null;
@@ -284,6 +292,28 @@ export class Player {
         const chs = Array.from({ length: buf.numberOfChannels }, (_, ch) => buf.getChannelData(ch));
         const outLen = Math.max(1, Math.round(buf.length / speed));
         const out = stretch(chs, 0, speed, outLen, buf.sampleRate);
+        const made = ac.createBuffer(out.length, outLen, buf.sampleRate);
+        out.forEach((d, ch) => made.copyToChannel(d as Float32Array<ArrayBuffer>, ch));
+        this.stretched.set(k, made);
+        if (this.stretched.size > 8) this.stretched.delete(this.stretched.keys().next().value!);
+      }, 0);
+    }
+    return null;
+  }
+
+  /** A worked sound played along a clip's speed curve, its pitch kept (made once, a moment after it is first asked for). */
+  private rampedOf(buf: AudioBuffer, key: string, clip: Clip) {
+    const k = `${key}@${rampKey(clip.ramp!)}`;
+    const had = this.stretched.get(k);
+    if (had instanceof AudioBuffer) return had;
+    if (!had && this.ac) {
+      this.stretched.set(k, "loading");
+      const ac = this.ac;
+      const c = { ...clip };
+      setTimeout(() => {
+        const chs = Array.from({ length: buf.numberOfChannels }, (_, ch) => buf.getChannelData(ch));
+        const outLen = Math.max(1, Math.round(((clipEnd(c) - c.start) / 1000) * buf.sampleRate));
+        const out = stretch(chs, 0, c.speed, outLen, buf.sampleRate, rampSamples(c, c.start, buf.sampleRate));
         const made = ac.createBuffer(out.length, outLen, buf.sampleRate);
         out.forEach((d, ch) => made.copyToChannel(d as Float32Array<ArrayBuffer>, ch));
         this.stretched.set(k, made);
@@ -326,7 +356,8 @@ export class Player {
         } else gain.gain.value = c.volume;
         // Safari refuses a start past the sound's end or a zero length (Chrome lets them pass): those clips stay quiet
         // (a worked sound starts at the clip's own beginning)
-        const offset = Math.max(0, (sourceTime(c, from) - (worked ? c.in : 0)) / 1000) / c.speed;
+        // (a worked sound on a speed curve is already laid out on the timeline: its offset is the time into the clip)
+        const offset = worked && c.ramp ? Math.max(0, (from - c.start) / 1000) : Math.max(0, (sourceTime(c, from) - (worked ? c.in : 0)) / 1000) / c.speed;
         const length = (end - from) / 1000;
         if (!(offset < buf.duration && length > 0.001)) {
           src.disconnect();
@@ -435,7 +466,8 @@ export class Player {
         // forward the element plays (faster when shuttling, up to the browser's limit); backward it is stepped frame
         // by frame like a scrub (no browser plays a video backward)
         const live = on && this.playing && this.rate > 0;
-        let rate = clip.speed * (this.rate > 0 ? this.rate : 1);
+        // («منحنى السرعة»: the rate follows the curve at this moment)
+        let rate = speedAt(clip, ms) * (this.rate > 0 ? this.rate : 1);
         if (live) {
           // a picture a little behind or ahead catches up by playing a touch faster or slower (a jump only when far off:
           // jumping every few seconds is what made the preview stutter)

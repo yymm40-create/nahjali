@@ -16,6 +16,8 @@ export interface Block {
 export interface Chapter {
   title: string;
   blocks: Block[];
+  /** what it was written from (keep.ts): a new plan with the same signature keeps it instead of writing it again */
+  sig?: string;
 }
 
 export interface Doc {

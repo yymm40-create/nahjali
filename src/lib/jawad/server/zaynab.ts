@@ -9,7 +9,7 @@ import { callClaudeJson, type ClaudePart, type ClaudeTurn } from "@/lib/film/ant
 import { UserError } from "@/lib/api";
 import { assistantSystem } from "@config/jawad/assistant";
 import { generatorById } from "@config/jawad/generators";
-import { ZAYNAB_IMAGE, ZAYNAB_RECIPE, ZAYNAB_SHEET_FILE, zaynabBrief, zaynabPromptProblems, zaynabQuoteRefs, type ZaynabInput } from "@config/jawad/zaynab";
+import { ZAYNAB_GREETING, ZAYNAB_IMAGE, ZAYNAB_RECIPE, ZAYNAB_SHEET_FILE, zaynabBrief, zaynabPromptProblems, zaynabQuoteRefs, type ZaynabInput } from "@config/jawad/zaynab";
 import { evaluate } from "../engine";
 import { loadRuntime } from "./runtime";
 import { uploadViews, type UploadRow } from "./uploads";
@@ -63,12 +63,24 @@ export async function jawadWritesZaynab(input: ZaynabInput, people: UploadRow[])
       throw new UserError("«جواد» ما قدر يكتب البرومبت الحين؛ جرّب بعد شوي. ما انخصم منك شي.", 502);
     }
     last = String(r.data.prompt ?? "").trim();
+    // a fault the website can mend itself (the sheet not named Image 1, a greeting line not word for word) is mended here:
+    // asking again re-sent the sheet, every photo and the whole system for two words
+    if (last && last.length <= 30_000) last = mendZaynab(last, input);
     const left = zaynabPromptProblems(last, input);
     if (!left.length) return last;
     turns = [...turns, { role: "assistant", content: r.raw }, { role: "user", content: `Fix these and return the complete JSON again:\n- ${left.join("\n- ")}` }];
   }
   if (last && last.length <= 30_000) return last;
   throw new UserError("«جواد» ما قدر يكتب برومبت صالح؛ جرّب مرة ثانية. ما انخصم منك شي.", 502);
+}
+
+/** «جواد»'s prompt with what the website can add itself: Image 1 named as the sheet, and each missing greeting line exactly. */
+export function mendZaynab(prompt: string, input: ZaynabInput): string {
+  let out = prompt;
+  if (!/Image 1\b/.test(out)) out = `Image 1 is the environment sheet: the place, its view and its look.\n\n${out}`;
+  const missing = input.greeting ? ZAYNAB_GREETING.filter((line) => !out.includes(line)) : [];
+  if (missing.length) out += `\n\nGreeting — written in the sky above the dome in festive gold lettering, exactly as given, letter for letter:\n${missing.map((line) => `«${line}»`).join("\n")}`;
+  return out;
 }
 
 /** What a request costs: GPT Image 2 at the studio's price, for THIS prompt, the picture count and the references (sheet + photos). */

@@ -12,6 +12,7 @@ import NavFeedback from "@/components/NavFeedback";
 import NativeAppBridge from "@/components/NativeAppBridge";
 import NewVersion from "@/components/NewVersion";
 import TopUpSheet from "@/components/TopUpSheet";
+import AdminAccessPrompt from "@/components/film/AdminAccessPrompt";
 import { NAHJ_ALI_HIDDEN, OWN_CHROME_HEADER, SITE_URL } from "@config/site";
 import { THEME_INIT_SCRIPT } from "@/components/ThemeSwitcher";
 import "./globals.css";
@@ -55,6 +56,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <NewVersion />
         {/* «خلص رصيدك»: a short wallet anywhere opens the sheet to pay just what it needs, or a package */}
         <TopUpSheet />
+        {/* «اسمح للأدمن بالدخول على مشروعك»: a request waiting for this person's answer, on any page */}
+        <AdminAccessPrompt />
         <SiteChrome
           top={
             ownChrome ? null : (

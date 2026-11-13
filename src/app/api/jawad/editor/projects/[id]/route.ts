@@ -2,8 +2,9 @@ import { checkUpscale, startUpscale } from "@/lib/editor/upscale";
 import { labMatte } from "@/lib/editor/matte";
 import { readLabSource, saveLabSource } from "@/lib/editor/lab-source";
 import { NextResponse } from "next/server";
-import { handOff, loadChat } from "@/lib/editor/chat";
+import { handOff, inConversation, loadChat } from "@/lib/editor/chat";
 import { claudeCharged } from "@/lib/editor/pricing";
+import { addChatSpent } from "@/lib/chat-spend";
 import { approveFixesConfirm, approveFixesUrl, linkForFix } from "@/lib/editor/smart";
 import { handle, UserError } from "@/lib/api";
 import { requireEditorApiUser } from "@/lib/jawad/server/access";
@@ -24,7 +25,6 @@ import {
   confirmAsset,
   deleteAsset,
   deleteProject,
-  history,
   importAssets,
   markExported,
   projectState,
@@ -38,14 +38,17 @@ import {
   uploadedParts,
   completeUpload,
 } from "@/lib/editor/server";
-import { align, signSpeechUpload, transcribe, voiceIn, voiceOut } from "@/lib/editor/speech";
+import { align, keptSpeech, signSpeechUpload, transcribe, voiceIn, voiceOut } from "@/lib/editor/speech";
 import { voiceprint } from "@/lib/editor/voiceprint";
 import { makeHook, makeMusic, makeSfx, separate } from "@/lib/editor/generate";
 import { assist, gradeCheck } from "@/lib/editor/assistant";
 import { diagnose } from "@/lib/editor/diagnose";
+import { changeHistory, pointTimeline, readRules, saveRules } from "@/lib/editor/changes";
+import { pageActor } from "@/lib/editor/changes-core";
 import { isAdmin } from "@config/site";
 import { planSeedanceExtend, startMake } from "@/lib/editor/make-any";
 import { smartMask } from "@/lib/editor/smart-mask";
+import { translateCaptions } from "@/lib/editor/translate";
 
 // listening to a long clip can take a while
 // حيدرا ماكس's long answers (a big timeline, a few correction rounds) may run as long as the platform allows
@@ -61,23 +64,28 @@ export const GET = handle(async (_req: Request, ctx: Ctx) => {
   return NextResponse.json(await projectState(p), noStore);
 });
 
-/** Saves the timeline: `{ timeline, version, label, title? }` → `{ ok, version }` (409-style `ok: false` with the newer one). */
+/**
+ * Saves the timeline: `{ timeline, version, label, title?, actor?, steps? }` → `{ ok, version }` (409-style `ok: false`
+ * with the newer one). `actor`: the person, حيدرا ماكس's turn, or a «ارجع لهنا» — for the log only.
+ */
 export const PUT = handle(async (req: Request, ctx: Ctx) => {
   const { user } = await requireEditorApiUser();
   const p = await requireEditorProject((await ctx.params).id, user.id);
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  return NextResponse.json(await saveTimeline(p, { ...b, actor: "user" }));
+  return NextResponse.json(await saveTimeline(p, { ...b, actor: pageActor(b.actor) }));
 });
 
-const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "lab_chat", "lab_search", "lab_cover_write", "lab_cover_review", "lab_picture", "upscale", "transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
+const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "lab_chat", "lab_search", "lab_cover_write", "lab_cover_review", "lab_picture", "upscale", "transcribe", "align", "translate_captions", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
 
-/** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history. */
+/** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history, snapshot, rules. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
   const { user, owner } = await requireEditorApiUser();
   const p = await requireEditorProject((await ctx.params).id, user.id);
   // a team series' edit: what is made in it is paid from its «نقود الفريق الذكي»
   const who = { id: user.id, email: user.email, owner, team: (await editorTeamSeries(p))?.id ?? null };
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  // حيدرا ماكس's conversation the page is in (`chat`: another one than the project's main one — its turns are the page's)
+  const pc = inConversation(p, b.chat);
   // the AI («حيدرا ماكس» and all it makes) is its own right on the dashboard's list
   if (AI_ACTIONS.has(String(b.action)) && !(await can(user.email, "editor_ai"))) throw new UserError("حيدرا ماكس (الذكاء الاصطناعي) مقفل لحسابك حاليًا.", 403);
   switch (b.action) {
@@ -118,6 +126,12 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await transcribe(p, who, b));
     case "align":
       return NextResponse.json(await align(p, who, b));
+    // «النص»: the words already written of the project's files, and the price of writing the rest (free to read)
+    case "transcripts":
+      return NextResponse.json(await keptSpeech(p, who, b), noStore);
+    // «ترجم الكابشن»: `quote` for the price first, then the lines translated (same times, a new track on the page)
+    case "translate_captions":
+      return NextResponse.json(await translateCaptions(p, who, b));
     // talking with حيدرا ماكس: what was said → text, and the reply → sound
     case "voice_in":
       return NextResponse.json(await voiceIn(p, who, b));
@@ -150,10 +164,10 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await smartMask(p, who, b));
     case "diagnose":
       // the site's owner only (a free guest is «unlimited» too, but never sees the site's insides)
-      return NextResponse.json(await diagnose(p, { id: user.id, email: user.email, owner: isAdmin(user.email) }, b));
+      return NextResponse.json(await diagnose(pc, { id: user.id, email: user.email, owner: isAdmin(user.email) }, b));
     // حيدرا ماكس checks a colour change it made (pictures and scopes), and corrects it until it is right
     case "grade_check":
-      return NextResponse.json(await gradeCheck(p, who, b, new URL(req.url).origin));
+      return NextResponse.json(await gradeCheck(pc, who, b, new URL(req.url).origin));
     // «🤖 حيدرا ماكس يضبط الكي»: he looks at the frame, the matte and the result, and corrects the key's settings
     case "key_check":
       return NextResponse.json(await keyCheck(p, who, b));
@@ -165,7 +179,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     case "lab_matte":
       return NextResponse.json(await labMatte(p, who, b), noStore);
     // the lab's Claude steps read against the request's own clock (the platform ends it at maxDuration)
-    // the lab's conversations, kept on the server (migration 0087): list, open, save, rename, delete
+    // حيدرا ماكس's conversations (the motion lab runs inside them), kept on the server (migration 0087): list, open, save, rename, delete
     case "lab_chats":
       return NextResponse.json(await listLabChats(p, user.id), noStore);
     case "lab_chat_get":
@@ -184,19 +198,19 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await labPicture(p, who, b, new URL(req.url).origin));
     case "lab_plan":
       b.__at = Date.now();
-      return b.stream ? labResponse((onText) => labPlan(p, who, b, onText), b.watch === true) : NextResponse.json(await labPlan(p, who, b));
+      return b.stream ? labResponse((onText, signal) => labPlan(p, who, { ...b, __signal: signal }, onText), b.watch === true) : NextResponse.json(await labPlan(p, who, { ...b, __signal: req.signal }));
     case "lab_chat":
       b.__at = Date.now();
-      return b.stream ? labResponse((onText) => labChat(p, who, b, onText), b.watch === true) : NextResponse.json(await labChat(p, who, b));
+      return b.stream ? labResponse((onText, signal) => labChat(p, who, { ...b, __signal: signal }, onText), b.watch === true) : NextResponse.json(await labChat(p, who, { ...b, __signal: req.signal }));
     // «🌐 ابحث»: a real web search for حيدرا ماكس, brought by the page to the next step
     case "lab_search":
       return NextResponse.json(await labSearch(p, who, b));
     case "lab_write":
       b.__at = Date.now();
-      return b.stream ? labResponse((onText) => labWrite(p, who, b, onText), b.watch === true) : NextResponse.json(await labWrite(p, who, b));
+      return b.stream ? labResponse((onText, signal) => labWrite(p, who, { ...b, __signal: signal }, onText), b.watch === true) : NextResponse.json(await labWrite(p, who, { ...b, __signal: req.signal }));
     case "lab_review":
       b.__at = Date.now();
-      return b.stream ? labResponse(() => labReview(p, who, b)) : NextResponse.json(await labReview(p, who, b));
+      return b.stream ? labResponse((_, signal) => labReview(p, who, { ...b, __signal: signal })) : NextResponse.json(await labReview(p, who, { ...b, __signal: req.signal }));
     // «Claude Code»: حيدرا ماكس executes cuts, arrangement and colour as programs the browser runs (write · fix · review)
     case "code_edit_write":
       return NextResponse.json(await codeEditWrite(p, who, b));
@@ -206,8 +220,11 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await codeGradeWrite(p, who, b));
     case "code_grade_review":
       return NextResponse.json(await codeGradeReview(p, who, b));
-    case "assistant":
-      return NextResponse.json(await claudeCharged(who, b.model, "محادثة حيدرا ماكس", () => assist(p, who, b, new URL(req.url).origin), (r) => r.usd, { said: String(b.message ?? ""), reply: (r) => r.reply }));
+    case "assistant": {
+      const r = await claudeCharged(who, b.model, "محادثة حيدرا ماكس", () => assist(pc, who, b, new URL(req.url).origin), (r) => r.usd, { said: String(b.message ?? ""), reply: (r) => r.reply });
+      const spent = await addChatSpent("editor_chats", "project_id", p.id, r.spentHalalas, r.worth);
+      return NextResponse.json({ ...r, spent });
+    }
     case "fix_link":
       return NextResponse.json({ asset: await linkForFix(p, user, b) });
     // حيدرا ماكس approved the smart edits of a film video: the exported version goes to سجاد (upload, then confirm)
@@ -218,9 +235,18 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     case "chat":
       return NextResponse.json(await loadChat(p), noStore);
     case "handoff":
-      return NextResponse.json(await handOff(p, who, b));
+      return NextResponse.json(await handOff(pc, who, b));
+    // «سجل التغييرات»: the changes newest first, and the versions «ارجع لهنا» can bring back (null before 0111)
     case "history":
-      return NextResponse.json({ history: await history(p.id) }, noStore);
+      return NextResponse.json(await changeHistory(p.id), noStore);
+    // «ارجع لهنا»: a kept point's timeline (the page puts it on as a new change, saved and logged like any other)
+    case "snapshot":
+      return NextResponse.json(await pointTimeline(p.id, b.version), noStore);
+    // «تعليماتي الدايمة»: the person's own (per account, not per project)
+    case "rules":
+      return NextResponse.json(await readRules(user.id), noStore);
+    case "rules_save":
+      return NextResponse.json(await saveRules(user.id, b.rules));
   }
   throw new UserError("طلب غير معروف.", 400);
 });

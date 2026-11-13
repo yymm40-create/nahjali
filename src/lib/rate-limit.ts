@@ -14,11 +14,16 @@ export function rulesFor(path: string, method: string): Rule[] {
   if (!path.startsWith("/api/")) return [];
   // the scheduled jobs and the notification dispatcher are called by Vercel and carry their own secret
   if (path.startsWith("/api/cron/") || path === "/api/islamic/cron" || path === "/api/mahdi/notifications/dispatch" || path === "/api/course/telegram") return [];
+  // «الجواد في كلاود وشات جي بي تي»: every Claude / ChatGPT person reaches us from the same few addresses of theirs, so a
+  // limit per address would stop all of them together; each call carries the person's own token instead
+  if (path === "/api/mcp" || path.startsWith("/api/mcp/")) return [];
   const out: Rule[] = [];
   // the secret codes: a few tries, then a pause (guessing a code takes millions)
   if (path === "/api/access/code" && method === "POST") out.push({ key: "code", max: 8, windowMs: 10 * 60_000 });
   // the course's payment: a person starts an order and presses «تم التحويل» a few times, never dozens (each press can buzz the owner's phone)
-  if ((path === "/api/course/order" || path === "/api/course/code" || path === "/api/course/transferred" || path === "/api/credits/order" || path === "/api/credits/transferred") && method === "POST") out.push({ key: "course", max: 20, windowMs: 10 * 60_000 });
+  if ((path === "/api/course/order" || path === "/api/course/moyasar" || path === "/api/course/code" || path === "/api/course/transferred" || path === "/api/credits/order" || path === "/api/credits/transferred") && method === "POST") out.push({ key: "course", max: 20, windowMs: 10 * 60_000 });
+  // «ادفع بالمبلغ اللي تبيه» (/api/pay) is open without sign-in: each press makes a Moyasar invoice, so a few, never a flood
+  if (path === "/api/pay" && method === "POST") out.push({ key: "pay", max: 15, windowMs: 10 * 60_000 });
   // the password of the hidden «الخطيب الذكي»: a few tries, then a pause
   if (path === "/api/khateeb/enter" && method === "POST") out.push({ key: "khateeb", max: 8, windowMs: 10 * 60_000 });
   // «عباس سبع القنطرة» (the coach of «الصحة العلوية») is free for the person: a conversation, never a flood
@@ -26,6 +31,8 @@ export function rulesFor(path: string, method: string): Rule[] {
   if (path === "/api/mahdi/health/meal" && method === "POST") out.push({ key: "meal", max: 40, windowMs: 10 * 60_000 });
   // a page opened (the owner's statistics): one per page, never a flood
   if (path === "/api/visit") out.push({ key: "visit", max: 60, windowMs: 60_000 });
+  // the features used (the owner's «استخدام المزايا»): a batch every few seconds at most
+  if (path === "/api/feature-use") out.push({ key: "feature-use", max: 60, windowMs: 60_000 });
   // a game's player reports an error it hit: a few, never a flood (anyone with a game's link can)
   if (path.startsWith("/api/games/play/") && method === "POST") out.push({ key: "game-error", max: 10, windowMs: 10 * 60_000 });
   // what costs money (Claude, pictures, videos, voices): plenty for a person, a wall for a script

@@ -5,6 +5,7 @@
 
 import { DESIGNER, DESIGN_ASPECTS, LAYER_EFFECTS, LAYER_ROLES, type DesignerTextMode, type DesignAspect, type LayerEffect, type LayerRole } from "@config/designer";
 import { FONTS } from "@config/jawad/student";
+import { CONTENT_FONTS } from "@config/content-fonts";
 
 export interface TextLayer {
   id: string;
@@ -75,9 +76,14 @@ export interface Design {
   final?: string;
   /** the picture GPT Image 2 painted for it (no writing in it; a designer_files row), placed by «حيدرا ماكس» */
   art?: string;
+  /** a design that splits the person's upload into layers: that upload (so «أعد المحاولة» splits it again) */
+  splitOf?: string;
+  /** a ready majlis design («دعوة مجلس»): its template id — a change asked for it edits that same design */
+  majlis?: string;
 }
 
-export const DESIGN_FONT_IDS = FONTS.map((f) => f.id);
+/** the site's own fonts (the split layers' editor) and «قائمة الخطوط» (what «حيدرا ماكس» writes with) */
+export const DESIGN_FONT_IDS = [...FONTS.map((f) => f.id), ...CONTENT_FONTS.map((f) => f.id)];
 export const isFontId = (v: unknown): v is string => typeof v === "string" && DESIGN_FONT_IDS.includes(v);
 const HEX = /^#[0-9a-fA-F]{6}$/;
 export const isHex = (v: unknown): v is string => typeof v === "string" && HEX.test(v);
@@ -165,6 +171,8 @@ export function readDesign(v: unknown): Design | null {
   if (typeof o.flag === "string" && o.flag) d.flag = o.flag.slice(0, 300);
   if (typeof o.final === "string" && o.final) d.final = o.final;
   if (typeof o.art === "string" && o.art) d.art = o.art;
+  if (typeof o.splitOf === "string" && o.splitOf) d.splitOf = o.splitOf.slice(0, 60);
+  if (typeof o.majlis === "string" && o.majlis) d.majlis = o.majlis.slice(0, 20);
   return d;
 }
 

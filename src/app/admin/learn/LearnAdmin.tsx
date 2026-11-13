@@ -162,6 +162,27 @@ function CourseCard({ c, grants, codes, ups, act, addVideo, reupload, confirmDel
   const [codeText, setCodeText] = useState("");
   const [codePrice, setCodePrice] = useState("");
   const save = (patch: Record<string, unknown>, ok?: string) => act({ action: "course_save", id: c.id, ...patch }, ok);
+  // «تفتح لمن اشترى»: ticks made quickly one after another all count (each used to be built from the course as it was
+  // before the previous tick came back, so only the last one was kept). The page shows the ticks at once, and the saves
+  // go one at a time, each sending the latest set.
+  const [unlockShown, setUnlockShown] = useState<Product[] | null>(null);
+  const unlockLatest = useRef<Product[] | null>(null);
+  const unlockChain = useRef<Promise<unknown>>(Promise.resolve());
+  const unlock = unlockShown ?? c.unlock;
+  const toggleUnlock = (p: Product, on: boolean) => {
+    const base = unlockLatest.current ?? c.unlock;
+    const next = on ? [...base.filter((x) => x !== p), p] : base.filter((x) => x !== p);
+    unlockLatest.current = next;
+    setUnlockShown(next);
+    unlockChain.current = unlockChain.current.then(async () => {
+      if (unlockLatest.current !== next) return; // a later tick sends the whole set
+      await save({ unlock: next }, "انحفظ");
+      if (unlockLatest.current === next) {
+        unlockLatest.current = null;
+        setUnlockShown(null);
+      }
+    });
+  };
   return (
     <section className="card space-y-3 p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -189,7 +210,7 @@ function CourseCard({ c, grants, codes, ups, act, addVideo, reupload, confirmDel
         <span className="text-muted">تفتح لمن اشترى:</span>
         {(["live", "recorded", "combo"] as Product[]).map((p) => (
           <label key={p} className="flex items-center gap-1">
-            <input type="checkbox" checked={c.unlock.includes(p)} onChange={(e) => void save({ unlock: e.target.checked ? [...c.unlock, p] : c.unlock.filter((x) => x !== p) }, "انحفظ")} /> {PRODUCT_LABEL[p]}
+            <input type="checkbox" checked={unlock.includes(p)} onChange={(e) => toggleUnlock(p, e.target.checked)} /> {PRODUCT_LABEL[p]}
           </label>
         ))}
       </div>

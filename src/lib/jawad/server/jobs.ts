@@ -8,6 +8,7 @@
 //            stale work, and finds tasks whose creation answer was lost (instead of sending a second one).
 //   end ─► jawad_finish_job: exactly once; success keeps the charge, failure or cancellation refunds it.
 
+import { reportFinalFailure } from "@/lib/platform-fault";
 import { findStyle } from "@config/film-styles";
 import { withStyle } from "@config/jawad/style-prompt";
 import { costOfLines } from "@config/coins";
@@ -22,7 +23,7 @@ import { after } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { shortBalance, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { dictionOf, ELEVEN_PRICE, generatorById, GPT_IMAGE_2_SIZES, SEEDREAM_SIZES, JAWAD_VOICE_PRICE, MUSIC_REF_MS, MUSIC_REF_USE } from "@config/jawad/generators";
+import { dictionOf, ELEVEN_PRICE, generatorById, GPT_IMAGE_26_ID, gifFrameMs, gifFrames, gptImage26Format, gptImage26Model, KLING4_EDIT_ID, KLING4_FLASH_EDIT_ID, KLING4_FLASH_ID, KLING4_ID, OMNI12_EDIT_ID, OMNI12_ID, SEEDREAM_SIZES, JAWAD_VOICE_PRICE, MUSIC_REF_MS, MUSIC_REF_USE } from "@config/jawad/generators";
 import { MAX_ACTIVE_JOBS } from "@config/jawad/brand";
 import type { GeneratorDef, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import { evaluate, priceVersion } from "../engine";
@@ -31,17 +32,22 @@ import { probe, sniff } from "../media";
 import { loadRuntime, JAWAD_BUCKET } from "./runtime";
 import { refsFor, type UploadRow } from "./uploads";
 import { ProviderError, providerUserId } from "./providers/common";
-import { openaiImage, openaiSpeech, TTS_MIME } from "./providers/openai";
+import { openaiImage, openaiSpeech, TTS_MIME, type ImageQuality } from "./providers/openai";
 import { arkCancelTask, arkCreateTask, arkGetTask, arkImage, arkListTasks, type ArkContent, type ArkTask } from "./providers/modelark";
 import { realFaceCancel, realFaceSubmit, realFaceTask } from "./providers/realface";
-import { omniRequest } from "./gemini-omni";
+import { omni12EditRequest, omni12Request, omniRequest } from "./gemini-omni";
 import { wanRequest } from "./wan";
+import { kling4EditRequest, kling4Request } from "./kling4";
 import { falImages, falSubmit, falTask } from "./providers/fal";
+import { runImageTool } from "./image-tools";
+import { isImageTool } from "@config/jawad/image-tools";
 import sharp from "sharp";
 import { prepareEdit, type EditInputs } from "./smart-edit";
 import { elevenMusic, elevenMusicWithReference, elevenSoundEffect, elevenSpeech } from "./providers/elevenlabs";
 import { resolveVoice } from "./voices";
 import { prepareSpeech } from "./diction";
+import { withFixedPriceClaude } from "@/lib/film/claude-model";
+import { findClaudeModel } from "@config/claude-models";
 import { makeSmartSplit, removeFrames, storeFrames, videoHasSound, type VideoInputs } from "./smart-split";
 import { keepMadeItem } from "./library";
 import { libraryAccess, libraryNames } from "./library-access";
@@ -70,7 +76,7 @@ export interface JobRow {
    * modelPrompt: the prompt as the model receives it (each «@name» written the model's way, or Arabic words written
    * phonetically by «النطق الدقيق»), when it differs. diction: the words whose pronunciation was set.
    */
-  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; signupFreeImage?: boolean; /** fal: the endpoint a video was sent to (text- or image-to-video) */ falModel?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; film?: { projectId: string; assetId?: string; genId?: string; title?: string } };
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; signupFreeImage?: boolean; /** fal: the endpoint a video was sent to (text- or image-to-video) */ falModel?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; /** the Claude model the person chose (config/claude-models.ts): «النطق الدقيق» runs on it, never dearer than its fixed price */ claude?: string; film?: { projectId: string; assetId?: string; genId?: string; title?: string } };
   refs: { uploadId: string; kind: string; role: RefRole; name?: string }[];
   price_coins: number;
   price_breakdown: { label: string; centi: number }[];
@@ -160,6 +166,8 @@ export function explainFailure(detail: string | undefined, fallback: string | un
 }
 
 export async function finishJob(job: Pick<JobRow, "id" | "generator_id">, status: "succeeded" | "failed" | "cancelled", o: { message?: string; detail?: string; costUsd?: number | null; units?: Record<string, unknown> } = {}) {
+  // failed because of the platform's own account at the provider (or a content refusal / busy provider): see lib/platform-fault
+  if (status === "failed") reportFinalFailure(o.detail, o.message);
   const { data, error } = await db().rpc("jawad_finish_job", {
     p_job: job.id,
     p_status: status,
@@ -199,6 +207,8 @@ export interface GenerateBody {
   signupFreeImage?: unknown;
   /** «الفصل الذكي»: small JPEG frames of the video, `{ t, data: "data:image/jpeg;base64,…" }`. */
   frames?: unknown;
+  /** the Claude model the person chose (config/claude-models.ts): kept on the job for the Claude work it does later («النطق الدقيق») */
+  model?: unknown;
 }
 
 export type CreateResult =
@@ -331,7 +341,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
       mode: e.mode.id,
       output_kind: def.output,
       prompt,
-      inputs: { settings: e.settings, instructions, refStyle, origin, ...(server.cartoon ? { cartoon: server.cartoon } : {}), ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}), ...(signupFreeImage ? { signupFreeImage: true } : {}) },
+      inputs: { settings: e.settings, instructions, refStyle, origin, ...(server.cartoon ? { cartoon: server.cartoon } : {}), ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}), ...(signupFreeImage ? { signupFreeImage: true } : {}), ...(def.output === "audio" && findClaudeModel(b.model) ? { claude: String(b.model) } : {}) },
       refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
       price_coins: chargeCoins,
       price_breakdown: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : freeFirst ? [{ label: "أول تجربة مجانية", centi: 0 }] : payLines,
@@ -453,6 +463,14 @@ async function runSimpleImage(job: JobRow, def: GeneratorDef, refs: UploadRow[])
   await finishJob(job, "succeeded", { costUsd: def.costUsd({ settings: s, prompt, refs: [] } as never, def.modes[0]) ?? undefined, units: { images: images.length } });
 }
 
+/** «أدوات الصورة» (امسح بالفرشاة · وسّع الصورة · ارفع الدقة): the edited picture kept as a NEW result; the original stays. */
+async function runImageToolJob(job: JobRow, refs: UploadRow[]) {
+  const r = await runImageTool({ id: job.id, userId: job.user_id, generatorId: job.generator_id, settings: job.inputs.settings, prompt: job.prompt }, refs, download);
+  await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
+  for (const [i, im] of r.images.entries()) await saveOutput(job, i, im.bytes, im.mime, im.ext, { width: im.width, height: im.height });
+  await finishJob(job, "succeeded", { costUsd: r.costUsd, units: r.units });
+}
+
 async function saveOutput(job: JobRow, idx: number, file: Buffer, mime: string, ext: string, dims: { width?: number | null; height?: number | null; durationMs?: number | null }, name?: string) {
   const path = `${job.user_id}/outputs/${job.id}/${name ?? idx}.${ext}`;
   const up = await storage.from(JAWAD_BUCKET).upload(path, file, { contentType: mime, upsert: true });
@@ -472,27 +490,35 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   await db().from("jawad_jobs").update({ status: "running", submit_state: "accepted", provider_status: "generating" }).eq("id", job.id);
   await event(job.id, "submitted");
 
+  // «أدوات الصورة»: one picture edited (a part painted over, expanded, or upscaled)
+  if (isImageTool(def.id)) return runImageToolJob(job, refs);
   // the pictures sold per image (Google's Nano Banana family on fal, Seedream on ModelArk)
   if (def.output === "image" && def.provider.id !== "openai") return runSimpleImage(job, def, refs);
 
   if (def.output === "image") {
+    // GPT Image 2.6 may return an animated GIF or an SVG drawing instead of a PNG
+    const format = def.id === GPT_IMAGE_26_ID ? gptImage26Format(s.format) : "png";
     const res = await openaiImage({
-      model: def.model.id,
+      // GPT Image 2.6: Flare or Sunburst, as chosen; its planning depth goes with it
+      model: def.id === GPT_IMAGE_26_ID ? gptImage26Model(s.variant) : def.model.id,
       prompt: job.inputs.modelPrompt ?? job.prompt,
       aspect: String(s.aspect),
       resolution: s.resolution === "hi" ? "hi" : "std",
-      quality: (["low", "medium", "high"].includes(String(s.quality)) ? s.quality : "medium") as "low" | "medium" | "high",
+      quality: (["low", "medium", "high", ...(def.id === GPT_IMAGE_26_ID ? ["xhigh", "max"] : [])].includes(String(s.quality)) ? s.quality : "medium") as ImageQuality,
+      ...(def.id === GPT_IMAGE_26_ID && ["low", "medium", "high"].includes(String(s.complexity)) ? { complexity: s.complexity as "low" | "medium" | "high" } : {}),
       count: Number(s.count) || 1,
       references: await Promise.all(refs.map(async (r) => ({ bytes: await download(r.storage_path), mime: r.mime ?? "image/png" }))),
       user: providerUserId(job.user_id),
+      format,
+      ...(format === "gif" ? { frames: gifFrames(s.frames), frameMs: gifFrameMs(s.frameMs) } : {}),
     });
     await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
-    const size = GPT_IMAGE_2_SIZES[s.resolution === "hi" ? "hi" : "std"][String(s.aspect)];
-    for (const [i, png] of res.images.entries()) await saveOutput(job, i, png, "image/png", "png", { width: size?.[0], height: size?.[1] });
+    const [mime, ext] = format === "gif" ? ["image/gif", "gif"] : format === "svg" ? ["image/svg+xml", "svg"] : ["image/png", "png"];
+    for (const [i, file] of res.images.entries()) await saveOutput(job, i, file, mime, ext, { width: res.size[0], height: res.size[1] });
     // «المكتبة»: a character or place made from a description is kept under its name (the picture stays in the works
     // either way, and can be added to the library by hand if this fails)
     if (job.inputs.library) await keepMadeItem(job).catch((e) => event(job.id, "library_keep_failed", { error: String(e instanceof Error ? e.message : e).slice(0, 300) }));
-    await finishJob(job, "succeeded", { costUsd: res.costUsd, units: res.usage ? { ...res.usage } : undefined });
+    await finishJob(job, "succeeded", { costUsd: res.costUsd, units: res.usage ? { ...res.usage, ...(res.authorUsage ? { svgAuthor: res.authorUsage } : {}) } : undefined });
     return;
   }
 
@@ -549,7 +575,8 @@ async function runEleven(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
     // «النطق الدقيق»: the Arabic words whose sound depends on their vowels, written so the voice says them right
     const diction = dictionOf({ settings: s, prompt: job.prompt });
     if (diction !== "off") await db().from("jawad_jobs").update({ provider_status: "diction" }).eq("id", job.id);
-    const spoken = await prepareSpeech(job.prompt, diction).catch((e) => {
+    // on the requester's model, kept on the job when it was made (a fixed price: never a dearer one than the default)
+    const spoken = await withFixedPriceClaude(job.inputs.claude, () => prepareSpeech(job.prompt, diction)).catch((e) => {
       throw new ProviderError("rejected", "تعذّر تدقيق النطق الآن. لم يُخصم منك شيء؛ جرّب مرة ثانية أو اختر «كما كتبت».", `diction: ${String(e instanceof Error ? e.message : e).slice(0, 300)}`);
     });
     if (spoken.fixes.length) job.inputs = { ...job.inputs, modelPrompt: spoken.text, diction: { mode: diction, words: spoken.fixes.map((f) => ({ word: f.word, vocalized: f.vocalized })) } };
@@ -680,7 +707,7 @@ async function submitFalVideo(job: JobRow, def: GeneratorDef, refs: UploadRow[])
 }
 
 /** The generators on fal's queue whose requests are built by their own pure function (the endpoint follows the mode). */
-const FAL_REQUESTS: Record<string, typeof wanRequest> = { "wan-3-0": wanRequest, "gemini-omni": omniRequest };
+const FAL_REQUESTS: Record<string, typeof wanRequest> = { "wan-3-0": wanRequest, "gemini-omni": (o) => omniRequest(o), [OMNI12_ID]: omni12Request, [OMNI12_EDIT_ID]: omni12EditRequest, [KLING4_ID]: kling4Request, [KLING4_EDIT_ID]: kling4EditRequest, [KLING4_FLASH_ID]: kling4Request, [KLING4_FLASH_EDIT_ID]: kling4EditRequest };
 
 /**
  * Wan 3.0 and Gemini Omni on fal's queue: text, a first frame (and a last), or references (Wan: pictures, videos and

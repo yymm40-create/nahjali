@@ -1,15 +1,18 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CAPTION_STYLES, clipLength, formatTime, type CaptionStyle, type Timeline } from "@/lib/editor/model";
 import DockFrame from "./DockFrame";
 import Icon from "../Icon";
 import { parseSRT, toSRT } from "./captions";
-import { captionSources, poemCaptions, spokenCaptions } from "./captions-make";
+import { captionSources, poemCaptions, spokenCaptions, translateQuote, translateRun } from "./captions-make";
+import { captionLines, captionTracks, langOf, TRANSLATE_LANGS, translatedStyle, translateUnits, TRANSLATE_BLOCK, type TranslateLang } from "@/lib/editor/caption-translate";
+import Riyal from "@/components/Riyal";
 import type { Run } from "./Inspector";
 import type { EditorAsset } from "./types";
+import { track } from "@/lib/feature-track";
 
-type Tab = "auto" | "poem" | "srt";
+type Tab = "auto" | "poem" | "translate" | "srt";
 const LANGS = [
   ["ar", "عربي"],
   ["en", "English"],
@@ -17,7 +20,7 @@ const LANGS = [
 ] as const;
 
 /** «كابشن»: what is said, written on the video word by word; a poem's verses on its recitation; SRT in and out. */
-export default function CaptionsPanel({ dock, open, onClose, projectId, tl, assets, run, flash }: { /** the editor's right column (a computer) */ dock?: HTMLElement | null; open: boolean; onClose: () => void; projectId: string; tl: Timeline; assets: Map<string, EditorAsset>; run: Run; flash: (t: string, bad?: boolean) => void }) {
+export default function CaptionsPanel({ dock, open, onClose, projectId, tl, assets, run, flash, style0 }: { /** the editor's right column (a computer) */ dock?: HTMLElement | null; open: boolean; onClose: () => void; projectId: string; tl: Timeline; assets: Map<string, EditorAsset>; run: Run; flash: (t: string, bad?: boolean) => void; /** the look to start from (a template's) */ style0?: CaptionStyle | null }) {
   const [tab, setTab] = useState<Tab>("auto");
   const [lang, setLang] = useState<string>("ar");
   const [style, setStyle] = useState<CaptionStyle>("karaoke");
@@ -27,6 +30,24 @@ export default function CaptionsPanel({ dock, open, onClose, projectId, tl, asse
   const [poemClip, setPoemClip] = useState<string>("");
   const [skip, setSkip] = useState<string[]>([]);
   const srtInput = useRef<HTMLInputElement>(null);
+  // «ترجم الكابشن»: which caption track, into which language, and the price waiting for a yes
+  const [fromTrack, setFromTrack] = useState("");
+  const [toLang, setToLang] = useState<TranslateLang>("en");
+  const [ask, setAsk] = useState<number | null>(null);
+  // «نزّل SRT»: one caption track (a translation is its own file), or all of them together
+  const [srtTrack, setSrtTrack] = useState("");
+  useEffect(() => {
+    if (open) track("editor.captions");
+  }, [open]);
+  // a template's captions look, when it opens the window
+  useEffect(() => {
+    if (!open || !style0) return;
+    const t = setTimeout(() => {
+      setStyle(style0);
+      setTab("auto");
+    }, 0);
+    return () => clearTimeout(t);
+  }, [open, style0]);
 
   // clips we can hear (their sound is what gets written)
   const sources = captionSources(tl, assets);
@@ -34,11 +55,50 @@ export default function CaptionsPanel({ dock, open, onClose, projectId, tl, asse
   const minutes = chosen.reduce((m, s) => m + (s.clip.out - s.clip.in) / 60_000, 0);
   const poemSource = sources.find((s) => s.clip.id === poemClip) ?? sources[0];
   const hasText = tl.tracks.some((t) => t.kind === "text" && t.clips.some((c) => c.text?.body.trim()));
+  const capTracks = captionTracks(tl);
+  const fromId = capTracks.some((t) => t.id === fromTrack) ? fromTrack : (capTracks[0]?.id ?? "");
+  const lines = fromId ? captionLines(tl, fromId) : [];
+  const srtId = capTracks.some((t) => t.id === srtTrack) ? srtTrack : "";
+
+  /** The lines translated at `coins` (the price shown); a price that went up is shown again for a yes. */
+  const translate = async (coins: number) => {
+    setError(null);
+    setAsk(null);
+    const lang = langOf(toLang);
+    setBusy(`نترجم ${lines.length} جملة إلى ${lang.label}…`);
+    try {
+      const r = await translateRun(projectId, lines, toLang, coins);
+      if ("price" in r) return setAsk(r.price);
+      const name = `${capTracks.find((t) => t.id === fromId)?.name ?? "كابشن"} · ${lang.label}`.slice(0, 40);
+      run({ type: "add_captions", items: r.lines, style: translatedStyle(r.lines), name }, { label: `ترجمة الكابشن إلى ${lang.label} (${r.lines.length})` });
+      track("editor.caption_translate");
+      flash(`ترجمنا ${r.lines.length} جملة إلى ${lang.label} في مسار جديد بنفس التوقيت. الأصل باقي؛ اخفِ أي واحد منهم من رأس المسار، ونزّل الترجمة SRT من تبويب «ملف SRT».`);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "تعذّرت الترجمة.");
+    } finally {
+      setBusy(null);
+    }
+  };
+  /** «ترجم»: the price first; free goes straight on, a price waits for «أكّد». */
+  const quoteThenAsk = async () => {
+    setError(null);
+    setBusy("نحسب السعر…");
+    try {
+      const coins = await translateQuote(projectId, lines, toLang);
+      setBusy(null);
+      if (coins > 0) setAsk(coins);
+      else await translate(0);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "تعذّر حساب السعر.");
+      setBusy(null);
+    }
+  };
 
   const auto = async () => {
     setError(null);
     try {
-      const { items, words } = await spokenCaptions(projectId, tl, chosen, lang, setBusy);
+      const { items, words } = await spokenCaptions(projectId, tl, chosen, lang, setBusy, style === "pop2" ? 2 : undefined);
       run({ type: "add_captions", items, style }, { label: `كابشن تلقائي (${items.length} جملة)` });
       flash(`كتبنا ${words} كلمة في ${items.length} جملة. تقدر تعدّل أي جملة بالضغط عليها.`);
       onClose();
@@ -65,11 +125,11 @@ export default function CaptionsPanel({ dock, open, onClose, projectId, tl, asse
   };
 
   const exportSRT = () => {
-    const blob = new Blob([toSRT(tl)], { type: "application/x-subrip" });
+    const blob = new Blob([toSRT(tl, srtId || undefined)], { type: "application/x-subrip" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "captions.srt";
+    a.download = `${(srtId && capTracks.find((t) => t.id === srtId)?.name.replace(/[\\/:*?"<>|]+/g, "-")) || "captions"}.srt`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   };
@@ -108,6 +168,7 @@ export default function CaptionsPanel({ dock, open, onClose, projectId, tl, asse
         <div className="jw-seg" role="tablist">
           <button type="button" role="tab" aria-selected={tab === "auto"} onClick={() => setTab("auto")}>تلقائي من الكلام</button>
           <button type="button" role="tab" aria-selected={tab === "poem"} onClick={() => setTab("poem")}>مزامنة قصيدة</button>
+          <button type="button" role="tab" aria-selected={tab === "translate"} onClick={() => setTab("translate")}>ترجمة</button>
           <button type="button" role="tab" aria-selected={tab === "srt"} onClick={() => setTab("srt")}>ملف SRT</button>
         </div>
 
@@ -159,8 +220,63 @@ export default function CaptionsPanel({ dock, open, onClose, projectId, tl, asse
           </div>
         )}
 
+        {tab === "translate" && (
+          <div className="space-y-3">
+            <p className="text-xs leading-6 text-jw-muted">نترجم كابشن مسار للغة ثانية في مسار جديد بنفس توقيت كل جملة (والكلمة اللي تنقال تضيء في وقتها تقريبًا). الأصل يبقى؛ تقدر تنزّل الترجمة ملف SRT.</p>
+            {capTracks.length ? (
+              <>
+                {capTracks.length > 1 && (
+                  <select className="jw-select w-full text-sm" value={fromId} onChange={(e) => { setFromTrack(e.target.value); setAsk(null); }} aria-label="مسار الكابشن">
+                    {capTracks.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name} · {t.clips.filter((c) => c.text?.body.trim()).length} جملة</option>
+                    ))}
+                  </select>
+                )}
+                <div className="space-y-1.5">
+                  <span className="text-xs text-jw-muted">ترجمه إلى</span>
+                  <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="لغة الترجمة">
+                    {TRANSLATE_LANGS.map((l) => (
+                      <button key={l.id} type="button" role="radio" aria-checked={toLang === l.id} dir="auto" onClick={() => { setToLang(l.id); setAsk(null); }} className={`jw-chip !px-2.5 !py-1 !text-xs ${toLang === l.id ? "!border-jw-accent !text-jw-ink" : ""}`}>
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {ask != null ? (
+                  <div className="space-y-2 rounded-xl border border-jw-accent/50 bg-jw-accent/5 p-2.5 text-xs leading-5">
+                    <p>
+                      ترجمة {lines.length} جملة إلى {langOf(toLang).label}: <b className="text-jw-ink"><Riyal halalas={ask} size={13} /></b>
+                      <span className="block text-jw-muted">السعر لكل {TRANSLATE_BLOCK} جملة ({translateUnits(lines.length)}×)، وإذا ما نجحت يرجع لك كامل.</span>
+                    </p>
+                    <div className="flex gap-1.5">
+                      <button type="button" className="jw-btn jw-btn-primary flex-1 text-xs" disabled={!!busy} onClick={() => void translate(ask)}>
+                        أكّد وترجم
+                      </button>
+                      <button type="button" className="jw-btn jw-btn-quiet text-xs" onClick={() => setAsk(null)}>إلغاء</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" className="jw-btn jw-btn-primary w-full" disabled={!!busy || !lines.length} onClick={quoteThenAsk}>
+                    {busy ? <span className="jw-spinner" /> : "🌐"} {busy ?? `ترجم الكابشن (${lines.length} جملة)`}
+                  </button>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-jw-warn">ما فيه كابشن للحين؛ سوّه من «تلقائي من الكلام» أو ارفع ملف SRT أول.</p>
+            )}
+          </div>
+        )}
+
         {tab === "srt" && (
           <div className="space-y-3">
+            {capTracks.length > 1 && (
+              <select className="jw-select w-full text-sm" value={srtId} onChange={(e) => setSrtTrack(e.target.value)} aria-label="أي مسار ينزل">
+                <option value="">كل مسارات الكابشن مع بعض</option>
+                {capTracks.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            )}
             <button type="button" className="jw-btn w-full" disabled={!hasText} onClick={exportSRT}>
               <Icon name="download" size={16} /> نزّل الكابشن ملف SRT (لليوتيوب وغيره)
             </button>
@@ -173,7 +289,7 @@ export default function CaptionsPanel({ dock, open, onClose, projectId, tl, asse
         )}
 
         {error && <p className="error-box text-sm">{error}</p>}
-        <p className="text-[11px] text-jw-faint">مجاني حاليًا، حتى {120} دقيقة تفريغ في اليوم.</p>
+        {tab !== "translate" && <p className="text-[11px] text-jw-faint">مجاني حاليًا، حتى {120} دقيقة تفريغ في اليوم.</p>}
       </div>
     </DockFrame>
   );

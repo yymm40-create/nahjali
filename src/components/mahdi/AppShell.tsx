@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import { bySort } from "@/lib/mahdi/client/derive";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
+import AndroidNews from "./AndroidNews";
 import AssistantFloat from "./AssistantFloat";
 import { FeedbackPrompt, FeedbackSheet } from "./Feedback";
 import HabitForm from "./HabitForm";
@@ -162,6 +163,7 @@ export default function AppShell({ children, familyMember = false }: { children:
           </Link>
         )}
         <SyncBanner />
+        <AndroidNews />
         <main id="m-main" className="m-content-pad mx-auto w-full max-w-[1120px] px-4 pt-4 sm:px-6 lg:px-10 lg:pt-8">
           {children}
         </main>

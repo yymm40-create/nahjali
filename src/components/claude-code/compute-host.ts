@@ -44,6 +44,10 @@ function run<T>(kind: ProgramKind, code: string, extra: Record<string, unknown>,
 /** A grade program sampled into a 3D LUT (size³ × 3 bytes, red fastest). */
 export const runGrade = (code: string, size = GRADE_LUT_SIZE) => run("grade", code, { size }, (m) => m.lut as Uint8Array);
 
+/** The same, with what its optional finish(K) returned (vignette, halation, grain, sharpen: what a LUT cannot hold). */
+export const runGradeWith = (code: string, size = GRADE_LUT_SIZE) =>
+  run("grade", code, { size }, (m) => ({ lut: m.lut as Uint8Array, finish: (m.finish && typeof m.finish === "object" ? m.finish : null) as Record<string, unknown> | null }));
+
 /** An edit program run on the timeline's facts: the commands it returns. */
 export const runEdit = (code: string, facts: unknown) => run("edit", code, { input: facts }, (m) => (Array.isArray(m.commands) ? m.commands : []) as unknown[]);
 

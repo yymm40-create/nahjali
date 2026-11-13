@@ -67,6 +67,8 @@ export default function RefAdder({ open, onClose, title, kinds: genKinds, only, 
 
   const kinds = only ? [only] : genKinds;
   const allowed = kinds.filter((k) => refKinds[k]?.allowed);
+  // Pictures only (a frame slot, a picture generator): a video can still be picked, to take one frame from it
+  const frameFromVideo = allowed.includes("image") && !allowed.includes("video");
   // Works are shown by category, all of them; what this generator can't take is greyed with its reason
   const filters: WorksFilter[] = only ? [only] : ["all", "image", "video", "audio"];
 
@@ -197,7 +199,8 @@ export default function RefAdder({ open, onClose, title, kinds: genKinds, only, 
               >
                 <span className="grid size-12 place-items-center rounded-2xl bg-jw-accent-soft text-jw-accent"><Icon name="upload" size={22} /></span>
                 <span className="font-semibold">اختر {multiple ? "ملفات" : "ملفًا"} من جهازك</span>
-                <span className="text-xs text-jw-muted">أو اسحبه وأفلته هنا · {allowed.map((k) => KIND_AR[k]).join("، ")}</span>
+                <span className="text-xs text-jw-muted">أو اسحبه وأفلته هنا · {allowed.map((k) => KIND_AR[k]).join("، ")}{frameFromVideo && " · أو فيديو وتاخذ منه فريم"}</span>
+                {allowed.includes("video") && <span className="text-[11px] text-jw-faint">الفيديو تقدر تقصه أو تاخذ منه فريم بعد ما تضيفه (اضغط عليه)</span>}
               </label>
             ) : (
               <p className="rounded-xl border border-jw-line bg-jw-bg-2 px-4 py-8 text-center text-sm text-jw-muted">لا يمكن إضافة مراجع من الجهاز في هذا الوضع حاليًا.</p>
@@ -206,7 +209,7 @@ export default function RefAdder({ open, onClose, title, kinds: genKinds, only, 
               id={inputId}
               type="file"
               className="sr-only"
-              accept={allowed.map((k) => ACCEPT[k]).join(",")}
+              accept={[...allowed, ...(frameFromVideo ? (["video"] as RefKind[]) : [])].map((k) => ACCEPT[k]).join(",")}
               multiple={multiple}
               disabled={!allowed.length}
               onChange={(e) => {

@@ -7,7 +7,7 @@ import { ensureUsername, getUsername } from "@/lib/username";
 
 export const metadata = { title: t.onboarding.welcomeTitle };
 
-/** First visit after creating an account: name, shrine, look, then the first project. */
+/** First visit after creating an account: the name, then the first project and its first habit (the look is picked on the home after the first «تم»). */
 export default async function WelcomePage() {
   const { supabase, user, profile } = await getMahdiSession();
   if (!user) redirect("/mahdi/start");

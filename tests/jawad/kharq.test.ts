@@ -155,6 +155,7 @@ describe("the conversation", () => {
       title: "t",
       brief: "B",
       stage: "making",
+      spentHalalas: 0,
       updatedAt: "",
       messages: [
         { role: "user", text: "ابي" },
@@ -242,7 +243,7 @@ describe("«محمد الخارق» is خارق — the whole site's team is his
 
   it("waits for his team, then reads what they said, and stops asking after two rounds", () => {
     const asked: Turn = { role: "assistant", text: "أسأل حيدرا ماكس", consult: [{ agent: "haidara", task: "الإيقاع", state: "pending" }] };
-    const chat: Chat = { id: "c", title: "t", brief: "", stage: "discover", updatedAt: "", messages: [{ role: "user", text: "ريل" }, asked] };
+    const chat: Chat = { id: "c", title: "t", brief: "", stage: "discover", spentHalalas: 0, updatedAt: "", messages: [{ role: "user", text: "ريل" }, asked] };
     expect(pendingConsult(chat)?.turn).toBe(1);
     expect(pendingConsult({ ...chat, messages: [...chat.messages, { role: "user", text: "؟" }] })).toBeNull();
     const back: Turn = { ...asked, consult: [{ agent: "haidara", task: "الإيقاع", state: "done", answer: "قص كل ٢ ثانية" }] };

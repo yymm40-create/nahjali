@@ -13,7 +13,8 @@ import { generatorById } from "@config/jawad/generators";
 import { elevenPremadeVoices, elevenSpeech } from "@/lib/jawad/server/providers/elevenlabs";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { audioDurationMs, resolveVoice } from "@/lib/jawad/server/voices";
-import { prepareSpeech } from "@/lib/jawad/server/diction";
+import { prepareSpeech, prepareSpeechBatch, type PreparedSpeech } from "@/lib/jawad/server/diction";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { directorVersions } from "./director";
 import { isAdmin } from "@config/site";
 import { failJob, startJob, succeedJob } from "./usage";
@@ -186,7 +187,98 @@ const elevenFeeling = (e: string) => e.replace(/[()]/g, "").trim();
 /** «طريقة كتابة النطق»: one of the three (precise IPA, spelled out, or as written); anything else is the default «دقيق». */
 export const cleanDiction = (v: unknown): Diction => (DICTION_VALUES.some((d) => d.value === v) ? (v as Diction) : "precise");
 
-export async function speakLine(project: FilmProject, user: { id: string; email?: string | null }, key: unknown, idempotencyKey: unknown, emotionRaw?: unknown, dictionRaw?: unknown) {
+// ───────────── «ولّد كل الجمل»: the lines' pronunciation prepared in one Claude call ─────────────
+
+/** Lines prepared in one request at most (the page sends a longer film in groups). */
+export const PREPARE_MAX_LINES = 40;
+/** How long a prepared line may wait for its turn to be spoken. */
+const PREPARED_TTL_MS = 2 * 3600_000;
+
+const preparedSecret = () => process.env.JAWAD_WEBHOOK_SECRET || createHmac("sha256", process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").update("film-diction").digest("hex");
+
+interface PreparedSeal {
+  /** project, line key, the line as written, the diction mode: the line it was made for */
+  p: string;
+  k: string;
+  l: string;
+  d: Diction;
+  /** what ElevenLabs receives, its language, the words fixed */
+  t: string;
+  c?: string;
+  f: PreparedSpeech["fixes"];
+  /** valid until (ms) */
+  e: number;
+}
+
+/** A line's prepared text, sealed for the page to send back with that line's «speak» (it can't be changed on the way). */
+export function sealPrepared(projectId: string, key: string, line: string, diction: Diction, spoken: Pick<PreparedSpeech, "text" | "languageCode" | "fixes">, now = Date.now()): string {
+  const body = Buffer.from(JSON.stringify({ p: projectId, k: key, l: line, d: diction, t: spoken.text, ...(spoken.languageCode ? { c: spoken.languageCode } : {}), f: spoken.fixes, e: now + PREPARED_TTL_MS } satisfies PreparedSeal)).toString("base64url");
+  return `${body}.${createHmac("sha256", preparedSecret()).update(body).digest("base64url")}`;
+}
+
+/** The prepared text sent back with a line, when it is ours, unchanged, fresh and made for exactly this line; else null. */
+export function openPrepared(token: unknown, projectId: string, key: string, line: string, diction: Diction, now = Date.now()): PreparedSpeech | null {
+  if (typeof token !== "string" || token.length > 40_000) return null;
+  const [body, sig] = token.split(".");
+  if (!body || !sig) return null;
+  const want = Buffer.from(createHmac("sha256", preparedSecret()).update(body).digest("base64url"));
+  const got = Buffer.from(sig);
+  if (want.length !== got.length || !timingSafeEqual(want, got)) return null;
+  try {
+    const s = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as PreparedSeal;
+    if (s.p !== projectId || s.k !== key || s.l !== line || s.d !== diction || !(s.e > now) || typeof s.t !== "string" || !Array.isArray(s.f)) return null;
+    return { text: s.t, languageCode: s.c, fixes: s.f, usd: 0 };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * «ولّد كل الجمل»: «النطق الدقيق» of all the Arabic lines asked for, in ONE Claude call (one job, charged its real
+ * usage) instead of one call per line. Returns each line's prepared text sealed; the page sends it with that line's
+ * «speak», which then speaks it without checking again. Fewer than two lines to check, a repeated request or a failed
+ * call return nothing prepared: each line is then checked on its own as before.
+ */
+export async function prepareLines(project: FilmProject, user: { id: string; email?: string | null }, keysRaw: unknown, idempotencyKey: unknown, dictionRaw?: unknown): Promise<{ prepared: Record<string, string> }> {
+  const diction = cleanDiction(dictionRaw);
+  const k = String(idempotencyKey ?? "");
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(k)) throw new UserError("طلب غير صحيح.", 400);
+  const keys = Array.isArray(keysRaw) ? [...new Set(keysRaw.filter((x): x is string => typeof x === "string"))].slice(0, PREPARE_MAX_LINES) : [];
+  if (diction === "off" || keys.length < 2) return { prepared: {} };
+  const lines = await voiceLines(project.id);
+  const asked = lines.filter((l) => keys.includes(l.key) && mostlyArabic(l.line));
+  if (asked.length < 2) return { prepared: {} };
+  const chars = asked.reduce((n, l) => n + l.line.length, 0);
+  // the same as each line's own check would have held (the call costs less than that, and is settled at its real usage)
+  const estimateUsd = asked.reduce((n, l) => n + Math.max(1, Math.ceil(l.line.length / 1000)) * DICTION_USD_PER_K, 0);
+  const { job, created } = await startJob({ projectId: project.id, user, service: "anthropic", operation: "voice_diction", idempotencyKey: `voice-diction:${project.id}:${k}`, estimateUsd, units: chars, unit: "character" });
+  if (!created) return { prepared: {} };
+  try {
+    // the scenes these lines are in, once for all: Claude tells from them who is addressed (أنتَ or أنتِ)
+    const gens = [...new Set(asked.map((l) => l.genId))];
+    const scenes = gens.map((g) => `${lines.find((l) => l.genId === g)?.genName || g}:\n${lines.filter((l) => l.genId === g).map((l) => `${l.speaker}: ${l.line}`).join("\n")}`).join("\n\n");
+    const done = await prepareSpeechBatch(
+      asked.map((l) => ({
+        id: l.key,
+        text: l.line,
+        label: `said by «${l.speaker}»`,
+        note: `This is one line of a film, said by «${l.speaker}». The scene's lines, in order:\n${lines.filter((x) => x.genId === l.genId).map((x) => `${x.speaker}: ${x.line}`).join("\n")}`,
+      })),
+      diction,
+      `These are lines of a film; each LINE id is <scene>:<number>. The scenes' lines, in order:\n${scenes}`,
+    );
+    const usd = [...done.values()].reduce((n, p) => n + p.usd, 0);
+    await succeedJob(job.id, { costUsd: usd, units: chars });
+    return { prepared: Object.fromEntries(asked.flatMap((l) => (done.has(l.key) ? [[l.key, sealPrepared(project.id, l.key, l.line, diction, done.get(l.key)!)]] : []))) };
+  } catch (e) {
+    // each line is still checked on its own when it is spoken
+    console.error("film voice batch diction failed", e);
+    await failJob(job.id, e);
+    return { prepared: {} };
+  }
+}
+
+export async function speakLine(project: FilmProject, user: { id: string; email?: string | null }, key: unknown, idempotencyKey: unknown, emotionRaw?: unknown, dictionRaw?: unknown, preparedRaw?: unknown) {
   const emotion = cleanEmotion(emotionRaw);
   const diction = cleanDiction(dictionRaw);
   if (!voicesReady()) throw new UserError("أصوات ElevenLabs غير متاحة حاليًا.", 503);
@@ -203,15 +295,17 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
   if (resolved.provider !== "elevenlabs") throw new UserError(`${ONLY_ELEVEN} («${line.speaker}»)`, 400);
 
   const arabic = mostlyArabic(line.line);
+  // «ولّد كل الجمل» prepared this line already (paid in its own job): spoken as prepared, without a check of its own
+  const prepared = arabic && diction !== "off" ? openPrepared(preparedRaw, project.id, line.key, line.line, diction) : null;
   // (Claude's check costs about the same for a short line as for 1,000 characters: at least that is held)
-  const estimateUsd = (Math.max(1, line.line.length) / 1000) * ELEVEN_PRICE.v4PerKChars + (arabic && diction !== "off" ? Math.max(1, Math.ceil(line.line.length / 1000)) * DICTION_USD_PER_K : 0);
+  const estimateUsd = (Math.max(1, line.line.length) / 1000) * ELEVEN_PRICE.v4PerKChars + (arabic && diction !== "off" && !prepared ? Math.max(1, Math.ceil(line.line.length / 1000)) * DICTION_USD_PER_K : 0);
   const { job, created } = await startJob({ projectId: project.id, user, service: "elevenlabs", operation: "voice_line", idempotencyKey: `voice:${project.id}:${k}`, estimateUsd, units: line.line.length, unit: "character" });
   if (!created) return { jobId: job.id, status: job.status };
   try {
     // Who speaks, and the scene's other lines: Claude tells from them who is addressed (أنتَ or أنتِ)
     const scene = lines.filter((l) => l.genId === line.genId).map((l) => `${l.speaker}: ${l.line}`).join("\n");
     // «النطق الدقيق» helps the voice; if it can't run (Claude busy or a rule broken) the line is still spoken as written
-    const spoken = await prepareSpeech(line.line, arabic ? diction : "off", `This is one line of a film, said by «${line.speaker}». The scene's lines, in order:\n${scene}`).catch((err) => {
+    const spoken = prepared ?? await prepareSpeech(line.line, arabic ? diction : "off", `This is one line of a film, said by «${line.speaker}». The scene's lines, in order:\n${scene}`).catch((err) => {
       console.error("film voice diction skipped", err);
       return { text: line.line, languageCode: arabic ? "ar" : undefined, fixes: [], usd: 0 };
     });

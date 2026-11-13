@@ -31,10 +31,10 @@ describe("محمد باقر: Claude Code يرسم الكاروسيل", () => {
     expect(p?.maker).toBe("code");
     expect(readPending({ id: "x", aspect: "1:1", slides: [{ n: 1, text: "", prompt: "a" }], at: 1, mode: "all", made: [], failed: [], carry: [] })?.maker).toBeUndefined();
     const { CONTENT_TOOLS, CONTENT_PLATFORM_RULES } = await import("@config/content");
-    // the owner's order now: the person picks who designs the slides — «حيدرا ماكس» in code (GPT Image 2 paints only a slide's picture) or GPT Image 2 for the whole slide
+    // the owner's order now: the person picks who makes the slides — «حيدرا ماكس» in code (GPT Image 2 paints only a slide's picture), GPT Image 2 for the whole slide, or GPT Image 2's pictures with «حيدرا ماكس»'s writing
     expect(CONTENT_TOOLS).toContain('"picture"');
     expect(CONTENT_TOOLS).toContain('"maker"');
-    expect(CONTENT_PLATFORM_RULES).toContain("العميل هو من يختار من يصمم شرائحه");
+    expect(CONTENT_PLATFORM_RULES).toContain("من يصنع الكاروسيل — العميل هو من يختار");
     expect(CONTENT_PLATFORM_RULES).toContain("آخر خطوة قبل تصنيع أي كاروسيل جديد");
   });
   it("the page draws a slide in code and sends it back to the produce step", async () => {
@@ -42,7 +42,7 @@ describe("محمد باقر: Claude Code يرسم الكاروسيل", () => {
     expect(readFileSync("src/app/api/content/produce/route.ts", "utf8")).toContain("produceFromCode(user.id, chatId, b)");
     const page = readFileSync("src/components/jawad/content/ContentChat.tsx", "utf8");
     expect(page).toContain('from: "content"');
-    expect(page).toContain("n: r.code.n, png: drawn.png");
+    expect(page).toContain("n: r.code.n, ...(await pngBody(drawn.png))");
   });
 });
 
@@ -54,7 +54,7 @@ describe("Claude Code يحط صور الأشخاص في التصميم", () => {
     expect(p?.place).toEqual(["a"]);
     expect(DESIGNER_PLATFORM_RULES).toContain('"place"');
     expect(readFileSync("src/lib/designer/chat.ts", "utf8")).toContain('"place", "layers"]');
-    expect(readFileSync("src/lib/designer/produce.ts", "utf8")).toContain("refs: urls.slice(0, 4), photos, picture: Boolean(artUrl) };");
+    expect(readFileSync("src/lib/designer/produce.ts", "utf8")).toContain("refs: urls.slice(0, 4), photos, picture: Boolean(artUrl), style: look };");
     const draw = readFileSync("src/components/claude-code/draw.ts", "utf8");
     expect(draw).toContain("id: `photo${i + 1}`, bitmap: p.bm");
     expect(draw).toContain("await host.load(code, { w: W, h: H, assets,");

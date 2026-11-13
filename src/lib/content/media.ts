@@ -9,8 +9,8 @@ import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";
 import { unlimitedFor } from "@/lib/access";
 import { getChat, saveChat, type MediaItem, type Turn } from "./chats";
-import { addProducedFromOutput, attachmentsOf, deleteProduced } from "./files";
-import { deskCheck, deskImage, deskVideo, DeskError, type DeskReceipt, type DeskWho } from "./jawad";
+import { addProducedFromOutput, attachmentsOf, deleteProduced, producedBytes } from "./files";
+import { deskCheck, deskImage, deskReference, deskVideo, DeskError, type DeskReceipt, type DeskWho } from "./jawad";
 
 /** Pictures made at once in one call (a picture takes up to about a minute; the server's limit is 300 s). */
 const IMAGES_PER_CALL = 2;
@@ -30,7 +30,16 @@ const key = () => `m-${randomUUID().replace(/-/g, "")}`;
 
 async function refsOf(userId: string, item: MediaItem) {
   if (!item.refs.length) return [];
-  const { list } = await attachmentsOf(userId, item.refs);
+  const { list: uploads } = await attachmentsOf(userId, item.refs);
+  // a picture جواد made earlier in this conversation: handed to him as a reference of the person's (kept the same)
+  const found = new Set(uploads.map((a) => a.id));
+  const made = await Promise.all(
+    item.refs.filter((id) => !found.has(id)).slice(0, 4).map(async (id) => {
+      const bytes = await producedBytes(userId, id).catch(() => null);
+      return bytes ? { id: await deskReference(userId, bytes, `made-${id.slice(0, 8)}`), kind: "image" as const, name: "made", durationMs: null } : null;
+    }),
+  );
+  const list = [...uploads, ...made.filter((x): x is NonNullable<typeof x> => !!x)];
   // everything the person attached can go to جواد: a picture generator takes pictures only; a video generator also takes
   // video and sound references (جواد's registry checks the counts and lengths and answers if it cannot use them)
   const seen = { image: 0, video: 0, audio: 0 };

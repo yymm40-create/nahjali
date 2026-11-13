@@ -4,13 +4,10 @@
 // tiles on contact sheets with their timeline time. What is measured and picked is src/lib/editor/watch.ts.
 
 import { FILM, findCuts, motionPerSecond, pickTimes, spansOf, WATCH, type FrameStat, type Watch } from "@/lib/editor/watch";
+import { rampSource, rampTimeline, type Timed } from "@/lib/editor/ramp";
 
-interface Clip {
+interface Clip extends Timed {
   id: string;
-  start: number;
-  in: number;
-  out: number;
-  speed: number;
 }
 
 type FrameVideo = HTMLVideoElement & { requestVideoFrameCallback?: (cb: (now: number, meta: { mediaTime: number }) => void) => number };
@@ -57,7 +54,7 @@ async function measure(v: FrameVideo, clip: Clip, onStep: (s: string) => void, s
     }
     const n = px.length / 4;
     prev = px;
-    stats.push({ t: Math.round(clip.start + (mediaMs - clip.in) / clip.speed), luma: luma / n, diff: stats.length ? (diff / n / 255) * 100 : 0 });
+    stats.push({ t: Math.round(rampTimeline(clip, mediaMs)), luma: luma / n, diff: stats.length ? (diff / n / 255) * 100 : 0 });
   };
 
   // every frame the browser shows, played fast (the frames still come one by one)
@@ -121,7 +118,7 @@ async function sheetsOf(v: HTMLVideoElement, clip: Clip, times: number[], onStep
     ctx.fillRect(0, 0, c.width, c.height);
     for (let i = 0; i < part.length; i++) {
       const t = part[i];
-      await seek(v, clip.in + (t - clip.start) * clip.speed);
+      await seek(v, rampSource(clip, t));
       const x = (i % cols) * T;
       const y = Math.floor(i / cols) * T;
       const k = Math.min((T - 4) / v.videoWidth, (T - 4) / v.videoHeight);

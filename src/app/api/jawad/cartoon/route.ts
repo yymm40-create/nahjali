@@ -1,6 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { CARTOON_IMAGE, CARTOON_VIDEO, CARTOON_PRICE, cartoonInput, cartoonImagePrompt, cartoonVideoPrompt, cartoonVideoSettings, hasArabic, type CartoonInput } from "@config/jawad/cartoon";
 import { callClaudeJson } from "@/lib/film/anthropic";
+import { withClaude, withFixedPriceClaude } from "@/lib/film/claude-model";
 import { generatorById } from "@config/jawad/generators";
 import { can, permForGenerator } from "@/lib/access";
 import { handle, shortBalance, UserError } from "@/lib/api";
@@ -21,13 +22,14 @@ export const maxDuration = 300;
 /** A child's story written in Arabic, told again in plain English for a 15-second film (the film model reads no Arabic). */
 async function storyInEnglish(text: string): Promise<string> {
   try {
-    const r = await callClaudeJson<{ en: string }>({
+    // a translation, not a creative job: the light model (a fraction of the price) does it
+    const r = await withClaude("claude-haiku-5-5", () => callClaudeJson<{ en: string }>({
       system: "You translate a short story for a 15-second children's cartoon film into clear English stage directions. Keep every event, name and detail; no additions; split it into 3–4 beats with their seconds (0–4s, 4–8s, 8–12s, 12–15s). Return only the English.",
       turns: [{ role: "user", content: text.slice(0, 3000) }],
       schema: { type: "object", additionalProperties: false, required: ["en"], properties: { en: { type: "string" } } },
       maxTokens: 800,
       effort: "low",
-    });
+    }));
     const en = String(r.data.en ?? "").trim();
     return hasArabic(en) ? "" : en.slice(0, 1500);
   } catch {
@@ -36,8 +38,9 @@ async function storyInEnglish(text: string): Promise<string> {
   }
 }
 /** «المخرج الخارق» writes each part from the person's words; a part he could not write is told plainly (translated when Arabic). */
-async function direct(input: CartoonInput) {
-  const { directed, written } = await directCartoon(input);
+async function direct(input: CartoonInput, model?: unknown) {
+  // the person's model (never a dearer one than the fixed price was set for), not always the default
+  const { directed, written } = await withFixedPriceClaude(model, () => directCartoon(input));
   input.directed = await Promise.all(directed.map(async (prompt, i) => prompt || (hasArabic(input.scenes[i]) ? await storyInEnglish(input.scenes[i]).then(en => (en ? "15 seconds, vertical 9:16 cartoon film.\nStory: " + en : "")) : "")));
   return written;
 }
@@ -54,7 +57,7 @@ async function film(req: Request, body: Record<string, unknown>, user: { id: str
   const { input, parent, outputId } = await filmSource(user.id, body.outputId, body.film);
   if (body.action === "film_prompt") {
     if (!owner) throw new UserError("غير مسموح.", 403);
-    if (input.scenes.length) await direct(input);
+    if (input.scenes.length) await direct(input, body.model);
     const sheet = (await placeSheets())[input.place + "--" + input.style] ?? null;
     const parts = Math.max(1, input.scenes.length);
     return NextResponse.json({ prompts: Array.from({ length: parts }, (_, i) => cartoonVideoPrompt(input, i, input.mode !== "scene" && !!sheet)), settings: cartoonVideoSettings(input), placeSheet: input.mode === "scene" ? null : sheet });
@@ -77,7 +80,7 @@ async function film(req: Request, body: Record<string, unknown>, user: { id: str
     const balance = (await coinBalance(user.id)) ?? 0;
     if (balance < quote.totalCoins) throw shortBalance(quote.totalCoins - balance, balance, "الفيلم كله");
   }
-  const written = input.scenes.length ? await direct(input) : 0;
+  const written = input.scenes.length ? await direct(input, body.model) : 0;
   const upload = await uploadFromOutput(user.id, outputId);
   const refs = await filmRefs(user.id, input, upload.id);
   const result = requireCreated(await createJob(user as Parameters<typeof createJob>[0], owner, {
@@ -126,7 +129,7 @@ export const POST = handle(async (req: Request) => {
   // he could not write is told plainly (translated when it is Arabic) and costs nothing
   let directorCoins = 0;
   if (input.video && input.mode !== "scene" && input.scenes.length) {
-    const written = await direct(input);
+    const written = await direct(input, body.model);
     directorCoins = owner || !input.scenes.length ? 0 : Math.round((quote.directorCoins / input.scenes.length) * written);
   }
   const result = requireCreated(await createJob(user, owner, {

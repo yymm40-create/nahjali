@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { dispatchEngagement } from "@/lib/mahdi/server/engage";
-import { dispatchReminders, dispatchTaskReminders, pushConfigured } from "@/lib/mahdi/server/notify";
+import { dispatchHabitAlerts, dispatchPlanAlerts, dispatchReminders, dispatchTaskReminders, pushConfigured } from "@/lib/mahdi/server/notify";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +29,9 @@ export async function POST(req: Request) {
     const habits = await dispatchReminders(db);
     // «مهام اليوم» at their times (never stops the habit reminders above)
     const tasks = await dispatchTaskReminders(db).catch((e) => (console.error("[mahdi dispatch tasks]", e), null));
+    // «اجعله تنبيهًا» on habits and planner events (each on its own, never stopping the others)
+    const habitAlerts = await dispatchHabitAlerts(db).catch((e) => (console.error("[mahdi dispatch habit alerts]", e), null));
+    const plan = await dispatchPlanAlerts(db).catch((e) => (console.error("[mahdi dispatch plan alerts]", e), null));
     // «تنبيهات تجيبك للتطبيق» (the morning verse, the review notes, the streak, the comeback): never stops what is above
     const engage = await dispatchEngagement(db).catch((e) => (console.error("[mahdi dispatch engage]", e), null));
     // the heartbeat (migration 0102): the app can say when the dispatcher last ran
@@ -36,7 +39,7 @@ export async function POST(req: Request) {
       () => db.from("mahdi_dispatch_runs").delete().lt("ran_at", new Date(Date.now() - 7 * 86_400_000).toISOString()),
       () => undefined,
     );
-    return NextResponse.json({ ...habits, tasks, engage });
+    return NextResponse.json({ ...habits, tasks, habitAlerts, plan, engage });
   } catch (err) {
     console.error("[mahdi dispatch]", err);
     return NextResponse.json({ error: "dispatch failed" }, { status: 500 });

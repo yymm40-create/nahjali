@@ -8,6 +8,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, type ClaudeTurn } from "@/lib/film/anthropic";
+import { currentClaude, withClaude } from "@/lib/film/claude-model";
 
 export interface HandoffTurn {
   role: "user" | "assistant";
@@ -79,7 +80,8 @@ async function write(robot: string, previous: string, turns: HandoffTurn[], from
     .map((t) => `${t.role === "user" ? "الشخص" : robot}: ${t.text}`)
     .join("\n\n")
     .slice(-150_000);
-  const r = await callClaudeJson<{ handoff: string }>({
+  // a summary, not a creative turn: the mid mind writes it (half Opus's price) — or the light one when that is the robot's
+  const r = await withClaude(currentClaude().key === "haiku" ? currentClaude().id : "claude-sonnet-5-5", () => callClaudeJson<{ handoff: string }>({
     system:
       `You are ${robot}, a robot on an Arabic creative platform, writing a HANDOFF TO YOURSELF: in a moment you will continue this same conversation with the person, reading only this handoff and their latest messages. Merge the previous handoff (if any) with the conversation below into ONE complete handoff, in Arabic (Gulf, plain), in short sections: الهدف · قرارات الشخص وذوقه (what they chose, liked and refused) · اللي انسوّى (what was made, with names and numbers) · اللي باقي أو انطلب ولا تم · تفاصيل لازم تبقى (exact texts, names, prices, ids, links, settings still needed). Keep every decision and detail that still matters — drop nothing from the previous handoff unless it was replaced. Facts only, nothing invented.`,
     turns: [{ role: "user", content: `${previous ? `PREVIOUS HANDOFF:\n${previous}\n\n` : ""}CONVERSATION SINCE THEN:\n${transcript}` }],
@@ -87,7 +89,7 @@ async function write(robot: string, previous: string, turns: HandoffTurn[], from
     maxTokens: 6000,
     effort: "low",
     fallback: true,
-  });
+  }));
   return { text: r.data.handoff.trim().slice(0, 20_000), usd: claudeCost(r.usage) };
 }
 

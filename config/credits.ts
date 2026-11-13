@@ -3,10 +3,9 @@
 // owner sets in /admin/credits (stored in jawad_settings under "credits").
 //
 // The ladder follows how the big AI studios price their credits (Higgsfield, OpenArt: a cheap way in, the tiers growing with more
-// credit per riyal, one highlighted «most popular» in the middle), with the owner's push to the next package: the first very cheap
-// (a try), the second high with almost no extra, the third only a little dearer than the second but with much more — so the second
-// makes the third look obvious. The extra balance stays modest: every riyal of balance already carries the site's margin, so a
-// bonus above ~25% would sell under cost.
+// credit per riyal, one highlighted «most popular» in the middle). No package gives extra balance (the owner, 1 November 2026):
+// every riyal transferred is exactly one riyal of balance — every riyal of balance already carries the site's margin, and an
+// extra on top ate it (on Claude's work a +18٪ left ~26٪ instead of 37.5٪).
 
 import { cleanPhone, waLink } from "./course";
 
@@ -15,7 +14,7 @@ export interface Pack {
   name: string;
   /** what the buyer transfers (riyals) */
   price: number;
-  /** what lands in the wallet (riyals) */
+  /** what lands in the wallet (riyals): always the price — no package gives extra balance */
   credit: number;
   /** a small badge («الأكثر طلبًا», «أفضل قيمة»), or "" */
   tag: string;
@@ -31,6 +30,48 @@ export interface CreditSettings {
   whatsapp: string;
   /** built-in packages the owner deleted on purpose (they are not added back) */
   removed?: string[];
+  /** «كود خصم» on a top-up: the owner's codes (each a percent off the price, until a moment); never sent to the browser */
+  codes?: TopupCode[];
+}
+
+/**
+ * «كود خصم الشحن» (the owner, 12 November 2026: «عطهم خصم ١٥٪ إذا سجّلوا خلال ٢٤ ساعة»): a code takes `pct` percent off what is
+ * paid for a top-up, while the balance stays the package's full one. It works until `until`, once per account (a confirmed order
+ * carries the code in its package name). The price is whole riyals (the orders keep riyals), rounded DOWN — in the buyer's favour.
+ */
+export interface TopupCode {
+  code: string;
+  /** percent off, 1–90 */
+  pct: number;
+  /** ISO moment it stops working */
+  until: string;
+}
+export const TOPUP_CODE_RE = /^[A-Z0-9_-]{3,24}$/;
+export const cleanCode = (raw: unknown) => String(raw ?? "").trim().toUpperCase().replace(/\s+/g, "");
+/** The price after a code: whole riyals, rounded down, at least one. */
+export const discounted = (price: number, pct: number) => Math.max(1, Math.floor((price * (100 - pct)) / 100 + 1e-9));
+/** The words a code leaves in the order's package name (how «once per account» is checked). */
+export const codeMark = (code: string) => `كود ${code}`;
+/** The code that works now for what the person typed, or null. */
+export function activeCode(s: Pick<CreditSettings, "codes">, raw: unknown, now = Date.now()): TopupCode | null {
+  const code = cleanCode(raw);
+  if (!TOPUP_CODE_RE.test(code)) return null;
+  const c = (s.codes ?? []).find((x) => x.code === code);
+  return c && Date.parse(c.until) > now ? c : null;
+}
+function readCodes(v: unknown): TopupCode[] {
+  const out: TopupCode[] = [];
+  for (const x of Array.isArray(v) ? v : []) {
+    if (!x || typeof x !== "object") continue;
+    const o = x as Record<string, unknown>;
+    const code = cleanCode(o.code);
+    const pct = Math.round(Number(o.pct));
+    const until = typeof o.until === "string" && Number.isFinite(Date.parse(o.until)) ? new Date(o.until).toISOString() : "";
+    if (!TOPUP_CODE_RE.test(code) || !(pct >= 1 && pct <= 90) || !until || out.some((c) => c.code === code)) continue;
+    out.push({ code, pct, until });
+    if (out.length >= 30) break;
+  }
+  return out;
 }
 
 /**
@@ -72,10 +113,10 @@ export const DEFAULT_PACKS: Pack[] = [
   { id: "try", name: "تجربة", price: 10, credit: 10, tag: "", note: "تجرب فيها الأقسام" },
   { id: "scene", name: "المشهد السينمائي", price: SCENE_PACK_SAR, credit: SCENE_PACK_SAR, tag: "", note: "مشهد ١٥ ثانية كامل: سيناريو، ٤ شيتات، فيديو 480p" },
   { id: "student", name: "الطالب الذكي", price: STUDENT_PACK_SAR, credit: STUDENT_PACK_SAR, tag: "", note: "ملخص أو شرح من ملف PDF قصير (٥–١٠ صفحات)" },
-  { id: "basic", name: "الأساسية", price: 99, credit: 100, tag: "", note: "للاستخدام الخفيف" },
-  { id: "pro", name: "المحترف", price: 119, credit: 140, tag: "الأكثر طلبًا", note: "صور وفيديوهات أسبوعية" },
-  { id: "studio", name: "الاستوديو", price: 279, credit: 330, tag: "", note: "لصنّاع المحتوى" },
-  { id: "business", name: "الأعمال", price: 549, credit: 660, tag: "أفضل قيمة", note: "للمتاجر والفرق" },
+  { id: "basic", name: "الأساسية", price: 99, credit: 99, tag: "", note: "للاستخدام الخفيف" },
+  { id: "pro", name: "المحترف", price: 119, credit: 119, tag: "الأكثر طلبًا", note: "صور وفيديوهات أسبوعية" },
+  { id: "studio", name: "الاستوديو", price: 279, credit: 279, tag: "", note: "لصنّاع المحتوى" },
+  { id: "business", name: "الأعمال", price: 549, credit: 549, tag: "أفضل قيمة", note: "للمتاجر والفرق" },
 ];
 
 /** Built-in packages added after owners had saved their own list: they appear in a saved list too (see readCreditSettings). */
@@ -90,9 +131,6 @@ export const CREDITS = {
   /** open orders (not confirmed nor rejected) one person may have */
   maxOpen: 4,
 } as const;
-
-/** The extra balance in percent («+18٪ مجانًا»). */
-export const bonusPct = (p: Pick<Pack, "price" | "credit">) => (p.credit > p.price && p.price > 0 ? Math.round((p.credit / p.price - 1) * 100) : 0);
 
 const int = (v: unknown, lo: number, hi: number) => {
   const n = Math.round(Number(v));
@@ -110,11 +148,11 @@ export function readCreditSettings(raw: unknown): CreditSettings {
     const p = x as Record<string, unknown>;
     const id = text(p.id, 24).toLowerCase().replace(/[^a-z0-9_-]/g, "");
     const price = int(p.price, 1, 100_000);
-    const credit = int(p.credit, 1, 200_000);
     const name = text(p.name, 30);
-    if (!id || seen.has(id) || !price || !credit || !name) continue;
+    if (!id || seen.has(id) || !price || !name) continue;
     seen.add(id);
-    packs.push({ id, name, price, credit, tag: text(p.tag, 20), note: text(p.note, 60) });
+    // no extra balance, even in a list saved while packages still had one: the balance is the price
+    packs.push({ id, name, price, credit: price, tag: text(p.tag, 20), note: text(p.note, 60) });
     if (packs.length >= CREDITS.maxPacks) break;
   }
   const removed = (Array.isArray(o.removed) ? o.removed : []).filter((x): x is string => typeof x === "string").slice(0, 20);
@@ -129,7 +167,7 @@ export function readCreditSettings(raw: unknown): CreditSettings {
   }
   const list = packs.length ? packs : DEFAULT_PACKS;
   const featured = typeof o.featured === "string" && list.some((p) => p.id === o.featured) ? o.featured : list[Math.min(2, list.length - 1)].id;
-  return { packs: list, featured, whatsapp: cleanPhone(o.whatsapp) ?? "", removed };
+  return { packs: list, featured, whatsapp: cleanPhone(o.whatsapp) ?? "", removed, codes: readCodes(o.codes) };
 }
 
 /**
@@ -138,13 +176,15 @@ export function readCreditSettings(raw: unknown): CreditSettings {
  */
 // the smallest is 3 riyals (the owner, 28 October 2026): the payment gateway takes a fixed fee on every transaction
 export const EXACT_MIN_SAR = 3;
+/** «اختر الرصيد اللي تبي تدفعه» (the owner, 4 November 2026: «لو اختار ١ يجيه ١»): any whole riyals from 1, the same exact-<riyals> order. */
+export const CUSTOM_MIN_SAR = 1;
 export const EXACT_MAX_SAR = 1000;
 export const exactSar = (halalas: number) => Math.min(EXACT_MAX_SAR, Math.max(EXACT_MIN_SAR, Math.ceil(Math.max(0, halalas) / 100 - 1e-9)));
 export const exactPack = (sar: number): Pack => ({ id: `exact-${sar}`, name: "بمقدار اللي تحتاجه", price: sar, credit: sar, tag: "", note: "شحن بمقدار العملية بس" });
 export function exactPackOf(id: unknown): Pack | null {
   const m = typeof id === "string" ? /^exact-(\d{1,4})$/.exec(id) : null;
   const sar = m ? Number(m[1]) : 0;
-  return sar >= EXACT_MIN_SAR && sar <= EXACT_MAX_SAR ? exactPack(sar) : null;
+  return sar >= CUSTOM_MIN_SAR && sar <= EXACT_MAX_SAR ? exactPack(sar) : null;
 }
 export const packOf = (s: CreditSettings, id: unknown) => s.packs.find((p) => p.id === id) ?? exactPackOf(id);
 

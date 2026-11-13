@@ -7,10 +7,31 @@
 // options, limits and modes only come from this file.
 
 import { COIN_COST_USD, sellKind, wasHalalas, getPricing, marginFor, type PriceKind } from "../coins";
-import type { GeneratorDef, Issue, ModeDef, OptionState, PriceResult, RefMeta, Settings } from "./types";
+import type { GeneratorDef, Issue, ModeDef, OptionState, PriceResult, RefKind, RefMeta, RefRole, Settings } from "./types";
 import { DICTION_KEY, DICTION_VALUES, hasMarks, mostlyArabic, type Diction } from "./diction";
 import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, STEM_LABEL, stemsOf, VIDEO_SFX, videoSfxSeconds } from "./smart-split";
 import { REALFACE_LOW_RES, REALFACE_WARNING } from "./realface";
+import {
+  fillMegapixels,
+  IMAGE_TOOL_MODELS,
+  IMAGE_TOOL_USD,
+  IMAGE_TOOLS_CHECKED,
+  IMG_INPAINT_ID,
+  IMG_OUTPAINT_ID,
+  IMG_UPSCALE_ID,
+  maskProblem,
+  needsEnglish,
+  OUTPAINT_SHAPE_HINT,
+  OUTPAINT_SHAPE_LABEL,
+  OUTPAINT_SHAPES,
+  outpaintPlan,
+  topazTier,
+  UPSCALE_MAX_MP,
+  upscaledMp,
+  upscaleUsd,
+  type OutpaintShape,
+  type UpscaleEngine,
+} from "./image-tools";
 
 const CHECKED = "2026-10-04";
 
@@ -206,6 +227,228 @@ const gptImage2: GeneratorDef = {
     { item: "التقدم والإلغاء", status: "verified", note: "طلب متزامن بلا نسبة تقدم ولا إلغاء." },
     { item: "طول البرومبت", status: "verified", note: "حتى 32,000 حرف (مرجع Images API)." },
     { item: "أسماء المراجع في البرومبت", status: "verified", note: "دليل OpenAI: الإشارة للصور المدخلة بترتيبها «Image 1» و«Image 2»؛ كل «‎@اسم» يُرسل بهذا الشكل." },
+  ],
+  notes: ["كل طلب متزامن: يرجع بالصور مباشرة (base64) ونحفظها في تخزيننا."],
+};
+
+// ───────────────────────────── OpenAI · GPT Image 2.6 (Flare · Sunburst) ─────────────────────────────
+// Checked on 2026-11-06: OpenAI's model pages (gpt-image-2.6-flare, gpt-image-2.6-sunburst: Images API generations and
+// edits), the pricing page (the same token rates as gpt-image-2: text in $5 · image in $8 · image out $30 per million),
+// the Images API reference (model ids, `complexity` low/medium/high, up to 16 input images, prompt ≤ 32,000) and the
+// image generation guide (quality low…max, the same size rules, complexity defaults to high and has no fee). One
+// generator with the two models as a choice: same API, same options, same price. Checked again on 2026-11-07 (the
+// same guide, «Animated GIF output» and «SVG output»): `output_format: "gif"` on generations and edits, with
+// `frame_count` 2–16 (default 9) and `frame_duration_ms` 20–2000 in steps of 10 (default 200), `size` = each frame
+// (multiples of 16), all frames within the model's pixel budget; `output_format: "svg"` on generations only, n = 1, no
+// raster reference. Their price is not published: GIF is quoted as its frames priced like pictures of the frame's
+// size, SVG as one standard picture plus a ceiling for the vector drawing; the real cost of each job is recorded from
+// `usage`. Hidden until the owner enables it.
+
+export const GPT_IMAGE_26_ID = "openai-gpt-image-2-6";
+const GPT_IMAGE_26_CHECKED = "2026-11-06";
+export const GPT_IMAGE_26_MODELS: Record<string, string> = { flare: "gpt-image-2.6-flare", sunburst: "gpt-image-2.6-sunburst" };
+/** The OpenAI model of a GPT Image 2.6 request (Sunburst when the choice is missing). */
+export const gptImage26Model = (variant: unknown) => GPT_IMAGE_26_MODELS[String(variant)] ?? GPT_IMAGE_26_MODELS.sunburst;
+export const GPT_IMAGE_26_QUALITIES = ["low", "medium", "high", "xhigh", "max"] as const;
+export type GptImage26Quality = (typeof GPT_IMAGE_26_QUALITIES)[number];
+const Q26_LABEL: Record<GptImage26Quality, string> = { low: "سريعة", medium: "متوازنة", high: "عالية", xhigh: "عالية جدًا", max: "القصوى" };
+
+/**
+ * Output tokens of one GPT Image 2.6 image (Flare and Sunburst alike): the formula of OpenAI's official calculator
+ * (image generation guide, «Calculating costs», model «GPT Image 2.6 (Sunburst and Flare)»): the 2.5 bases
+ * (low 16 · medium 24 · high 48 · xhigh 64 · max 96), then × 4.2 (low) and × 3.3 (medium), rounded.
+ * 1024×1024: low 823 · medium 1,449 · high 1,756 · xhigh 3,122 · max 7,024 tokens.
+ */
+export function gptImage26OutputTokens(w: number, h: number, quality: GptImage26Quality) {
+  const base = { low: 16, medium: 24, high: 48, xhigh: 64, max: 96 }[quality];
+  const s = base / (Math.max(w, h) / Math.min(w, h));
+  const l = Math.floor(s);
+  const u = s - l === 0.5 ? l + (l % 2) : Math.round(s);
+  const d = (w >= h ? base : u) * (w >= h ? u : base);
+  const p = Math.ceil((d * (2e6 + w * h)) / 4e6);
+  return Math.round(p * { low: 4.2, medium: 3.3, high: 1, xhigh: 1, max: 1 }[quality]);
+}
+const out26Usd = (w: number, h: number, q: GptImage26Quality) => (gptImage26OutputTokens(w, h, q) * GPT_IMAGE_2_PRICE.imageOut) / 1e6;
+const tierOut26Usd = (tier: "std" | "hi", q: GptImage26Quality) => Math.max(...Object.values(GPT_IMAGE_2_SIZES[tier]).map(([w, h]) => out26Usd(w, h, q)));
+const q26 = (v: unknown): GptImage26Quality => ((GPT_IMAGE_26_QUALITIES as readonly string[]).includes(String(v)) ? (v as GptImage26Quality) : "medium");
+
+/** What GPT Image 2.6 returns: a picture (PNG), an animated GIF or an SVG drawing. */
+export type GptImage26Format = "png" | "gif" | "svg";
+export const gptImage26Format = (v: unknown): GptImage26Format => (v === "gif" || v === "svg" ? v : "png");
+/**
+ * The size of each GIF frame by shape (multiples of 16): small enough that 16 frames stay inside the model's pixel
+ * budget (8,294,400 pixels for the whole request; 16 × 768 × 512 = 6.3 million).
+ */
+export const GPT_IMAGE_26_GIF_SIZES: Record<string, [number, number]> = { "1:1": [512, 512], "16:9": [768, 432], "9:16": [432, 768], "3:2": [768, 512], "2:3": [512, 768] };
+export const GIF_FRAMES = { min: 2, max: 16, default: 9 } as const;
+export const GIF_FRAME_MS = { min: 20, max: 2000, step: 10, default: 200 } as const;
+export const gifFrames = (v: unknown) => Math.max(GIF_FRAMES.min, Math.min(GIF_FRAMES.max, Math.round(Number(v) || GIF_FRAMES.default)));
+export const gifFrameMs = (v: unknown) => Math.max(GIF_FRAME_MS.min, Math.min(GIF_FRAME_MS.max, Math.round((Number(v) || GIF_FRAME_MS.default) / 10) * 10));
+/** One GIF frame at its dearest shape, priced like a picture of that size. */
+const gifFrameUsd = (q: GptImage26Quality) => Math.max(...Object.values(GPT_IMAGE_26_GIF_SIZES).map(([w, h]) => out26Usd(w, h, q)));
+/** SVG: the reference picture it is drawn from (a standard picture) plus this ceiling for the drawing's own tokens. */
+export const SVG_AUTHORING_USD = 0.1;
+/**
+ * The model that writes the SVG from the reference picture (`svg.model`, required on accounts with SVG model selection:
+ * Images API reference, «svg»). OpenAI lists no choices; gpt-6.1-sol reads pictures, $2 in / $10 out per million
+ * tokens (its model page), and is the one OpenAI's own forum answer shows. Its reasoning stays at its default (medium).
+ */
+export const SVG_AUTHOR_MODEL = "gpt-6.1-sol";
+export const SVG_AUTHOR_PRICE = { input: 2, output: 10 };
+
+const gptImage26: GeneratorDef = {
+  id: GPT_IMAGE_26_ID,
+  name: "GPT Image 2.6",
+  output: "image",
+  defaultSection: "images",
+  provider: { id: "openai", label: "OpenAI" },
+  model: { id: GPT_IMAGE_26_MODELS.sunburst, family: "gpt-image-2.6", version: "flare · sunburst" },
+  api: { name: "OpenAI Images API", endpoint: "POST /v1/images/generations · POST /v1/images/edits (gpt-image-2.6-flare · gpt-image-2.6-sunburst)", tracking: "sync", progress: "none", cancel: "none" },
+  modes: gptImage2Modes,
+  options: [
+    {
+      key: "variant", label: "النسخة", kind: "choice", ltr: true, default: "sunburst",
+      values: [
+        { value: "flare", label: "Flare", hint: "الأسرع" },
+        { value: "sunburst", label: "Sunburst", hint: "أدق وأثبت في التعديل" },
+      ],
+    },
+    {
+      key: "format", label: "نوع الناتج", kind: "choice", default: "png",
+      values: [
+        { value: "png", label: "صورة" },
+        { value: "gif", label: "GIF متحركة", hint: "حتى ١٦ إطار" },
+        { value: "svg", label: "SVG", hint: "رسم متجه ينكبر بلا تشويش" },
+      ],
+    },
+    { key: "frames", label: "عدد الإطارات", kind: "int", min: GIF_FRAMES.min, max: GIF_FRAMES.max, default: GIF_FRAMES.default, unit: "إطار" },
+    { key: "frameMs", label: "مدة كل إطار", kind: "int", min: GIF_FRAME_MS.min, max: GIF_FRAME_MS.max, step: GIF_FRAME_MS.step, default: GIF_FRAME_MS.default, unit: "ملي ثانية" },
+    gptImage2.options[0],
+    gptImage2.options[1],
+    {
+      key: "quality", label: "مستوى الجودة", kind: "choice", default: "medium",
+      values: GPT_IMAGE_26_QUALITIES.map((q) => ({ value: q, label: Q26_LABEL[q] })),
+    },
+    {
+      key: "complexity", label: "عمق التخطيط", kind: "choice", default: "high",
+      values: [
+        { value: "low", label: "خفيف", hint: "تعديل بسيط" },
+        { value: "medium", label: "متوسط" },
+        { value: "high", label: "عميق", hint: "نصوص كثيرة وتصميم معقد" },
+      ],
+    },
+    { key: "count", label: "عدد الصور", kind: "int", min: 1, max: 4, default: 1, unit: "صورة" },
+  ],
+  files: { image: IMAGE_FILE },
+  prompt: { label: "البرومبت", placeholder: "صف الصورة التي تريدها…", max: 32000, arabic: true },
+  refLabel: (_kind, n) => `Image ${n}`,
+  priceKeys: [
+    ...(["std", "hi"] as const).flatMap((tier) =>
+      GPT_IMAGE_26_QUALITIES.map((q) => ({
+        key: `out:${q}:${tier}`,
+        label: `صورة · ${Q26_LABEL[q]} · ${tier === "std" ? "قياسية" : "عالية الدقة"}`,
+        defaultCenti: centiFor(tierOut26Usd(tier, q)),
+        basis: `أغلى مقاس في الفئة بمعادلة حاسبة OpenAI الرسمية لـ GPT Image 2.6 × $${GPT_IMAGE_2_PRICE.imageOut}/مليون توكن (Flare وSunburst بنفس السعر)`,
+      })),
+    ),
+    { key: "prompt:1kb", label: "كل ١٠٠٠ بايت من البرومبت", defaultCenti: centiFor((1000 * GPT_IMAGE_2_PRICE.textIn) / 1e6), basis: "سقف: كل بايت ≤ توكن واحد × $5/مليون" },
+    { key: "ref:image", label: "كل صورة مرجعية", defaultCenti: centiFor((GPT_IMAGE_2_REF_TOKENS_CAP * GPT_IMAGE_2_PRICE.imageIn) / 1e6), basis: `سقف (غير متحقق لـ GPT Image 2.6): ${GPT_IMAGE_2_REF_TOKENS_CAP.toLocaleString("en")} توكن، أقصى ما وثّقته OpenAI لصورة مدخلة في gpt-image-1، × $${GPT_IMAGE_2_PRICE.imageIn}/مليون. التكلفة الفعلية تُسجَّل مع كل مهمة` },
+    ...GPT_IMAGE_26_QUALITIES.map((q) => ({
+      key: `gif:frame:${q}`,
+      label: `GIF · كل إطار · ${Q26_LABEL[q]}`,
+      defaultCenti: centiFor(gifFrameUsd(q)),
+      basis: `تقدير (سعر GIF غير منشور): كل إطار بسعر صورة بمقاس الإطار (${Object.values(GPT_IMAGE_26_GIF_SIZES).map(([w, h]) => `${w}×${h}`).join(" · ")}) بمعادلة حاسبة OpenAI × $${GPT_IMAGE_2_PRICE.imageOut}/مليون. التكلفة الفعلية تُسجَّل مع كل مهمة`,
+    })),
+    ...GPT_IMAGE_26_QUALITIES.map((q) => ({
+      key: `svg:${q}`,
+      label: `SVG · ${Q26_LABEL[q]}`,
+      defaultCenti: centiFor(tierOut26Usd("std", q) + SVG_AUTHORING_USD),
+      basis: `تقدير (سعر SVG غير منشور): صورة مرجعية قياسية بنفس الجودة + سقف $${SVG_AUTHORING_USD} لتوكنات النموذج اللي يكتب الرسم. التكلفة الفعلية تُسجَّل مع كل مهمة`,
+    })),
+  ],
+  modeFor: (_style, refs) => (refs.length ? gptImage2Modes[1] : gptImage2Modes[0]),
+  rules(d, mode) {
+    const f = gptImage26Format(d.settings.format);
+    const notes = [d.settings.variant === "flare" ? "Flare: الأسرع، للتجربة والتكرار." : "Sunburst: أدق في التفاصيل وأثبت في تعديل الصور."];
+    if (d.settings.complexity !== "high") notes.push("عمق التخطيط الأخف أسرع، لكن النصوص الكثيرة والتصاميم المعقدة تحتاج «عميق».");
+    const issues: Issue[] = [];
+    const states: Partial<Record<string, Partial<OptionState>>> = {};
+    if (f !== "gif") {
+      states.frames = { hidden: true };
+      states.frameMs = { hidden: true };
+    }
+    if (f === "gif") {
+      const [w, h] = GPT_IMAGE_26_GIF_SIZES[String(d.settings.aspect)] ?? GPT_IMAGE_26_GIF_SIZES["1:1"];
+      states.resolution = { hidden: true };
+      states.count = { fixed: { value: 1, reason: "GIF واحدة في كل طلب." } };
+      const sec = (gifFrames(d.settings.frames) * gifFrameMs(d.settings.frameMs)) / 1000;
+      notes.push(`GIF متحركة: ${gifFrames(d.settings.frames)} إطار بمقاس ${w}×${h}، وتلف كل ${Math.round(sec * 100) / 100} ثانية. اكتب في البرومبت الحركة اللي تبيها من أول إطار لآخر إطار.`);
+    }
+    if (f === "svg") {
+      states.resolution = { hidden: true };
+      states.count = { fixed: { value: 1, reason: "SVG واحد في كل طلب." } };
+      notes.push("SVG: رسم متجه (أشكال وخطوط) ينكبر لأي مقاس بلا تشويش، يناسب الشعارات والأيقونات والرسوم البسيطة. من النص فقط.");
+      if (mode.id === "image_reference") issues.push({ field: "refs", message: "SVG يُصنع من النص فقط: احذف الصور المرجعية أو اختر «صورة» أو «GIF»." });
+    }
+    return { options: opt(gptImage26.options, states), issues, notes };
+  },
+  price(d, mode, table) {
+    const s = d.settings;
+    const f = gptImage26Format(s.format);
+    const tier = s.resolution === "hi" ? "hi" : "std";
+    const q = q26(s.quality);
+    const n = f === "png" ? Number(s.count) || 1 : 1;
+    const frames = gifFrames(s.frames);
+    const per = table[f === "gif" ? `gif:frame:${q}` : f === "svg" ? `svg:${q}` : `out:${q}:${tier}`];
+    const perKb = table["prompt:1kb"];
+    if (per == null || perKb == null) return { ok: false, reason: "سعر هذا الإعداد غير محدد بعد." };
+    const kb = Math.max(1, Math.ceil(utf8Bytes(d.prompt) / 1000));
+    const lines = [
+      f === "gif" ? { label: `GIF · ${frames} إطار`, centi: frames * per } : f === "svg" ? { label: "SVG", centi: per } : { label: `${n} × صورة`, centi: n * per },
+      { label: "البرومبت", centi: kb * perKb },
+    ];
+    if (mode.id === "image_reference") {
+      const ref = table["ref:image"];
+      if (ref == null) return { ok: false, reason: "سعر الصور المرجعية لهذا المولد لم يُحدد بعد (تكلفتها غير موثّقة من OpenAI)." };
+      lines.push({ label: `${d.refs.length} × مرجع`, centi: d.refs.length * ref });
+    }
+    return total(lines, gptImage26.costUsd(d, mode));
+  },
+  costUsd(d) {
+    const s = d.settings;
+    const tier = s.resolution === "hi" ? "hi" : "std";
+    const size = GPT_IMAGE_2_SIZES[tier][String(s.aspect)] ?? GPT_IMAGE_2_SIZES.std["1:1"];
+    const refs = (d.refs.filter((r) => r.kind === "image").length * GPT_IMAGE_2_REF_TOKENS_CAP * GPT_IMAGE_2_PRICE.imageIn) / 1e6;
+    const text = (utf8Bytes(d.prompt) * GPT_IMAGE_2_PRICE.textIn) / 1e6;
+    const f = gptImage26Format(s.format);
+    if (f === "gif") return gifFrames(s.frames) * gifFrameUsd(q26(s.quality)) + text + refs;
+    if (f === "svg") return tierOut26Usd("std", q26(s.quality)) + SVG_AUTHORING_USD + text;
+    return (Number(s.count) || 1) * out26Usd(size[0], size[1], q26(s.quality)) + text + refs;
+  },
+  sources: [
+    { label: "OpenAI — GPT-Image-2.6 Flare (model page: Images API generations + edits, token prices)", url: "https://developers.openai.com/api/docs/models/gpt-image-2.6-flare", checked: GPT_IMAGE_26_CHECKED },
+    { label: "OpenAI — GPT-Image-2.6 Sunburst (model page: Images API generations + edits, token prices)", url: "https://developers.openai.com/api/docs/models/gpt-image-2.6-sunburst", checked: GPT_IMAGE_26_CHECKED },
+    { label: "OpenAI — Image generation guide (GPT Image 2.6, complexity, sizes, quality, calculator)", url: "https://developers.openai.com/api/docs/guides/image-generation", checked: GPT_IMAGE_26_CHECKED },
+    { label: "OpenAI — Images API reference (model ids, complexity, up to 16 input images)", url: "https://developers.openai.com/api/reference/resources/images/methods/edit", checked: GPT_IMAGE_26_CHECKED },
+    { label: "OpenAI — Pricing (gpt-image-2.6-flare · gpt-image-2.6-sunburst)", url: "https://developers.openai.com/api/docs/pricing", checked: GPT_IMAGE_26_CHECKED },
+  ],
+  verification: [
+    { item: "النموذجان", status: "verified", note: "gpt-image-2.6-flare وgpt-image-2.6-sunburst في Images API (generations وedits)؛ لا يعملان في Responses API." },
+    { item: "المقاسات والنِّسب", status: "verified", note: "نفس قواعد GPT Image 2.5: أضلاع من مضاعفات 16، نسبة بين 1:3 و3:1، أطول ضلع ≤ 3840، و655,360–8,294,400 بكسل؛ ما فوق 2560×1440 تجريبي فلم نعرضه." },
+    { item: "الجودة", status: "verified", note: "low · medium · high · xhigh · max (دليل الصور وحاسبته الرسمية لـ 2.6؛ مرجع API يذكر xhigh وmax لنسخ 2.5 بالاسم فقط). auto مستبعد لأنه يجعل السعر غير معروف." },
+    { item: "عمق التخطيط (complexity)", status: "verified", note: "low · medium · high، والافتراضي high، وبلا رسوم إضافية." },
+    { item: "عدد الصور", status: "verified", note: "n من 1 إلى 10؛ نعرض حتى 4." },
+    { item: "الصور المرجعية", status: "verified", note: "نقطة edits تقبل حتى 16 صورة؛ نقبل PNG وJPEG وWEBP حتى 20MB." },
+    { item: "سعر المخرجات", status: "verified", note: "$30 لكل مليون توكن، وعدد التوكنات بمعادلة الحاسبة الرسمية لـ GPT Image 2.6 (1024×1024: low ‏$0.025 · medium ‏$0.043 · high ‏$0.053 · xhigh ‏$0.094 · max ‏$0.211)." },
+    { item: "سعر الصور المرجعية", status: "unverified", note: "توكنات الصورة المدخلة غير موثّقة لـ 2.6؛ نسعّرها بسقف 7,100 توكن × $8/مليون، والتكلفة الفعلية تُسجَّل من usage." },
+    { item: "GIF متحركة", status: "verified", note: "output_format gif على generations وedits؛ frame_count من 2 إلى 16 (الافتراضي 9)، frame_duration_ms من 20 إلى 2000 بخطوات 10 (الافتراضي 200)؛ size مقاس كل إطار (مضاعفات 16) والإطارات كلها داخل ميزانية البكسل؛ بلا بث ولا output_compression." },
+    { item: "سعر GIF", status: "unverified", note: "غير منشور: نسعّر كل إطار بسعر صورة بمقاس الإطار، والتكلفة الفعلية تُسجَّل من usage." },
+    { item: "SVG", status: "verified", note: "output_format svg على generations فقط، n = 1، بلا صور مرجعية؛ رسم متجه بلا سكربتات ولا صور مدمجة. svg.model مطلوب على حسابنا (رد OpenAI: «SVG generation requires 'svg.model'»): نرسل gpt-6.1-sol ($2 / $10 لكل مليون توكن)." },
+    { item: "سعر SVG", status: "unverified", note: "OpenAI: سعر الصورة المرجعية + توكنات النموذج اللي يكتب الرسم (غير محدد)؛ نضيف سقف $0.10 والتكلفة الفعلية تُسجَّل من usage." },
+    { item: "الخلفية الشفافة", status: "unverified", note: "المرجع يذكرها لنسخ 2.5 بالاسم وليس 2.6؛ غير معروضة." },
+    { item: "التعديل بالتأشير (markup)", status: "unverified", note: "موثّق لـ 2.6 لكن يحتاج طبقة PNG شفافة بنفس المقاس؛ غير معروض بعد." },
+    { item: "التقدم والإلغاء", status: "verified", note: "طلب متزامن بلا نسبة تقدم ولا إلغاء." },
+    { item: "طول البرومبت", status: "verified", note: "حتى 32,000 حرف (مرجع Images API)." },
   ],
   notes: ["كل طلب متزامن: يرجع بالصور مباشرة (base64) ونحفظها في تخزيننا."],
 };
@@ -749,6 +992,238 @@ const kling3: GeneratorDef = {
   notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
 };
 
+// ───────────────────────────── Kling 4.0 and Kling 4.0 Flash (fal.ai) ─────────────────────────────
+// Checked on 2026-11-07: fal's schemas of kling/v4/{text-to-video,image-to-video,reference-to-video,video-to-video/edit}
+// and kling/v4/flash/{text-to-video,image-to-video,reference-to-video,video-to-video}, and their model pages.
+// Kling 4.0: 3–30 s, 720p or 1080p, a first frame and a last frame (fal also takes up to 8 middle keyframes: not offered
+// here, the studio has no slot for them), references: up to 10 pictures and 5 videos (30 s in all).
+// Flash: 3–20 s, 720p only, a first frame only, references: up to 10 pictures and 5 videos (20 s in all).
+// Both: 16:9 · 9:16 · 1:1 · 21:9; references named @Image1…, @Video1… in the prompt. Price per second of output by
+// resolution; with any input video (references, or the edit card) a cheaper rate per second billed on the input plus
+// the output, at least twice the output. fal announced Flash «with native audio»; neither schema has a sound switch.
+// Each has two cards like Omni 1.2: making a video, and «تعديل فيديو». Hidden until the owner enables them.
+
+type Kling4Variant = "full" | "flash";
+export const KLING4_ID = "kling-4";
+export const KLING4_EDIT_ID = "kling-4-edit";
+export const KLING4_FLASH_ID = "kling-4-flash";
+export const KLING4_FLASH_EDIT_ID = "kling-4-flash-edit";
+/** fal's published prices a second, by resolution: plain, and with an input video. */
+export const KLING4_USD: Record<Kling4Variant, Record<string, { second: number; withVideo: number }>> = {
+  full: { "720p": { second: 0.157, withVideo: 0.094 }, "1080p": { second: 0.235, withVideo: 0.141 } },
+  flash: { "720p": { second: 0.094, withVideo: 0.063 } },
+};
+export const KLING4_FLASH_USD = KLING4_USD.flash["720p"];
+const KLING4_CHECKED = "2026-11-07";
+const KLING4_SPEC: Record<Kling4Variant, { name: string; path: string; maxSec: number; res: string[]; lastFrame: boolean; editPath: string }> = {
+  full: { name: "Kling 4.0", path: "kling/v4", maxSec: 30, res: ["720p", "1080p"], lastFrame: true, editPath: "video-to-video/edit" },
+  flash: { name: "Kling 4.0 Flash", path: "kling/v4/flash", maxSec: 20, res: ["720p"], lastFrame: false, editPath: "video-to-video" },
+};
+/** The output length sent: 3 to the variant's maximum. */
+export const kling4Sec = (d: { settings: Settings }, max = 20) => Math.max(3, Math.min(max, Math.round(Number(d.settings.duration) || 5)));
+/** Seconds of the input videos together (rounded up). */
+export const kling4VideoSec = (refs: { kind: string; durationMs?: number | null }[]) =>
+  Math.max(0, Math.ceil(refs.filter((r) => r.kind === "video").reduce((s, r) => s + (r.durationMs ?? 0), 0) / 1000 - 0.05));
+/** Billed seconds: the output alone, or with input videos the input plus the output, at least twice the output. */
+export const kling4Billed = (outSec: number, videoSec: number, rate: { second: number; withVideo: number } = KLING4_FLASH_USD) =>
+  videoSec > 0 ? { per: rate.withVideo, sec: Math.max(videoSec + outSec, 2 * outSec) } : { per: rate.second, sec: outSec };
+const kling4Label = (kind: RefKind, n: number) => `@${kind[0].toUpperCase()}${kind.slice(1)}${n}`;
+const kling4Res = (v: Kling4Variant, d: { settings: Settings }) => (KLING4_SPEC[v].res.includes(String(d.settings.resolution)) ? String(d.settings.resolution) : KLING4_SPEC[v].res.at(-1)!);
+const kling4PriceKeys = (v: Kling4Variant): GeneratorDef["priceKeys"] =>
+  KLING4_SPEC[v].res.flatMap((r) => [
+    { key: `sec:${r}`, label: `كل ثانية · ${r}`, defaultCenti: centiFor(KLING4_USD[v][r].second), basis: `سعر fal المنشور: $${KLING4_USD[v][r].second} للثانية (${r})` },
+    {
+      key: `sec:video:${r}`,
+      label: `كل ثانية محسوبة · مع فيديو داخل · ${r}`,
+      defaultCenti: centiFor(KLING4_USD[v][r].withVideo),
+      basis: `سعر fal المنشور مع فيديو داخل: $${KLING4_USD[v][r].withVideo} × (ثواني الفيديو الداخل + الناتج، وأقلها ضعف الناتج) (${r})`,
+    },
+  ]);
+const kling4Sources = (v: Kling4Variant, paths: string[]) =>
+  paths.flatMap((p) => [
+    { label: `fal.ai — ${KLING4_SPEC[v].path}/${p} (schema)`, url: `https://fal.ai/models/${KLING4_SPEC[v].path}/${p}/api`, checked: KLING4_CHECKED },
+    { label: `fal.ai — ${KLING4_SPEC[v].path}/${p} (price)`, url: `https://fal.ai/models/${KLING4_SPEC[v].path}/${p}`, checked: KLING4_CHECKED },
+  ]);
+const kling4Price = (v: Kling4Variant, def: () => GeneratorDef, d: { settings: Settings; refs: RefMeta[] }, mode: ModeDef, table: Record<string, number | null | undefined>, outSec: number, videoSec: number) => {
+  const res = kling4Res(v, d);
+  const { sec } = kling4Billed(outSec, videoSec, KLING4_USD[v][res]);
+  const per = table[videoSec > 0 ? `sec:video:${res}` : `sec:${res}`];
+  if (per == null) return { ok: false as const, reason: "سعر هذا الإعداد غير محدد بعد." };
+  const label = videoSec > 0 ? `${outSec} ث ناتج + ${sec - outSec} ث (الفيديو الداخل) · ${res}` : `${outSec} ث · ${res}`;
+  return total([{ label, centi: per * sec }], def().costUsd(d as never, mode));
+};
+const kling4ResOption = (v: Kling4Variant): GeneratorDef["options"] =>
+  KLING4_SPEC[v].res.length > 1 ? [{ key: "resolution", label: "الدقة", kind: "choice", ltr: true, default: "1080p", values: KLING4_SPEC[v].res.map((r) => ({ value: r, label: r })) }] : [];
+
+function kling4Generator(v: Kling4Variant): GeneratorDef {
+  const spec = KLING4_SPEC[v];
+  const maxMs = spec.maxSec * 1000;
+  const modes: ModeDef[] = [
+    { id: "text_to_video", label: "من النص", refStyle: "none", refs: {}, promptRequired: true },
+    { id: "first_frame", label: "إطار أول", refStyle: "frames", refs: { image: { min: 1, max: 1 } }, roles: ["first_frame"], promptRequired: false },
+    ...(spec.lastFrame ? [{ id: "first_last_frame", label: "إطار أول وأخير", refStyle: "frames" as const, refs: { image: { min: 2, max: 2 } }, roles: ["first_frame", "last_frame"] as RefRole[], promptRequired: false }] : []),
+    {
+      id: "omni_reference",
+      label: "مراجع (صور وفيديو)",
+      refStyle: "references",
+      refs: { image: { min: 0, max: 10 }, video: { min: 0, max: 5, totalMaxMs: maxMs } },
+      needsOneOf: ["image", "video"],
+      promptRequired: true,
+    },
+  ];
+  const refMode = modes.at(-1)!;
+  const def: GeneratorDef = {
+    id: v === "full" ? KLING4_ID : KLING4_FLASH_ID,
+    name: spec.name,
+    output: "video",
+    defaultSection: "video",
+    provider: { id: "fal", label: "Kuaishou Kling (fal.ai)" },
+    model: { id: `${spec.path}/text-to-video`, family: spec.name, version: v === "full" ? "4.0" : "4.0 flash" },
+    api: { name: "fal.ai queue", endpoint: `POST ${spec.path}/text-to-video · image-to-video · reference-to-video`, tracking: "async", progress: "none", cancel: "none" },
+    modes,
+    options: [
+      { key: "ratio", label: "نسبة الأبعاد", kind: "choice", ltr: true, default: "9:16", values: RATIO_VALUES.filter((r) => ["16:9", "9:16", "1:1", "21:9"].includes(r.value)) },
+      ...kling4ResOption(v),
+      { key: "duration", label: "المدة", kind: "int", min: 3, max: spec.maxSec, default: 5, unit: "ثانية" },
+    ],
+    files: {
+      image: { mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 30 * MB, minSide: 300, maxSide: 8192, minAspect: 0.4, maxAspect: 2.5 },
+      video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 100 * MB, minSide: 300, maxSide: 4553, minAspect: 0.4, maxAspect: 2.5, minMs: 3000, maxMs },
+    },
+    prompt: {
+      label: "البرومبت",
+      placeholder: "Describe the scene, the motion and the camera… (with references: «@Image1 runs through @Video1»)",
+      max: 4000,
+      arabic: false,
+      arabicNote: "Kling يفهم الإنجليزية أفضل؛ اكتب البرومبت بالإنجليزية.",
+    },
+    priceKeys: kling4PriceKeys(v),
+    modeFor(style, refs) {
+      if (!refs.length) return modes[0];
+      if (style === "references") return refMode;
+      return spec.lastFrame && refs.length >= 2 ? modes[2] : modes[1];
+    },
+    rules(d, mode) {
+      const notes: string[] =
+        v === "full"
+          ? ["من ٣ إلى ٣٠ ثانية في مرة وحدة، بدقة 720p أو 1080p."]
+          : ["نسخة أخف وأرخص من Kling 4.0: من ٣ إلى ٢٠ ثانية، بدقة 720p. للنسخة النهائية بـ1080p أو بإطار أخير، خذ Kling 4.0."];
+      notes.push("الصوت ما فيه زر له: اكتب «no music» أو «no dialogue» لو ما تبيه.");
+      const states: Partial<Record<string, Partial<OptionState>>> = {};
+      if (mode.refStyle === "frames") {
+        states.ratio = { fixed: { value: "adaptive", reason: "النسبة تتبع صورة الإطار الأول" } };
+        notes.push(spec.lastFrame ? "الفيديو يتبع نسبة صورة الإطار الأول." : "إطار أول بس (ما فيه إطار أخير): الفيديو يتبع نسبة الصورة.");
+      }
+      if (mode.id === "omni_reference") {
+        notes.push(`اكتب في البرومبت ‎@Image1 و‎@Video1 بترتيب رفعها لتحدد دور كل مرجع. حتى ١٠ صور و٥ فيديوهات (كل فيديو من ٣ ثواني، و${spec.maxSec} ثانية بالمجموع).`);
+        if (d.refs.some((r) => r.kind === "video")) notes.push("⚠️ مع فيديو مرجعي يتغير الحساب: سعر أرخص للثانية، لكن تنحسب ثواني الفيديو المرجعي + الناتج (وأقلها ضعف الناتج).");
+      }
+      if (hasArabic(d.prompt)) notes.push(def.prompt.arabicNote!);
+      return { options: opt(def.options, states), issues: [], notes };
+    },
+    price(d, mode, table) {
+      return kling4Price(v, () => def, d, mode, table, kling4Sec(d, spec.maxSec), mode.id === "omni_reference" ? kling4VideoSec(d.refs) : 0);
+    },
+    costUsd(d, mode) {
+      const { per, sec } = kling4Billed(kling4Sec(d, spec.maxSec), mode.id === "omni_reference" ? kling4VideoSec(d.refs) : 0, KLING4_USD[v][kling4Res(v, d)]);
+      return per * sec;
+    },
+    refLabel: kling4Label,
+    sources: kling4Sources(v, ["text-to-video", "image-to-video", "reference-to-video"]),
+    verification: [
+      {
+        item: "الأوضاع",
+        status: "verified",
+        note: spec.lastFrame
+          ? "نص (text-to-video) · إطار أول وأخير (image-to-video: start_image_url + end_image_url) · مراجع (reference-to-video: image_urls ≤ 10، video_urls ≤ 5، 30 ث بالمجموع)."
+          : "نص (text-to-video) · إطار أول (image-to-video: start_image_url، بلا إطار أخير) · مراجع (reference-to-video: image_urls ≤ 10، video_urls ≤ 5، كل فيديو 3–20 ث و20 ث بالمجموع).",
+      },
+      { item: "الدقة والمدة", status: "verified", note: `${spec.res.join(" · ")}، من 3 إلى ${spec.maxSec} ثانية.` },
+      { item: "النسب", status: "verified", note: "16:9 · 9:16 · 1:1 · 21:9 (والمراجع تقبل auto)؛ الإطارات بلا نسبة (تتبع الصورة)." },
+      {
+        item: "السعر",
+        status: "verified",
+        note: `${spec.res.map((r) => `${r}: $${KLING4_USD[v][r].second} للثانية، ومع فيديو مرجعي $${KLING4_USD[v][r].withVideo}`).join(" · ")}؛ مع فيديو تنحسب ثواني الفيديو + الناتج وأقلها ضعف الناتج (صفحات fal).`,
+      },
+      { item: "الصوت", status: "unverified", note: "المخطط ما فيه خيار للصوت؛ إعلان fal لـFlash يقول «with native audio». يُجرَّب أولًا." },
+      ...(v === "full" ? [{ item: "إطارات بالنص", status: "verified" as const, note: "fal يقبل حتى 8 إطارات بين الأول والأخير (middle_image_urls)، والاستوديو ما فيه مكان لها؛ غير معروضة." }] : []),
+      { item: "العناصر والقطع المتعددة", status: "verified", note: "fal يقبل حتى 7 عناصر (‎@Element1) وبرومبت لكل لقطة (multi_prompt)؛ غير معروضة هنا." },
+      { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
+    ],
+    notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
+  };
+  return def;
+}
+
+/** The edited video keeps the length of the one sent. */
+export const kling4EditSec = (refs: { kind: string; durationMs?: number | null }[], max = 20) => Math.max(3, Math.min(max, kling4VideoSec(refs.filter((r) => r.kind === "video").slice(0, 1))));
+
+function kling4EditGenerator(v: Kling4Variant): GeneratorDef {
+  const spec = KLING4_SPEC[v];
+  const maxMs = spec.maxSec * 1000;
+  const mode: ModeDef = {
+    id: "video_edit",
+    label: "تعديل فيديو",
+    refStyle: "references",
+    refs: { video: { min: 1, max: 1 }, image: { min: 0, max: 10 } },
+    promptRequired: true,
+    prompt: { label: "التعديل", placeholder: "مثال: غيّر لبس الشخص في ‎@Video1 للي في ‎@Image1 · خلّ الجو مطر" },
+  };
+  const def: GeneratorDef = {
+    id: v === "full" ? KLING4_EDIT_ID : KLING4_FLASH_EDIT_ID,
+    name: `${spec.name} · تعديل فيديو`,
+    output: "video",
+    defaultSection: "video",
+    provider: { id: "fal", label: "Kuaishou Kling (fal.ai)" },
+    model: { id: `${spec.path}/${spec.editPath}`, family: spec.name, version: v === "full" ? "4.0 edit" : "4.0 flash edit" },
+    api: { name: "fal.ai queue", endpoint: `POST ${spec.path}/${spec.editPath}`, tracking: "async", progress: "none", cancel: "none" },
+    modes: [mode],
+    options: kling4ResOption(v),
+    files: {
+      image: { mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 30 * MB, minSide: 300, maxSide: 8192, minAspect: 0.4, maxAspect: 2.5 },
+      video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 100 * MB, minSide: 700, maxSide: 4553, minAspect: 0.4, maxAspect: 2.5, minMs: 3000, maxMs },
+    },
+    prompt: { label: "التعديل", placeholder: "مثال: خلّ المشهد بالليل · غيّر الخلفية لمدينة", max: 4000, arabic: false, arabicNote: "Kling يفهم الإنجليزية أفضل؛ اكتب التعديل بالإنجليزية." },
+    priceKeys: kling4PriceKeys(v),
+    modeFor: () => mode,
+    rules(d) {
+      const notes = [
+        `ارفع فيديو (من ٣ إلى ${spec.maxSec} ثانية، وأصغر ضلع فيه ٧٠٠ بكسل على الأقل) واكتب التعديل: يرجع لك نفس المقطع بنفس طوله بعد التعديل، بدقة ${spec.res.join(" أو ")}.`,
+        "الفيديو اسمه ‎@Video1 في البرومبت، والصور ‎@Image1 و‎@Image2… (حتى ١٠ صور).",
+        `أطول من ${spec.maxSec} ثانية؟ افتح المرجع واضغط «قص» وخذ الجزء اللي تبيه.`,
+        "السعر: ثواني المقطع × ٢ (الفيديو الداخل + الناتج) بسعر الثانية مع فيديو.",
+      ];
+      if (hasArabic(d.prompt)) notes.push(def.prompt.arabicNote!);
+      return { options: opt(def.options), issues: [], notes };
+    },
+    price(d, m, table) {
+      if (!d.refs.some((r) => r.kind === "video" && r.durationMs)) return { ok: false, reason: "أضف الفيديو اللي تبي تعدّله أولًا." };
+      const sec = kling4EditSec(d.refs, spec.maxSec);
+      return kling4Price(v, () => def, d, m, table, sec, sec);
+    },
+    costUsd(d) {
+      const sec = kling4EditSec(d.refs, spec.maxSec);
+      const b = kling4Billed(sec, sec, KLING4_USD[v][kling4Res(v, d)]);
+      return b.per * b.sec;
+    },
+    refLabel: kling4Label,
+    sources: kling4Sources(v, [spec.editPath]),
+    verification: [
+      { item: "المدخلات", status: "verified", note: `prompt + video_url (3–${spec.maxSec} ث، أصغر ضلع 700 بكسل) + image_urls ≤ 10 اختيارية؛ resolution ${spec.res.join(" · ")}؛ المدة تتبع الفيديو الأصلي.` },
+      { item: "السعر", status: "verified", note: `$${spec.res.map((r) => `${KLING4_USD[v][r].withVideo} (${r})`).join(" · $")} × (ثواني الفيديو الداخل + الناتج، وأقلها ضعف الناتج) = ثواني المقطع × 2 (صفحة fal).` },
+      { item: "فيديوهات مرجعية إضافية", status: "verified", note: "fal يقبل حتى 4 فيديوهات مرجعية (‎@Video2…) والعناصر؛ غير معروضة هنا." },
+      { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
+    ],
+    notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
+  };
+  return def;
+}
+
+const kling4 = kling4Generator("full");
+const kling4Edit = kling4EditGenerator("full");
+const kling4Flash = kling4Generator("flash");
+const kling4FlashEdit = kling4EditGenerator("flash");
+
 // ───────────────────────────── Alibaba · Wan 3.0 (on fal.ai) ─────────────────────────────
 // Checked on 2026-10-23: fal's schemas of alibaba/wan-3.0/{text,image,reference}-to-video. Priced per second of output by
 // resolution ($0.05 · $0.10 · $0.20); in reference mode the reference VIDEOS' seconds are billed on top. Up to 30 s in one
@@ -953,6 +1428,175 @@ const geminiOmni: GeneratorDef = {
     { item: "الصوت", status: "verified", note: "صوت مدمج متزامن بلا رسوم إضافية، وما فيه خيار لإيقافه." },
     { item: "السعر", status: "verified", note: "$0.03 · $0.10 · $0.15 · $0.30 للثانية (360p · 720p · 1080p · 4K) من صفحة fal؛ وعند Google مباشرة تقريبًا $0.10 للثانية بـ720p." },
     { item: "الوجوه الحقيقية", status: "unverified", note: "التوثيق ما يذكر قيودًا على وجوه الأشخاص؛ تُجرَّب أولًا." },
+    { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
+  ],
+  notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
+};
+
+// ───────────────────────────── Google · Gemini Omni Flash 1.2 (on fal.ai) ─────────────────────────────
+// Checked on 2026-11-06: fal's schemas of google/gemini-omni-flash/v1.2/{text,image,reference}-to-video — 3–15 s
+// (at most 10 with an end image), 360p · 720p · 1080p · 4K, 16:9 · 9:16, up to 10 reference pictures and 3 reference
+// videos of ≤ 15 s each. fal's pages: $0.0273 · $0.0819 · $0.1229 · $0.2457 a second, native sound included, the
+// references not billed (Google's own API quotes ~$0.07 a second at 720p; fal is our Omni provider). Google Cloud's
+// model page: gemini-omni-1.2-flash, the same limits, no audio input. Its own generator beside 1.1 (kept as it is).
+// Hidden until the owner enables it.
+
+export const OMNI12_ID = "gemini-omni-1-2";
+export const OMNI12_SECOND_USD: Record<string, number> = { "360p": 0.0273, "720p": 0.0819, "1080p": 0.1229, "4k": 0.2457 };
+const OMNI12_CHECKED = "2026-11-06";
+/** The length sent to Omni 1.2: 3–15 s, at most 10 between a first and a last frame. */
+export const omni12Sec = (d: { settings: Settings; refs?: { role: string }[] }) => {
+  const lastFrame = (d.refs ?? []).some((r) => r.role === "last_frame");
+  return Math.max(3, Math.min(lastFrame ? 10 : 15, Math.round(Number(d.settings.duration) || 8)));
+};
+
+const geminiOmni12: GeneratorDef = {
+  id: OMNI12_ID,
+  name: "Gemini Omni 1.2",
+  output: "video",
+  defaultSection: "video",
+  provider: { id: "fal", label: "Google Gemini Omni (fal.ai)" },
+  model: { id: "google/gemini-omni-flash/v1.2/text-to-video", family: "Gemini Omni Flash", version: "1.2" },
+  api: { name: "fal.ai queue", endpoint: "POST google/gemini-omni-flash/v1.2/text-to-video · image-to-video · reference-to-video", tracking: "async", progress: "none", cancel: "none" },
+  modes: omniModes,
+  options: [
+    geminiOmni.options[0],
+    geminiOmni.options[1],
+    { key: "duration", label: "المدة", kind: "int", min: 3, max: 15, default: 8, unit: "ثانية" },
+  ],
+  files: {
+    image: geminiOmni.files.image,
+    video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 100 * MB, minSide: 300, maxSide: 6000, minAspect: 0.4, maxAspect: 2.5, minMs: 1000, maxMs: 15000 },
+  },
+  prompt: geminiOmni.prompt,
+  priceKeys: [
+    ...["360p", "720p", "1080p", "4k"].map((r) => ({
+      key: `sec:${r}`,
+      label: `كل ثانية · ${OMNI_RES_LABEL[r]}`,
+      defaultCenti: centiFor(OMNI12_SECOND_USD[r]),
+      basis: `سعر fal المنشور: ${OMNI12_SECOND_USD[r]} للثانية (${r})، والصوت والمراجع بلا رسوم إضافية`,
+    })),
+    DIRECTOR_PRICE_LINE,
+  ],
+  modeFor: geminiOmni.modeFor,
+  rules(d, mode) {
+    const notes: string[] = ["الصوت مدمج وشغّال دايمًا (ما فيه زر لإيقافه): اكتب في البرومبت «no music» أو «no voice» لو ما تبيه.", "حتى ١٥ ثانية في مرة وحدة."];
+    const states: Partial<Record<string, Partial<OptionState>>> = {};
+    if (mode.refStyle === "frames") notes.push("في وضع الإطارات يتبع الفيديو صورتك: النسبة تُرسل مع الطلب.");
+    if (mode.id === "first_last_frame") {
+      states.duration = { max: 10 };
+      notes.push("بين إطار أول وأخير: المدة حتى ١٠ ثواني.");
+    }
+    if (mode.id === "omni_reference") notes.push("في المراجع، اكتب في البرومبت <IMAGE_REF_0> و<VIDEO_REF_0> بترتيب رفعها (تبدأ من صفر) لتحدد دور كل مرجع. حتى ١٠ صور و٣ فيديوهات، كل فيديو حتى ١٥ ثانية.");
+    return { options: opt(geminiOmni12.options, states), issues: [], notes };
+  },
+  price(d, mode, table) {
+    const res = String(d.settings.resolution);
+    const per = table[`sec:${res}`];
+    if (per == null) return { ok: false, reason: "سعر هذه الدقة غير محدد بعد." };
+    const sec = omni12Sec(d);
+    return total([{ label: `${sec} ث · ${OMNI_RES_LABEL[res] ?? res}`, centi: per * sec }], geminiOmni12.costUsd(d, mode));
+  },
+  costUsd(d) {
+    return omni12Sec(d) * (OMNI12_SECOND_USD[String(d.settings.resolution)] ?? OMNI12_SECOND_USD["720p"]);
+  },
+  refLabel: geminiOmni.refLabel,
+  sources: [
+    { label: "fal.ai — google/gemini-omni-flash/v1.2/text-to-video (schema, endpoints)", url: "https://fal.ai/models/google/gemini-omni-flash/v1.2/text-to-video/api", checked: OMNI12_CHECKED },
+    { label: "fal.ai — google/gemini-omni-flash/v1.2/text-to-video (price)", url: "https://fal.ai/models/google/gemini-omni-flash/v1.2/text-to-video", checked: OMNI12_CHECKED },
+    { label: "fal.ai — google/gemini-omni-flash/v1.2/image-to-video (schema)", url: "https://fal.ai/models/google/gemini-omni-flash/v1.2/image-to-video/api", checked: OMNI12_CHECKED },
+    { label: "fal.ai — google/gemini-omni-flash/v1.2/reference-to-video (schema)", url: "https://fal.ai/models/google/gemini-omni-flash/v1.2/reference-to-video/api", checked: OMNI12_CHECKED },
+    { label: "Google Cloud — Gemini Omni 1.2 Flash (model page: limits)", url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/omni-1-2-flash", checked: OMNI12_CHECKED },
+  ],
+  verification: [
+    { item: "الأوضاع", status: "verified", note: "نص · إطار أول (image_url) · أول وأخير (+ end_image_url) · مراجع (image_urls ≤ 10، reference_video_urls ≤ 3 كل واحد ≤ 15 ثانية)." },
+    { item: "الدقة", status: "verified", note: "360p · 720p · 1080p · 4K." },
+    { item: "النسب", status: "verified", note: "16:9 · 9:16 فقط." },
+    { item: "المدة", status: "verified", note: "3–15 ثانية (minimum 3 وmaximum 15 في مخطط fal)، وحتى 10 مع إطار أخير (fal وGoogle)." },
+    { item: "الصوت", status: "verified", note: "صوت مدمج متزامن بلا رسوم إضافية، وما فيه خيار لإيقافه؛ Google: الصوت المرجعي غير مدعوم." },
+    { item: "السعر", status: "verified", note: "$0.0273 · $0.0819 · $0.1229 · $0.2457 للثانية (360p · 720p · 1080p · 4K) من صفحات fal، والمراجع بلا رسوم؛ Google يذكر نحو $0.07 بـ720p عنده مباشرة." },
+    { item: "طول الفيديو المرجعي", status: "unverified", note: "مخطط fal يقبل حتى 15 ثانية لكل فيديو، وإعلان Google يذكر مقاطع حركة حتى 3 ثوانٍ؛ نقبل ما يقبله fal وتُجرَّب الأطول أولًا." },
+    { item: "تعديل مقطع جاهز", status: "unverified", note: "fal فيه نقطة v1.2/edit (فيديو ≤ 15 ثانية + تعليمات)؛ غير معروضة هنا بعد." },
+    { item: "الوجوه الحقيقية", status: "unverified", note: "التوثيق ما يذكر قيودًا على وجوه الأشخاص؛ تُجرَّب أولًا." },
+    { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
+  ],
+  notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
+};
+
+// ───────────────────────────── Gemini Omni 1.2 · تعديل فيديو (fal.ai) ─────────────────────────────
+// Checked on 2026-11-07: fal's google/gemini-omni-flash/v1.2/edit (schema: prompt + video_url of at most 15 s +
+// resolution 360p/720p/1080p/4k, default 720p; output one video) and its model page (billed per second of the edited
+// output video, by resolution, at the same rates as v1.2 generation). The edited video keeps the length of the one
+// sent, so the price follows the reference's length. Its own card beside Omni 1.2, so its single mode (one video and
+// a plain instruction) never mixes with the reference mode. Hidden until the owner enables it.
+
+export const OMNI12_EDIT_ID = "gemini-omni-1-2-edit";
+export const OMNI12_EDIT_MAX_MS = 15_000;
+/** Seconds billed for an edit: the reference video's length (at least 1 s, at most 15). */
+export const omni12EditSec = (refs: { kind: string; durationMs?: number | null }[]) => {
+  const ms = refs.find((r) => r.kind === "video")?.durationMs ?? 0;
+  return Math.max(1, Math.min(OMNI12_EDIT_MAX_MS / 1000, Math.ceil(ms / 1000 - 0.05)));
+};
+const omni12EditMode: ModeDef = {
+  id: "video_edit",
+  label: "تعديل فيديو",
+  refStyle: "references",
+  refs: { video: { min: 1, max: 1 } },
+  promptRequired: true,
+  prompt: { label: "التعديل", placeholder: "مثال: خلّ المشهد بالليل تحت ضوء القمر · غيّر الجو لمطر · خلّ لبسه أحمر" },
+};
+
+const geminiOmni12Edit: GeneratorDef = {
+  id: OMNI12_EDIT_ID,
+  name: "Gemini Omni 1.2 · تعديل فيديو",
+  output: "video",
+  defaultSection: "video",
+  provider: { id: "fal", label: "Google Gemini Omni (fal.ai)" },
+  model: { id: "google/gemini-omni-flash/v1.2/edit", family: "Gemini Omni Flash", version: "1.2 edit" },
+  api: { name: "fal.ai queue", endpoint: "POST google/gemini-omni-flash/v1.2/edit", tracking: "async", progress: "none", cancel: "none" },
+  modes: [omni12EditMode],
+  options: [geminiOmni.options[1]],
+  files: {
+    video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 100 * MB, minSide: 300, maxSide: 6000, minAspect: 0.4, maxAspect: 2.5, minMs: 1000, maxMs: OMNI12_EDIT_MAX_MS },
+  },
+  prompt: { label: "التعديل", placeholder: "مثال: خلّ المشهد بالليل تحت ضوء القمر", max: 4000, arabic: true },
+  priceKeys: ["360p", "720p", "1080p", "4k"].map((r) => ({
+    key: `sec:${r}`,
+    label: `كل ثانية · ${OMNI_RES_LABEL[r]}`,
+    defaultCenti: centiFor(OMNI12_SECOND_USD[r]),
+    basis: `سعر fal المنشور لنقطة التعديل: ${OMNI12_SECOND_USD[r]} لكل ثانية من الفيديو المعدّل (${r})`,
+  })),
+  modeFor: () => omni12EditMode,
+  rules() {
+    return {
+      options: opt(geminiOmni12Edit.options),
+      issues: [],
+      notes: [
+        "ارفع فيديو (حتى ١٥ ثانية) واكتب التعديل بالكلام: يرجع لك نفس المقطع بنفس طوله بعد التعديل.",
+        "أطول من ١٥ ثانية؟ افتح المرجع واضغط «قص» وخذ الجزء اللي تبيه.",
+        "الصوت يرجع مع الفيديو. السعر بالثانية حسب طول المقطع والدقة.",
+      ],
+    };
+  },
+  price(d, _mode, table) {
+    const res = String(d.settings.resolution);
+    const per = table[`sec:${res}`];
+    if (per == null) return { ok: false, reason: "سعر هذه الدقة غير محدد بعد." };
+    if (!d.refs.some((r) => r.kind === "video" && r.durationMs)) return { ok: false, reason: "أضف الفيديو اللي تبي تعدّله أولًا." };
+    const sec = omni12EditSec(d.refs);
+    return total([{ label: `${sec} ث · ${OMNI_RES_LABEL[res] ?? res}`, centi: per * sec }], geminiOmni12Edit.costUsd(d, omni12EditMode));
+  },
+  costUsd(d) {
+    return omni12EditSec(d.refs) * (OMNI12_SECOND_USD[String(d.settings.resolution)] ?? OMNI12_SECOND_USD["720p"]);
+  },
+  sources: [
+    { label: "fal.ai — google/gemini-omni-flash/v1.2/edit (schema: prompt, video_url ≤ 15 s, resolution)", url: "https://fal.ai/models/google/gemini-omni-flash/v1.2/edit/api", checked: "2026-11-07" },
+    { label: "fal.ai — google/gemini-omni-flash/v1.2/edit (price per second of the edited video)", url: "https://fal.ai/models/google/gemini-omni-flash/v1.2/edit", checked: "2026-11-07" },
+  ],
+  verification: [
+    { item: "المدخلات", status: "verified", note: "prompt (تعليمات بسيطة) + video_url (حتى 15 ثانية) + resolution (360p · 720p · 1080p · 4K، الافتراضي 720p)." },
+    { item: "السعر", status: "verified", note: "بالثانية من الفيديو المعدّل حسب الدقة: $0.0273 · $0.0819 · $0.1229 · $0.2457." },
+    { item: "طول الناتج", status: "unverified", note: "نفترض أنه بطول الفيديو المرسل؛ التكلفة الفعلية تُسجَّل مع كل مهمة." },
     { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
   ],
   notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
@@ -1566,7 +2210,252 @@ const jawadVoice: GeneratorDef = {
   notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي.", "لا تُؤخذ بصمة صوت شخص إلا بإذنه."],
 };
 
-export const GENERATORS: GeneratorDef[] = [gptImage2, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, wan3, geminiOmni, miniTts, elevenV4, jawadVoice, elevenSfx, elevenMusic, smartSplit];
+// ───────────── «أدوات الصورة»: امسح بالفرشاة · وسّع الصورة · ارفع الدقة (fal.ai) ─────────────
+// Edits of ONE picture (a result of «أعمالي» or an upload) through the same job, price, refund and «أعمالي» as any
+// generation. They are opened from «🖼️ أدوات الصورة» (a picture's card in «أعمالي», or a picture loaded in the studio),
+// never from the generator list. Hidden until the owner turns them on. The costs and their sources are in
+// config/jawad/image-tools.ts (each provider's own model page, checked on IMAGE_TOOLS_CHECKED).
+
+const toolSources = (slug: string, price: string) => [
+  { label: `fal.ai — ${slug} (schema)`, url: `https://fal.ai/models/${slug}/api`, checked: IMAGE_TOOLS_CHECKED },
+  { label: `fal.ai — ${slug} (price: ${price})`, url: `https://fal.ai/models/${slug}`, checked: IMAGE_TOOLS_CHECKED },
+];
+const TOOL_IMAGE_FILE = { mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 30 * MB, minSide: 64, maxSide: 8192 };
+const TRANSLATE_KEY = "translate";
+const translateLine = { key: TRANSLATE_KEY, label: "كتابة الوصف بالإنجليزية (Claude Haiku)", defaultCenti: centiFor(IMAGE_TOOL_USD.translate), basis: `سقف Claude Haiku 5.5: ٢٠٠٠ توكن دخل × $0.10/مليون + ١٠٠٠ توكن خرج × $0.50/مليون = $${IMAGE_TOOL_USD.translate}` };
+/** The picture being edited: the first picture of the request. */
+const pictureOf = (d: { refs: RefMeta[] }) => d.refs.find((r) => r.kind === "image");
+/** The translation's price line, when the description is not plain English. */
+const translated = (d: { prompt: string }, table: Record<string, number | null>, lines: { label: string; centi: number }[]): string | null => {
+  if (!needsEnglish(d.prompt)) return null;
+  const t = table[TRANSLATE_KEY];
+  if (t == null) return "سعر كتابة الوصف بالإنجليزية غير محدد بعد.";
+  lines.push({ label: "الوصف بالإنجليزية", centi: t });
+  return null;
+};
+
+/** Price key of «✨ تحديد ذكي» (SAM 3 on the picture, and Claude Haiku naming what to select in English). */
+export const SMART_SELECT_KEY = "select";
+export const INPAINT_ACTIONS = ["remove", "replace"] as const;
+const inpaintMode: ModeDef = {
+  id: "image_inpaint",
+  label: "عدّل جزء من الصورة",
+  refStyle: "references",
+  refs: { image: { min: 2, max: 2 } },
+  promptRequired: false,
+  prompt: { label: "بدّله بـ…", placeholder: "مثال: كوب قهوة أبيض · سماء وقت الغروب · شجرة نخل" },
+};
+const imageInpaint: GeneratorDef = {
+  id: IMG_INPAINT_ID,
+  name: "امسح بالفرشاة · عدّل هالجزء",
+  output: "image",
+  defaultSection: "images",
+  provider: { id: "fal", label: "fal.ai (إزالة الأشياء · FLUX.1 Fill [pro])" },
+  model: { id: IMAGE_TOOL_MODELS.erase, family: "Object Removal · FLUX.1 Fill [pro]", version: "fal" },
+  api: { name: "fal.ai queue", endpoint: `POST ${IMAGE_TOOL_MODELS.erase} · POST ${IMAGE_TOOL_MODELS.fill}`, tracking: "sync", progress: "none", cancel: "none" },
+  modes: [inpaintMode],
+  options: [
+    {
+      key: "action", label: "وش تبي بالجزء المحدد؟", kind: "choice", default: "remove",
+      values: [
+        { value: "remove", label: "امسحه", hint: "يختفي ويتعبّى مكانه طبيعي" },
+        { value: "replace", label: "بدّله بـ…", hint: "يتبدّل باللي تكتبه" },
+      ],
+    },
+  ],
+  files: { image: TOOL_IMAGE_FILE },
+  prompt: { label: "بدّله بـ…", placeholder: "مثال: كوب قهوة أبيض", max: 1000, arabic: true },
+  priceKeys: [
+    { key: "erase", label: "امسحه (للصورة)", defaultCenti: centiFor(IMAGE_TOOL_USD.erase), basis: `سعر fal المنشور لـ ${IMAGE_TOOL_MODELS.erase} بأعلى جودة (best_quality): $${IMAGE_TOOL_USD.erase} للصورة` },
+    { key: "fill:mp", label: "بدّله (كل ميجابكسل)", defaultCenti: centiFor(IMAGE_TOOL_USD.fillPerMp), basis: `سعر fal المنشور لـ ${IMAGE_TOOL_MODELS.fill}: $${IMAGE_TOOL_USD.fillPerMp} لكل ميجابكسل (يُقرّب للأعلى)؛ نرسل الصورة حتى ٤ ميجابكسل` },
+    translateLine,
+    { key: SMART_SELECT_KEY, label: "✨ تحديد ذكي (للمرة)", defaultCenti: centiFor(IMAGE_TOOL_USD.sam + IMAGE_TOOL_USD.translate), basis: `سعر fal المنشور لـ ${IMAGE_TOOL_MODELS.sam}: $${IMAGE_TOOL_USD.sam} للطلب + سقف Claude Haiku لكتابة الشيء بالإنجليزية` },
+  ],
+  modeFor: () => inpaintMode,
+  rules(d) {
+    const issues: Issue[] = [];
+    const pics = d.refs.filter((r) => r.kind === "image");
+    if (pics.length >= 2) {
+      const why = maskProblem(pics[0], pics[1]);
+      if (why) issues.push({ field: "refs", message: why });
+    }
+    if (d.settings.action === "replace" && !d.prompt.trim()) issues.push({ field: "prompt", message: "اكتب وش تبي يصير مكان الجزء المحدد." });
+    return {
+      options: opt(imageInpaint.options),
+      issues,
+      notes: [
+        "لوّن بالفرشاة على الجزء اللي تبي تغيّره، أو «✨ تحديد ذكي» واكتب اسمه.",
+        "«امسحه»: يختفي ويتعبّى مكانه كأنه ما كان. «بدّله بـ…»: يُرسم مكانه اللي تكتبه.",
+        "ما يتغيّر شي برا المنطقة اللي حددتها.",
+      ],
+    };
+  },
+  price(d, _mode, table) {
+    const pic = pictureOf(d);
+    if (!pic?.width || !pic.height) return { ok: false, reason: "أضف الصورة أولًا." };
+    const lines: { label: string; centi: number }[] = [];
+    if (d.settings.action === "replace") {
+      const per = table["fill:mp"];
+      if (per == null) return { ok: false, reason: "سعر التبديل غير محدد بعد." };
+      const mp = fillMegapixels(pic.width, pic.height);
+      lines.push({ label: `بدّله · ${mp} ميجابكسل`, centi: mp * per });
+      const why = translated(d, table, lines);
+      if (why) return { ok: false, reason: why };
+    } else {
+      const per = table.erase;
+      if (per == null) return { ok: false, reason: "سعر المسح غير محدد بعد." };
+      lines.push({ label: "امسحه", centi: per });
+    }
+    return total(lines, imageInpaint.costUsd(d, inpaintMode));
+  },
+  costUsd(d) {
+    const pic = pictureOf(d);
+    if (d.settings.action !== "replace") return IMAGE_TOOL_USD.erase;
+    if (!pic?.width || !pic.height) return null;
+    return fillMegapixels(pic.width, pic.height) * IMAGE_TOOL_USD.fillPerMp + (needsEnglish(d.prompt) ? IMAGE_TOOL_USD.translate : 0);
+  },
+  sources: [
+    ...toolSources(IMAGE_TOOL_MODELS.erase, "$0.024 best quality"),
+    ...toolSources(IMAGE_TOOL_MODELS.fill, "$0.05 / megapixel"),
+    ...toolSources(IMAGE_TOOL_MODELS.sam, "$0.005 / request"),
+  ],
+  verification: [
+    { item: "المسح", status: "verified", note: "image_url + mask_url (الأبيض = يُمسح) + model (best_quality) + mask_expansion (0–50، الافتراضي 15)." },
+    { item: "التبديل", status: "verified", note: "FLUX.1 Fill [pro]: prompt + image_url + mask_url بنفس المقاس؛ $0.05 لكل ميجابكسل يُقرّب للأعلى." },
+    { item: "اتجاه الماسك في FLUX Fill", status: "unverified", note: "الصفحة ما تقول صراحةً؛ نرسل الأبيض على الجزء اللي يُعدّل (عُرف FLUX Fill)، ونركّب الناتج داخل التحديد فقط." },
+    { item: "خارج التحديد", status: "verified", note: "نركّب الناتج على الأصل داخل التحديد (مع حافة ناعمة)؛ باقي الصورة بكسلاتها الأصلية." },
+    { item: "الحجم", status: "verified", note: "نرسل حتى ٤ ميجابكسل ونرجّع الجزء المعدّل على مقاس الأصل." },
+  ],
+  notes: ["طلب متزامن: يرجع بالصورة ونحفظها في «أعمالي» كنتيجة جديدة؛ الأصل يبقى."],
+};
+
+const outpaintMode: ModeDef = {
+  id: "image_outpaint",
+  label: "وسّع الصورة",
+  refStyle: "references",
+  refs: { image: { min: 1, max: 1 } },
+  promptRequired: false,
+  prompt: { label: "وش يضيف في الجوانب؟ (اختياري)", placeholder: "مثال: شارع بالليل وأضواء · بحر وسماء صافية" },
+};
+const imageOutpaint: GeneratorDef = {
+  id: IMG_OUTPAINT_ID,
+  name: "وسّع الصورة",
+  output: "image",
+  defaultSection: "images",
+  provider: { id: "fal", label: "fal.ai (Bria Expand)" },
+  model: { id: IMAGE_TOOL_MODELS.expand, family: "Bria Expand", version: "fal" },
+  api: { name: "fal.ai queue", endpoint: `POST ${IMAGE_TOOL_MODELS.expand}`, tracking: "sync", progress: "none", cancel: "none" },
+  modes: [outpaintMode],
+  options: [
+    { key: "shape", label: "الشكل الجديد", kind: "choice", ltr: false, default: "9:16", values: OUTPAINT_SHAPES.map((s) => ({ value: s, label: OUTPAINT_SHAPE_LABEL[s], hint: OUTPAINT_SHAPE_HINT[s] })) },
+  ],
+  files: { image: TOOL_IMAGE_FILE },
+  prompt: { label: "وش يضيف في الجوانب؟ (اختياري)", placeholder: "مثال: شارع بالليل وأضواء", max: 1000, arabic: true },
+  priceKeys: [
+    { key: "expand", label: "توسيع صورة", defaultCenti: centiFor(IMAGE_TOOL_USD.expand), basis: `سعر fal المنشور لـ ${IMAGE_TOOL_MODELS.expand}: $${IMAGE_TOOL_USD.expand} للصورة` },
+    translateLine,
+  ],
+  modeFor: () => outpaintMode,
+  rules(d) {
+    const pic = pictureOf(d);
+    const disabledValues: Record<string, string> = {};
+    if (pic?.width && pic.height) for (const s of OUTPAINT_SHAPES) if (!outpaintPlan(pic.width, pic.height, s)) disabledValues[s] = `الصورة أصلًا بشكل ${OUTPAINT_SHAPE_LABEL[s]}؛ اختر شكل ثاني أو «${OUTPAINT_SHAPE_LABEL.all}».`;
+    return {
+      options: opt(imageOutpaint.options, { shape: { disabledValues } }),
+      issues: [],
+      notes: ["الصورة تبقى في نصّها كما هي، والباقي يُرسم حولها يكمّلها.", "تقدر تكتب وش تبي يطلع في الجوانب، أو تتركه يكمّل لحاله."],
+    };
+  },
+  price(d, _mode, table) {
+    if (!pictureOf(d)?.width) return { ok: false, reason: "أضف الصورة أولًا." };
+    const per = table.expand;
+    if (per == null) return { ok: false, reason: "سعر التوسيع غير محدد بعد." };
+    const lines = [{ label: `وسّع إلى ${OUTPAINT_SHAPE_LABEL[String(d.settings.shape) as OutpaintShape] ?? d.settings.shape}`, centi: per }];
+    const why = translated(d, table, lines);
+    if (why) return { ok: false, reason: why };
+    return total(lines, imageOutpaint.costUsd(d, outpaintMode));
+  },
+  costUsd: (d) => IMAGE_TOOL_USD.expand + (needsEnglish(d.prompt) ? IMAGE_TOOL_USD.translate : 0),
+  sources: toolSources(IMAGE_TOOL_MODELS.expand, "$0.04 / generation"),
+  verification: [
+    { item: "المدخلات", status: "verified", note: "image_url + canvas_size (أقل من 5000×5000) + original_image_size + original_image_location + prompt (إنجليزي، اختياري) + negative_prompt." },
+    { item: "السعر", status: "verified", note: "$0.04 للصورة مهما كان المقاس." },
+    { item: "اللغة", status: "verified", note: "الوصف بالإنجليزية فقط؛ الوصف العربي يكتبه Claude Haiku بالإنجليزية أولًا." },
+  ],
+  notes: ["طلب متزامن: يرجع بالصورة الموسّعة ونحفظها في «أعمالي» كنتيجة جديدة."],
+};
+
+const upscaleMode: ModeDef = { id: "image_upscale", label: "ارفع الدقة", refStyle: "references", refs: { image: { min: 1, max: 1 } }, promptRequired: false };
+const imageUpscale: GeneratorDef = {
+  id: IMG_UPSCALE_ID,
+  name: "ارفع دقة الصورة",
+  output: "image",
+  defaultSection: "images",
+  provider: { id: "fal", label: "fal.ai (SeedVR2 · Topaz)" },
+  model: { id: IMAGE_TOOL_MODELS.seedvr, family: "SeedVR2 · Topaz Standard V2", version: "fal" },
+  api: { name: "fal.ai queue", endpoint: `POST ${IMAGE_TOOL_MODELS.seedvr} · POST ${IMAGE_TOOL_MODELS.topaz}`, tracking: "sync", progress: "none", cancel: "none" },
+  modes: [upscaleMode],
+  options: [
+    { key: "factor", label: "كم ضعف؟", kind: "choice", ltr: true, default: "2", values: [{ value: "2", label: "×2" }, { value: "4", label: "×4" }] },
+    {
+      key: "engine", label: "المحرك", kind: "choice", default: "seedvr",
+      values: [
+        { value: "seedvr", label: "اقتصادي", hint: "SeedVR2: حاد وطبيعي، أرخص بكثير" },
+        { value: "topaz", label: "Topaz", hint: "أدق في الوجوه والكتابة" },
+      ],
+    },
+  ],
+  files: { image: TOOL_IMAGE_FILE },
+  prompt: { label: "—", placeholder: "", max: 0, arabic: false },
+  priceKeys: [
+    { key: "seedvr:mp", label: "اقتصادي · كل ميجابكسل من الناتج", defaultCenti: centiFor(IMAGE_TOOL_USD.seedvrPerMp), basis: `سعر fal المنشور لـ ${IMAGE_TOOL_MODELS.seedvr}: $${IMAGE_TOOL_USD.seedvrPerMp} لكل ميجابكسل (نحسبه على الناتج، الأكبر)` },
+    ...IMAGE_TOOL_USD.topaz.map((t) => ({ key: `topaz:${t.upToMp}`, label: `Topaz · ناتج حتى ${t.upToMp} ميجابكسل`, defaultCenti: centiFor(t.usd), basis: `سعر fal المنشور لـ ${IMAGE_TOOL_MODELS.topaz}: $${t.usd} لصورة ناتجها حتى ${t.upToMp} ميجابكسل` })),
+  ],
+  modeFor: () => upscaleMode,
+  rules(d) {
+    const pic = pictureOf(d);
+    const engine = (d.settings.engine === "topaz" ? "topaz" : "seedvr") as UpscaleEngine;
+    const disabledValues: Record<string, string> = {};
+    const issues: Issue[] = [];
+    if (pic?.width && pic.height) {
+      for (const f of ["2", "4"]) if (upscaleUsd(pic.width, pic.height, Number(f), engine) == null) disabledValues[f] = `الناتج يصير أكبر من ${UPSCALE_MAX_MP} ميجابكسل${f === "4" ? "؛ اختر ×2" : ""}.`;
+      if (Object.keys(disabledValues).length === 2) issues.push({ field: "refs", message: "الصورة كبيرة أصلًا؛ ما نقدر نرفع دقتها أكثر." });
+    }
+    return { options: opt(imageUpscale.options, { factor: { disabledValues } }), issues, notes: ["يكبّر الصورة ×2 أو ×4 ويوضّح تفاصيلها بدون ما يغيّر محتواها.", "«اقتصادي» يكفي أغلب الصور؛ Topaz أدق في الوجوه والكتابة الصغيرة."] };
+  },
+  price(d, _mode, table) {
+    const pic = pictureOf(d);
+    if (!pic?.width || !pic.height) return { ok: false, reason: "أضف الصورة أولًا." };
+    const factor = Number(d.settings.factor) || 2;
+    const mp = upscaledMp(pic.width, pic.height, factor);
+    if (mp > UPSCALE_MAX_MP + 1e-9) return { ok: false, reason: `الناتج أكبر من ${UPSCALE_MAX_MP} ميجابكسل.` };
+    if (d.settings.engine === "topaz") {
+      const tier = topazTier(mp);
+      const per = tier ? table[`topaz:${tier.upToMp}`] : null;
+      if (!tier || per == null) return { ok: false, reason: "سعر Topaz لهذا المقاس غير محدد بعد." };
+      return total([{ label: `Topaz ×${factor} · حتى ${tier.upToMp} ميجابكسل`, centi: per }], imageUpscale.costUsd(d, upscaleMode));
+    }
+    const per = table["seedvr:mp"];
+    if (per == null) return { ok: false, reason: "سعر رفع الدقة غير محدد بعد." };
+    const units = Math.max(1, Math.ceil(mp - 1e-9));
+    return total([{ label: `×${factor} · ${units} ميجابكسل`, centi: units * per }], imageUpscale.costUsd(d, upscaleMode));
+  },
+  costUsd(d) {
+    const pic = pictureOf(d);
+    if (!pic?.width || !pic.height) return null;
+    return upscaleUsd(pic.width, pic.height, Number(d.settings.factor) || 2, d.settings.engine === "topaz" ? "topaz" : "seedvr");
+  },
+  sources: [...toolSources(IMAGE_TOOL_MODELS.seedvr, "$0.001 / megapixel"), ...toolSources(IMAGE_TOOL_MODELS.topaz, "$0.08 ≤24MP · $0.16 ≤48MP · $0.32 ≤96MP")],
+  verification: [
+    { item: "SeedVR2", status: "verified", note: "image_url + upscale_mode (factor) + upscale_factor + output_format (png)؛ $0.001 لكل ميجابكسل." },
+    { item: "ميجابكسل SeedVR2", status: "unverified", note: "الصفحة ما تقول هل السعر على المدخل أو الناتج؛ نحسبه على الناتج (الأكبر) كسقف." },
+    { item: "Topaz", status: "verified", note: "model «Standard V2» + upscale_factor + output_format (png)؛ $0.08 حتى 24 ميجابكسل، $0.16 حتى 48، $0.32 حتى 96." },
+    { item: "الحد", status: "unverified", note: `لا يذكر المزوّدان حدًا أعلى للمقاس؛ نوقف عند ${UPSCALE_MAX_MP} ميجابكسل للناتج.` },
+  ],
+  notes: ["طلب متزامن: يرجع بالصورة المكبّرة ونحفظها في «أعمالي» كنتيجة جديدة."],
+};
+
+export const GENERATORS: GeneratorDef[] = [gptImage2, gptImage26, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, kling4, kling4Edit, kling4Flash, kling4FlashEdit, wan3, geminiOmni, geminiOmni12, geminiOmni12Edit, miniTts, elevenV4, jawadVoice, elevenSfx, elevenMusic, smartSplit, imageInpaint, imageOutpaint, imageUpscale];
 export const generatorById = (id: string) => GENERATORS.find((g) => g.id === id);
 
 /** The settings a generator starts with. */

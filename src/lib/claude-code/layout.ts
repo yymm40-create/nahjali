@@ -10,7 +10,7 @@ import { robotTurn, type RobotUser } from "@/lib/claude-run";
 import { callClaudeJson, claudeCost, claudeWhy, type ClaudePart } from "@/lib/film/anthropic";
 import { PHOTO_TOOLS } from "@config/photo";
 import { checkProgram } from "./compute";
-import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, LAYOUT_CONTRACT, LAYOUT_RUBRIC } from "./skill";
+import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, lastRound, LAYOUT_CONTRACT, LAYOUT_RUBRIC } from "./skill";
 
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 const jpeg = (v: unknown) => (typeof v === "string" && /^[A-Za-z0-9+/=]+$/.test(v) && v.length < 1_200_000 ? v : null);
@@ -85,7 +85,7 @@ export async function layoutReview(user: RobotUser, who: string, b: Record<strin
   const facts = factsOf(b.facts);
   const round = Math.max(1, Math.min(CODE_ROUNDS, Math.round(Number(b.round) || 1)));
   const parts: ClaudePart[] = [
-    { type: "text", text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}. Be a HARSH art director. Judge what you SEE after the program's commands against before.\nTHE REQUEST: ${request}\nScore every criterion 1–10: ${LAYOUT_RUBRIC.map((r) => `${r.id}: ${r.en}`).join(" | ")}. If ANY score is below ${CODE_PASS}, return the COMPLETE revised program (it runs on the SAME facts D as before); otherwise code = "".\nD:\n${facts}\nTHE PROGRAM:\n${code}` },
+    { type: "text", text: `REVIEW ROUND ${round} of ${CODE_ROUNDS}.${lastRound(round)} Be a HARSH art director. Judge what you SEE after the program's commands against before.\nTHE REQUEST: ${request}\nScore every criterion 1–10: ${LAYOUT_RUBRIC.map((r) => `${r.id}: ${r.en}`).join(" | ")}. If ANY score is below ${CODE_PASS}, return the COMPLETE revised program (it runs on the SAME facts D as before); otherwise code = "".\nD:\n${facts}\nTHE PROGRAM:\n${code}` },
     { type: "text", text: "BEFORE:" },
     { type: "image64", data: before, mediaType: "image/jpeg" },
     { type: "text", text: "AFTER:" },

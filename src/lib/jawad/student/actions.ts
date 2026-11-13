@@ -6,27 +6,30 @@ import { coinBalance, coinsRequired, priceOf } from "@/lib/coins";
 import { sniff } from "@/lib/jawad/media";
 import { coinsFor } from "@config/coins";
 import { unlimitedFor } from "@/lib/access";
-import { FONTS, OUTPUT_KINDS, PURPOSES, isDoc, maxAvailable, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, readSourceRole, readWish, researchPlaces, type Brief, type Design } from "@config/jawad/student";
+import { FONTS, OUTPUT_KINDS, PURPOSES, isDoc, isPaged, maxAvailable, pagesOf, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, readSourceRole, readWish, researchPlaces, type Brief, type Design } from "@config/jawad/student";
 import { kindOffered, STUDENT_BRANCH, type Branch } from "@config/jawad/khateeb";
 import { claudeCeilingUsd, fetchCeilingUsd, tokenRatioOf, withTokenRatio } from "./claude";
-import { loadCtx } from "./context";
+import { allText, loadCtx, researchText } from "./context";
 import { islamicAsk, islamicCeiling } from "./islamic";
 import { addVersion, getFile, getOutput, getProject, latestVersion, outputs, saveOutput, sdb, segments, sources, touch, type Output, type Project, type TextVersion } from "./db";
 import { coverage, extractCeiling, pdfPageCount } from "./extract";
 import { checkKey, createJob, jobMix, jobView, projectJobs, advanceJobs } from "./jobs";
 import type { AudioPlan, BrochurePlan, Doc, DocPlan, QuizPlan, SermonPlan, SlidePlan } from "./model";
 import { isMax } from "./max-make";
-import { slotPatch } from "./deck-make";
+import { asDesigned, slotPatch } from "./deck-make";
 import { passage as quranPassage } from "@/lib/khateeb/quran";
 import { clampMap, type MindPlan } from "./mindmap";
 import { mapImageUsd } from "./mindmap-make";
-import { estimateParts, partsUsd, type StepParts } from "./outputs";
+import { estimateParts, keepWritten, partsUsd, stampSigs, type StepParts } from "./outputs";
+import { isWritten, keepsPlan, pagesAsked, questionsNamed, settingsChange, stable, wishOf } from "./keep";
+import { capacityOf } from "./capacity";
+import { countWords } from "./pages";
 import { deckAction } from "./deck-actions";
 import { PICTURE_KINDS, pageUsd, picturesPlan } from "./pictures";
 import { chosenPages, drawNote } from "./draw";
 import { slideImageUsd } from "./slide-images";
 import { researchCeiling } from "./research";
-import { understandCeiling, type Understanding } from "./understand";
+import { reusableNotes, understandCeiling, type Understanding } from "./understand";
 import { autoSettings } from "./defaults";
 import { pickDesigns } from "./design-pick";
 import { chatOf, chatTurn } from "./chat";
@@ -355,7 +358,9 @@ export async function projectAction(user: User, id: string, b: Body) {
       const revising = Boolean(note) && Boolean(await latestVersion(p.id, "understanding"));
       // a revision only combines the notes again (the text is not re-read)
       // made from this material's real tokens-per-character (see tokenRatioOf)
-      const usd = await withTokenRatio(await tokenRatioOf(t!.content.segments.map((x) => x.text).join("\n")), async () => (revising ? claudeCeilingUsd(t!.content.segments.length * 400, 14000) : understandCeiling(t!.content)));
+      // a text corrected after it was understood: only the segments whose text changed are read again (understand.ts)
+      const kept = revising ? [] : await reusableNotes(p.id, t!.content);
+      const usd = await withTokenRatio(await tokenRatioOf(t!.content.segments.map((x) => x.text).join("\n")), async () => (revising ? claudeCeilingUsd(t!.content.segments.length * 400, 14000) : understandCeiling(t!.content, new Set(kept.map((n) => n.segment)))));
       return paid(user, b, { projectId: p.id, kind: "understand", usd, input: { textVersion: p.text_version, note, previous: revising, requestKind: b.kind === "other" ? "other" : "edit" }, stage: "فهم المادة" });
     }
     case "understanding_approve": {
@@ -688,7 +693,10 @@ export async function outputAction(user: User, id: string, b: Body) {
     // «محادثة مع صادق»: one message, answered now (paid by its real use, like every robot's turn)
     case "chat": {
       const r = await robotTurn(user, b.model, "محادثة مع صادق (الطالب الذكي)", () => chatTurn(user.id, o, b.message, isAdmin(user.email)));
-      return { messages: r.messages, coins: r.coins };
+      // exactly what this conversation has taken from the wallet now (never an estimate), read back next time too
+      const spent = r.spentHalalas + r.worth;
+      await saveOutput(o.id, { content: { messages: r.messages, spentHalalas: spent } });
+      return { messages: r.messages, coins: r.coins, spent };
     }
     // «صادق يصنع من المحادثة»: the student presses the card under his message. Nothing was made or charged before.
     case "chat_make": {
@@ -726,23 +734,56 @@ export async function outputAction(user: User, id: string, b: Body) {
         }
       }
       // back to the questions and the design of an output (also one already made): the new design is picked with the
-      // student's wishes first, and the output is planned and made again from the start (its old files stay until then)
+      // student's wishes first — only when the wishes (or the special request) changed: the same answers keep the design
+      // it has, with no call to pick it again
       if (b.design && typeof b.design === "object") {
-        const u = await latestVersion<Understanding>(p.id, "understanding");
-        const { designs } = await pickDesigns(p, [o.kind], u?.content.topic ?? p.title, text(settings.extra, 2000), readWish(b.design));
-        if (designs[o.kind]) settings.design = designs[o.kind];
+        const wish = readWish(b.design);
+        if (stable(wish) !== stable(wishOf(o.settings.design)) || text(settings.extra, 2000) !== text(o.settings.extra, 2000)) {
+          const u = await latestVersion<Understanding>(p.id, "understanding");
+          const { designs } = await pickDesigns(p, [o.kind], u?.content.topic ?? p.title, text(settings.extra, 2000), wish);
+          if (designs[o.kind]) settings.design = designs[o.kind];
+        }
       }
       const { _wordScale: _drop, ...kept } = o.settings;
       void _drop;
-      await saveOutput(o.id, { settings: { ...kept, ...settings, _styleDraft: o.settings._styleDraft }, depends_on: null, status: "settings", plan_approved: false, approved: false, error: null });
-      return { ok: true };
+      const next: Body = { ...kept, ...settings, _styleDraft: o.settings._styleDraft };
+      // what the change really needs (keep.ts): a printing change (design, fonts, frame, PDF / Word, numbering) or a page
+      // count keeps the plan and every written chapter and only makes the file again; only a change to what is written
+      // is planned again (and even then the chapters that did not change are kept)
+      const change = settingsChange(o.kind, cleanSettings(o.kind, o.settings), cleanSettings(o.kind, next), o.plan);
+      if (change === "none") return { ok: true, change };
+      if (change === "render" || change === "fit") {
+        // the page count changed at the plan, before writing: the material is measured against the new count (CapacityAsk)
+        if (change === "fit" && o.status === "plan_review" && isPaged(o.kind)) {
+          const c = await loadCtx(user.id, p.id);
+          const cap = capacityOf(o.kind, countWords(allText(c)) + countWords(researchText(c)), pagesOf(next), next.page === "A5" ? "A5" : "A4");
+          if (cap) next._capacity = cap;
+          else delete next._capacity;
+        }
+        if (o.plan_approved && isWritten(o.kind, o.plan, o.content, Object.keys(o.files).length > 0)) {
+          // «خطبة المنبر»: its text goes back to the preacher's approval, which makes the files again (free)
+          if (o.kind === "sermon") await saveOutput(o.id, { settings: next, status: "review", approved: false, error: null, content: { ...(o.content as Doc), draft: true } });
+          // the files are made again from the same text: «ابدأ التصنيع» writes nothing (and fits the pages, see finalStep)
+          else await saveOutput(o.id, { settings: next, status: "ready", approved: false, error: null });
+        } else await saveOutput(o.id, { settings: next, error: null });
+        return { ok: true, change };
+      }
+      // the written chapters carry what they were written from before the settings change (keep.ts), so the new plan
+      // keeps the ones whose plan and writing inputs are still the same
+      let content = o.content;
+      if (isPaged(o.kind) && o.content && o.plan && !o.stale) content = stampSigs(await loadCtx(user.id, p.id), o, o.content as Doc, o.plan as DocPlan);
+      await saveOutput(o.id, { settings: next, depends_on: null, status: "settings", plan_approved: false, approved: false, error: null, content });
+      return { ok: true, change };
     }
     case "plan": {
       if (o.kind === "transcript") throw new UserError(NOT_NOW);
       if (o.status === "waiting") throw new UserError("هذا الصوت يقرأ ناتجًا لم يُعتمد بعد: اعتمد ذلك الناتج أولًا.");
       const note = text(b.note, 4000);
       const requests = note ? [...o.requests, { at: new Date().toISOString(), kind: (b.kind === "other" ? "other" : "edit") as "edit", text: note }] : o.requests;
-      return run("plan", await estimateParts(user.id, o, "plan"), { note, previous: Boolean(note && o.plan) }, o.kind === "audio" ? "تجهيز نص القراءة" : "إعداد الخطة", "planning", note ? { requests } : {});
+      // the previous plan goes with every new plan of a written output, slides, quiz or brochure (a request or changed
+      // settings): what still fits stays, and what was made from it is kept (keep.ts)
+      const previous = Boolean(o.plan) && (isPaged(o.kind) || ["slides", "quiz", "brochure"].includes(o.kind) || Boolean(note));
+      return run("plan", await estimateParts(user.id, o, "plan"), { note, previous }, o.kind === "audio" ? "تجهيز نص القراءة" : "إعداد الخطة", "planning", note ? { requests } : {});
     }
     // «خطبة المنبر»: the preacher picks one of the three topics (the method's step 2)
     case "sermon_choose": {
@@ -811,8 +852,16 @@ export async function outputAction(user: User, id: string, b: Body) {
     case "plan_save": {
       if (!o.plan) throw new UserError(NOT_NOW);
       const plan = cleanPlan(o, b.plan);
-      // written chapters / questions were made from the old plan: they are made again from the edited one
-      await saveOutput(o.id, { plan, plan_approved: false, status: "plan_review", ...(o.kind === "audio" ? {} : { content: null }) }, { kind: "plan_edit", snapshot: plan, userId: user.id });
+      // what was made from the old plan and still matches the edited one is kept: a written chapter whose purpose and
+      // segments did not change (a renamed one keeps its text under the new title), and a designed slide whose content did
+      // not change (deck-make's own signatures); the rest is made again from the edited plan
+      let content: unknown = null;
+      if (o.kind === "audio") content = o.content;
+      else if (isPaged(o.kind) && o.content && !o.stale) {
+        const c = await loadCtx(user.id, p.id);
+        content = keepWritten(c, o, stampSigs(c, o, o.content as Doc, o.plan as DocPlan), plan as DocPlan);
+      } else if (asDesigned(o) && o.content) content = slotPatch(o, { manual: false });
+      await saveOutput(o.id, { plan, plan_approved: false, status: "plan_review", content }, { kind: "plan_edit", snapshot: plan, userId: user.id });
       return { ok: true };
     }
     case "plan_approve": {
@@ -853,6 +902,15 @@ export async function outputAction(user: User, id: string, b: Body) {
       const chars = ((data ?? []) as { text: string }[]).reduce((s, r) => s + r.text.length, 0);
       return run("final", (chars / 1000) * 0.08 * 1.02, { run: c.run, retry: true }, "إعادة المقاطع المتعثرة", "running");
     }
+    // «اضبط عدد الصفحات»: a written output that came out a page or two off is kept; this rewrites it to the count, once
+    case "refit_pages": {
+      if (!isDoc(o.kind) || o.kind === "sermon" || isMax(o) || !["review", "done"].includes(o.status)) throw new UserError(NOT_NOW);
+      if (o.kind === "book" && o.settings.writing === "verbatim") throw new UserError(NOT_NOW);
+      const want = Number(o.settings.pages) || 0;
+      const got = Number((o.content as { pages?: number } | null)?.pages) || 0;
+      if (!want || !got || got === want) throw new UserError("الملف بعدد الصفحات اللي طلبته.");
+      return run("revise", await estimateParts(user.id, o, "revise"), { refit: true }, "ضبط عدد الصفحات", "running", { approved: false });
+    }
     case "request": {
       // «عدّل» or «أمر آخر» on a finished output
       const note = text(b.note, 4000);
@@ -864,9 +922,25 @@ export async function outputAction(user: User, id: string, b: Body) {
       if (isMax(o) && o.kind !== "slides" && Number.isInteger(b.chapter) && Number(b.chapter) >= 0) {
         return run("revise", await estimateParts(user.id, o, "revise", Number(b.chapter)), { note, chapter: Number(b.chapter), requestKind: kind, page: true }, "تعديل الصفحة", "running", { requests, approved: false });
       }
-      if (isDoc(o.kind) || o.kind === "quiz") {
-        const chapter = Number.isInteger(b.chapter) ? Number(b.chapter) : -1;
-        return run("revise", await estimateParts(user.id, o, o.kind === "quiz" ? "final" : "revise", chapter), { note, chapter, requestKind: kind }, "تعديل الناتج", "running", { requests, approved: false });
+      const chapter = Number.isInteger(b.chapter) ? Number(b.chapter) : -1;
+      // «اجعله ١٤ صفحة» / «أقصر» on the whole output: the page count changes and the SAME text is fitted to it (the type
+      // first, then one or two chapters made longer or shorter) — never every chapter rewritten with the count left as it was
+      if (isPaged(o.kind) && !isMax(o) && chapter < 0 && o.settings.writing !== "verbatim" && o.plan_approved && isWritten(o.kind, o.plan, o.content, true)) {
+        const asked = pagesAsked(note, pagesOf(o.settings) || Number((o.content as { pages?: number } | null)?.pages) || 0);
+        if (asked && keepsPlan(o.plan, asked)) {
+          const { _wordScale: _drop, ...rest } = o.settings;
+          void _drop;
+          const settings = { ...rest, pages: asked };
+          return run("final", await estimateParts(user.id, { ...o, settings }, "final"), { reusedTrial: true }, `ضبط الملف على ${asked} صفحة`, "running", { requests, approved: false, settings }, `نفس النص والخطة: يُضبط الملف على ${asked} صفحة بحجم الخط أولًا، وإذا ما كفى يُعدَّل طول فصل أو فصلين فقط. المبلغ محجوز ويرجع لك اللي ما انصرف.`);
+        }
+      }
+      // a quiz request that names its questions («السؤال ٣»): only those are written again
+      if (o.kind === "quiz") {
+        const named = isMax(o) ? [] : questionsNamed(note, ((o.content as { questions?: unknown[] } | null)?.questions ?? []).length);
+        return run("revise", await estimateParts(user.id, o, "revise", -1, named), { note, chapter: -1, requestKind: kind, ...(named.length ? { questions: named } : {}) }, named.length ? "تعديل الأسئلة المطلوبة" : "تعديل الناتج", "running", { requests, approved: false }, named.length ? `يُعدَّل ${named.length === 1 ? `السؤال ${named[0] + 1} وحده` : `${named.length} أسئلة فقط (${named.map((i) => i + 1).join("، ")})`}، وبقية الأسئلة كما هي.` : undefined);
+      }
+      if (isDoc(o.kind)) {
+        return run("revise", await estimateParts(user.id, o, "revise", chapter), { note, chapter, requestKind: kind }, "تعديل الناتج", "running", { requests, approved: false });
       }
       // a mind map drawn by GPT Image 2: one map drawn again with the request
       if (o.kind === "mindmap" && o.settings.render === "image" && Number.isInteger(b.chapter) && Number(b.chapter) >= 0) {

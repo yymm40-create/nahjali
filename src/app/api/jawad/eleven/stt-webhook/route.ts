@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { linkFailed } from "@/lib/link-listen";
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -19,6 +20,10 @@ export async function POST(req: Request) {
     const message = `ما قدرنا نفرّغ هذا المقطع${why ? ` (${why})` : ""}. ما انخصم منك شيء: جرّب رابطًا ثانيًا، أو ارفع الملف نفسه.`;
     // only a job of this kind that is still waiting
     await createAdminClient().from("student_jobs").update({ error: message }).eq("id", meta.studentJob).eq("kind", "media").in("status", ["queued", "running"]);
+  }
+  // a video link heard for «محمد باقر» or «حيدرا ماكس» (lib/link-listen): its kept transcript is marked failed
+  if (event?.type === "webhook_error" && typeof meta.linkKey === "string" && /^(yt|tt):[\w-]{6,40}$/.test(meta.linkKey)) {
+    await linkFailed(meta.linkKey, typeof event.error_message === "string" ? event.error_message.replace(/\s+/g, " ").trim() : "ما قدرنا نجيب الفيديو");
   }
   return NextResponse.json({ ok: true });
 }

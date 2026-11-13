@@ -2,6 +2,7 @@ import { coinStr } from "@config/coins";
 import { NextResponse } from "next/server";
 import { handle } from "@/lib/api";
 import { requireJawadApiUser } from "@/lib/jawad/server/access";
+import { withFixedPriceClaude } from "@/lib/film/claude-model";
 import { improvePrompt, type DirectorBody } from "@/lib/jawad/server/director";
 
 // Claude writes the prompt (once more if the answer breaks a rule)
@@ -14,7 +15,8 @@ export const maxDuration = 300;
 export const POST = handle(async (req: Request) => {
   const { user, owner } = await requireJawadApiUser();
   const body = (await req.json().catch(() => ({}))) as DirectorBody;
-  const r = await improvePrompt(user, owner, body);
+  // the person's model (never a dearer one than the fixed price was set for), not always the default
+  const r = await withFixedPriceClaude(body.model, () => improvePrompt(user, owner, body));
   if (r.kind === "price_changed") {
     return NextResponse.json({ error: `تغيّر سعر التطوير إلى ${coinStr(r.coins)}. أكّد المبلغ الجديد.`, code: "price_changed", coins: r.coins }, { status: 409 });
   }

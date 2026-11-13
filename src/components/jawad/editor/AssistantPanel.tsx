@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { clipEnd, duration, findClip, mainTrack, type Timeline } from "@/lib/editor/model";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import MotionLab, { type FilmPlacer, type LabSource, type LabView } from "./MotionLab";
+import type { FootageSource } from "./lab-footage";
+import { NEW_TITLE, readTabs, storeOf, tabsKey, type Tab } from "./lab-tabs";
+import { chatParam, conversationList, MAIN, MAIN_TITLE, mainRow, mergeStream, routeOf, saysEnough, timeOf, type ChatRow } from "./haidara-chats";
+import { clipEnd, duration, findClip, mainTrack, ratioOf, timelineTime, type Timeline } from "@/lib/editor/model";
+import { rampKey } from "@/lib/editor/ramp";
 import { framesOf } from "./media";
 import { watchClip, watchFilm } from "./watch";
 import { rememberBackdrops } from "./backdrop-memory";
@@ -28,6 +34,9 @@ import StylePicker from "./StylePicker";
 import { MOTION_TEN } from "@/lib/editor/motion-ten";
 import { faceOnFrame, type FaceBox } from "@/lib/editor/talk-motion";
 import { faceIn } from "./face";
+import { reframeCandidates, reframeClips, reframeShape, stillThere } from "./reframe-run";
+import { defaultSound, multicamCameras, planMulticam } from "./multicam-run";
+import { MULTICAM } from "@/lib/editor/multicam";
 import Icon from "../Icon";
 import { blobBase64, canTalk, hear, hush, record, SILENT_PEAK, REPLY_VOICE_KEY, replyVoice, say, wavOf, type RecordingHandle } from "./talk";
 import { useUploads } from "./useUploads";
@@ -43,6 +52,9 @@ import { useClaudeModel } from "@/components/robots/claude-model";
 import { codeEdit, codeGrade, type CodeDeps } from "./claude-code";
 import { cleanVoice } from "@/components/claude-code/clean-voice";
 import type { AssetInfo } from "@/lib/editor/model";
+import HaidaraRules from "./HaidaraRules";
+import { localRules } from "./haidara-rules";
+import { track as trackUse } from "@/lib/feature-track";
 
 interface Msg {
   role: "user" | "assistant";
@@ -55,7 +67,16 @@ interface Msg {
   /** «اصنع لي…» that cost coins: shown with their price, started by a tap */
   plans?: { plan: MakePlan; state: "ask" | "started" | "failed" }[];
   error?: boolean;
+  /** when it was said (ms): the motion piece's turns are shown among these by it */
+  at?: number;
 }
+/** New messages get their time (kept ones keep theirs). */
+const stamp = (m: Msg[]) => m.map((x) => (typeof x.at === "number" ? x : { ...x, at: Date.now() }));
+/** Kept messages, read back (the server keeps the time as text; an unknown one sorts first). */
+const readKept = (v: unknown): Msg[] =>
+  (Array.isArray(v) ? v : [])
+    .filter((m): m is Record<string, unknown> => !!m && typeof m === "object" && (m.role === "user" || m.role === "assistant") && typeof m.text === "string")
+    .map((m) => ({ role: m.role as Msg["role"], text: String(m.text), ...(typeof m.done === "number" ? { done: m.done } : {}), at: timeOf(m.at) ?? 0 }));
 
 /** From here a handoff is suggested (same as the server's CHAT_LONG). */
 const LONG = { messages: 40, chars: 24_000 };
@@ -90,8 +111,8 @@ async function quietParts(tl: Timeline, assets: Map<string, EditorAsset>) {
         if (quiet && start < 0) start = k;
         if (!quiet && start >= 0) {
           if (k - start >= PEAK_RATE / 2) {
-            const s = ((start / PEAK_RATE) * 1000 - c.in) / c.speed + c.start;
-            const e = ((k / PEAK_RATE) * 1000 - c.in) / c.speed + c.start;
+            const s = timelineTime(c, (start / PEAK_RATE) * 1000);
+            const e = timelineTime(c, (k / PEAK_RATE) * 1000);
             ranges.push([Math.round(s), Math.round(Math.min(e, clipEnd(c)))]);
           }
           start = -1;
@@ -103,8 +124,37 @@ async function quietParts(tl: Timeline, assets: Map<string, EditorAsset>) {
   return out;
 }
 
-/** «✨ Claude»: say what you want; Claude edits the timeline (one change, undoable). */
-export default function AssistantPanel({
+/** What the motion lab inside حيدرا ماكس's conversation needs from the editor (none: a project only read). */
+export interface LabDeps {
+  width: number;
+  height: number;
+  assets: EditorAsset[];
+  footageClips: FootageSource[];
+  onUpload?: (file: File, onProgress?: (p: number) => void) => Promise<EditorAsset>;
+  onFilm: FilmPlacer;
+  onUnplace?: (assetId: string, replaced: string | null) => boolean;
+}
+/** A conversation open on this device, and what it was opened on (a film of the timeline to work on again). */
+interface OpenTab extends Tab {
+  open?: { source: { assetId: string; source: LabSource; params?: Record<string, string>; auto?: boolean } };
+}
+interface ConvStatus {
+  busy: boolean;
+  label: string;
+  work: boolean;
+  title: string;
+}
+
+/** «✨ Claude»: say what you want; Claude edits the timeline (one change, undoable) — ONE conversation of حيدرا ماكس,
+ * with the motion lab running inside it (its steps are cards here; a finished piece goes on the timeline by itself). */
+function Conversation({
+  tab,
+  shown,
+  bar,
+  askSent,
+  onStatus,
+  onChatId,
+  lab: labDeps,
   ask,
   onAssets,
   onSeparate,
@@ -119,19 +169,18 @@ export default function AssistantPanel({
   onUndo,
   onClose,
   readOnly,
-  big,
-  onBig,
-  mode = "dock",
-  onMode,
-  docked,
-  onDock,
-  zoom,
-  onZoom,
   diag,
-  onLab,
 }: {
-  /** «🎬 مختبر الموشن»: opens the lab with a brief حيدرا ماكس wrote */
-  onLab?: (brief: string, seconds: number, clipId?: string | null) => void;
+  tab: OpenTab;
+  /** the conversation on show (the others keep working, hidden) */
+  shown: boolean;
+  /** the conversations' controls in the header («＋ محادثة جديدة», «🗂️ المحادثات») */
+  bar: ReactNode;
+  /** the last button request sent (shared by the conversations: one is sent once, by the one on show) */
+  askSent: { current: number };
+  onStatus: (s: ConvStatus) => void;
+  onChatId: (id: string) => void;
+  lab: LabDeps | null;
   /** a request sent from a button (sent once per `n`) */
   ask?: { text: string; n: number } | null;
   /** new library files (made for the edit) */
@@ -166,7 +215,18 @@ export default function AssistantPanel({
   /** the site's owner: «🩺 تشخيص» (the editor's state, read when asked) */
   diag?: () => Record<string, unknown>;
 }) {
-  const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [msgs, setMsgsRaw] = useState<Msg[]>([]);
+  const setMsgs = (f: Msg[] | ((m: Msg[]) => Msg[])) => setMsgsRaw((prev) => stamp(typeof f === "function" ? f(prev) : f));
+  const isMain = tab.id === MAIN;
+  // which conversation the server is told this is (nothing for the main one)
+  const chatOf = () => {
+    const c = chatParam(tab);
+    return c ? { chat: c } : {};
+  };
+  // the motion piece of this conversation: its view (for code between renders), whether messages go to it, its state
+  const labRef = useRef<LabView | null>(null);
+  const [focus, setFocus] = useState(Boolean(tab.open?.source));
+  const [labState, setLabState] = useState<ConvStatus>({ busy: false, label: "", work: false, title: "" });
   const [text, setText] = useState("");
   const [claude] = useClaudeModel();
   // «🎬 اختر بالصورة»: the gallery of every motion kind, talking-reel look and feeling, as pictures
@@ -199,33 +259,36 @@ export default function AssistantPanel({
   const fileRef = useRef<HTMLInputElement>(null);
   // who reads حيدرا ماكس's spoken replies (this device): any provider, or one of the person's own voices
   const [voicePick, setVoicePick] = useState("auto");
-  useEffect(() => setVoicePick(replyVoice()), []);
+  useEffect(() => {
+    setVoicePick(replyVoice());
+  }, []);
   // the timeline as it is now (what was made arrives after Claude's own steps were applied)
   const tlRef = useRef(tl);
   useEffect(() => {
     tlRef.current = tl;
   }, [tl]);
   // everything حيدرا ماكس applies goes through here: each clip's background and colour key are remembered first, so
-  // «↩️ رجّع الخلفية لما كانت» (its backdrop tab) can put them back if they ever come out broken
+  // «↩️ رجّع الخلفية لما كانت» (its backdrop tab) can put them back if they ever come out broken — and it is his in
+  // «سجل التغييرات» (saved at once, with his steps)
   const run: Run = (c, o) => {
     rememberBackdrops(tlRef.current);
-    return runEditor(c, o);
+    return runEditor(c, { ...o, by: "haidara" });
   };
   // «🩺 تشخيص»: the next message asks حيدرا ماكس to find what went wrong (the owner only)
   const [diagOn, setDiagOn] = useState(false);
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [msgs, busy]);
 
   // ---------- the edit's conversation stays with the project (server; before the migration, this device) ----------
-  const [chat, setChat] = useState<{ loaded: boolean; stored: boolean; handoff: string | null; chats: number }>({ loaded: false, stored: false, handoff: null, chats: 1 });
+  const [chat, setChat] = useState<{ loaded: boolean; stored: boolean; handoff: string | null; chats: number; spent: number }>({ loaded: false, stored: false, handoff: null, chats: 1, spent: 0 });
   const [showHandoff, setShowHandoff] = useState(false);
   useEffect(() => {
     let live = true;
     postJson<Chat>(`/api/jawad/editor/projects/${projectId}`, { action: "chat" })
-      .catch(() => ({ messages: [], handoff: null, chats: 1, stored: false }) as Chat)
+      .catch(() => ({ messages: [], handoff: null, chats: 1, stored: false, spentHalalas: 0 }) as Chat)
       .then((c) => {
         if (!live) return;
-        let saved: { msgs: Msg[]; handoff: string | null; chats: number } = { msgs: c.messages, handoff: c.handoff, chats: c.chats };
+        // another conversation: its messages are kept with it (read back by the lab's restore); the spend is the project's
+        if (!isMain) return setChat((x) => ({ ...x, loaded: true, spent: Math.max(0, Number(c.spentHalalas) || 0) }));
+        let saved: { msgs: Msg[]; handoff: string | null; chats: number } = { msgs: readKept(c.messages), handoff: c.handoff, chats: c.chats };
         if (!c.stored) {
           try {
             const raw = JSON.parse(localStorage.getItem(localKey(projectId)) ?? "null");
@@ -236,14 +299,15 @@ export default function AssistantPanel({
         }
         // anything said while it was loading stays after what was kept
         setMsgs((now) => [...saved.msgs, ...now]);
-        setChat({ loaded: true, stored: c.stored, handoff: saved.handoff, chats: saved.chats });
+        setChat({ loaded: true, stored: c.stored, handoff: saved.handoff, chats: saved.chats, spent: Math.max(0, Number(c.spentHalalas) || 0) });
       });
     return () => {
       live = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
   useEffect(() => {
-    if (!chat.loaded || chat.stored) return;
+    if (!isMain || !chat.loaded || chat.stored) return;
     try {
       localStorage.setItem(localKey(projectId), JSON.stringify({ msgs: msgs.filter((m) => !m.error).slice(-200).map((m) => ({ role: m.role, text: m.text, done: m.done })), handoff: chat.handoff, chats: chat.chats }));
     } catch {
@@ -255,9 +319,9 @@ export default function AssistantPanel({
     if (busy || !msgs.length) return;
     setBusy("حيدرا ماكس يكتب الهاندوف ويبدأ محادثة جديدة…");
     try {
-      const c = await postJson<Chat>(`/api/jawad/editor/projects/${projectId}`, { action: "handoff", messages: msgs.filter((m) => !m.error), handoff: chat.handoff, model: claude.id });
+      const c = await postJson<Chat>(`/api/jawad/editor/projects/${projectId}`, { action: "handoff", ...chatOf(), messages: msgs.filter((m) => !m.error), handoff: chat.handoff, model: claude.id });
       setMsgs([]);
-      setChat((x) => ({ ...x, handoff: c.handoff, chats: c.chats }));
+      setChat((x) => ({ ...x, handoff: c.handoff, chats: c.chats, spent: Math.max(0, Number(c.spentHalalas) || 0) }));
       setShowHandoff(true);
     } catch (e) {
       setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
@@ -266,7 +330,6 @@ export default function AssistantPanel({
     }
   };
 
-  const sent = useRef(0);
   // pictures of clips already looked at (kept while the clip's part stays the same)
   const seenFrames = useRef(new Map<string, { t: number; data: string; scope: Scope | null }[]>());
   /** A clip seen: a few moments as filmed and, when graded, the same after its grading (in `at`, the timeline now), each with its scope. */
@@ -282,7 +345,7 @@ export default function AssistantPanel({
         const n = a.kind === "image" ? 1 : Math.min(6, Math.max(2, Math.round((c.out - c.in) / 2000)));
         const src = await framesOf(a.url, a.kind, c.in, c.out, n);
         // the moments on the timeline (what the person sees)
-        frames = await Promise.all(src.map(async (x) => ({ t: Math.round(c.start + (x.t - c.in) / c.speed), data: x.data, scope: await scopeOfJpeg(x.data) })));
+        frames = await Promise.all(src.map(async (x) => ({ t: Math.round(timelineTime(c, x.t)), data: x.data, scope: await scopeOfJpeg(x.data) })));
         seenFrames.current.set(key, frames);
       } catch {
         return null;
@@ -320,7 +383,7 @@ export default function AssistantPanel({
       setBusy(round === 1 ? "حيدرا ماكس يشيك نتيجة التلوين (الصورة والسكوبات)…" : `حيدرا ماكس يعيد يشيك بعد التعديل (جولة ${round})…`);
       const look = await lookAtClip(at, clipId);
       if (!look) return;
-      const c = await postJson<{ ok: boolean; verdict: string; commands: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "grade_check", clipId, round, request, timeline: at, look, model: claude.id });
+      const c = await postJson<{ ok: boolean; verdict: string; commands: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "grade_check", ...chatOf(), clipId, round, request, timeline: at, look, model: claude.id });
       if (c.ok || !c.commands.length) {
         setMsgs((m) => [...m, { role: "assistant", text: `✅ ${c.verdict}`, done: steps || undefined }]);
         return;
@@ -349,11 +412,11 @@ export default function AssistantPanel({
     const a = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
     if (!f || !a?.url || a.kind !== "video") return null;
     const c = f.clip;
-    const key = `${c.id}:${c.in}:${c.out}:${c.start}:${c.speed}`;
+    const key = `${c.id}:${c.in}:${c.out}:${c.start}:${c.speed}:${c.ramp ? rampKey(c.ramp) : ""}`;
     const kept = watched.current.get(key);
     if (kept) return kept;
     try {
-      const w = await watchClip(a.url, { id: c.id, start: c.start, in: c.in, out: c.out, speed: c.speed || 1 }, setBusy, signal);
+      const w = await watchClip(a.url, { id: c.id, start: c.start, in: c.in, out: c.out, speed: c.speed || 1, ramp: c.ramp ?? null }, setBusy, signal);
       if (w.sheets.length) watched.current.set(key, w);
       return w.sheets.length ? w : null;
     } catch {
@@ -431,6 +494,7 @@ export default function AssistantPanel({
   const talkFace = async (message: string): Promise<{ face: FaceBox; timeline: Timeline | null } | null> => {
     const talky = !!styleInText(message)?.talk || /على\s*كلام|موشن على|talk\)/.test(message);
     if (!talky) return null;
+    trackUse("editor.talk_reel");
     const main = mainTrack(tlRef.current);
     const first = main?.clips.find((c) => !c.text && c.assetId && assets.get(c.assetId)?.kind === "video");
     const a = first?.assetId ? assets.get(first.assetId) : null;
@@ -456,11 +520,22 @@ export default function AssistantPanel({
   const send = async (words = text, spoken = false): Promise<string | null> => {
     const message = words.trim() || (pending.length ? "شوف المراجع اللي أرفقتها" : "");
     if (!message || readOnly) return null;
+    // the motion piece has the conversation: the message is its (a note, «اعتمد وابنِ», a question about it)
+    const lab = labRef.current;
+    if (lab && routeOf(message, { focus, lab: lab.hasPiece || lab.search, pending: pending.length, search: lab.search }) === "lab") {
+      if (lab.busy) return null;
+      trackUse("editor.motion_lab");
+      setText("");
+      setFocus(true);
+      await lab.send(message);
+      return null;
+    }
     if (busyRef.current || sendingRef.current) {
       diagNote(`حيدرا ماكس: طلب ما انرسل لأن طلب ثاني شغّال («${message.slice(0, 40)}»)`, "note");
       return null;
     }
     sendingRef.current = true;
+    trackUse("editor.haidara_msg");
     abortRef.current = new AbortController();
     setCanStop(true);
     try {
@@ -483,7 +558,7 @@ export default function AssistantPanel({
       try {
         setBusy("حيدرا ماكس يفحص المحرر والملفات والسجل…");
         const report = await diagReport(diag());
-        const r = await postJson<{ reply: string; commands?: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "diagnose", message, report, timeline: tl, selected, playhead: player?.ms ?? 0, shot: previewShot() }, signal);
+        const r = await postJson<{ reply: string; commands?: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "diagnose", ...chatOf(), message, report, timeline: tl, selected, playhead: player?.ms ?? 0, shot: previewShot() }, signal);
         // what he diagnosed in the timeline, he fixes now
         if (r.commands?.length) run(r.commands, { label: "حيدرا ماكس يعالج" });
         setMsgs((m) => [...m, { role: "assistant", text: r.reply }]);
@@ -507,15 +582,18 @@ export default function AssistantPanel({
       if (signal.aborted) throw Object.assign(new Error("⏹️ وقّفت الطلب."), { name: "AbortError" });
       // the attached videos: a few of their moments, so حيدرا ماكس sees what is in them (pictures go as they are)
       const refLooks: { id: string; frames: { t: number; data: string }[] }[] = [];
-      for (const a of pending.filter((x) => x.kind === "video" && x.url)) {
+      // (a picture kept on this computer by the desktop program — haidara-media://… — is seen here and sent as pixels: the
+      // server can't open that link and Claude only takes https ones)
+      for (const a of pending.filter((x) => (x.kind === "video" || (x.kind === "image" && !/^https:\/\//.test(x.url ?? ""))) && x.url)) {
         setBusy(`حيدرا ماكس يشوف المرجع «${a.name}»…`);
-        const frames = await framesOf(a.url!, "video", 0, a.durationMs ?? 3000, 3).catch(() => []);
+        const frames = await framesOf(a.url!, a.kind === "image" ? "image" : "video", 0, a.durationMs ?? 3000, a.kind === "image" ? 1 : 3, a.kind === "image" ? 768 : 360).catch(() => []);
         if (frames.length) refLooks.push({ id: a.id, frames: frames.map((f) => ({ t: f.t, data: f.data })) });
       }
       const found = await talkFace(message).catch(() => null);
       setBusy("حيدرا ماكس يشتغل على التايملاين…");
-      const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; quick?: string[]; options?: { label: string; choices: string[]; multi: boolean }[]; requests?: MakeRequest[]; checkClipId?: string | null; assets?: EditorAsset[] }>(`/api/jawad/editor/projects/${projectId}`, {
+      const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; quick?: string[]; options?: { label: string; choices: string[]; multi: boolean }[]; requests?: MakeRequest[]; checkClipId?: string | null; assets?: EditorAsset[]; spent?: number }>(`/api/jawad/editor/projects/${projectId}`, {
         action: "assistant",
+        ...chatOf(),
         model: claude.id,
         message,
         history,
@@ -531,8 +609,11 @@ export default function AssistantPanel({
         refs: pending.map((a) => a.id),
         refLooks,
         face: found?.face ?? null,
+        // «تعليماتي الدايمة» as this device has them (the server's kept copy wins once there is one)
+        rules: localRules(),
       }, signal);
       setPending([]);
+      setChat((x) => ({ ...x, spent: Math.max(0, Number(r.spent) || 0) }));
       reply = r.reply;
       let done = 0;
       let now = found?.timeline ?? tl;
@@ -593,9 +674,9 @@ export default function AssistantPanel({
             const all = captionSources(now, assets);
             const sources = q.clipId ? all.filter((x) => x.clip.id === q.clipId) : all;
             if (!sources.length) throw new Error("ما فيه مقاطع فيها كلام أكتبه.");
-            const items = q.poem?.trim() ? await poemCaptions(projectId, sources[0], q.poem, setBusy) : (await spokenCaptions(projectId, now, sources, q.lang ?? "ar", setBusy)).items;
+            const items = q.poem?.trim() ? await poemCaptions(projectId, sources[0], q.poem, setBusy) : (await spokenCaptions(projectId, now, sources, q.lang ?? "ar", setBusy, q.captionStyle === "pop2" ? 2 : undefined)).items;
             const before = new Set(now.tracks.map((t) => t.id));
-            const style = (["karaoke", "classic", "box", "neon", "poem"] as const).find((k) => k === q.captionStyle) ?? (q.poem?.trim() ? "poem" : "karaoke");
+            const style = (["karaoke", "pop2", "classic", "box", "neon", "poem"] as const).find((k) => k === q.captionStyle) ?? (q.poem?.trim() ? "poem" : "karaoke");
             const made = run({ type: "add_captions", items, style, name: q.poem?.trim() ? "الأبيات" : "كابشن" }, { label: `كابشن من حيدرا ماكس (${items.length})` }) as { timeline: Timeline } | null;
             const track = made?.timeline.tracks.find((t) => t.kind === "text" && !before.has(t.id));
             const more = track ? expandThen(q.then ?? [], track.id, track.clips.map((c) => c.id)) : [];
@@ -606,9 +687,44 @@ export default function AssistantPanel({
             const out = q.kind === "code_edit" ? await codeEdit(codeDeps(signal), q.prompt) : await codeGrade(codeDeps(signal), q.prompt, q.clipId.split(",").map((x) => x.trim()).filter(Boolean));
             setMsgs((m) => [...m, { role: "assistant", text: out.text, done: out.done }]);
           } else if (q.kind === "motion_lab") {
-            // «🎬 مختبر الموشن»: the lab opens on its conversation with حيدرا ماكس's brief and writes the scenario by itself, on their filmed clip when he named one
-            const onClip = q.clipId && findClip(tlRef.current, q.clipId) ? q.clipId : null;
-            onLab?.(q.prompt, Number(q.seconds) || 15, onClip);
+            // «🎬 مختبر الموشن» runs HERE, in this conversation: the piece starts on حيدرا ماكس's brief (on their filmed
+            // clip when he named one, or the one selected), its scenario comes as a card — approved by itself when the
+            // person's message already said enough — and the finished piece goes on the timeline by itself
+            const piece = labRef.current;
+            if (!piece) throw new Error("مختبر الموشن مو متاح في هذا المشروع (للقراءة فقط).");
+            const usable = (id: string | null | undefined) => (id && labDeps?.footageClips.some((c) => c.clipId === id) ? id : null);
+            const onClip = (q.clipId && findClip(tlRef.current, q.clipId) ? usable(q.clipId) : null) ?? (selected.length === 1 ? usable(selected[0]) : null);
+            setFocus(true);
+            trackUse("editor.motion_lab");
+            piece.start({ brief: q.prompt, seconds: Number(q.seconds) || 15, clipId: onClip, auto: saysEnough(message) });
+          } else if (q.kind === "multicam") {
+            // «بدّل الكاميرات تلقائياً»: each camera's microphone read here (free), the cuts as one undo
+            const ids = (q.clipId ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+            const cams = multicamCameras(tlRef.current, assets, ids, true);
+            if (cams.length < 2) throw new Error("ما لقيت كاميرتين متزامنتين؛ اختر الكاميرات واضغط «🎯 زامن الصوت» أول.");
+            trackUse("editor.multicam");
+            const secs = Number(q.seconds) || 0;
+            const minShotMs = secs > 0 ? Math.round(Math.min(MULTICAM.minShotRange[1], Math.max(MULTICAM.minShotRange[0], secs * 1000))) : MULTICAM.minShotMs;
+            const wide = q.text && cams.some((c) => c.clip.id === q.text.trim()) ? q.text.trim() : null;
+            const r = await planMulticam(cams, { minShotMs, wide, faces: false, sound: defaultSound(tlRef.current, cams, assets) }, (text) => setBusy(text), signal);
+            run(r.command, { label: `بدّل الكاميرات (${r.shots.length} لقطة)` });
+            setMsgs((m) => [...m, { role: "assistant", text: `بدّلت بين الكاميرات: ${r.notes.join(" ")} تقدر تبدّل زاوية أي لقطة من إعداداتها.` }]);
+          } else if (q.kind === "reframe") {
+            // «اتبع الوجه»: the shape first (when he named another), then each wide video follows its face (read here, free)
+            const shape = (["9:16", "1:1", "4:5"] as const).find((r) => r === q.aspect);
+            const shaped = shape && ratioOf(tlRef.current) !== shape ? (run({ type: "set_ratio", ratio: shape }, { label: `المقاس ${shape}` }) as { timeline: Timeline } | null) : null;
+            // (the panel's copy of the timeline catches up after the next render: the new shape is taken from the change itself)
+            const now = shaped?.timeline ?? tlRef.current;
+            const ids = (q.clipId ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+            const all = reframeCandidates(now, assets);
+            const picked = ids.length ? all.filter((x) => ids.includes(x.clip.id)) : all;
+            if (!reframeShape(now)) throw new Error("المقاس عرضي (16:9)؛ اتبع الوجه للمقاس الطولي أو المربع.");
+            if (!picked.length) throw new Error("ما فيه فيديو أعرض من الإطار أتبع فيه الوجه.");
+            trackUse("editor.auto_reframe");
+            const r = await reframeClips(now, picked, (text) => setBusy(text), signal);
+            const cmds = stillThere(tlRef.current, r.commands);
+            if (cmds.length) run(cmds, { label: r.done > 1 ? `اتبع الوجه (${r.done} مقاطع)` : "اتبع الوجه" });
+            if (r.noFace.length) setMsgs((m) => [...m, { role: "assistant", text: `ما لقيت وجه في: ${r.noFace.join("، ")} — خليتها مثل ما هي.` }]);
           } else if (q.kind === "watch") {
             // «👁️»: he needs to see the clip whole — it is watched, and he is asked again with it, by itself
             watchNext.current = q.clipId === FILM || findClip(tlRef.current, q.clipId) ? q.clipId : null;
@@ -717,6 +833,7 @@ export default function AssistantPanel({
       setTalk(null);
       return;
     }
+    trackUse("editor.haidara_talk");
     talkRef.current = true;
     try {
       while (talkRef.current) {
@@ -750,365 +867,749 @@ export default function AssistantPanel({
   };
 
   useEffect(() => {
-    if (!ask || ask.n === sent.current || busy) return;
+    if (!shown || !ask || ask.n === askSent.current || busy) return;
     const t = setTimeout(() => {
       // marked as sent only when it really goes (a render in between cancels the wait, not the request)
-      sent.current = ask.n;
+      askSent.current = ask.n;
       void send(ask.text);
     }, 0);
     return () => clearTimeout(t);
   });
 
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2.5 border-b border-jw-line px-3 py-2.5">
-        <span className="jw-orb h-9 w-9 shrink-0" data-busy={!!busy} aria-hidden />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-bold">حيدرا ماكس · مساعدك في المونتاج</span>
-          <span className="flex items-center gap-1 text-[11px] text-jw-muted" aria-live="polite">
-            <span className={`h-1.5 w-1.5 rounded-full ${busy ? "animate-pulse bg-jw-warn" : "bg-jw-ok"}`} />
-            {busy ? "يشتغل…" : "جاهز يخدمك"}
-          </span>
-        </span>
-        {msgs.length > 0 && (
-          <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${long ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} disabled={!!busy || readOnly} onClick={handOff} title="حيدرا ماكس يلخّص المحادثة (هاندوف) ويبدأ محادثة جديدة منها">
-            <Icon name="retry" size={13} /> محادثة جديدة
-          </button>
-        )}
-        {onZoom && zoom != null && (
-          <span className="flex items-center rounded-full border border-jw-line" role="group" aria-label="حجم الكلام">
-            <button type="button" className="grid h-8 w-8 place-items-center rounded-full text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={zoom <= 0.85} onClick={() => onZoom(Math.round((zoom - 0.15) * 100) / 100)} aria-label="صغّر الكلام" title="صغّر الكلام">
-              <Icon name="zoomOut" size={15} />
-            </button>
-            <button type="button" className="grid h-8 w-8 place-items-center rounded-full text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={zoom >= 1.6} onClick={() => onZoom(Math.round((zoom + 0.15) * 100) / 100)} aria-label="كبّر الكلام" title="كبّر الكلام">
-              <Icon name="zoomIn" size={15} />
-            </button>
-          </span>
-        )}
-        {onMode && !big && (
-          <span className="hidden items-center rounded-full border border-jw-line p-0.5 lg:flex" role="radiogroup" aria-label="مكان حيدرا ماكس">
-            {(
-              [
-                ["dock", "عادي", "جنب المعاينة"],
-                ["tall", "طول كامل", "الجهة كاملة من فوق لتحت"],
-                ["half", "نص الشاشة", "نص الشاشة من فوق لتحت"],
-              ] as const
-            ).map(([m, label, title]) => (
-              <button key={m} type="button" role="radio" aria-checked={mode === m} title={title} onClick={() => onMode(m)} className={`rounded-full px-2 py-1 text-[11px] ${mode === m ? "bg-jw-accent text-jw-on-accent" : "text-jw-muted hover:text-jw-ink"}`}>
-                {label}
-              </button>
-            ))}
-          </span>
-        )}
-        {onDock && (
-          <span className="hidden lg:contents">
-            <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${docked ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} onClick={onDock} aria-pressed={!!docked} title={docked ? "رجّع حيدرا ماكس نافذة عائمة" : "حط حيدرا ماكس فوق التايملاين وعدّل عليه مباشرة"}>
-              <Icon name="frames" size={14} /> {docked ? "نافذة" : "فوق التايملاين"}
-            </button>
-          </span>
-        )}
-        {onBig && (
-          <span className="hidden lg:contents">
-            <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${big ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} onClick={onBig} aria-pressed={!!big} title={big ? "رجّع المحادثة لمكانها (Esc)" : "كبّر المحادثة على الشاشة كلها"}>
-              <Icon name={big ? "shrink" : "expand"} size={14} /> {big ? "تصغير" : "تكبير"}
-            </button>
-          </span>
-        )}
-        {onClose && (
-          <>
-            {/* a phone: the conversation fills the screen, and this brings the timeline back */}
-            <span className="contents lg:hidden">
-              <button type="button" className="jw-btn jw-btn-primary !min-h-9 !px-3 text-xs" onClick={onClose} aria-label="صغّر المحادثة وارجع للتايملاين">
-                <Icon name="shrink" size={15} /> تصغير
-              </button>
-            </span>
-            <span className="hidden lg:contents">
-              <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon" onClick={onClose} aria-label="إغلاق">
-                <Icon name="x" />
-              </button>
-            </span>
-          </>
-        )}
-      </div>
-      <div className="jw-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-3" aria-live="polite">
-        {chat.handoff && (
-          <div className="rounded-xl border border-jw-accent/30 bg-jw-accent/5 p-2.5 text-xs">
-            <button type="button" className="flex w-full items-center gap-1.5 font-semibold text-jw-accent" onClick={() => setShowHandoff((v) => !v)} aria-expanded={showHandoff}>
-              <Icon name="check" size={12} /> المحادثة {chat.chats} · تبدأ من هاندوف اللي قبلها
-              <span className="ms-auto text-jw-muted">{showHandoff ? "إخفاء" : "عرض"}</span>
-            </button>
-            {showHandoff && <p className="mt-2 whitespace-pre-wrap leading-6 text-jw-muted" dir="auto">{chat.handoff}</p>}
-          </div>
-        )}
-        {!msgs.length && chat.loaded && (
-          <div className="space-y-3">
-            <div className="jw-select-text max-w-[92%] rounded-2xl rounded-ss-sm bg-jw-surface-2 px-3 py-2 text-sm leading-6">
-              هلا! أنا حيدرا ماكس، مساعدك في المونتاج 👋
-              <span className="mt-1 block text-xs leading-6 text-jw-muted">قل لي وش تبي بكلامك وأنا أعدّل التايملاين: أقص السكتات، أرتّب، أحط انتقالات ونصوص وكابشن، وأنظّف الصوت. كل اللي أسويه تتراجع عنه بضغطة.</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {QUICK.map((q) => (
-                <button key={q} type="button" disabled={readOnly || !!busy} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => send(q)}>
-                  {q}
-                </button>
-              ))}
-            </div>
-            {/* «أساليب الموشن»: ten styles, each different, in one picker (no rows of chips) */}
-            <button type="button" disabled={readOnly} onClick={() => setGallery(true)} className="flex w-full items-center gap-3 rounded-2xl border border-jw-accent/40 bg-jw-accent/10 p-3 text-start">
-              <span className="text-2xl" aria-hidden>🎬</span>
-              <span className="min-w-0 flex-1">
-                <b className="block text-sm">موشن جرافيكس بأسلوب جاهز</b>
-                <span className="block text-[11px] text-jw-muted">{MOTION_TEN.map((m) => m.icon).join(" ")} — {MOTION_TEN.length} أساليب مختلفة، اختر واحد وقل عن وش</span>
-              </span>
-            </button>
-          </div>
-        )}
-        {msgs.map((m, i) => (
-          <div key={i} className={`jw-select-text max-w-[92%] rounded-2xl px-3 py-2 text-sm leading-6 ${m.role === "user" ? "ms-auto bg-jw-accent/15" : m.error ? "bg-jw-danger/15 text-jw-danger" : "bg-jw-surface-2"}`} dir="auto">
-            <MsgText text={m.text} />
-            {m.done ? (
-              <p className="mt-1.5 flex items-center gap-2 text-[11px] text-jw-ok">
-                <Icon name="check" size={12} /> نفّذت {m.done === 1 ? "خطوة وحدة" : m.done === 2 ? "خطوتين" : `${m.done} خطوات`}
-                {i === msgs.length - 1 && (
-                  <button type="button" className="text-jw-muted underline" onClick={onUndo}>
-                    تراجع
-                  </button>
-                )}
-              </p>
-            ) : null}
-            {m.suggestions?.length ? (
-              <div className="mt-2 space-y-1.5 border-t border-jw-line pt-2">
-                <p className="text-[11px] text-jw-muted">لقطات تكمّل الفيديو:</p>
-                {m.suggestions.map((s) => (
-                  <a key={s.prompt} href={`/jawad-ai?kind=video&idea=${encodeURIComponent(s.prompt.slice(0, 500))}`} target="_blank" rel="noreferrer" className="block rounded-lg border border-jw-line p-2 text-xs hover:border-jw-accent">
-                    🎬 {s.why}
-                    <span className="block text-[10px] text-jw-faint" dir="ltr">{s.prompt}</span>
-                  </a>
+  // ───────── the conversation, laid out like Claude's chat (the owner, 2 November 2026: «نفس شات كلاود بالضبط، باسم حيدرا ماكس») ─────────
+  const seen = (() => {
+    const f = selected.length === 1 ? findClip(tl, selected[0]) : null;
+    const as = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
+    return as && as.kind !== "audio" && f!.track.kind !== "audio" ? as : null;
+  })();
+  const attach = (a: EditorAsset) => setPending((x) => (x.some((y) => y.id === a.id) ? x.filter((y) => y.id !== a.id) : [...x, a].slice(-6)));
+  const canSend = (!!text.trim() || pending.length > 0) && !busy && !readOnly;
+
+  // what this conversation is called, and what it is doing (for the list of conversations and the pill)
+  const firstSaid = msgs.find((m) => m.role === "user")?.text.replace(/\s+/g, " ").trim().slice(0, 60) ?? "";
+  const title = tab.named || (isMain ? MAIN_TITLE : firstSaid || labState.title || NEW_TITLE);
+  const labLabel = labState.busy ? `🎬 ${labState.title || "الموشن"}: ${labState.label}` : "";
+  useEffect(() => {
+    onStatus({ busy: !!busy || labState.busy, label: busy ? busy.slice(0, 40) : labLabel, work: msgs.length > 0 || labState.work, title });
+  }, [onStatus, busy, labState.busy, labLabel, labState.work, msgs.length, title]);
+  // kept with the conversation besides the lab's work: the main one is marked (its messages are the project's own),
+  // every other one keeps its messages there
+  const extraState = useMemo<Record<string, unknown>>(
+    () => (isMain ? { main: true } : { editor: { msgs: msgs.filter((m) => !m.error).slice(-200).map((m) => ({ role: m.role, text: m.text, ...(m.done ? { done: m.done } : {}), at: m.at })), handoff: chat.handoff, chats: chat.chats } }),
+    [isMain, msgs, chat.handoff, chat.chats],
+  );
+  const restored = (st: Record<string, unknown>) => {
+    const ed = st.editor as { msgs?: unknown; handoff?: unknown; chats?: unknown } | undefined;
+    const mine = !isMain && ed ? readKept(ed.msgs) : [];
+    if (!isMain && ed) {
+      setMsgsRaw(mine);
+      setChat((x) => ({ ...x, handoff: typeof ed.handoff === "string" ? ed.handoff : null, chats: Number(ed.chats) || 1 }));
+    }
+    // the piece spoke last: the conversation stays on it
+    const said = Array.isArray(st.chat) ? (st.chat as { at?: number }[]) : [];
+    if (said.length && (!mine.length || (said[said.length - 1].at ?? 0) >= (mine[mine.length - 1].at ?? 0))) setFocus(true);
+  };
+  const statusOfLab = useMemo(() => (s: Omit<ConvStatus, "title"> & { title: string }) => setLabState((x) => (x.busy === s.busy && x.label === s.label && x.work === s.work && x.title === s.title ? x : s)), []);
+
+  const layout = (lab: LabView | null) => {
+    const toLab = Boolean(lab && routeOf(text || " ", { focus, lab: lab.hasPiece || lab.search, pending: pending.length, search: lab.search }) === "lab");
+    const order = mergeStream(
+      msgs.map((m) => m.at),
+      (lab?.chat ?? []).map((m) => m.at),
+    );
+    const lastIsLab = order.length > 0 && order[order.length - 1].k === "l";
+    const editorNode = (m: Msg, i: number) =>
+            m.role === "user" ? (
+              <div key={i} className="jw-select-text max-w-[85%] self-start whitespace-pre-wrap rounded-3xl bg-jw-surface-3 px-4 py-2.5 text-[15px] leading-7" dir="auto">
+                {m.text}
+              </div>
+            ) : (
+              <div key={i} className={`hm-reply jw-select-text text-[15px] leading-7 ${m.error ? "text-jw-danger" : ""}`} dir="auto">
+                <MsgText text={m.text} />
+                {m.suggestions?.length ? (
+                  <div className="mt-3 space-y-1.5">
+                    {m.suggestions.map((s) => (
+                      <a key={s.prompt} href={`/jawad-ai?kind=video&idea=${encodeURIComponent(s.prompt.slice(0, 500))}`} target="_blank" rel="noreferrer" className="block rounded-2xl border border-jw-line p-3 text-[13px] hover:border-jw-accent">
+                        🎬 {s.why}
+                        <span className="mt-1 block text-[11px] text-jw-faint" dir="ltr">{s.prompt}</span>
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+                {m.options?.length && i === msgs.length - 1 && !busy ? <OptionGroups groups={m.options} disabled={readOnly} onSend={(words) => void send(words)} /> : null}
+                {m.quick?.length && i === msgs.length - 1 && !busy ? (
+                  <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="اختر إجابة">
+                    {m.quick.map((q) => (
+                      <button key={q} type="button" disabled={readOnly} className="hm-chip" onClick={() => send(q)}>
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {m.plans?.map((x, k) => (
+                  <div key={k} className="mt-3 rounded-2xl border border-jw-line p-3 text-[13px]">
+                    <p className="text-jw-muted" dir="auto">{x.plan.prompt.slice(0, 200)}</p>
+                    {x.state === "ask" ? (
+                      <button
+                        type="button"
+                        className="jw-btn jw-btn-primary mt-2 !min-h-9 w-full text-[13px]"
+                        disabled={readOnly || !!busy}
+                        onClick={async () => {
+                          const mark = (state: "started" | "failed") => setMsgs((all) => all.map((mm, j) => (j === i ? { ...mm, plans: mm.plans?.map((pp, kk) => (kk === k ? { ...pp, state } : pp)) } : mm)));
+                          try {
+                            await startMaking(projectId, x.plan);
+                            mark("started");
+                          } catch (e) {
+                            mark("failed");
+                            setMsgs((all) => [...all, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
+                          }
+                        }}
+                      >
+                        اصنعه (<Riyal halalas={x.plan.coins} size={13} />)
+                      </button>
+                    ) : (
+                      <p className="mt-1.5 text-[12px] text-jw-ok">{x.state === "started" ? "بدأ الصنع ✓ ينحط على التايملاين لحاله" : "ما بدأ"}</p>
+                    )}
+                  </div>
                 ))}
+                {!m.error && <ReplyActions text={m.text} done={m.done} onUndo={i === msgs.length - 1 && m.done ? onUndo : undefined} />}
               </div>
-            ) : null}
-            {m.options?.length && i === msgs.length - 1 && !busy ? <OptionGroups groups={m.options} disabled={readOnly} onSend={(words) => void send(words)} /> : null}
-            {m.quick?.length && i === msgs.length - 1 && !busy ? (
-              <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="اختر إجابة">
-                {m.quick.map((q) => (
-                  <button key={q} type="button" disabled={readOnly} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => send(q)}>
-                    {q}
-                  </button>
-                ))}
-                <button type="button" disabled={readOnly} className="jw-chip !px-2.5 !py-1 !text-xs !border-dashed" onClick={() => textRef.current?.focus()}>
-                  ✍️ اكتب إجابة مختلفة
-                </button>
-              </div>
-            ) : null}
-            {m.plans?.map((x, k) => (
-              <div key={k} className="mt-2 rounded-lg border border-jw-line p-2 text-xs">
-                <p className="text-jw-muted" dir="auto">{x.plan.prompt.slice(0, 200)}</p>
-                {x.state === "ask" ? (
-                  <button
-                    type="button"
-                    className="jw-btn jw-btn-primary mt-2 !min-h-8 w-full text-xs"
-                    disabled={readOnly || !!busy}
-                    onClick={async () => {
-                      const mark = (state: "started" | "failed") => setMsgs((all) => all.map((mm, j) => (j === i ? { ...mm, plans: mm.plans?.map((pp, kk) => (kk === k ? { ...pp, state } : pp)) } : mm)));
-                      try {
-                        await startMaking(projectId, x.plan);
-                        mark("started");
-                      } catch (e) {
-                        mark("failed");
-                        setMsgs((all) => [...all, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
-                      }
-                    }}
-                  >
-                    اصنعه (<Riyal halalas={x.plan.coins} size={13} />)
-                  </button>
-                ) : (
-                  <p className="mt-1.5 text-[11px] text-jw-ok">{x.state === "started" ? "بدأ الصنع ✓ ينحط على التايملاين لحاله" : "ما بدأ"}</p>
-                )}
+            );
+    const labNode = (v: LabView, i: number) => {
+      const m = v.chat[i];
+      return (
+        <div key={`l${i}`} className="flex flex-col gap-2">
+          {m.text &&
+            (m.role === "user" ? (
+              m.auto ? (
+                <p className="m-0 text-[12px] text-jw-muted" dir="auto">🎬 طلبت من مختبر الموشن: «{m.text.slice(0, 280)}{m.text.length > 280 ? "…" : ""}»</p>
+              ) : (
+                <div className="jw-select-text max-w-[85%] self-start whitespace-pre-wrap rounded-3xl bg-jw-surface-3 px-4 py-2.5 text-[15px] leading-7" dir="auto">
+                  {m.text}
+                </div>
+              )
+            ) : (
+              <div className="hm-reply jw-select-text text-[15px] leading-7" dir="auto">
+                <MsgText text={m.text} />
               </div>
             ))}
-          </div>
-        ))}
-        {long && !busy && (
-          <div className="rounded-xl border border-jw-warn/40 bg-jw-warn/10 p-2.5 text-xs">
-            المحادثة طوّلت. خلّ حيدرا ماكس يكتب هاندوف لكل اللي اتفقنا عليه ويبدأ محادثة جديدة منه — يتذكّر ذوقك وقراراتك ويرد أسرع.
-            <button type="button" className="jw-btn jw-btn-primary mt-2 !min-h-8 w-full text-xs" disabled={readOnly} onClick={handOff}>
-              سوّ هاندوف وابدأ محادثة جديدة
-            </button>
-          </div>
-        )}
-        {busy && (
-          <p className="flex items-center gap-2 text-xs text-jw-muted">
-            <span className="jw-spinner" /> {busy}
-          </p>
-        )}
-        <div ref={end} />
-      </div>
-      {(() => {
-        const f = selected.length === 1 ? findClip(tl, selected[0]) : null;
-        const as = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
-        return as && as.kind !== "audio" && f!.track.kind !== "audio" ? (
-          <p className="flex items-center gap-1.5 border-t border-jw-line px-3 pt-1.5 text-[11px] text-jw-muted">
-            <Icon name="eye" size={13} className="text-jw-accent" /> حيدرا ماكس بيشوف المقطع المحدد «{as.name}» مع رسالتك
-          </p>
-        ) : null;
-      })()}
-      {(talk || recording) && (
-        <div className="flex items-center gap-2 border-t border-jw-line bg-jw-accent/10 px-3 py-2 text-xs" role="status" aria-live="polite">
-          <span className="flex h-4 w-10 items-end gap-0.5" aria-hidden>
-            {[0.5, 1, 0.7, 0.9].map((k, i) => (
-              <span key={i} className="w-1.5 rounded-full bg-jw-accent transition-all" style={{ height: `${Math.max(15, Math.min(100, level * 100 * k))}%` }} />
-            ))}
-          </span>
-          <span className="flex-1 font-semibold">
-            {recording
-              ? "أسجّل… اضغط 🎤 مرة ثانية لما تخلص"
-              : talk === "listening"
-                ? "🎧 أسمعك… تكلّم، وأفهم لحالي لما تسكت"
-                : talk === "hearing"
-                  ? "أكتب كلامك…"
-                  : talk === "thinking"
-                    ? "حيدرا ماكس يشتغل…"
-                    : "🔊 حيدرا ماكس يتكلم…"}
-          </span>
-          {talk === "speaking" && (
-            <button type="button" className="jw-btn jw-btn-quiet !min-h-7 !px-2 text-[11px]" onClick={hush}>
-              قاطعه
+          {v.card(i)}
+        </div>
+      );
+    };
+    return (
+      <div className="hm flex h-full min-h-0 flex-col bg-jw-surface" dir="rtl" style={shown ? undefined : { display: "none" }}>
+        <header className="relative flex items-center gap-2 px-3 py-2">
+          <span className="jw-orb h-7 w-7 shrink-0" data-busy={!!busy || !!lab?.busy} aria-hidden />
+          <b className="min-w-0 flex-1 truncate text-[15px]" title={title}>
+            حيدرا ماكس <span className="font-normal text-jw-muted">· {title}</span>
+          </b>
+          {bar}
+          {onClose && (
+            <button type="button" className="hm-icon" onClick={onClose} aria-label="إغلاق المحادثة" title={lab?.busy ? "إغلاق (الموشن يكمل شغله، وترجع له من الزر تحت)" : "إغلاق"}>
+              <Icon name="x" size={18} />
             </button>
           )}
-          <select
-            className="jw-select !min-h-7 !py-0 text-[11px]"
-            value={voicePick}
-            aria-label="صوت ردود حيدرا ماكس"
-            title="🔊 مين يقرأ ردود حيدرا ماكس (كلاود يكتب الرد، ومزوّد الصوت يقرأه)"
-            onChange={(e) => {
-              setVoicePick(e.target.value);
-              try {
-                localStorage.setItem(REPLY_VOICE_KEY, e.target.value);
-              } catch {
-                /* this time only */
-              }
-            }}
-          >
-            <option value="auto">🔊 تلقائي</option>
-            <option value="device">🖥️ صوت الجهاز (مجاني)</option>
-            <option value="openai">OpenAI</option>
-            <option value="elevenlabs">ElevenLabs</option>
-            <option value="jawad">🧬 صوت الجواد (بصمتي)</option>
-            {[...ownVoices, ...(voicePick.startsWith("v:") && !ownVoices.some((v) => v.value === voicePick) ? [{ value: voicePick, name: "صوتي" }] : [])].map((v) => (
-              <option key={v.value} value={v.value}>
-                🧬 {v.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-      {(pending.length > 0 || refUploads.items.length > 0) && (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-jw-line px-2 pt-2 text-[11px]">
-          {pending.map((a) => (
-            <span key={a.id} className="inline-flex items-center gap-1 rounded-full bg-jw-accent/15 px-2 py-1 font-semibold">
-              📎 {a.kind === "image" ? "🖼️" : a.kind === "video" ? "🎬" : "🎵"} {a.name.slice(0, 24)}
-              <button type="button" className="text-jw-muted" aria-label={`شيل ${a.name}`} onClick={() => setPending((x) => x.filter((y) => y.id !== a.id))}>
-                ✕
+        </header>
+
+        <div className="jw-scroll min-h-0 flex-1 overflow-y-auto" aria-live="polite">
+          <div className="mx-auto flex w-full max-w-[46rem] flex-col gap-6 px-4 pb-6 pt-2">
+            {chat.handoff && (
+              <button type="button" className="self-center rounded-full border border-jw-line px-3 py-1 text-[12px] text-jw-muted hover:text-jw-ink" onClick={() => setShowHandoff((v) => !v)} aria-expanded={showHandoff}>
+                المحادثة {chat.chats} · تكمل من ملخص اللي قبلها {showHandoff ? "▴" : "▾"}
               </button>
-            </span>
-          ))}
-          {refUploads.items.map((u) => (
-            <span key={u.key} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 ${u.error ? "bg-jw-danger/15 text-jw-danger" : "bg-jw-line/40"}`}>
-              {u.error ? `⚠️ ${u.name.slice(0, 18)}: ${u.error}` : `⏫ ${u.name.slice(0, 18)} ${Math.round(u.progress * 100)}٪`}
-              {u.error && (
-                <button type="button" aria-label="أخفِ" onClick={() => refUploads.dismiss(u.key)}>
-                  ✕
+            )}
+            {chat.handoff && showHandoff && <p className="jw-select-text whitespace-pre-wrap rounded-2xl bg-jw-surface-2 p-3 text-[13px] leading-6 text-jw-muted" dir="auto">{chat.handoff}</p>}
+            {lab?.serverMissing && <p className="m-0 self-center text-[12px] text-jw-muted">ℹ️ المحادثات تنحفظ على هالجهاز بس لين يتحدّث الموقع (ملف 0087).</p>}
+
+            {!msgs.length && !lab?.chat.length && chat.loaded && (
+              <div className="flex flex-col items-center gap-5 pt-[12vh] text-center">
+                <span className="jw-orb h-12 w-12" aria-hidden />
+                <h2 className="text-2xl font-bold leading-snug">وش نسوي في المونتاج اليوم؟</h2>
+                <div className="flex max-w-xl flex-wrap justify-center gap-2">
+                  {QUICK.slice(0, 6).map((q) => (
+                    <button key={q} type="button" disabled={readOnly || !!busy} className="hm-chip" onClick={() => send(q)}>
+                      {q}
+                    </button>
+                  ))}
+                  {lab && (
+                    <button type="button" disabled={readOnly || !!busy} className="hm-chip" onClick={() => send("سوّ لي موشن")}>
+                      🎬 سوّ لي موشن
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {order.map(({ k, i }) => (k === "e" ? <div key={`e${i}`} className="contents">{editorNode(msgs[i], i)}</div> : lab ? labNode(lab, i) : null))}
+            {lab?.panels}
+            {lab && lastIsLab && !lab.busy && lab.options.length > 0 && (
+              <div className="flex flex-wrap gap-2" role="group" aria-label="اختر">
+                {lab.options.map((o) => (
+                  <button key={o} type="button" disabled={readOnly} className="hm-chip" onClick={() => (setFocus(true), void lab.send(o))}>
+                    {o}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {busy && (
+              <div className="flex items-center gap-2.5 text-[14px] text-jw-muted" role="status">
+                <span className="jw-orb h-5 w-5 shrink-0" data-busy aria-hidden />
+                <span className="hm-shimmer">{busy}</span>
+              </div>
+            )}
+            {long && !busy && (
+              <button type="button" className="self-center rounded-full border border-jw-line px-3 py-1.5 text-[12px] text-jw-muted hover:text-jw-ink" disabled={readOnly} onClick={handOff}>
+                المحادثة طوّلت — ابدأ محادثة جديدة من ملخصها (أرخص وأسرع)
+              </button>
+            )}
+            <ScrollEnd dep={`${msgs.length}:${lab?.chat.length ?? 0}:${busy ?? ""}:${lab?.busy ? 1 : 0}`} />
+          </div>
+        </div>
+
+        <div className="mx-auto w-full max-w-[46rem] px-3 pb-2">
+          {lab?.hasPiece && (
+            <div className="mb-2 flex items-center gap-2 text-[12px]">
+              {focus ? (
+                <span className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-jw-accent/50 bg-jw-accent/10 px-3 py-1">
+                  {lab.busy ? <span className="jw-spinner !h-3 !w-3" aria-hidden /> : <span aria-hidden>🎬</span>}
+                  <span className="truncate">رسائلك تروح لقطعة الموشن «{lab.title || "الموشن"}»{lab.busy ? ` · ${lab.status}` : ""}</span>
+                  <button type="button" className="ms-1 rounded-full px-1.5 text-jw-muted hover:text-jw-ink" onClick={() => setFocus(false)} aria-label="رجّع رسائلي للمونتاج" title="رجّع رسائلك لتعديل المونتاج">
+                    ✕
+                  </button>
+                </span>
+              ) : (
+                <button type="button" className="hm-chip !py-1 !text-[12px]" onClick={() => setFocus(true)}>
+                  🎬 كمّل على «{lab.title || "الموشن"}»{lab.busy ? ` · ${lab.status}` : ""}
                 </button>
               )}
+            </div>
+          )}
+        {(talk || recording) && (
+          <div className="mb-2 flex items-center gap-2 rounded-2xl bg-jw-accent/10 px-3 py-2 text-[13px]" role="status" aria-live="polite">
+            <span className="flex h-4 w-10 items-end gap-0.5" aria-hidden>
+              {[0.5, 1, 0.7, 0.9].map((k, i) => (
+                <span key={i} className="w-1.5 rounded-full bg-jw-accent transition-all" style={{ height: `${Math.max(15, Math.min(100, level * 100 * k))}%` }} />
+              ))}
             </span>
-          ))}
+            <span className="flex-1 font-semibold">{recording ? "أسجّل… اضغط 🎤 مرة ثانية لما تخلص" : talk === "listening" ? "🎧 أسمعك…" : talk === "hearing" ? "أكتب كلامك…" : talk === "thinking" ? "حيدرا ماكس يشتغل…" : "🔊 حيدرا ماكس يتكلم…"}</span>
+            {talk === "speaking" && (
+              <button type="button" className="hm-chip !py-0.5" onClick={hush}>
+                قاطعه
+              </button>
+            )}
+            <select
+              className="rounded-full border border-jw-line bg-transparent px-2 py-0.5 text-[12px]"
+              value={voicePick}
+              aria-label="صوت ردود حيدرا ماكس"
+              onChange={(e) => {
+                setVoicePick(e.target.value);
+                try {
+                  localStorage.setItem(REPLY_VOICE_KEY, e.target.value);
+                } catch {
+                  /* this time only */
+                }
+              }}
+            >
+              <option value="auto">🔊 تلقائي</option>
+              <option value="device">🖥️ صوت الجهاز</option>
+              <option value="openai">OpenAI</option>
+              <option value="elevenlabs">ElevenLabs</option>
+              <option value="jawad">🧬 صوت الجواد</option>
+              {[...ownVoices, ...(voicePick.startsWith("v:") && !ownVoices.some((v) => v.value === voicePick) ? [{ value: voicePick, name: "صوتي" }] : [])].map((v) => (
+                <option key={v.value} value={v.value}>
+                  🧬 {v.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <form
+          className="hm-composer"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void send();
+          }}
+        >
+          {(pending.length > 0 || refUploads.items.length > 0 || seen) && (
+            <div className="flex flex-wrap items-center gap-1.5 px-3 pt-3">
+              {seen && !pending.some((p) => p.id === seen.id) && (
+                <span className="inline-flex items-center gap-1 rounded-xl border border-dashed border-jw-line px-2 py-1 text-[12px] text-jw-muted" title="حيدرا ماكس يشوف المقطع المحدد مع رسالتك">
+                  <Icon name="eye" size={12} /> {seen.name.slice(0, 22)}
+                </span>
+              )}
+              {pending.map((a) => (
+                <span key={a.id} className="inline-flex items-center gap-1.5 rounded-xl bg-jw-surface-3 py-1 pe-1 ps-1.5 text-[12px]">
+                  <Thumb a={a} size={26} />
+                  <span className="max-w-[9rem] truncate">{a.name}</span>
+                  <button type="button" className="grid h-5 w-5 place-items-center rounded-full text-jw-muted hover:text-jw-ink" aria-label={`شيل ${a.name}`} onClick={() => attach(a)}>
+                    ✕
+                  </button>
+                </span>
+              ))}
+              {refUploads.items.map((u) => (
+                <span key={u.key} className={`inline-flex items-center gap-1 rounded-xl px-2 py-1 text-[12px] ${u.error ? "bg-jw-danger/15 text-jw-danger" : "bg-jw-surface-3"}`}>
+                  {u.error ? `⚠️ ${u.name.slice(0, 18)}: ${u.error}` : `⏫ ${u.name.slice(0, 18)} ${Math.round(u.progress * 100)}٪`}
+                  {u.error && (
+                    <button type="button" aria-label="أخفِ" onClick={() => refUploads.dismiss(u.key)}>
+                      ✕
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+          <textarea
+            ref={textRef}
+            className="hm-input"
+            rows={1}
+            dir="auto"
+            value={text}
+            disabled={readOnly}
+            placeholder={toLab && lab ? lab.placeholder : diag && diagOn ? "🩺 وش صار؟ مثلًا: ليش التصدير وقف؟" : "اكتب لحيدرا ماكس…"}
+            onChange={(e) => {
+              setText(e.target.value);
+              const el = e.target;
+              el.style.height = "auto";
+              el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+          />
+          <input
+            ref={fileRef}
+            type="file"
+            hidden
+            multiple
+            accept="image/*,video/*,audio/*"
+            onChange={(e) => {
+              if (e.target.files?.length) refUploads.add(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          <div className="flex items-center gap-1 px-2 pb-2">
+            <PlusMenu
+              disabled={readOnly}
+              onFile={() => fileRef.current?.click()}
+              onStyles={() => setGallery(true)}
+              diag={diag ? { on: diagOn, toggle: () => setDiagOn((v) => !v) } : undefined}
+              lab={lab ? { drawer: () => (setFocus(true), lab.toggleDrawer()), attach: () => (setFocus(true), lab.toggleAttach()), search: () => (setFocus(true), lab.toggleSearch()), searchOn: lab.search } : undefined}
+            />
+            <ClaudeModelPicker menu disabled={!!busy} spent={chat.spent + (lab?.spent ?? 0)} />
+            <span className="flex-1" />
+            {talkable && (
+              <>
+                <button type="button" className={`hm-icon ${recording ? "!text-jw-danger" : ""}`} disabled={readOnly || !!talk || (!!busy && !recording)} onClick={() => void voiceMessage()} aria-pressed={recording} aria-label={recording ? "أوقف التسجيل" : "سجّل بصوتك"} title="🎤 سجّل بصوتك ويُكتب كلامك">
+                  <Icon name="mic" size={18} />
+                </button>
+                <button type="button" className={`hm-icon ${talk ? "!text-jw-accent" : ""}`} disabled={readOnly || recording || (!!busy && !talk)} onClick={() => void conversation()} aria-pressed={!!talk} aria-label={talk ? "أنهِ المكالمة" : "كلّم حيدرا ماكس بالصوت"} title="🎧 كلّمه بالصوت">
+                  {talk ? <Icon name="stop" size={18} /> : <span aria-hidden>🎧</span>}
+                </button>
+              </>
+            )}
+            {toLab && lab?.busy ? (
+              <button type="button" className="hm-send" onClick={lab.cancel} aria-label="وقّف شغل الموشن" title="وقّف: اللي انسوّى قبل يبقى">
+                <Icon name="stop" size={16} />
+              </button>
+            ) : busy && canStop ? (
+              <button type="button" className="hm-send" onClick={stop} aria-label="وقّف الطلب" title="وقّف: ما ينفّذ شي من رده">
+                <Icon name="stop" size={16} />
+              </button>
+            ) : (
+              <button type="submit" className="hm-send" disabled={!canSend} aria-label="أرسل">
+                <Icon name="chevronUp" size={20} />
+              </button>
+            )}
+          </div>
+        </form>
+
+          <MediaStrip assets={assets} picked={pending} onPick={attach} disabled={readOnly} />
         </div>
-      )}
-      <div className="flex items-center gap-1.5 border-t border-jw-line px-2 pt-1.5">
-        <button type="button" className="jw-chip !px-2.5 !py-0.5 !text-[11px] !border-jw-accent/50" disabled={readOnly} onClick={() => setGallery(true)}>
-          🎬 أساليب الموشن ({MOTION_TEN.length})
-        </button>
+        <StylePicker open={gallery} disabled={readOnly || !!busy} onClose={() => setGallery(false)} onSend={(words) => (trackUse("editor.motion_styles"), void send(words))} />
       </div>
-      <StylePicker open={gallery} disabled={readOnly || !!busy} onClose={() => setGallery(false)} onSend={(words) => void send(words)} />
-      <ClaudeModelPicker className="border-t border-jw-line px-2 pt-1.5" disabled={!!busy} />
-      <form
-        className="flex items-end gap-2 p-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send();
-        }}
-      >
-        <input
-          ref={fileRef}
-          type="file"
-          hidden
-          multiple
-          accept="image/*,video/*,audio/*"
-          onChange={(e) => {
-            if (e.target.files?.length) refUploads.add(e.target.files);
-            e.target.value = "";
-          }}
-        />
-        <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon shrink-0" disabled={readOnly} onClick={() => fileRef.current?.click()} aria-label="أرفق مراجع" title="📎 أرفق صور أو فيديو أو صوت مع رسالتك: حيدرا ماكس يشوفها ويستخدمها">
-          📎
+    );
+  };
+  if (!labDeps || readOnly) return layout(null);
+  return (
+    <MotionLab
+      projectId={projectId}
+      width={labDeps.width}
+      height={labDeps.height}
+      assets={labDeps.assets}
+      footageClips={labDeps.footageClips}
+      onUpload={labDeps.onUpload}
+      onFilm={labDeps.onFilm}
+      onUnplace={labDeps.onUnplace}
+      tabId={tab.id}
+      chatId={tab.chatId ?? null}
+      onChatId={onChatId}
+      initialSource={tab.open?.source ?? null}
+      onStatus={statusOfLab}
+      render={layout}
+      handle={labRef}
+      extraState={extraState}
+      keep={!isMain && msgs.length > 0}
+      onRestored={restored}
+      named={tab.named ?? null}
+      titleHint={isMain ? MAIN_TITLE : firstSaid}
+      onWrite={(w) => (setFocus(true), writeInBox(w))}
+    />
+  );
+}
+
+type ConversationProps = Omit<Parameters<typeof Conversation>[0], "tab" | "shown" | "bar" | "askSent" | "onStatus" | "onChatId" | "lab">;
+const newId = () => Math.random().toString(36).slice(2, 8);
+/** The conversations open on this device, the main one always first. */
+const withMain = (v: { tabs: OpenTab[]; active: string } | null): { tabs: OpenTab[]; active: string } => {
+  const tabs = v?.tabs ?? [];
+  const all = tabs.some((t) => t.id === MAIN) ? [tabs.find((t) => t.id === MAIN)!, ...tabs.filter((t) => t.id !== MAIN)] : [{ id: MAIN, title: MAIN_TITLE }, ...tabs];
+  return { tabs: all, active: v && all.some((t) => t.id === v.active) ? v.active : MAIN };
+};
+
+/**
+ * «حيدرا ماكس» — ONE window (the owner, 3 November 2026: «حيدرا ماكس هو مختبر الموشن مب شيين مختلفين. نبي النتايج عالتايملاين
+ * على طول مع ميزة فتح اكثر من محادثة»): his conversations like Claude's («＋ محادثة جديدة», «🗂️ المحادثات» to switch,
+ * rename and delete, each kept on the server), each one editing the timeline AND making motion in it. A conversation
+ * at work keeps working while another is on show, and while the window is closed (a pill brings it back).
+ */
+export default function AssistantPanel({
+  lab,
+  open,
+  hidden = false,
+  onShow,
+  onLog,
+  ...rest
+}: ConversationProps & {
+  /** the motion lab inside his conversations (none: a project only read) */
+  lab?: LabDeps | null;
+  /** the editor asks to open a conversation (sent once per `n`): a kept one (`?lab=`), or a film of the timeline to work on again */
+  open?: { n: number; chatId?: string | null; source?: NonNullable<OpenTab["open"]>["source"] } | null;
+  /** the window is closed: the conversations stay (their work goes on), unseen */
+  hidden?: boolean;
+  /** brings the window back (the pill of a conversation at work) */
+  onShow?: () => void;
+  /** opens «سجل التغييرات» (what he and the person changed, and «ارجع لهنا») */
+  onLog?: () => void;
+}) {
+  const { projectId, readOnly } = rest;
+  const [state, setState] = useState<{ tabs: OpenTab[]; active: string }>(() => withMain(null));
+  const [ready, setReady] = useState(false);
+  const { tabs, active } = state;
+  const [status, setStatus] = useState<Record<string, ConvStatus>>({});
+  const [rows, setRows] = useState<ChatRow[] | null>(null);
+  const [listOpen, setListOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const askSent = useRef(0);
+  const call = <T,>(body: Record<string, unknown>) => postJson<T>(`/api/jawad/editor/projects/${projectId}`, body);
+
+  /** The project's kept conversations; the main one's motion row is tied to the main conversation on this device. */
+  const loadRows = async () => {
+    try {
+      const r = await call<{ chats: ChatRow[]; missing: boolean }>({ action: "lab_chats" });
+      setRows(r.chats);
+      setNote(r.missing ? "المحادثات تنحفظ على هالجهاز بس لين يتحدّث الموقع (ملف 0087)." : "");
+      const main = mainRow(r.chats);
+      if (main) setState((st) => (st.tabs[0].chatId ? st : { ...st, tabs: st.tabs.map((t) => (t.id === MAIN ? { ...t, chatId: main } : t)) }));
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : String(e));
+    }
+  };
+  // the conversations this device had open (the lab's old tabs are conversations now), then the kept ones
+  useEffect(() => {
+    const tm = setTimeout(() => {
+      setState(withMain(readTabs(projectId)));
+      setReady(true);
+      void loadRows();
+    }, 0);
+    return () => clearTimeout(tm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+  useEffect(() => {
+    if (!ready) return;
+    try {
+      localStorage.setItem(tabsKey(projectId), JSON.stringify({ tabs: tabs.map(({ id, title, chatId, named }) => ({ id, title, chatId: chatId ?? null, named: named ?? null })), active }));
+    } catch {
+      /* not kept */
+    }
+  }, [ready, projectId, tabs, active]);
+
+  /** Shows a conversation (a kept one not open here gets a place of its own). */
+  const show = (chatId: string | null, tab: string | null, title = NEW_TITLE) => {
+    setListOpen(false);
+    if (tab) return setState((st) => ({ ...st, active: tab }));
+    if (!chatId) return;
+    setState((st) => {
+      const there = st.tabs.find((t) => t.chatId === chatId);
+      if (there) return { ...st, active: there.id };
+      const t: OpenTab = { id: newId(), title, chatId };
+      return { tabs: [...st.tabs, t], active: t.id };
+    });
+  };
+  // the editor's requests: a kept conversation (`?lab=`, محمد باقر's motion piece), or a film to work on again
+  const seenOpen = useRef(0);
+  useEffect(() => {
+    if (!ready || !open || open.n === seenOpen.current) return;
+    seenOpen.current = open.n;
+    const tm = setTimeout(() => {
+      if (open.source) {
+        const t: OpenTab = { id: newId(), title: `✏️ ${open.source.source.plan.title || "موشن"}`.slice(0, 40), open: { source: open.source } };
+        setState((st) => ({ tabs: [...st.tabs, t], active: t.id }));
+      } else if (open.chatId) show(open.chatId, open.chatId === mainRow(rows ?? []) ? MAIN : null);
+    }, 0);
+    return () => clearTimeout(tm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, open]);
+
+  // one stable callback pair per conversation
+  const ids = tabs.map((t) => t.id).join(",");
+  const hooks = useMemo(
+    () =>
+      Object.fromEntries(
+        ids.split(",").map((id) => [
+          id,
+          {
+            status: (s: ConvStatus) => setStatus((all) => (all[id] && all[id].busy === s.busy && all[id].label === s.label && all[id].work === s.work && all[id].title === s.title ? all : { ...all, [id]: s })),
+            chat: (chatId: string) => setState((st) => (st.tabs.some((x) => x.id === id && x.chatId !== chatId) ? { ...st, tabs: st.tabs.map((x) => (x.id === id ? { ...x, chatId } : x)) } : st)),
+          },
+        ]),
+      ),
+    [ids],
+  );
+  const titleOf = (t: OpenTab) => status[t.id]?.title || t.named || t.title || NEW_TITLE;
+
+  const add = () => {
+    setListOpen(false);
+    // an empty new conversation on show is the new one already
+    const cur = tabs.find((t) => t.id === active);
+    if (cur && cur.id !== MAIN && !cur.chatId && !status[cur.id]?.work && !cur.open) return;
+    const t: OpenTab = { id: newId(), title: NEW_TITLE };
+    setState((st) => ({ tabs: [...st.tabs, t], active: t.id }));
+  };
+  const rename = async (o: { chatId: string | null; tab: string | null; title: string }) => {
+    const title = window.prompt("اسم المحادثة", o.title)?.trim();
+    if (!title) return;
+    if (o.tab) setState((st) => ({ ...st, tabs: st.tabs.map((t) => (t.id === o.tab ? { ...t, named: title, title: title.slice(0, 40) } : t)) }));
+    if (o.chatId) await call({ action: "lab_chat_rename", id: o.chatId, title }).catch((e: unknown) => setNote(e instanceof Error ? e.message : String(e)));
+    void loadRows();
+  };
+  const remove = async (o: { chatId: string | null; tab: string | null; title: string }) => {
+    if (o.tab === MAIN) return;
+    if (o.tab && status[o.tab]?.busy && !window.confirm("هذي المحادثة تشتغل الحين. توقف شغلها وتحذفها؟")) return;
+    if (!window.confirm(`تحذف «${o.title}» نهائيًا؟`)) return;
+    if (o.chatId) await call({ action: "lab_chat_del", id: o.chatId }).catch((e: unknown) => setNote(e instanceof Error ? e.message : String(e)));
+    if (o.tab) {
+      try {
+        localStorage.removeItem(`jw-lab-${storeOf(projectId, o.tab)}`);
+        localStorage.removeItem(`jw-lab-part-${storeOf(projectId, o.tab)}`);
+      } catch {
+        /* not kept */
+      }
+      setStatus((all) => Object.fromEntries(Object.entries(all).filter(([k]) => k !== o.tab)));
+      setState((st) => ({ tabs: st.tabs.filter((t) => t.id !== o.tab), active: st.active === o.tab ? MAIN : st.active }));
+    }
+    void loadRows();
+  };
+
+  const list = conversationList(rows, tabs).map((o) => {
+    const t = o.tab ? tabs.find((x) => x.id === o.tab) : undefined;
+    return { ...o, title: t ? titleOf(t) : o.title };
+  });
+  const bar = (
+    <>
+      {!readOnly && (
+        <button type="button" className="hm-icon" onClick={add} title="محادثة جديدة" aria-label="محادثة جديدة">
+          <Icon name="plus" size={18} />
         </button>
-        <textarea
-          ref={textRef}
-          className="jw-textarea max-h-32 min-h-11 min-w-0 flex-1 resize-none text-sm"
-          rows={1}
-          dir="auto"
-          value={text}
-          disabled={readOnly}
-          placeholder={diag && diagOn ? "🩺 وش صار؟ مثلًا: ليش التصدير وقف؟" : "مثلًا: قص السكتات وحط كابشن"}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              void send();
-            }
-          }}
-        />
-        {talkable && (
-          <>
-            <button
-              type="button"
-              className={`jw-btn jw-btn-icon shrink-0 ${recording ? "!border-jw-danger bg-jw-danger/15 text-jw-danger" : "jw-btn-quiet"}`}
-              disabled={readOnly || !!talk || (!!busy && !recording)}
-              onClick={() => void voiceMessage()}
-              aria-pressed={recording}
-              aria-label={recording ? "أوقف التسجيل واكتب كلامي" : "سجّل بصوتك ويُكتب كلامك"}
-              title="🎤 سجّل بصوتك: اضغط وتكلّم، واضغط مرة ثانية — كلامك ينكتب في المربع، تعدّله وترسله"
-            >
-              <Icon name="mic" />
+      )}
+      <button type="button" className="hm-icon" aria-expanded={listOpen} onClick={() => (setListOpen((v) => !v), void loadRows())} title="المحادثات" aria-label="المحادثات">
+        <span aria-hidden>🗂️</span>
+      </button>
+      <HaidaraRules projectId={projectId} readOnly={readOnly} />
+      {onLog && (
+        <button type="button" className="hm-icon" onClick={onLog} title="سجل التغييرات: وش تغيّر ومين غيّره (أنت أو حيدرا ماكس)، وارجع لأي نقطة" aria-label="سجل التغييرات">
+          <Icon name="clock" size={17} />
+        </button>
+      )}
+      {listOpen && (
+        <>
+          <button type="button" className="fixed inset-0 z-20 cursor-default" aria-label="إغلاق" onClick={() => setListOpen(false)} />
+          <div className="hm-pop absolute end-2 top-full z-30 mt-1 flex max-h-[60vh] w-[min(380px,calc(100vw-24px))] flex-col gap-1 overflow-y-auto" role="dialog" aria-label="محادثات حيدرا ماكس">
+            <b className="px-2 py-1 text-[13px]">🗂️ محادثات هالمشروع</b>
+            {note && <p className="m-0 px-2 text-[12px] text-jw-muted">{note}</p>}
+            {list.map((o) => {
+              const st = o.tab ? status[o.tab] : undefined;
+              const on = o.tab === active;
+              return (
+                <div key={o.key} className={`flex items-center gap-1 rounded-xl px-1 ${on ? "bg-jw-surface-3" : ""}`}>
+                  <button type="button" className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-2 text-start text-[13px] hover:bg-jw-surface-3" onClick={() => show(o.chatId, o.tab, o.title)} aria-current={on} title={o.title}>
+                    {st?.busy ? <span className="jw-spinner !h-3 !w-3 shrink-0" aria-hidden /> : <span aria-hidden>{o.main ? "⭐" : "💬"}</span>}
+                    <span className="min-w-0 flex-1 truncate">{o.title}</span>
+                    {st?.busy ? <span className="shrink-0 text-[11px] text-jw-muted">{st.label.slice(0, 24)}</span> : o.at ? <span className="shrink-0 text-[11px] text-jw-muted">{new Date(o.at).toLocaleDateString("ar")}</span> : null}
+                  </button>
+                  {!readOnly && (o.chatId || o.tab) && (
+                    <button type="button" className="hm-icon !h-8 !w-8" onClick={() => void rename(o)} aria-label="غيّر الاسم" title="غيّر الاسم">
+                      ✏️
+                    </button>
+                  )}
+                  {!readOnly && !o.main && (
+                    <button type="button" className="hm-icon !h-8 !w-8" onClick={() => void remove(o)} aria-label="احذف" title="احذف نهائيًا">
+                      🗑️
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </>
+  );
+
+  // the one on show, and the ones at work (they go on, unseen)
+  const mounted = tabs.filter((t) => t.id === active || status[t.id]?.busy);
+  const busyOnes = tabs.filter((t) => status[t.id]?.busy);
+  const pill = hidden && busyOnes.length > 0 && typeof document !== "undefined";
+  return (
+    <>
+      {mounted.map((t) => (
+        <Conversation key={t.id} {...rest} tab={t} shown={!hidden && t.id === active} bar={bar} askSent={askSent} onStatus={hooks[t.id]?.status ?? noop} onChatId={hooks[t.id]?.chat ?? noop} lab={readOnly ? null : (lab ?? null)} />
+      ))}
+      {pill &&
+        createPortal(
+          <button type="button" className="jw-btn jw-btn-primary jw-3d mlab-fill !min-h-12 gap-2 !rounded-full !px-4 shadow-2xl" onClick={() => (setState((st) => ({ ...st, active: busyOnes[0].id })), onShow?.())} aria-label="رجّع حيدرا ماكس">
+            <span className="jw-spinner" />
+            {titleOf(busyOnes[0])}: {status[busyOnes[0].id]?.label ?? ""}
+            {busyOnes.length > 1 ? ` (+${busyOnes.length - 1})` : ""}
+          </button>,
+          document.body,
+        )}
+    </>
+  );
+}
+const noop = () => {};
+
+/** The bottom of the conversation: scrolled into view when something new is said or done. */
+function ScrollEnd({ dep }: { dep: string }) {
+  const end = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, [dep]);
+  return <div ref={end} />;
+}
+
+/** Under a reply, like Claude's: copy, and — when it changed the timeline — what it did and its undo. */
+function ReplyActions({ text, done, onUndo }: { text: string; done?: number; onUndo?: () => void }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mt-2 flex items-center gap-1 text-[12px] text-jw-muted">
+      <button
+        type="button"
+        className="hm-icon !h-7 !w-7"
+        aria-label="انسخ الرد"
+        title={copied ? "انتسخ" : "انسخ"}
+        onClick={() =>
+          navigator.clipboard
+            .writeText(text)
+            .then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            })
+            .catch(() => {})
+        }
+      >
+        <Icon name={copied ? "check" : "copy"} size={14} />
+      </button>
+      {done ? (
+        <span className="ms-1 inline-flex items-center gap-1 text-jw-ok">
+          <Icon name="check" size={12} /> نفّذت {done === 1 ? "خطوة" : done === 2 ? "خطوتين" : `${done} خطوات`}
+        </span>
+      ) : null}
+      {onUndo && (
+        <button type="button" className="ms-2 rounded-full px-2 py-0.5 hover:bg-jw-surface-2 hover:text-jw-ink" onClick={onUndo}>
+          ↩︎ تراجع
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** «＋» in the composer: attach files, the motion styles, and (the owner) the diagnosis mode. */
+function PlusMenu({ disabled, onFile, onStyles, diag, lab }: { disabled?: boolean; onFile: () => void; onStyles: () => void; diag?: { on: boolean; toggle: () => void }; lab?: { drawer: () => void; attach: () => void; search: () => void; searchOn: boolean } }) {
+  const [open, setOpen] = useState(false);
+  const item = "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-start text-[14px] hover:bg-jw-surface-3";
+  return (
+    <span className="relative">
+      <button type="button" className={`hm-icon ${diag?.on ? "!text-jw-accent" : ""}`} disabled={disabled} onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="إضافة">
+        <Icon name="plus" size={18} />
+      </button>
+      {open && (
+        <>
+          <button type="button" className="fixed inset-0 z-10 cursor-default" aria-label="إغلاق" onClick={() => setOpen(false)} />
+          <span className="hm-pop absolute bottom-full start-0 z-20 mb-2 w-60">
+            <button type="button" className={item} onClick={() => (setOpen(false), onFile())}>
+              📎 <span>أرفق صور أو فيديو أو صوت</span>
             </button>
-            <button
-              type="button"
-              className={`jw-btn jw-btn-icon shrink-0 ${talk ? "!border-jw-accent bg-jw-accent/15 text-jw-accent" : "jw-btn-quiet"}`}
-              disabled={readOnly || recording || (!!busy && !talk)}
-              onClick={() => void conversation()}
-              aria-pressed={!!talk}
-              aria-label={talk ? "أنهِ المكالمة" : "كلّم حيدرا ماكس بالصوت"}
-              title="🎧 كلّم حيدرا ماكس: تتكلم ويرد عليك بصوته وينفذ طلبك، لين توقفه"
-            >
-              {talk ? <Icon name="stop" /> : <span aria-hidden>🎧</span>}
+            <button type="button" className={item} onClick={() => (setOpen(false), onStyles())}>
+              🎬 <span>أساليب الموشن ({MOTION_TEN.length})</span>
             </button>
-          </>
-        )}
-        {diag && (
-          <button type="button" className={`jw-btn jw-btn-icon shrink-0 ${diagOn ? "!border-jw-accent bg-jw-accent/15 text-jw-accent" : "jw-btn-quiet"}`} onClick={() => setDiagOn((v) => !v)} aria-pressed={diagOn} aria-label="تشخيص" title="🩺 تشخيص (لك بس): حيدرا ماكس يفحص السجل والملفات والجهاز ويقول وش المشكلة، ويكتب رسالة للمطوّر">
-            🩺
+            {lab && (
+              <>
+                <button type="button" className={item} onClick={() => (setOpen(false), lab.attach())}>
+                  🎥 <span>فيديو أو صور للموشن</span>
+                </button>
+                <button type="button" className={item} onClick={() => (setOpen(false), lab.drawer())}>
+                  ⚙️ <span>تجهيزات الموشن (المدة، الصوت، الأسلوب…)</span>
+                </button>
+                <button type="button" className={item} onClick={() => (setOpen(false), lab.search())} aria-pressed={lab.searchOn}>
+                  🌐 <span>{lab.searchOn ? "بدون بحث" : "ابحث في الإنترنت قبل الموشن"}</span>
+                </button>
+              </>
+            )}
+            {diag && (
+              <button type="button" className={item} onClick={() => (setOpen(false), diag.toggle())} aria-pressed={diag.on}>
+                🩺 <span>{diag.on ? "أوقف التشخيص" : "تشخيص (لك بس)"}</span>
+              </button>
+            )}
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
+
+/** A file's little picture: its first frame or the image itself (sound: a note). */
+function Thumb({ a, size }: { a: EditorAsset; size: number }) {
+  const box = { width: size, height: size };
+  if (a.kind === "image" && a.url) return <img src={a.url} alt="" style={box} className="shrink-0 rounded-lg object-cover" loading="lazy" />;
+  if (a.kind === "video" && a.url) return <video src={`${a.url}#t=0.5`} muted playsInline preload="metadata" style={box} className="pointer-events-none shrink-0 rounded-lg bg-black object-cover" />;
+  return (
+    <span style={box} className="grid shrink-0 place-items-center rounded-lg bg-jw-surface-3 text-[14px]" aria-hidden>
+      {a.kind === "audio" ? "🎵" : "📄"}
+    </span>
+  );
+}
+
+/** The project's media under the composer: a small strip scrolled sideways; a tap attaches a file to the message. */
+function MediaStrip({ assets, picked, onPick, disabled }: { assets: Map<string, EditorAsset>; picked: EditorAsset[]; onPick: (a: EditorAsset) => void; disabled?: boolean }) {
+  const list = [...assets.values()].filter((a) => a.status === "ready" && a.url).reverse();
+  if (!list.length) return null;
+  return (
+    <div className="hm-strip mt-2" role="group" aria-label="وسائط المشروع: اضغط ملف عشان ترفقه برسالتك">
+      {list.map((a) => {
+        const on = picked.some((p) => p.id === a.id);
+        return (
+          <button key={a.id} type="button" disabled={disabled} onClick={() => onPick(a)} aria-pressed={on} title={a.name} className={`hm-strip-item ${on ? "on" : ""}`}>
+            <Thumb a={a} size={52} />
+            {on && <span className="hm-strip-check" aria-hidden>✓</span>}
           </button>
-        )}
-        {busy && canStop ? (
-          <button type="button" className="jw-btn jw-btn-icon shrink-0 !border-jw-danger bg-jw-danger/15 text-jw-danger" onClick={stop} aria-label="وقّف الطلب" title="⏹️ وقّف الطلب: ما ينفّذ شي من رده">
-            <Icon name="stop" />
-          </button>
-        ) : (
-          <button type="submit" className="jw-btn jw-btn-primary jw-btn-icon shrink-0" disabled={(!text.trim() && !pending.length) || !!busy || readOnly} aria-label="أرسل">
-            <Icon name="chevronLeft" />
-          </button>
-        )}
-      </form>
+        );
+      })}
     </div>
   );
 }

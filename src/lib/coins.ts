@@ -190,24 +190,31 @@ export async function chargeAfter(userId: string, jobId: string, costUsd: number
   return taken;
 }
 
-/** On success: the held coins become the real charge (what was not used is given back; more is taken only while the wallet has it). */
-export async function settleCoins(jobId: string, costUsd: number, claude: ChargeKind = false) {
+/**
+ * On success: the held coins become the real charge (what was not used is given back; more is taken only while the
+ * wallet has it). Returns the exact halalas this one job really cost (whoever paid: a person, a team, or a free
+ * account's recorded value) — e.g. for «سجاد»'s own conversations, added to that chat's running «أُخذ منك» total.
+ */
+export async function settleCoins(jobId: string, costUsd: number, claude: ChargeKind = false): Promise<number> {
   await loadPricing();
   const team = await settleTeamCoins(jobId, costUsd, claude);
   const r = await reserved(jobId);
   if (!r) {
+    const charged = priceOf(costUsd, claude);
     // a free account's job: its value at the site's prices goes on the record kept for it
-    await db().from("site_free_usage").update({ halalas: priceOf(costUsd, claude) }).eq("ref", jobId).then(() => {}, () => {});
+    await db().from("site_free_usage").update({ halalas: charged }).eq("ref", jobId).then(() => {}, () => {});
     // and what it really cost, for the net profit (whose it was: the free record, or the team job's)
     const free = team ? null : ((await db().from("site_free_usage").select("user_id,label").eq("ref", jobId).limit(1).maybeSingle()).data as { user_id: string; label: string } | null);
     await logCost(team?.userId ?? free?.user_id ?? null, jobId, team?.label ?? free?.label ?? "", costUsd);
-    return;
+    return charged;
   }
   await logCost(r.userId, jobId, r.label, costUsd);
-  if (r.held < 0) return;
-  const diff = r.held - priceOf(costUsd, claude, await atCostFor(r.userId));
+  if (r.held < 0) return 0;
+  const charged = priceOf(costUsd, claude, await atCostFor(r.userId));
+  const diff = r.held - charged;
   if (diff > 0) await adjust(r.userId, diff, "settle", jobId, r.label, true);
   else if (diff < 0) await takeUpTo(r.userId, -diff, "settle", jobId, r.label);
+  return charged;
 }
 
 /** On failure: every held coin goes back (failed operations cost nothing). */
@@ -336,10 +343,18 @@ export interface ClaudeBill {
   free: boolean;
   /** halalas charged after `settle` */
   charged: number;
+  /** after `settle`: the reply's value in halalas — exactly what was taken from a paying wallet, or (a free account:
+   * the owner, an unlimited one) what it would have cost at the site's price; a conversation's running total adds these */
+  worth: number;
   /** after the reply: takes the real usage (USD) plus the platform's profit — never throws over a short balance */
   settle: (usd: number) => Promise<number>;
   /** the reply failed: what was held for it goes back */
   release: () => Promise<void>;
+  /**
+   * «الغلط علينا»: the turn failed because of the platform's own account at a provider (see lib/platform-fault): what
+   * was held goes back and nothing is taken — the reply's real cost is still written down (it is ours to pay).
+   */
+  waive: (usd: number) => Promise<void>;
 }
 
 /**
@@ -353,13 +368,18 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
   const bill: ClaudeBill = {
     free: true,
     charged: 0,
+    worth: 0,
     settle: async (usd: number) => {
       const ref = `claude:${crypto.randomUUID()}`;
-      await logFree(who.id, ref, label, claudeHalalas(usd, undefined, kind));
+      bill.worth = usd > 0 ? claudeHalalas(usd, undefined, kind) : 0;
+      await logFree(who.id, ref, label, bill.worth);
       await logCost(who.id, ref, label, usd);
       return 0;
     },
     release: async () => {},
+    waive: async (usd: number) => {
+      await logCost(who.id, `claude:${crypto.randomUUID()}`, label, usd);
+    },
   };
   if (who.owner || (await unlimitedFor(who.email)) || !(await coinsRequired())) return bill;
   await loadPricing();
@@ -377,9 +397,10 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
   }
   let open = true;
   const back = (coins: number) => (who.team ? adjustTeam(who.team, who.id, coins, "refund", ref, label, true) : adjust(who.id, coins, "refund", ref, label, true));
-  return {
+  const paid: ClaudeBill = {
     free: false,
     charged: 0,
+    worth: 0,
     settle: async (usd: number) => {
       if (!open) return 0;
       open = false;
@@ -389,7 +410,8 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
       let charged = Math.min(coins, held);
       if (held > coins) await back(held - coins);
       else if (coins > held) charged += who.team ? await takeTeamUpTo(who.team, who.id, coins - held, "settle", ref, label) : await takeUpTo(who.id, coins - held, "settle", ref, label);
-      bill.charged = charged;
+      paid.charged = charged;
+      paid.worth = charged;
       return charged;
     },
     release: async () => {
@@ -397,5 +419,12 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
       open = false;
       if (held > 0) await back(held);
     },
+    waive: async (usd: number) => {
+      if (!open) return;
+      open = false;
+      if (held > 0) await back(held);
+      await logCost(who.id, ref, label, usd);
+    },
   };
+  return paid;
 }

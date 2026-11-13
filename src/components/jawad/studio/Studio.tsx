@@ -28,17 +28,28 @@ import AssistantChat from "./AssistantChat";
 import DirectorChat from "@/components/jawad/director/DirectorChat";
 import ThumbnailComposer from "./ThumbnailComposer";
 import PromptBox from "./PromptBox";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import RefsStrip from "./RefsStrip";
 import type { WorkSource } from "./RefAdder";
 import { probeFile, putWithProgress } from "./upload";
 import WorksPanel from "./WorksPanel";
+import ImageTools, { type ImageSource } from "./ImageTools";
+import { isImageTool } from "@config/jawad/image-tools";
+import CompareGenerators from "./CompareGenerators";
+import { DEFAULT_VIEW, worksQuery, type WorksView } from "@/lib/jawad/works-organise";
 import StylePicker from "./StylePicker";
 import MorePrompts from "./MorePrompts";
+import ReadyApps from "./ReadyApps";
+import GalleryStrip from "../gallery/GalleryStrip";
+import { buildTryDraft, type GalleryCard } from "@config/jawad/gallery";
+import { composeReady, composerSideOf, fitSettings, type ReadyApp, type ReadyValues } from "@config/jawad/ready-apps";
 import { findStyle } from "@config/film-styles";
+import { refKindOfTag, takeCreativeUse } from "@/lib/jawad/creative-use";
 import { refMeta, type Draft, type RefItem, type StudioProps, type UploadView } from "./types";
 import Coined from "@/components/Coined";
 import { useAtCost } from "@/components/usePerks";
 import ClaudeCodeCard from "@/components/claude-code/ClaudeCodeCard";
+import { track } from "@/lib/feature-track";
 
 /** The person is on another tab: the title changes until they come back, and a system notification when allowed. */
 function notifyDone(count: number, anyFailed: boolean) {
@@ -73,10 +84,10 @@ async function call<T>(url: string, init?: RequestInit): Promise<{ ok: boolean; 
 }
 const postJson = <T,>(url: string, data: unknown) => call<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
 
-/** What designing or copying a voice costs this person (the owner pays nothing). */
+/** What designing or copying a voice costs — the customer's price, shown to the owner too (who is not charged it). */
 const JAWAD_VOICE_ID = "jawad-voice";
-const voiceCoins = (table: Record<string, number | null>, owner: boolean, jawadTable?: Record<string, number | null>) => {
-  const c = (t: Record<string, number | null>, k: string) => (owner ? 0 : t[k] == null ? null : coinsOf(t[k]!));
+const voiceCoins = (table: Record<string, number | null>, jawadTable?: Record<string, number | null>) => {
+  const c = (t: Record<string, number | null>, k: string) => (t[k] == null ? null : coinsOf(t[k]!));
   return { design: c(table, VOICE_DESIGN_KEY), clone: c(table, VOICE_CLONE_KEY), ...(jawadTable ? { cloneJawad: c(jawadTable, "voice:clone") } : {}) };
 };
 
@@ -130,7 +141,9 @@ function withNames(refs: RefItem[]): RefItem[] {
     return { ...r, name };
   });
 }
-const nextName = (kind: RefKind, refs: RefItem[]) => defaultRefName(kind, refs.map((r) => r.name));
+/** The next reference's name: a name the handed-over prompt is waiting for (same kind, not taken yet), else image1, image2… */
+const nextName = (kind: RefKind, refs: RefItem[], want?: { name: string; kind: RefKind }[]) =>
+  want?.find((w) => w.kind === kind && !refs.some((r) => sameName(r.name, w.name)))?.name ?? defaultRefName(kind, refs.map((r) => r.name));
 
 /** Roles for a reference style: frames → the first two images become first/last frame; otherwise all references. */
 function withRoles(refs: RefItem[], style: RefStyle): RefItem[] {
@@ -144,16 +157,22 @@ function withRoles(refs: RefItem[], style: RefStyle): RefItem[] {
   });
 }
 
-export default function Studio({ section, studioSections, generators, directorGenerators, prices: initialPrices, user, owner, allowed, balance: initialBalance, initialWorks, pricing, freeImageAvailable }: StudioProps) {
+export default function Studio({ section, studioSections, generators: allGenerators, directorGenerators, prices: initialPrices, user, owner, allowed, balance: initialBalance, initialWorks, pricing, freeImageAvailable }: StudioProps) {
   // the riyal pricing in force (rate, step, margins), so the prices here match the server's to the halala
   setPricing(pricing);
   const router = useRouter();
+  // «🖼️ أدوات الصورة» are generators too (the same job, price and refund) but open only on a picture, never from the list
+  const generators = useMemo(() => allGenerators.filter((g) => !isImageTool(g.id)), [allGenerators]);
+  const imageTools = useMemo(() => allGenerators.filter((g) => isImageTool(g.id)), [allGenerators]);
+  const [imageTool, setImageTool] = useState<ImageSource | null>(null);
   const unified = studioSections.length > 1;
   const key = draftKey(user?.id, unified ? "studio" : section.id);
   const first = generators[0]?.id ?? "";
   const [draft, setDraft] = useState<Draft>({ generatorId: first, prompt: "", instructions: "", settings: {}, refStyle: {}, refs: [] });
   const [hydrated, setHydrated] = useState(false);
   const [prices, setPrices] = useState(initialPrices);
+  // the person's Claude model: «المخرج الخارق» and «النطق الدقيق» run on it (never dearer than their fixed price)
+  const [claude] = useClaudeModel();
   const [balance, setBalance] = useState(initialBalance);
   const [picker, setPicker] = useState(false);
   const [tab, setTab] = useState<"settings" | "works">("settings");
@@ -168,6 +187,8 @@ export default function Studio({ section, studioSections, generators, directorGe
     const t = setTimeout(() => setDirectorOpen(true), 0);
     return () => clearTimeout(t);
   }, []);
+  // «استخدام المزايا»: the studio was opened
+  useEffect(() => track("studio.open"), []);
   const [notice, setNotice] = useState("");
   const [touched, setTouched] = useState(false);
   const files = useRef(new Map<string, File>());
@@ -179,6 +200,9 @@ export default function Studio({ section, studioSections, generators, directorGe
   const [worksLoading, setWorksLoading] = useState(false);
   const [worksError, setWorksError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
+  // «ترتيب أعمالي»: search, sort, a folder, the favourites (the server lists by them; the panel also filters what it has)
+  const [view, setView] = useState<WorksView>(DEFAULT_VIEW);
+  const viewRef = useRef(view);
 
   // Submitting
   const [submitting, setSubmitting] = useState(false);
@@ -194,6 +218,8 @@ export default function Studio({ section, studioSections, generators, directorGe
   // «جواد»: the chat assistant, and the thumbnail maker it can open
   const [chatOpen, setChatOpen] = useState(false);
   const [composer, setComposer] = useState<{ person: string; side: ThumbnailSide } | null>(null);
+  // «جاهز بضغطة»: a thumbnail card leaves this side empty for the person's photo («ركّب الشخص» after generating)
+  const [readySide, setReadySide] = useState<ThumbnailSide | null>(null);
   const pendingKey = useRef<string | null>(null);
   // what the pending key was made for: a changed request gets a new key (else the server returns the old job)
   const pendingSig = useRef("");
@@ -212,6 +238,41 @@ export default function Studio({ section, studioSections, generators, directorGe
     if (!saved && unified) saved = readDraft(draftKey(user?.id, section.id));
     const idea = new URLSearchParams(window.location.search).get("idea");
     if (idea) saved = { ...(saved ?? {}), prompt: idea.slice(0, 500) };
+    // «جرّبه في الاستوديو» from «طرق إبداعية»: the same prompt, generator, settings and style; the person's own references
+    const handed = new URLSearchParams(window.location.search).get("use") === "1" ? takeCreativeUse() : null;
+    if (handed) {
+      const gid = generators.some((g) => g.id === handed.generatorId) ? handed.generatorId : null;
+      const gdef = gid ? generatorById(gid) : undefined;
+      const base = saved ?? {};
+      const settingsOk = gdef ? Object.fromEntries(Object.entries(handed.settings ?? {}).filter(([k]) => gdef.options.some((o) => o.key === k))) : {};
+      saved = {
+        ...base,
+        ...(gid ? { generatorId: gid } : {}),
+        prompt: handed.prompt,
+        settings: gid ? { ...(base.settings ?? {}), [gid]: { ...(base.settings?.[gid] ?? {}), ...settingsOk } as Settings } : base.settings,
+        refStyle: gid && handed.refStyle && gdef?.modes.some((m) => m.refStyle === handed.refStyle) ? { ...(base.refStyle ?? {}), [gid]: handed.refStyle } : base.refStyle,
+        styleId: handed.styleId ?? "",
+        refs: [],
+        extra: [],
+        mainRefs: null,
+        wantNames: handed.refs.flatMap((r) => {
+          const kind = refKindOfTag(r.name);
+          return kind ? [{ name: r.name, kind }] : [];
+        }),
+      };
+      const list = handed.refs.map((r) => `@${r.name} (${r.what})`).join("، ");
+      const gname = gid ? generators.find((g) => g.id === gid)?.name : null;
+      setNotice(
+        `جهّزنا برومبت «${handed.label}» من طرق إبداعية` +
+          (gname ? ` على ${gname} بنفس الإعدادات.` : `، بس مولّده غير متاح لحسابك الحين فاختر مولّد.`) +
+          (list ? ` أضف مراجعك أنت بالترتيب: ${list}، وبتاخذ هالأسماء تلقائيًا.` : " عدّل اللي تبيه واضغط «توليد».")
+      );
+      try {
+        window.history.replaceState(null, "", window.location.pathname);
+      } catch {
+        // the address keeps ?use=1; the hand-off was already taken, so a reload doesn't apply it again
+      }
+    }
     // written before signing in (under "anon"): it is this person's draft, so it follows them into their account
     if (user && !saved?.prompt && !saved?.refs?.length) {
       const anon = readDraft(draftKey(undefined, unified ? "studio" : section.id)) ?? (unified ? readDraft(draftKey(undefined, section.id)) : null);
@@ -236,6 +297,7 @@ export default function Studio({ section, studioSections, generators, directorGe
         styleId: typeof saved.styleId === "string" && findStyle(saved.styleId) ? saved.styleId : "",
         extra: Array.isArray(saved.extra) ? saved.extra.slice(0, 2) : [],
         mainRefs: Array.isArray(saved.mainRefs) ? saved.mainRefs : null,
+        wantNames: Array.isArray(saved.wantNames) ? saved.wantNames : undefined,
       }));
       // Fresh links (and existence) of the kept references
       const ids = (saved.refs ?? []).flatMap((r) => (r.uploadId ? [r.uploadId] : []));
@@ -306,6 +368,7 @@ export default function Studio({ section, studioSections, generators, directorGe
   }
 
   function switchOutput(output: OutputKind) {
+    track(`studio.kind.${output}`);
     const next = generators.find((generator) => generatorById(generator.id)?.output === output);
     if (!next) return setNotice(`لا يوجد مولّد ${output === "image" ? "صور" : output === "video" ? "فيديو" : "صوت"} متاح لحسابك الآن.`);
     switchGenerator(next.id);
@@ -342,6 +405,7 @@ export default function Studio({ section, studioSections, generators, directorGe
 
   function addFiles(kind: RefKind, list: File[], role?: RefRole) {
     if (!def) return;
+    track("studio.ref_add");
     // The new references and their files; each upload starts on its own (never from inside a state update,
     // which may run later). Their names and roles are given in the (pure) update below.
     const added = list.map((file) => ({
@@ -368,7 +432,7 @@ export default function Studio({ section, studioSections, generators, directorGe
     setDraft((d) => {
       const refs = [...d.refs];
       for (const { item } of added) {
-        refs.push({ ...item, name: nextName(kind, refs), role: refStyle === "frames" && kind === "image" ? role ?? nextFrameRole(refs) : "reference" });
+        refs.push({ ...item, name: nextName(kind, refs, d.wantNames), role: refStyle === "frames" && kind === "image" ? role ?? nextFrameRole(refs) : "reference" });
       }
       return { ...d, refs };
     });
@@ -409,9 +473,12 @@ export default function Studio({ section, studioSections, generators, directorGe
     if (!user || !allowed) return;
     setWorksLoading(true);
     setWorksError(null);
+    const asked = viewRef.current;
     try {
-      const { ok, body } = await call<{ items: WorkItem[]; next: string | null }>(`/api/jawad/works?filter=${f}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+      const { ok, body } = await call<{ items: WorkItem[]; next: string | null }>(`/api/jawad/works?filter=${f}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}${worksQuery(asked)}`);
       if (!ok) throw new Error(body.error ?? "تعذّر تحميل الأعمال.");
+      // a newer search or folder was asked meanwhile: its own answer fills the list
+      if (asked !== viewRef.current) return;
       setItems((cur) => (cursor ? [...cur, ...body.items.filter((n) => !cur.some((c) => c.id === n.id))] : [...cur.filter((c) => c.type === "job" && c.id.startsWith("temp-")), ...body.items]));
       setNext(body.next);
     } catch (e) {
@@ -426,6 +493,12 @@ export default function Studio({ section, studioSections, generators, directorGe
     setItems((cur) => cur.filter((c) => c.type === "job" && c.id.startsWith("temp-")));
     setNext(null);
     loadWorks(f, null);
+  }
+  function changeView(v: WorksView) {
+    viewRef.current = v;
+    setView(v);
+    setNext(null);
+    loadWorks(filter, null);
   }
 
   // Poll unfinished jobs (their state lives on the server: a refresh or a new sign-in picks it up again)
@@ -447,8 +520,10 @@ export default function Studio({ section, studioSections, generators, directorGe
           setOffline(false);
           const byId = new Map(body.jobs.map((j) => [j.id, j]));
           const finished = body.jobs.filter((j) => j.status === "succeeded" || j.status === "failed").length;
+          for (const j of body.jobs) if (j.status === "succeeded") track("studio.job_ok");
           if (finished && document.hidden) notifyDone(finished, body.jobs.some((j) => j.status === "failed"));
-          setItems((cur) => cur.map((it) => (it.type === "job" && byId.has(it.id) ? byId.get(it.id)! : it)));
+          // (the work's folder and ⭐ stay: the jobs' answer doesn't carry them)
+          setItems((cur) => cur.map((it) => (it.type === "job" && byId.has(it.id) ? { ...it, ...byId.get(it.id)! } : it)));
           announceBalance(body.balance);
         }
       } catch {
@@ -514,6 +589,7 @@ export default function Studio({ section, studioSections, generators, directorGe
     if (!library?.active) return "«المكتبة» مقفلة.";
     if (!ev?.refKinds.image?.allowed) return ev?.refKinds.image?.reason ?? "هذا المولد لا يقبل صورًا مرجعية.";
     if (draft.refs.some((r) => sameName(r.name, it.name))) return `يوجد مرجع آخر باسم «@${it.name}»؛ غيّر اسمه أولًا.`;
+    track("studio.ref_add");
     setDraft((d) => ({ ...d, refs: [...d.refs, libraryRef(it, refStyle === "frames" ? role ?? nextFrameRole(d.refs) : "reference")] }));
     return null;
   }
@@ -539,6 +615,7 @@ export default function Studio({ section, studioSections, generators, directorGe
     : null;
   const price = plan ? (plan.every((x) => x.ev.price.ok) ? plan.reduce((t, x) => t + (x.ev.price.ok ? x.ev.price.coins : 0), 0) : null) : ev?.price.ok ? ev.price.coins : null;
   async function submitAll() {
+    track("studio.generate");
     if (!plan) return price != null && submit(price);
     for (const x of plan) if (x.ev.price.ok) await submit(x.ev.price.coins, { prompt: x.prompt, refs: x.refs });
   }
@@ -574,6 +651,7 @@ export default function Studio({ section, studioSections, generators, directorGe
 
   async function runDirector(expectedCoins: number) {
     if (!def || directing) return;
+    track("studio.director_boost");
     setDirecting(true);
     setNotice("");
     const original = draft.prompt;
@@ -587,6 +665,7 @@ export default function Studio({ section, studioSections, generators, directorGe
         prompt: original,
         refs: draft.refs.filter((r) => r.uploadId && r.status === "ready").map((r) => ({ uploadId: r.uploadId, role: r.role, name: r.name })),
         expectedCoins,
+        model: claude.id,
       });
       if (r.status === 409 && r.body.code === "price_changed" && typeof r.body.coins === "number") {
         const coins = r.body.coins;
@@ -693,6 +772,7 @@ export default function Studio({ section, studioSections, generators, directorGe
       instructions,
       refs: R.map((r) => ({ uploadId: r.uploadId, role: r.role, name: r.name })),
       expectedCoins,
+      model: claude.id,
       ...(def.output !== "audio" && draft.styleId ? { styleId: draft.styleId } : {}),
       ...(freeImage ? { signupFreeImage: true } : {}),
       ...(frames ? { frames } : {}),
@@ -737,6 +817,10 @@ export default function Studio({ section, studioSections, generators, directorGe
   }, [draft.prompt, freeImageAvailable, hydrated, router, submitting]);
 
   async function reuse(j: JobView) {
+    track("studio.reuse");
+    // a job of «أدوات الصورة»: its tool opens again on the same picture
+    const toolPicture = isImageTool(j.generatorId) ? j.refs.find((r) => r.kind === "image") : undefined;
+    if (toolPicture && imageTools.some((g) => g.id === j.generatorId)) return setImageTool({ uploadId: toolPicture.uploadId, url: null, width: null, height: null, tool: isImageTool(j.generatorId) ? j.generatorId : undefined });
     if (!generators.some((g) => g.id === j.generatorId)) {
       setNotice("مولد هذا العمل غير متاح الآن؛ حمّلنا البرومبت فقط.");
       setDraft((d) => ({ ...d, prompt: j.prompt, instructions: j.instructions }));
@@ -772,7 +856,8 @@ export default function Studio({ section, studioSections, generators, directorGe
   async function addFromWork(source: WorkSource, role?: RefRole): Promise<string | null> {
     const { ok, body } = await postJson<{ upload: UploadView }>("/api/jawad/uploads/from-output", source);
     if (!ok) return body.error ?? "تعذّر إضافته كمرجع.";
-    setDraft((d) => ({ ...d, refs: [...d.refs, fromView(body.upload, refStyle === "frames" && body.upload.kind === "image" ? role ?? nextFrameRole(d.refs) : "reference", nextName(body.upload.kind, d.refs))] }));
+    track("studio.ref_add");
+    setDraft((d) => ({ ...d, refs: [...d.refs, fromView(body.upload, refStyle === "frames" && body.upload.kind === "image" ? role ?? nextFrameRole(d.refs) : "reference", nextName(body.upload.kind, d.refs, d.wantNames))] }));
     return null;
   }
 
@@ -788,6 +873,7 @@ export default function Studio({ section, studioSections, generators, directorGe
   }
 
   async function useAsRef(o: OutputView) {
+    track("studio.use_as_ref");
     const err = await addFromWork({ outputId: o.id });
     if (err) return setNotice(err);
     setNotice("أضفناه إلى المراجع.");
@@ -797,7 +883,8 @@ export default function Studio({ section, studioSections, generators, directorGe
   /** «نسخة ثانية»: the same prompt, settings and references, generated again (a new result, same price). */
   async function variation(j: JobView) {
     if (!user || !allowed) return setNotice("سجّل الدخول للتوليد.");
-    if (!generators.some((g) => g.id === j.generatorId)) return setNotice("مولد هذا العمل غير متاح الآن.");
+    if (!allGenerators.some((g) => g.id === j.generatorId)) return setNotice("مولد هذا العمل غير متاح الآن.");
+    track("studio.variation");
     setNotice("");
     const tempId = `temp-${uid()}`;
     const temp: JobView = { ...j, id: tempId, createdAt: new Date().toISOString(), finishedAt: null, status: "validating", providerStatus: null, progress: null, error: null, cancellable: false, outputs: [], chargeState: "none" };
@@ -812,6 +899,7 @@ export default function Studio({ section, studioSections, generators, directorGe
       instructions: j.instructions,
       refs: j.refs.map((x) => ({ uploadId: x.uploadId, role: x.role, name: x.name ?? "" })),
       expectedCoins: j.priceCoins,
+      model: claude.id,
     }).catch(() => null);
     setItems((cur) => cur.filter((c) => c.id !== tempId));
     if (!r) return setNotice("انقطع الاتصال، جرّب مرة ثانية.");
@@ -882,6 +970,96 @@ export default function Studio({ section, studioSections, generators, directorGe
     setNotice("");
     return [];
   }
+  // ── «جاهز بضغطة»: a card fills the form (never generates; no AI call) ──
+  function applyReady(app: ReadyApp, values: ReadyValues, gid: string) {
+    const nd = generatorById(gid);
+    if (!nd || !generators.some((g) => g.id === gid)) return setNotice("هذا المولّد غير متاح لحسابك الحين.");
+    const form = composeReady(app, values);
+    // a picture or clip already added fills the card's slot (the first ready one of its kind); the rest are let go
+    const kept: RefItem[] = [];
+    const used: typeof form.slots = [];
+    for (const slot of form.slots) {
+      const r = draft.refs.find((x) => x.kind === slot.kind && x.status === "ready" && !kept.some((k) => k.localId === x.localId));
+      if (!r) continue;
+      kept.push({ ...r, name: slot.name, role: slot.role ?? "reference" });
+      used.push(slot);
+    }
+    const add = form.slots.filter((s) => !used.includes(s));
+    setDraft((d) => ({
+      ...d,
+      generatorId: gid,
+      prompt: form.prompt,
+      settings: { ...d.settings, [gid]: fitSettings(nd, form.settings) },
+      refStyle: { ...d.refStyle, [gid]: form.refStyle },
+      refs: kept,
+      styleId: form.styleId,
+      extra: [],
+      mainRefs: null,
+      wantNames: add.map((s) => ({ name: s.name, kind: s.kind })),
+    }));
+    setReadySide(composerSideOf(app, values));
+    setBeforeDirector(null);
+    setTouched(true);
+    setTab("settings");
+    setNotice(
+      `جهّزنا «${app.name}» على ${generators.find((g) => g.id === gid)?.name ?? nd.name}.` +
+        (used.length ? ` استخدمنا مرجعك الموجود كـ ${used.map((s) => `@${s.name}`).join(" و")}؛ بدّله إذا مو هو.` : "") +
+        (add.length ? ` أضف ${add.map((s) => s.what).join(" و")} من «المراجع» (ياخذ اسم ${add.map((s) => `@${s.name}`).join(" و")} تلقائيًا)، ثم اضغط «توليد».` : " راجع البرومبت واضغط «توليد».")
+    );
+  }
+  // ── «معرض الناس»: «جرّبه» fills the form with a work's kind, generator (or one of the same kind), shape, style and
+  // prompt — never its references: the person's own pictures take the names the prompt mentions ──
+  function applyGallery(item: Pick<GalleryCard, "id" | "kind" | "title" | "generatorId" | "generatorName" | "prompt" | "settings" | "styleId" | "refStyle" | "refNames">) {
+    const t = buildTryDraft(item, generators);
+    if (!t) return setNotice(`ما فيه مولّد ${item.kind === "video" ? "فيديو" : "صور"} متاح لحسابك الحين.`);
+    const gid = t.generatorId;
+    setDraft((d) => ({
+      ...d,
+      generatorId: gid,
+      prompt: t.prompt,
+      instructions: "",
+      settings: { ...d.settings, [gid]: t.settings },
+      refStyle: { ...d.refStyle, [gid]: t.refStyle },
+      refs: t.refs,
+      styleId: t.styleId,
+      extra: [],
+      mainRefs: null,
+      wantNames: t.wantNames,
+    }));
+    setReadySide(null);
+    setBeforeDirector(null);
+    setTouched(true);
+    setTab("settings");
+    const gname = generators.find((g) => g.id === gid)?.name ?? generatorById(gid)?.name ?? gid;
+    setNotice(
+      `جهّزنا ${item.title ? `«${item.title}»` : "العمل"} من معرض الناس على ${gname}` +
+        (t.fellBack ? ` (مولّده «${item.generatorName}» مو متاح لحسابك، فاخترنا واحد من نفس النوع).` : " بنفس الإعدادات.") +
+        (t.wantNames.length ? ` أضف صورك أنت بالترتيب: ${t.wantNames.map((w) => `@${w.name}`).join("، ")}، وبتاخذ هالأسماء تلقائيًا.` : " عدّل اللي تبيه واضغط «توليد».")
+    );
+  }
+  // opened from the gallery or a shared work's page (?gallery=<id>): the work is read from the server once the draft is restored
+  const galleryTaken = useRef(false);
+  useEffect(() => {
+    if (!hydrated || galleryTaken.current) return;
+    const id = new URLSearchParams(window.location.search).get("gallery");
+    if (!id) return;
+    galleryTaken.current = true;
+    try {
+      window.history.replaceState(null, "", window.location.pathname);
+    } catch {
+      // the address keeps ?gallery=; it was already taken
+    }
+    call<{ item: GalleryCard }>(`/api/jawad/gallery/${encodeURIComponent(id)}`)
+      .then(({ ok, body }) => {
+        if (!ok || !body.item) return setNotice(body.error ?? "هذا العمل ما عاد موجود في المعرض.");
+        track("studio.gallery_try");
+        applyGallery(body.item);
+      })
+      .catch(() => setNotice("انقطع الاتصال، ما قدرنا نجيب العمل من المعرض."));
+    // applyGallery reads this render's generators only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
+
   const composerPersons = draft.refs.flatMap((r) => (r.kind === "image" && r.status === "ready" && r.url ? [{ name: r.name, url: r.url }] : []));
   const composerResults = items.flatMap((it) => (it.type === "job" && it.status === "succeeded" ? it.outputs.filter((o) => o.kind === "image" && o.url).map((o) => ({ id: o.id, url: o.url! })) : [])).slice(0, 8);
 
@@ -929,6 +1107,28 @@ export default function Studio({ section, studioSections, generators, directorGe
             </div>}
             <SectionHint kind={def.output} />
             <GeneratorCard gen={gen} owner={owner} onOpen={() => setPicker(true)} />
+            <CompareGenerators
+              kind={def.output}
+              generators={generators}
+              currentId={def.id}
+              prices={prices}
+              owner={owner}
+              atCost={atCost}
+              balance={balance}
+              blockedReason={!user ? "سجّل الدخول أولًا." : !allowed ? "المنصة مغلقة لحسابك حاليًا." : busyUploads ? "انتظر حتى يكتمل رفع المراجع وفحصها." : directing ? "انتظر حتى ينتهي «المخرج الخارق» من كتابة البرومبت." : submitting ? "انتظر حتى يبدأ التوليد." : null}
+              prompt={draft.prompt}
+              instructions={draft.instructions}
+              settings={ev.settings}
+              saved={draft.settings}
+              refStyle={refStyle}
+              refs={draft.refs}
+              styleId={draft.styleId ?? ""}
+              model={claude.id}
+              hasExtra={extras.length > 0}
+              items={items}
+              onJobs={(jobs) => setItems((cur) => [...jobs.filter((j) => filter === "all" || filter === j.outputKind), ...cur.filter((c) => !jobs.some((j) => j.id === c.id))])}
+              onPick={(id) => (switchGenerator(id), setTab("settings"))}
+            />
             {def.output === "image" && (
               <ClaudeCodeCard<JobView>
                 prompt={draft.prompt}
@@ -939,6 +1139,7 @@ export default function Studio({ section, studioSections, generators, directorGe
                 sectionId={activeSection.id}
                 disabledReason={!user ? "سجّل الدخول للرسم بـ حيدرا ماكس." : !allowed ? "المنصة مغلقة لحسابك." : null}
                 onSaved={(job) => {
+                  track("studio.claude_draw");
                   setItems((cur) => (filter === "all" || filter === "image" ? [job, ...cur.filter((c) => c.id !== job.id)] : cur));
                   setTab("works");
                 }}
@@ -950,6 +1151,11 @@ export default function Studio({ section, studioSections, generators, directorGe
                 <span className="flex-1"><Coined text={notice} /></span>
                 <button type="button" onClick={() => setNotice("")} aria-label="إخفاء"><Icon name="x" size={12} /></button>
               </p>
+            )}
+            {readySide && def.output === "image" && (
+              <button type="button" className="jw-btn !min-h-9 w-full gap-1.5 text-xs" onClick={() => setComposer({ person: composerPersons[0]?.name ?? "", side: readySide })}>
+                <Icon name="layers" size={14} /> ركّب صورتك على الثامبنيل بعد التوليد
+              </button>
             )}
             <RefsStrip
               def={def}
@@ -970,7 +1176,17 @@ export default function Studio({ section, studioSections, generators, directorGe
               onRemove={removeRef}
               onRole={(id, role) => updateRef(id, { role })}
             />
-            {def.output !== "audio" && <StylePicker value={draft.styleId ?? ""} onChange={(id) => (setDraft((d) => ({ ...d, styleId: id })), setTouched(true))} />}
+            {user && allowed && imageTools.length > 0 && def.output === "image" && (() => {
+              const pic = draft.refs.find((r) => r.kind === "image" && r.status === "ready" && r.uploadId && /^image\/(png|jpeg|webp)$/.test(r.mime));
+              return pic ? (
+                <button type="button" className="jw-btn !min-h-9 w-full gap-1.5 text-xs !border-jw-accent/50 text-jw-accent" onClick={() => (track("studio.image_tools"), setImageTool({ uploadId: pic.uploadId!, url: pic.url, width: pic.width, height: pic.height }))}>
+                  <Icon name="wand" size={14} /> أدوات الصورة على «@{pic.name}»: امسح جزء، وسّعها، ارفع دقتها
+                </button>
+              ) : null;
+            })()}
+            {def.output !== "audio" && <StylePicker value={draft.styleId ?? ""} onChange={(id) => (setDraft((d) => ({ ...d, styleId: id })), setTouched(true), id && track("studio.style"))} />}
+            <ReadyApps generators={generators} owner={owner} onUse={applyReady} />
+            <GalleryStrip signedIn={Boolean(user)} onTry={applyGallery} />
             <PromptBox
               def={def}
               ev={ev}
@@ -987,7 +1203,7 @@ export default function Studio({ section, studioSections, generators, directorGe
               }}
               onInstructions={(instructions) => setDraft((d) => ({ ...d, instructions }))}
               touched={touched}
-              onTouched={() => setTouched(true)}
+              onTouched={() => (setTouched(true), draft.prompt.trim() && track("studio.prompt"))}
               locked={directing ? "«المخرج الخارق» يكتب البرومبت…" : null}
               onSubmit={() => {
                 if (user && price != null && !blockers.length && !submitting) void submitAll();
@@ -1020,7 +1236,7 @@ export default function Studio({ section, studioSections, generators, directorGe
               ev={ev}
               values={ev.settings}
               onChange={setSetting}
-              voiceCoins={def?.provider.id === "jawad" ? voiceCoins({}, owner, prices[def.id] ?? {}) : def && def.priceKeys.some((k) => k.key === VOICE_DESIGN_KEY) ? voiceCoins(prices[def.id] ?? {}, owner, prices[JAWAD_VOICE_ID]) : undefined}
+              voiceCoins={def?.provider.id === "jawad" ? voiceCoins({}, prices[def.id] ?? {}) : def && def.priceKeys.some((k) => k.key === VOICE_DESIGN_KEY) ? voiceCoins(prices[def.id] ?? {}, prices[JAWAD_VOICE_ID]) : undefined}
               voiceProvider={def?.provider.id === "jawad" ? "jawad" : "elevenlabs"}
             />
           </div>
@@ -1047,7 +1263,8 @@ export default function Studio({ section, studioSections, generators, directorGe
                 {generateLabel}
                 {price != null && (
                   <span className="ms-1 flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--jw-on-accent)_15%,transparent)] px-2 py-0.5 text-sm">
-                    <Riyal halalas={price} was={owner ? null : ev?.price.ok ? ev.price.was : null} size={15} free={owner} />
+                    {/* the owner sees the very price a customer sees (and the note below: nothing is taken from him) */}
+                    <Riyal halalas={price} was={ev?.price.ok ? ev.price.was : null} size={15} />
                   </span>
                 )}
               </button>
@@ -1066,6 +1283,9 @@ export default function Studio({ section, studioSections, generators, directorGe
             items={items}
             filter={filter}
             onFilter={changeFilter}
+            view={view}
+            onView={changeView}
+            onMarked={(type, id, mark) => setItems((cur) => cur.map((it) => (it.type === type && it.id === id ? { ...it, ...mark } : it)))}
             loading={worksLoading}
             hasMore={Boolean(next)}
             onMore={() => next && loadWorks(filter, next)}
@@ -1084,6 +1304,7 @@ export default function Studio({ section, studioSections, generators, directorGe
               announceBalance(balance);
               setTab("works");
             }}
+            onImageTool={user && allowed && imageTools.length ? (o) => (track("studio.image_tools"), setImageTool({ outputId: o.id, url: o.url, width: o.width, height: o.height })) : undefined}
           />
         </div>
       </div>
@@ -1092,6 +1313,7 @@ export default function Studio({ section, studioSections, generators, directorGe
         <AssistantChat
           open={chatOpen}
           onOpen={() => {
+            track("studio.assistant");
             setDirectorOpen(false);
             setChatOpen(true);
           }}
@@ -1100,7 +1322,7 @@ export default function Studio({ section, studioSections, generators, directorGe
           getDraft={assistantDraft}
           onApply={applyAssistant}
           generatorName={(id) => generators.find((g) => g.id === id)?.name ?? id}
-          onThumbnail={(t) => setComposer(t)}
+          onThumbnail={(t) => (track("studio.compose_person"), setComposer(t))}
           canAttach
           storage={user.id}
         />
@@ -1109,6 +1331,7 @@ export default function Studio({ section, studioSections, generators, directorGe
         <DirectorChat
           open={directorOpen}
           onOpen={() => {
+            track("studio.director_chat");
             setChatOpen(false);
             setDirectorOpen(true);
           }}
@@ -1126,13 +1349,13 @@ export default function Studio({ section, studioSections, generators, directorGe
           results={composerResults}
           initial={composer}
           onKeep={(v) => {
-            setDraft((d) => ({ ...d, refs: [...d.refs, fromView(v, "reference", nextName("image", d.refs))] }));
+            setDraft((d) => ({ ...d, refs: [...d.refs, fromView(v, "reference", nextName("image", d.refs, d.wantNames))] }));
             setNotice("أضفت الصورة المركّبة كمرجع.");
           }}
         />
       )}
 
-      <GeneratorPicker open={picker} onClose={() => setPicker(false)} generators={unified ? generators.filter((g) => generatorById(g.id)?.output === def.output) : generators} current={gen.id} onPick={switchGenerator} owner={owner} title={unified ? `اختر مولّد ${def.output === "image" ? "الصور" : def.output === "video" ? "الفيديو" : "الصوت"}` : undefined} />
+      <GeneratorPicker open={picker} onClose={() => setPicker(false)} generators={unified ? generators.filter((g) => generatorById(g.id)?.output === def.output) : generators} current={gen.id} onPick={(id) => (track("studio.generator"), switchGenerator(id))} owner={owner} title={unified ? `اختر مولّد ${def.output === "image" ? "الصور" : def.output === "video" ? "الفيديو" : "الصوت"}` : undefined} />
 
       <Dialog open={Boolean(confirm)} onClose={() => setConfirm(null)} title="تغيّر السعر">
         {confirm && (
@@ -1157,6 +1380,22 @@ export default function Studio({ section, studioSections, generators, directorGe
           </div>
         )}
       </Dialog>
+      {imageTools.length > 0 && (
+        <ImageTools
+          open={Boolean(imageTool)}
+          onClose={() => setImageTool(null)}
+          source={imageTool}
+          tools={imageTools}
+          prices={prices}
+          owner={owner}
+          balance={balance}
+          onCreated={(j) => {
+            setImageTool(null);
+            setItems((cur) => (filter === "all" || filter === "image" ? [j, ...cur.filter((c) => c.id !== j.id)] : cur));
+            setTab("works");
+          }}
+        />
+      )}
     </div>
   );
 }

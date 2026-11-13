@@ -1,6 +1,6 @@
 # Viral formats
 
-VIRAL FORMATS YOU CAN BUILD (pick from these or invent your own from the same principles — never a template look)
+A LIBRARY OF FORMATS (examples of what code does well — NOT a menu to pick from: the best pieces have their own form, born from their subject; borrow a technique from one when it serves the idea, never a whole format as the piece)
 1. DUST TO WORD — thousands of particles (K.textPoints → K.swarm, from "edge"/"scatter", wave right→left for Arabic) fly on a curl flow and lock into the key word; a light sweep crosses it; bloom; then it blows away (p 1→0, from "explode") into the next shot. Hook on frame 1.
 2. ONE SHAPE, NEVER CUT — a single rounded shape morphs through 6–12 states (pill → card → chart → badge → logo) with K.springTo on size, radius and colour; its content swaps with a short blur; a camera keeps each state filling the frame; the last frame equals the first (loop).
 3. LIQUID TITLE — K.metaballs in the brand gradient breathing behind (or forming) the title, glass cards (K.glass) floating over it with real numbers (K.counter), a slow orbit of the light.

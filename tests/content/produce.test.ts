@@ -101,8 +101,8 @@ describe("the buttons and the galleries", () => {
   });
   it("finds the last pick of each kind and tells him the full details of it", () => {
     const ids = chosenIds(["أبي كاروسيل", `${templateLine({ id: "minimal-clean", name: "بسيط نظيف" })}\n${styleLine({ id: "none", name: "" })}`, templateLine({ id: "scrapbook", name: "دفتر قصاصات" })]);
-    expect(ids).toEqual({ template: "scrapbook", style: "none", motion: null, mood: null, palette: null });
-    expect(chosenIds(["لا شي"])).toEqual({ template: null, style: null, motion: null, mood: null, palette: null });
+    expect(ids).toEqual({ template: "scrapbook", style: "none", motion: null, mood: null, palette: null, carousel: null, font: null, move: null, path: null });
+    expect(chosenIds(["لا شي"])).toEqual({ template: null, style: null, motion: null, mood: null, palette: null, carousel: null, font: null, move: null, path: null });
     const t = CAROUSEL_TEMPLATES.find((x) => x.id === "scrapbook")!;
     const block = chosenBlock({ template: "scrapbook", style: "ghibli" });
     expect(block).toContain(t.name);
@@ -124,7 +124,7 @@ describe("the buttons and the galleries", () => {
     const c = catalogBlock();
     for (const t of CAROUSEL_TEMPLATES) expect(c).toContain(`- ${t.id} — ${t.name}`);
     for (const s of FILM_STYLES) expect(c).toContain(`- ${s.id} — ${s.name}`);
-    expect(FILM_STYLES).toHaveLength(100);
+    expect(FILM_STYLES).toHaveLength(102);
   });
 });
 

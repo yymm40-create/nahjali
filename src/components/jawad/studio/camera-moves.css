@@ -1,0 +1,173 @@
+/* «🎥 حركة الكاميرا»: each card's preview is one small drawn scene (sky, sun, hills, trees, a person) that moves the
+   way the camera would. The layers: .cam-w the whole world (what the lens sees), .cam-far / .cam-near for parallax,
+   .cam-s the person. Only transforms and opacity are animated. */
+
+.jw-cam-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  background: #bfe3ff;
+}
+.jw-cam-svg g {
+  transform-box: view-box;
+}
+.jw-cam-svg .cam-w,
+.jw-cam-svg .cam-far,
+.jw-cam-svg .cam-near {
+  transform-origin: 80px 58px;
+}
+.jw-cam-svg .cam-s {
+  transform-origin: 80px 70px;
+}
+.jw-cam-svg .cam-top {
+  transform-origin: 80px 50px;
+  display: none;
+}
+.jw-cam-svg .cam-streak,
+.jw-cam-svg .cam-freeze {
+  opacity: 0;
+}
+
+/* «دفع للأمام» / «سحب للخلف» */
+.jw-cam[data-move="push_in"] .cam-w { animation: jwcam-push 3.2s ease-in-out infinite; }
+.jw-cam[data-move="pull_out"] .cam-w { animation: jwcam-push 3.2s ease-in-out infinite reverse; }
+@keyframes jwcam-push {
+  0%, 12% { transform: scale(1); }
+  88%, 100% { transform: scale(1.65); }
+}
+
+/* «دوران حوله»: the far hills one way, the near trees the other, the person turning */
+.jw-cam[data-move="orbit"] .cam-far { animation: jwcam-slide 3.6s ease-in-out infinite alternate; --d: -1; --x: 40px; }
+.jw-cam[data-move="orbit"] .cam-near { animation: jwcam-slide 3.6s ease-in-out infinite alternate; --d: 1; --x: 60px; }
+.jw-cam[data-move="orbit"] .cam-s { animation: jwcam-turn 3.6s ease-in-out infinite alternate; }
+@keyframes jwcam-turn {
+  0% { transform: scaleX(1); }
+  50% { transform: scaleX(0.15); }
+  100% { transform: scaleX(-1); }
+}
+@keyframes jwcam-slide {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(var(--d, 1) * var(--x, 40px))); }
+}
+
+/* «رافعة للأعلى» / «للأسفل»: the world sinks as the camera rises, the near trees faster */
+.jw-cam[data-move="crane_up"] .cam-w { animation: jwcam-crane 3.2s ease-in-out infinite; }
+.jw-cam[data-move="crane_up"] .cam-near { animation: jwcam-crane-near 3.2s ease-in-out infinite; }
+.jw-cam[data-move="crane_down"] .cam-w { animation: jwcam-crane 3.2s ease-in-out infinite reverse; }
+.jw-cam[data-move="crane_down"] .cam-near { animation: jwcam-crane-near 3.2s ease-in-out infinite reverse; }
+@keyframes jwcam-crane {
+  0%, 12% { transform: translateY(0) scale(1); }
+  88%, 100% { transform: translateY(26px) scale(0.88); }
+}
+@keyframes jwcam-crane-near {
+  0%, 12% { transform: translateY(0); }
+  88%, 100% { transform: translateY(14px); }
+}
+
+/* «انزلاق لليسار / لليمين»: everything slides the other way, nearer things more */
+.jw-cam[data-move="dolly_left"] { --d: 1; }
+.jw-cam[data-move="dolly_right"] { --d: -1; }
+.jw-cam[data-move="dolly_left"] .cam-far,
+.jw-cam[data-move="dolly_right"] .cam-far { animation: jwcam-slide 3.2s ease-in-out infinite; --x: 8px; }
+.jw-cam[data-move="dolly_left"] .cam-s,
+.jw-cam[data-move="dolly_right"] .cam-s { animation: jwcam-slide 3.2s ease-in-out infinite; --x: 26px; }
+.jw-cam[data-move="dolly_left"] .cam-near,
+.jw-cam[data-move="dolly_right"] .cam-near { animation: jwcam-slide 3.2s ease-in-out infinite; --x: 60px; }
+
+/* «تتبّع»: the person stays in frame walking, the world streams past */
+.jw-cam[data-move="tracking"] .cam-s { animation: jwcam-walk 0.36s ease-in-out infinite alternate; }
+.jw-cam[data-move="tracking"] .cam-near { animation: jwcam-stream 1.6s linear infinite; }
+.jw-cam[data-move="tracking"] .cam-far { animation: jwcam-slide 4s linear infinite; --d: -1; --x: 30px; }
+@keyframes jwcam-walk {
+  from { transform: translateY(0) rotate(-2deg); }
+  to { transform: translateY(-2px) rotate(2deg); }
+}
+@keyframes jwcam-stream {
+  from { transform: translateX(0); }
+  to { transform: translateX(-120px); }
+}
+
+/* «كاميرا باليد» */
+.jw-cam[data-move="handheld"] .cam-w { animation: jwcam-shake 1.5s ease-in-out infinite; }
+@keyframes jwcam-shake {
+  0%, 100% { transform: scale(1.06) translate(0, 0) rotate(0); }
+  20% { transform: scale(1.06) translate(1.6px, -1px) rotate(0.7deg); }
+  40% { transform: scale(1.06) translate(-1.2px, 1.3px) rotate(-0.5deg); }
+  60% { transform: scale(1.06) translate(1.3px, 0.8px) rotate(0.4deg); }
+  80% { transform: scale(1.06) translate(-1.5px, -0.7px) rotate(-0.6deg); }
+}
+
+/* «زوم خاطف» */
+.jw-cam[data-move="crash_zoom"] .cam-w { animation: jwcam-crash 2.4s infinite; }
+@keyframes jwcam-crash {
+  0%, 45% { transform: scale(1); animation-timing-function: cubic-bezier(0.7, 0, 0.9, 0.4); }
+  56%, 100% { transform: scale(2.4); }
+}
+
+/* «زوم الدوخة»: the person keeps their size, the background stretches */
+.jw-cam[data-move="dolly_zoom"] .cam-far { animation: jwcam-vertigo 2.8s ease-in-out infinite alternate; --z: 1.9; }
+.jw-cam[data-move="dolly_zoom"] .cam-near { animation: jwcam-vertigo 2.8s ease-in-out infinite alternate; --z: 1.35; }
+@keyframes jwcam-vertigo {
+  from { transform: scale(1); }
+  to { transform: scale(var(--z, 1.5)); }
+}
+
+/* «طيران درون FPV» */
+.jw-cam[data-move="fpv"] .cam-w { animation: jwcam-fpv 1.9s cubic-bezier(0.5, 0, 0.9, 0.6) infinite; }
+@keyframes jwcam-fpv {
+  0% { transform: scale(1) rotate(-6deg) translateY(4px); }
+  100% { transform: scale(2.5) rotate(6deg) translateY(-2px); }
+}
+
+/* «زمن الرصاصة»: the person and the drops frozen in the air, the camera sweeping around */
+.jw-cam[data-move="bullet_time"] .cam-s { transform: translateY(-12px) rotate(-8deg); animation: jwcam-frozen-turn 3.6s ease-in-out infinite alternate; }
+.jw-cam[data-move="bullet_time"] .cam-freeze { opacity: 1; animation: jwcam-turn 3.6s ease-in-out infinite alternate; transform-origin: 80px 54px; }
+.jw-cam[data-move="bullet_time"] .cam-far { animation: jwcam-slide 3.6s ease-in-out infinite alternate; --d: -1; --x: 40px; }
+.jw-cam[data-move="bullet_time"] .cam-near { animation: jwcam-slide 3.6s ease-in-out infinite alternate; --d: 1; --x: 70px; }
+@keyframes jwcam-frozen-turn {
+  from { transform: translateY(-12px) rotate(-8deg) scaleX(1); }
+  to { transform: translateY(-12px) rotate(-8deg) scaleX(-1); }
+}
+
+/* «من فوق تمامًا»: the scene seen from above, turning slowly */
+.jw-cam[data-move="top_down"] .cam-w { display: none; }
+.jw-cam[data-move="top_down"] .cam-top { display: inline; animation: jwcam-top 4s ease-in-out infinite alternate; }
+@keyframes jwcam-top {
+  from { transform: rotate(0) scale(1); }
+  to { transform: rotate(28deg) scale(1.15); }
+}
+
+/* «إمالة للأعلى»: from the ground up to the sky, everything together (no parallax: the camera only turns) */
+.jw-cam[data-move="tilt_up"] .cam-w { animation: jwcam-tilt 3.2s ease-in-out infinite; }
+@keyframes jwcam-tilt {
+  0%, 12% { transform: translateY(-34px); }
+  88%, 100% { transform: translateY(44px); }
+}
+
+/* «لفّة خاطفة» */
+.jw-cam[data-move="whip_pan"] .cam-w { animation: jwcam-whip 2.6s infinite; }
+.jw-cam[data-move="whip_pan"] .cam-streak { animation: jwcam-streak 2.6s infinite; }
+@keyframes jwcam-whip {
+  0%, 38% { transform: translateX(0); animation-timing-function: ease-in; }
+  50% { transform: translateX(-190px); }
+  50.01% { transform: translateX(190px); animation-timing-function: ease-out; }
+  62%, 100% { transform: translateX(0); }
+}
+@keyframes jwcam-streak {
+  0%, 40%, 60%, 100% { opacity: 0; }
+  46%, 54% { opacity: 0.9; }
+}
+
+/* «ثابتة»: only the person moves (breathing, a wave) */
+.jw-cam[data-move="static"] .cam-s { animation: jwcam-breathe 1.4s ease-in-out infinite alternate; }
+@keyframes jwcam-breathe {
+  from { transform: scaleY(1); }
+  to { transform: scaleY(1.05); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jw-cam-svg * {
+    animation: none !important;
+  }
+}

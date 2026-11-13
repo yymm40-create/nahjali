@@ -45,6 +45,15 @@ export async function faceIn(url: string, fromMs: number, toMs: number): Promise
  * «مختبر الموشن» keeps the face framed with when it builds a piece on the person's video. Moments with no face are left out.
  */
 export async function faceTrack(url: string, fromMs: number, toMs: number, n: number): Promise<{ samples: { ms: number; face: FaceBox }[]; width: number; height: number }> {
+  const r = await faceFrames(url, fromMs, toMs, n);
+  return { samples: r.frames.flatMap((f) => (f.faces.length ? [{ ms: f.ms, face: f.faces[0] }] : [])), width: r.width, height: r.height };
+}
+
+/**
+ * Every face at `n` moments spread over `fromMs`–`toMs` (source time), biggest first, and the moments with none
+ * (`faces: []`) — «اتبع الوجه» holds the camera there. `onProgress` gets 0–1; `signal` stops it between two looks.
+ */
+export async function faceFrames(url: string, fromMs: number, toMs: number, n: number, opts: { onProgress?: (p: number) => void; signal?: AbortSignal } = {}): Promise<{ frames: { ms: number; faces: FaceBox[] }[]; width: number; height: number }> {
   const det = await detector();
   const v = document.createElement("video");
   v.crossOrigin = "anonymous";
@@ -63,9 +72,10 @@ export async function faceTrack(url: string, fromMs: number, toMs: number, n: nu
     c.width = Math.max(1, Math.round(v.videoWidth * k));
     c.height = Math.max(1, Math.round(v.videoHeight * k));
     const g = c.getContext("2d")!;
-    const samples: { ms: number; face: FaceBox }[] = [];
+    const frames: { ms: number; faces: FaceBox[] }[] = [];
     const span = Math.max(0, toMs - fromMs);
     for (let i = 0; i < n; i++) {
+      if (opts.signal?.aborted) throw new DOMException("أوقفت.", "AbortError");
       const ms = fromMs + (span * (i + 0.5)) / n;
       await new Promise<void>((ok) => {
         const done = () => {
@@ -78,10 +88,15 @@ export async function faceTrack(url: string, fromMs: number, toMs: number, n: nu
       });
       g.drawImage(v, 0, 0, c.width, c.height);
       const r = det.detect(c);
-      const best = r.detections.map((d) => d.boundingBox).filter((b): b is NonNullable<typeof b> => !!b).sort((a, b) => b.width * b.height - a.width * a.height)[0];
-      if (best) samples.push({ ms: Math.round(ms), face: { x: (best.originX + best.width / 2) / c.width, y: (best.originY + best.height / 2) / c.height, w: best.width / c.width, h: best.height / c.height } });
+      const faces = r.detections
+        .map((d) => d.boundingBox)
+        .filter((b): b is NonNullable<typeof b> => !!b)
+        .sort((a, b) => b.width * b.height - a.width * a.height)
+        .map((b) => ({ x: (b.originX + b.width / 2) / c.width, y: (b.originY + b.height / 2) / c.height, w: b.width / c.width, h: b.height / c.height }));
+      frames.push({ ms: Math.round(ms), faces });
+      opts.onProgress?.((i + 1) / n);
     }
-    return { samples, width: v.videoWidth, height: v.videoHeight };
+    return { frames, width: v.videoWidth, height: v.videoHeight };
   } finally {
     v.removeAttribute("src");
     v.load();
@@ -97,4 +112,41 @@ export async function facesIn(images: ImageBitmap[]): Promise<(FaceBox | null)[]
     const best = r.detections.map((d) => d.boundingBox).filter((x): x is NonNullable<typeof x> => !!x).sort((a, c) => c.width * c.height - a.width * a.height)[0];
     return best ? { x: (best.originX + best.width / 2) / b.width, y: (best.originY + best.height / 2) / b.height, w: best.width / b.width, h: best.height / b.height } : null;
   });
+}
+
+/**
+ * The face in a picture (pixels of that picture), or null — «كاظم»'s ready designs frame a person by his face. The
+ * whole picture is looked at first; a face too small for that (a full-body photo, a wide one) is looked for again in
+ * overlapping windows, from big to small, and the surest one of the first size that finds any is kept.
+ */
+export async function faceInPicture(pic: ImageBitmap): Promise<{ x: number; y: number; w: number; h: number } | null> {
+  try {
+    const det = await detector();
+    type Found = { x: number; y: number; w: number; h: number; score: number };
+    const read = (src: ImageBitmap | HTMLCanvasElement, ox = 0, oy = 0, k = 1): Found[] =>
+      det.detect(src).detections.flatMap((d) => (d.boundingBox ? [{ x: ox + d.boundingBox.originX * k, y: oy + d.boundingBox.originY * k, w: d.boundingBox.width * k, h: d.boundingBox.height * k, score: d.categories[0]?.score ?? 0 }] : []));
+    const pick = (list: Found[]) => list.filter((f) => f.score >= 0.5).sort((a, b) => b.score * b.w * b.h - a.score * a.w * a.h)[0] ?? null;
+    const whole = pick(read(pic));
+    if (whole) return whole;
+    const c = document.createElement("canvas");
+    c.width = c.height = 512;
+    const x = c.getContext("2d")!;
+    const short = Math.min(pic.width, pic.height);
+    for (const share of [1, 0.6, 0.38, 0.24]) {
+      const side = short * share, step = side / 2, k = side / 512;
+      const found: Found[] = [];
+      for (let ty = 0; ty <= pic.height - side + 1; ty += step) {
+        for (let tx = 0; tx <= pic.width - side + 1; tx += step) {
+          x.clearRect(0, 0, 512, 512);
+          x.drawImage(pic, tx, ty, side, side, 0, 0, 512, 512);
+          found.push(...read(c, tx, ty, k));
+        }
+      }
+      const best = pick(found.filter((f) => f.score >= 0.6));
+      if (best) return best;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }

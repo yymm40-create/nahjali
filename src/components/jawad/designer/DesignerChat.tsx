@@ -1,10 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-// «المصمم الذكي» — the studio and the conversation with «كاظم»: chats on the side, cards to start from (the kinds of
-// design), his questions as buttons (and the source cards, the directions, the font gallery), the messages with the
-// person's attachments, the design drawn by جواد appearing in the layers editor where every word is edited, and the
-// final PNG saved. The look is designer.css.
+// «المصمم الذكي» — the studio and the conversation with «كاظم», on «صانع المحتوى»'s way: chats on the side (the kinds
+// of design were removed while the owner rebuilds them), his questions as buttons («قائمة الخطوط», «معرض الألوان»),
+// the decisions as chips over the chat
+// (tap one to change it), a short talk by default («📝 خلّها مفصّلة» for the longer one), any message of the person's
+// edited to go on from there, the design drawn by «حيدرا ماكس» in code, and the final PNG saved. The look is designer.css.
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
@@ -16,17 +17,21 @@ import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
 import { answerLine, DELEGATE_LINE } from "@/lib/content/marks";
-import { DESIGN_KINDS, DESIGN_SOURCES } from "@config/designer";
+import { decisionsOf, fontAnswer, paletteAnswer, stripMarks } from "@config/designer-talk";
+import { FontList, PaletteGrid } from "./Pickers";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
-import { loadFont, renderDesign, type DesignView, type FontDef } from "./LayerEditor";
-import { drawWithCode, smallJpeg } from "@/components/claude-code/draw";
+import { renderDesign, type DesignView, type FontDef } from "./LayerEditor";
+import MajlisPicker, { type MajlisDone } from "./MajlisPicker";
+import TemplateMaker from "./TemplateMaker";
+import { downloadPrint, downloadSize, printDpi, PRINTS, SIZES } from "./exports";
+import { drawWithCode, pngBody, smallJpeg, type DrawEdit, type DrawTemplate } from "@/components/claude-code/draw";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
-interface Question { label: string; kind: "choice" | "source" | "directions" | "fonts"; options: string[]; multi: boolean }
-interface Msg { role: "user" | "assistant"; text: string; files?: FileView[]; questions?: Question[]; design?: DesignView; error?: boolean }
+interface Question { label: string; kind: "choice" | "fonts" | "palettes"; options: string[]; multi: boolean }
+/** `local`: written on this page, never saved with the conversation */
+interface Msg { role: "user" | "assistant"; text: string; files?: FileView[]; questions?: Question[]; design?: DesignView; error?: boolean; local?: boolean }
 interface ChatItem { id: string; title: string }
 
-const STARTS = DESIGN_KINDS.filter((k) => k.id !== "other").map((k) => ({ ic: k.icon, t: k.name, m: `أبي ${k.name}. اسألني عن اللي تحتاجه.` }));
 const COLORS = ["#2f74ff", "#ff6b8a", "#ffb347", "#5ad7a3", "#a78bfa", "#38bdf8"];
 
 /** The answer's light markdown (headings, lists, tables, bold, rules; colours as swatches) as elements. */
@@ -75,7 +80,7 @@ function Rich({ text }: { text: string }) {
 }
 
 /** The questions of an answer as buttons: a plain one sends on a press; a batch collects the answers first. */
-export function Questions({ questions, fonts, disabled, onSend, onWrite }: { questions: Question[]; fonts: FontDef[]; disabled: boolean; onSend: (text: string) => void; onWrite: () => void }) {
+export function Questions({ questions, disabled, onSend, onWrite }: { questions: Question[]; disabled: boolean; onSend: (text: string) => void; onWrite: () => void }) {
   const [picked, setPicked] = useState<Record<number, string[]>>({});
   const [other, setOther] = useState<Record<number, string>>({});
   const [openOther, setOpenOther] = useState<Record<number, boolean>>({});
@@ -83,6 +88,7 @@ export function Questions({ questions, fonts, disabled, onSend, onWrite }: { que
   if (questions.length === 1 && questions[0].kind === "choice" && !questions[0].multi) {
     return <QuickReplies cls="dz" options={questions[0].options} disabled={disabled} onPick={(o) => onSend(o)} onWrite={onWrite} />;
   }
+  const has = (qi: number, o: string) => (picked[qi] ?? []).includes(o);
   const toggle = (qi: number, o: string, multi: boolean) =>
     setPicked((p) => {
       const cur = p[qi] ?? [];
@@ -101,28 +107,26 @@ export function Questions({ questions, fonts, disabled, onSend, onWrite }: { que
       {questions.map((q, qi) => (
         <div key={qi} className="dz-q">
           <b>{qi + 1}) {q.label}{q.multi ? " (يجوز أكثر من خيار)" : ""}</b>
-          {q.kind === "source" ? (
-            <div className="dz-sources">
-              {DESIGN_SOURCES.map((s, i) => (
-                <button key={s.id} type="button" className="dz-source" style={{ ["--c" as string]: COLORS[i] }} aria-pressed={(picked[qi] ?? []).includes(s.name)} disabled={disabled} onClick={() => toggle(qi, s.name, false)}>
-                  <span className="ic">{s.icon}</span><b>{s.name}</b><small>{s.hint}</small>
-                </button>
-              ))}
-            </div>
-          ) : q.kind === "fonts" ? (
-            <div className="dz-fonts">
-              {fonts.map((f) => (
-                <button key={f.id} type="button" className="dz-fontcard" style={{ fontFamily: `"${f.family}", sans-serif` }} aria-pressed={(picked[qi] ?? []).includes(`«${f.label}» (${f.id})`)} disabled={disabled} onMouseEnter={() => void loadFont(f)} onClick={() => { void loadFont(f); toggle(qi, `«${f.label}» (${f.id})`, false); }}>
-                  <span className="sample">بسم الله الرحمن الرحيم</span>
-                  <small>{f.label}</small>
-                </button>
-              ))}
-              <button type="button" className="dz-opt dz-opt-write" aria-pressed={(picked[qi] ?? []).includes("أنت اختر")} disabled={disabled} onClick={() => toggle(qi, "أنت اختر", false)}>🎲 أنت اختر الخط</button>
-            </div>
+          {q.kind === "fonts" ? (
+            <FontList
+              picked={(picked[qi] ?? []).map((a) => /\[خط:([a-z0-9_-]+)\]/.exec(a)?.[1] ?? "")[0] ?? null}
+              autoPicked={has(qi, fontAnswer("auto"))}
+              disabled={disabled}
+              onPick={(f) => toggle(qi, fontAnswer(f), false)}
+              onAuto={() => toggle(qi, fontAnswer("auto"), false)}
+            />
+          ) : q.kind === "palettes" ? (
+            <PaletteGrid
+              picked={(picked[qi] ?? []).map((a) => /\[ألوان:([a-z0-9_-]+)\]/.exec(a)?.[1] ?? "")[0] ?? null}
+              autoPicked={has(qi, paletteAnswer("auto"))}
+              disabled={disabled}
+              onPick={(p) => toggle(qi, paletteAnswer(p), false)}
+              onAuto={() => toggle(qi, paletteAnswer("auto"), false)}
+            />
           ) : (
             <div className="dz-opts">
               {q.options.map((o) => (
-                <button key={o} type="button" className={`dz-opt ${q.kind === "directions" ? "dir" : ""}`} aria-pressed={(picked[qi] ?? []).includes(o)} disabled={disabled} onClick={() => toggle(qi, o, q.multi)}>
+                <button key={o} type="button" className="dz-opt" aria-pressed={(picked[qi] ?? []).includes(o)} disabled={disabled} onClick={() => toggle(qi, o, q.multi)}>
                   <Swatches text={o} cls="dz" />
                 </button>
               ))}
@@ -141,10 +145,38 @@ export function Questions({ questions, fonts, disabled, onSend, onWrite }: { que
   );
 }
 
+// the conversation that was open is kept on this device (a reload, a top-up, a phone closing the tab brings the person
+// back to it), and so is the choice of the longer talk — as in «صانع المحتوى»
+const OPEN_KEY = "jw-designer-open";
+const VERBOSE_KEY = "jw-designer-verbose";
+const UUID_RE = /^[0-9a-f-]{36}$/i;
+/** a message that carries a pick of a gallery is changed by picking again (the chips), not by editing its words */
+const PICK_MARK = /\[(?:خط|ألوان):/;
+const store = {
+  get: (k: string) => {
+    try {
+      return localStorage.getItem(k);
+    } catch {
+      return null;
+    }
+  },
+  set: (k: string, v: string | null) => {
+    try {
+      if (v) localStorage.setItem(k, v);
+      else localStorage.removeItem(k);
+    } catch {
+      /* private window: kept for this page only */
+    }
+  },
+};
+
 export default function DesignerChat({ name, persona, loginHref, owner, photo, initialChat }: { name: string; persona: string; loginHref: string | null; owner?: boolean; photo?: boolean; initialChat?: string | null }) {
   const router = useRouter();
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
+  // exactly what was taken from the wallet in THIS conversation so far (halalas, not an estimate); read back from
+  // the server with the chat, so it survives a reload — 0 for a new one
+  const [spent, setSpent] = useState(0);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<"" | "writing" | "drawing" | "splitting">("");
@@ -164,6 +196,18 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   const end = useRef<HTMLDivElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+  /** the longer talk (the default is short, to cost less); remembered on this device */
+  const [verbose, setVerbose] = useState(false);
+  /** an old message being edited: the talk goes on from it */
+  const [editFrom, setEditFrom] = useState<number | null>(null);
+  /** «دعوة مجلس من تصميم جاهز»: the picker is open */
+  const [majlis, setMajlis] = useState(false);
+  /** «قوالب المصممين»: a designer uploads a template (the owner approves it here too) */
+  const [maker, setMaker] = useState(false);
+  /** one drawing loop per conversation (opening it again must not start a second, paid one) */
+  const drawingFor = useRef<string | null>(null);
+  useEffect(() => setVerbose(store.get(VERBOSE_KEY) === "1"), []);
+  const toggleVerbose = () => setVerbose((v) => (store.set(VERBOSE_KEY, v ? null : "1"), !v));
 
   const refresh = useCallback(async () => {
     if (loginHref) return;
@@ -200,25 +244,32 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   /** The produce step: the picture it needs (GPT Image 2, no writing) is painted on the server, then «حيدرا ماكس»
    * designs it here in code — every step and every picture he looks at shown as it happens — and it is kept. */
   const runProduce = useCallback(async (id: string, retry = false) => {
+    if (drawingFor.current === id) return;
+    drawingFor.current = id;
     setBusy("drawing");
     const step = (text: string) => (setCodeStep(text), setCodeLog((l) => [...l.slice(-8), text]));
     setCodeLog([]);
     setCodePreview(null);
     step("أجهّز التصميم (وإذا يحتاج صورة مرسومة، جواد يرسمها بـ GPT Image 2 بدون كتابة)…");
     try {
-      const r = await postJson<{ design?: DesignView; code?: { prompt: string; aspect: string; refs: string[]; photos?: string[]; picture?: boolean } }>("/api/designer/produce", { chatId: id, ...(retry ? { retry: true } : {}) });
+      const r = await postJson<{ design?: DesignView; code?: { prompt: string; aspect: string; refs: string[]; photos?: string[]; picture?: boolean; edit?: DrawEdit; style?: string; template?: DrawTemplate } }>("/api/designer/produce", { chatId: id, ...(retry ? { retry: true } : {}) });
       if (r.code) {
         if (r.code.picture) step("🖼️ صورة التصميم جاهزة من GPT Image 2 (بدون كتابة) — حيدرا ماكس يحطها ويكتب الكلام فوقها.");
-        // «حيدرا ماكس»: the design is drawn here in code, looked at and rewritten, then kept as the design's artwork
+        // «حيدرا ماكس»: the design is drawn here in code, looked at and rewritten, then kept as the design's artwork with
+        // its program — a change to a design drawn before is a patch on that program (`edit`), not a new one
         const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
-        const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "designer", onStep: (s) => (step(s.text), s.preview && setCodePreview(s.preview)) });
+        const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "designer", edit: r.code.edit ?? null, template: r.code.template ?? null, onStep: (s) => (step(s.text), s.preview && setCodePreview(s.preview)) });
         step("أحفظ التصميم…");
-        const saved = await postJson<{ design: DesignView }>("/api/designer/produce", { chatId: id, png: drawn.png, rounds: drawn.rounds, scores: drawn.scores });
+        const saved = await postJson<{ design: DesignView }>("/api/designer/produce", { chatId: id, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(drawn.program ? { program: drawn.program } : {}), ...(drawn.edited ? { edited: true } : {}) });
         putDesign(() => saved.design);
       } else if (r.design) putDesign(() => r.design!);
     } catch (e) {
-      putDesign((old) => (old ? { ...old, state: "failed", error: e instanceof Error ? e.message : "تعذّر الرسم." } : old));
+      const why = e instanceof Error ? e.message : "تعذّر الرسم.";
+      putDesign((old) => (old ? { ...old, state: "failed", error: why } : old));
+      // kept as failed on the server too: a reload shows «أعد المحاولة», and never starts a paid drawing by itself
+      await postJson("/api/designer/produce", { chatId: id, failed: why }).catch(() => null);
     } finally {
+      drawingFor.current = null;
       setBusy("");
       setCodeStep(null);
       setCodePreview(null);
@@ -240,23 +291,54 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
 
   async function open(id: string) {
     setSide(false);
+    setEditFrom(null);
     try {
-      const r = await api<{ chat: { id: string; messages: Msg[]; pending: boolean } }>(`/api/designer/chats?id=${id}`);
+      const r = await api<{ chat: { id: string; messages: Msg[]; pending: boolean; spent?: number } }>(`/api/designer/chats?id=${id}`);
       setChatId(r.chat.id);
       setMsgs(r.chat.messages);
-      if (r.chat.pending) void runProduce(r.chat.id);
+      setSpent(Math.max(0, Number(r.chat.spent) || 0));
+      store.set(OPEN_KEY, r.chat.id);
+      // a design left drawing (the page was closed while حيدرا ماكس worked) goes on; a failed one waits for «أعد المحاولة»
+      const last = r.chat.messages.filter((m) => m.design).at(-1)?.design;
+      if (r.chat.pending && last?.state === "drawing") void runProduce(r.chat.id);
     } catch (e) {
+      store.set(OPEN_KEY, null);
       setMsgs([{ role: "assistant", text: e instanceof Error ? e.message : "تعذّر فتح المحادثة.", error: true }]);
     }
   }
-  const fresh = () => { setChatId(null); setMsgs([]); setPending([]); setSide(false); };
+  const fresh = () => { setChatId(null); setMsgs([]); setPending([]); setSide(false); setSpent(0); setEditFrom(null); setQ(""); store.set(OPEN_KEY, null); };
 
-  // coming back from «زهراء فوتو ماستر» (or a link): open that conversation
+  // coming back from «زهراء فوتو ماستر» (or a link) opens that conversation; else the one open on the last visit
   const opened = useRef(false);
   useEffect(() => {
-    if (initialChat && !loginHref && !opened.current) { opened.current = true; void open(initialChat); }
+    if (loginHref || opened.current) return;
+    opened.current = true;
+    const last = store.get(OPEN_KEY);
+    const id = initialChat ?? (last && UUID_RE.test(last) ? last : null);
+    if (id) void open(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialChat, loginHref]);
+
+  function startEdit(i: number) {
+    const m = msgs[i];
+    if (!m || busy) return;
+    setEditFrom(i);
+    setQ(stripMarks(m.text).replace("(صور مرفقة)", "").trim());
+    setPending(m.files ?? []);
+    box.current?.focus();
+  }
+  function cancelEdit() {
+    setEditFrom(null);
+    setQ("");
+    setPending([]);
+  }
+
+  /** A ready majlis design was ordered: the conversation opens (a code design starts drawing here at once). */
+  async function majlisDone(r: MajlisDone) {
+    setMajlis(false);
+    await open(r.chatId);
+    void refresh();
+  }
 
   /** Sends the last design to «زهراء» to be edited (she can send it back). */
   async function toZahraa() {
@@ -299,18 +381,42 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   }, [claude.id]);
 
   async function send(text = q) {
-    const message = text.trim();
-    if ((!message && !pending.length) || busy || uploading) return;
+    const typed = text.trim();
+    if ((!typed && !pending.length) || busy || uploading) return;
+    // the design that stands is a ready majlis design: the words change THAT design («حيدرا ماكس» edits it)
+    const lastReady = msgs.filter((m) => m.design).at(-1)?.design;
+    if (chatId && typed && !pending.length && editFrom == null && lastReady?.majlis && lastReady.state === "ready") {
+      setBusy("writing");
+      setQ("");
+      try {
+        await postJson("/api/designer/majlis/edit", { chatId, said: typed });
+        setBusy("");
+        await open(chatId);
+      } catch (e) {
+        setMsgs((m) => [...m, { role: "user", text: typed }, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر التعديل.", error: true }]);
+        setBusy("");
+      }
+      return;
+    }
     const files = pending;
+    // an edited old message: the talk goes on from there
+    const editing = editFrom;
+    const message = typed;
+    const from = editing != null ? msgs.slice(0, editing).filter((x) => !x.local && !x.error).length : undefined;
+    const before = msgs;
     setQ("");
     setPending([]);
+    setEditFrom(null);
     setBusy("writing");
-    setMsgs((m) => [...m, { role: "user", text: message || "(صور مرفقة)", files: files.length ? files : undefined }]);
+    const mine: Msg = { role: "user", text: message || "(صور مرفقة)", files: files.length ? files : undefined };
+    setMsgs((m) => (editing != null ? [...m.slice(0, editing), mine] : [...m, mine]));
     let produceId: string | null = null;
     let splitOf: string | null = null;
     try {
-      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: boolean; split: string | null }>("/api/designer/chat", { chatId, message, attachments: files.map((f) => f.id), model: claude.id });
+      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: boolean; split: string | null; spent?: number }>("/api/designer/chat", { chatId, message, attachments: files.map((f) => f.id), model: claude.id, verbose, ...(from !== undefined ? { from } : {}) });
       setChatId(r.chatId);
+      store.set(OPEN_KEY, r.chatId);
+      setSpent(Math.max(0, Number(r.spent) || 0));
       // the design's state and layers are read back fresh (the answer may have opened a design)
       const full = await api<{ chat: { messages: Msg[] } }>(`/api/designer/chats?id=${r.chatId}`).catch(() => null);
       if (full) setMsgs(full.chat.messages);
@@ -319,7 +425,15 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
       if (r.pending) produceId = r.chatId;
       else if (r.split) { produceId = r.chatId; splitOf = r.split; }
     } catch (e) {
-      setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر الرد.", error: true }]);
+      // not answered (the wallet ran out, the network…): the message goes back into the box with its files, ready to
+      // send again — the conversation itself stays as it was on the server
+      setQ((now) => now || typed);
+      if (editing != null) setEditFrom(editing);
+      setPending((now) => (now.length ? now : files));
+      setMsgs((m) => [
+        ...(editing != null ? before : m.slice(0, -1)),
+        { role: "assistant", text: `${e instanceof Error ? e.message : "تعذّر الرد."}\n\nرسالتك رجعت في الخانة تحت، والمحادثة محفوظة كما هي: ${e instanceof Error && /رصيد/.test(e.message) ? "اشحن وارجع لهنا، وأرسلها" : "أرسلها مرة ثانية"} ويكمل كاظم من نفس المكان.`, error: true },
+      ]);
     } finally {
       setBusy("");
     }
@@ -355,6 +469,8 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
 
   const lastAssistant = msgs.map((x) => x.role).lastIndexOf("assistant");
   const lastDesign = msgs.map((x) => !!x.design).lastIndexOf(true);
+  // what they picked so far in the galleries, from the marks of their messages
+  const decisions = decisionsOf(msgs.filter((m) => m.role === "user").map((m) => m.text));
 
   return (
     <div className="dz" ref={root} onPointerMove={move}>
@@ -385,9 +501,21 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
             <div className={`dz-brush ${busy ? "busy" : ""}`} aria-hidden><span /></div>
             <div>
               <div className="dz-title">{name}</div>
-              <div className="dz-muted" style={{ fontSize: 12 }}>تكلّم مع {persona} · الصورة بلا كتابة، والكلمات طبقات تعدّلها</div>
+              <div className="dz-muted" style={{ fontSize: 12 }}>تكلّم مع {persona} · حيدرا ماكس يصمم والكلام بخطك، وأي كلمة تتعدّل بطلب</div>
             </div>
+            {!loginHref && <button type="button" className="dz-mini mj-open" disabled={!!busy} onClick={() => { fresh(); setMaker(false); setMajlis(true); }}>🕯️ دعوة مجلس</button>}
+            {!loginHref && <button type="button" className="dz-mini" disabled={!!busy} onClick={() => { fresh(); setMajlis(false); setMaker(true); }} title="للمصممين: ارفع قالبك وحدّد مكان الصور والكلام">🧩 ارفع قالبك</button>}
           </header>
+
+          {!loginHref && decisions.length > 0 && (
+            <div className="dz-decs" role="group" aria-label="قراراتك (اضغط أي واحد لتغيّره)">
+              {decisions.map((d) => (
+                <button key={d.key} type="button" className="dz-dec" disabled={!!busy} onClick={() => void send(d.change)} title="غيّره">
+                  {d.label}: <b>{d.name}</b> ✎
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="dz-feed">
             {loginHref ? (
@@ -395,29 +523,28 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                 <p>سجّل دخولك عشان تتكلم مع {persona}.</p>
                 <div className="dz-actions"><Link className="dz-mini" href={loginHref}>تسجيل الدخول</Link></div>
               </div>
+            ) : maker ? (
+              <TemplateMaker onClose={() => setMaker(false)} />
+            ) : majlis ? (
+              <MajlisPicker chatId={chatId} onClose={() => setMajlis(false)} onDone={(r) => void majlisDone(r)} />
             ) : msgs.length === 0 ? (
               <>
+                <button type="button" className="mj-cta" onClick={() => setMajlis(true)}>
+                  <b>🕯️ صمّم دعوة مجلس من تصميم جاهز</b>
+                  <span>حدّد عدد الخطباء والرواديد، اختر تصميمك، واكتب بياناتك — ويوصلك بنفس الشكل اللي اخترته</span>
+                </button>
                 <div className="dz-msg bot">
                   <h3>أهلًا، أنا {persona} 🎨</h3>
-                  <p>قل لي وش تبي تصمّم، واختر: أنسخ لك قالبًا جاهزًا (أرفقه بـ 📎)، أو من قوالبنا، أو من الصفر، أو خليط. أسألك اللي يفرق بس، وأصمّم لك صورة نظيفة وكل كلمة فيها طبقة تعدّلها بيدك.</p>
-                </div>
-                <div className="dz-start">
-                  {STARTS.map((s, i) => (
-                    <button key={s.t} className="dz-card" style={{ ["--c" as string]: COLORS[i % COLORS.length], animationDelay: `${i * 70}ms` }} onClick={() => send(s.m)}>
-                      <span className="ic">{s.ic}</span>
-                      <b>{s.t}</b>
-                    </button>
-                  ))}
-                  <button className="dz-card" style={{ ["--c" as string]: "#94a3b8" }} onClick={() => send("أبي تصميم من نوع آخر. اسألني عنه.")}>
-                    <span className="ic">🎨</span>
-                    <b>تصميم آخر</b>
-                  </button>
+                  <p>قل لي وش تبي تصمّم: أسألك أقل ما يمكن، وتجاوب بضغطة أو بكلامك، وتقدر تغيّر أي قرار في أي لحظة. وبعد التصميم قل لي وش تبي يتغيّر (كلمة، لون، مكان) وأعدّله لك.</p>
                 </div>
               </>
             ) : (
               msgs.map((m, i) => (
                 <div key={i} className={`dz-msg ${m.role === "user" ? "user" : "bot"} ${m.error ? "err" : ""} ${m.design ? "wide" : ""}`}>
-                  {m.role === "user" ? <p style={{ whiteSpace: "pre-wrap" }}>{m.text}</p> : <Rich text={m.text} />}
+                  {m.role === "user" ? <p style={{ whiteSpace: "pre-wrap" }}>{stripMarks(m.text)}</p> : <Rich text={m.text} />}
+                  {m.role === "user" && !busy && !loginHref && chatId && !PICK_MARK.test(m.text) && (
+                    <button type="button" className="dz-edit" onClick={() => startEdit(i)} title="عدّل رسالتك، والمحادثة تكمل من هنا">✏️ عدّل</button>
+                  )}
                   {m.files && m.files.length > 0 && (
                     <div className="dz-files">
                       {m.files.map((f) => <span key={f.id} className="dz-file">{f.url ? <img src={f.url} alt="" /> : "🖼️"} {f.name}</span>)}
@@ -446,7 +573,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                         <div className="dz-failed">
                           ❌ {m.design.error ?? "تعذّر الرسم."}
                           {owner && m.design.detail && <small dir="ltr"> {m.design.detail}</small>}
-                          {chatId && i === lastDesign && <button type="button" className="dz-mini" disabled={!!busy} onClick={() => chatId && void runProduce(chatId, true)}>أعد المحاولة</button>}
+                          {chatId && i === lastDesign && <button type="button" className="dz-mini" disabled={!!busy} onClick={() => chatId && void (m.design?.splitOf ? runSplit(chatId, m.design.splitOf) : runProduce(chatId, true))}>أعد المحاولة</button>}
                         </div>
                       )}
                       {m.design.state === "ready" && (
@@ -454,7 +581,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                           {m.design.flag && <p className="dz-flag">⚠️ ملاحظة الفحص الآلي على الصورة: {m.design.flag}. تقدر تعيد رسمها.</p>}
                           {i === lastDesign ? (
                             <>
-                              <DesignDone design={m.design} fonts={fonts} saving={saving} busy={!!busy} photo={!!photo} onSave={saveFinal} onRedraw={() => chatId && void runProduce(chatId, true)} onEdit={() => void toZahraa()} />
+                              <DesignDone chatId={chatId} design={m.design} fonts={fonts} saving={saving} busy={!!busy} photo={!!photo} onSave={saveFinal} onRedraw={() => chatId && void runProduce(chatId, true)} onEdit={() => void toZahraa()} />
                             </>
                           ) : (
                             <p className="dz-muted">تصميم سابق في هذه المحادثة (المحرر يفتح على آخر تصميم).</p>
@@ -464,7 +591,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                     </div>
                   )}
                   {i === lastAssistant && !busy && !loginHref && m.questions?.length ? (
-                    <Questions key={`q${i}-${msgs.length}`} questions={m.questions} fonts={fonts} disabled={!!busy} onSend={(t) => void send(t)} onWrite={() => box.current?.focus()} />
+                    <Questions key={`q${i}-${msgs.length}`} questions={m.questions} disabled={!!busy} onSend={(t) => void send(t)} onWrite={() => box.current?.focus()} />
                   ) : null}
                 </div>
               ))
@@ -484,7 +611,18 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                   ))}
                 </div>
               )}
-              <ClaudeModelPicker className="dz-claude" disabled={!!busy} />
+              {editFrom != null && (
+                <div className="dz-editing">
+                  ✏️ تعدّل رسالة سابقة: المحادثة تكمل من عندها (اللي بعدها ينشال).
+                  <button type="button" className="dz-mini" onClick={cancelEdit}>إلغاء</button>
+                </div>
+              )}
+              <div className="dz-compose-opts">
+                <ClaudeModelPicker className="dz-claude" disabled={!!busy} spent={spent} />
+                <button type="button" className={`dz-mini dz-verbose${verbose ? " on" : ""}`} aria-pressed={verbose} onClick={toggleVerbose} title="الافتراضي مختصر لتوفير رصيدك؛ المفصّلة فيها شرح وبدائل وأسئلة أعمق">
+                  {verbose ? "📝 محادثة مفصّلة ✓" : "📝 خلّها مفصّلة"}
+                </button>
+              </div>
               <div className="dz-compose-row">
                 <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp" onChange={(e) => void attach(e.target.files)} />
                 <button type="button" className="dz-attach" aria-label="أرفق حتى 20 صورة" title="أرفق حتى 20 قالبًا أو صورة" disabled={uploading || !!busy || pending.length >= JAWAD_ATTACHMENT_LIMIT} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
@@ -501,11 +639,12 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
 }
 
 /**
- * «كاظم يصنع بس» — what a finished design shows: the design itself, «احفظ PNG», «أعد الرسم», and the ONE road to any
- * change: «🪄 عدّل في زهراء فوتو ماستر». No editing lives here, by the owner's rule — every move, colour, font and
- * word is changed at زهراء, and the words كاظم wrote stay REAL TEXT there, so nothing is lost by writing them now.
+ * What a finished design shows: the design itself, «احفظ PNG», «أعد الرسم», and «🪄 عدّل في زهراء فوتو ماستر» for the
+ * hand touches. A word, a colour or a place is changed by telling «كاظم» (he patches the design's program); the
+ * platform's rule: he writes and edits the words himself, زهراء is the extra road.
  */
 function DesignDone({
+  chatId,
   design,
   fonts,
   saving,
@@ -515,6 +654,7 @@ function DesignDone({
   onRedraw,
   onEdit,
 }: {
+  chatId: string | null;
   design: DesignView;
   fonts: FontDef[];
   saving: boolean;
@@ -525,6 +665,28 @@ function DesignDone({
   onEdit: () => void;
 }) {
   const [working, setWorking] = useState(false);
+  const [exporting, setExporting] = useState<string | null>(null);
+  /** The design as it stands (its picture with any edited words), in another size or as a print PDF. */
+  async function exportAs<I extends string>(id: I, fn: () => (b: Blob, id: I) => Promise<void>) {
+    setExporting(id);
+    try {
+      await fn()(await renderDesign(design, fonts), id);
+    } finally {
+      setExporting(null);
+    }
+  }
+  /** The title as a vector drawing (GPT Image 2.6's SVG), downloaded. */
+  async function titleSvg() {
+    setExporting("svg");
+    try {
+      const r = await postJson<{ url: string | null }>("/api/designer/svg", { chatId });
+      if (r.url) window.open(r.url, "_blank", "noopener");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "تعذّر رسم SVG.");
+    } finally {
+      setExporting(null);
+    }
+  }
   const save = async () => {
     setWorking(true);
     try {
@@ -533,14 +695,13 @@ function DesignDone({
       setWorking(false);
     }
   };
-  const words = design.layers.filter((l) => l.kind === "text").length;
   return (
     <div className="dz-done">
       {design.finalUrl || design.artworkUrl ? <img className="dz-done-img" src={design.finalUrl ?? design.artworkUrl ?? ""} alt="التصميم" /> : null}
       <p className="dz-muted">
-        {words > 0
-          ? `التصميم جاهز، وفيه ${words} نص حقيقي — كل تعديل (الكلمات، الخط، اللون، الأماكن، وضع صورة داخل برواز) يصير عند زهراء فوتو ماستر، والنصوص تبقى نصوصًا تعدّلها هناك.`
-          : "التصميم جاهز مفرّغًا بلا كتابة — تكتب كلماتك وتعدّل كل شي عند زهراء فوتو ماستر."}
+        {design.splitOf
+          ? "الصورة انفكّت: العنصر الرئيسي طبقة فوق الصورة الأصلية. قل لي وش تبي نكتب عليها، أو كمّل عند زهراء فوتو ماستر."
+          : `التصميم جاهز ✅ تبي تغيّر كلمة أو لون أو مكان؟ اكتب لي وش يتغيّر وأعدّله على نفس التصميم.${photo ? " وللمسات اليدوية (قص، فلتر، برواز) عندك زهراء فوتو ماستر." : ""}`}
       </p>
       <div className="dz-done-row">
         {photo && (
@@ -555,6 +716,24 @@ function DesignDone({
           🔁 أعد الرسم
         </button>
       </div>
+      {!design.splitOf && (
+        <div className="dz-done-row" role="group" aria-label="مقاسات أخرى والطباعة">
+          <span className="dz-muted" style={{ fontSize: 12 }}>📐 بضغطة:</span>
+          {SIZES.map((s) => (
+            <button key={s.id} type="button" className="dz-mini" disabled={busy || !!exporting} onClick={() => void exportAs(s.id, () => downloadSize)}>
+              {exporting === s.id ? "…" : s.label}
+            </button>
+          ))}
+          <button type="button" className="dz-mini" disabled={busy || !!exporting} onClick={() => void titleSvg()} title="العنوان والزخرفة رسم متجه (SVG) بـ GPT Image 2.6 — يكبر لأي مقاس بدون تشويش، للبنرات والطباعة الكبيرة">
+            {exporting === "svg" ? "…" : "✒️ العنوان SVG"}
+          </button>
+          {PRINTS.map((p) => (
+            <button key={p.id} type="button" className="dz-mini" disabled={busy || !!exporting} onClick={() => void exportAs(p.id, () => downloadPrint)} title={`PDF بهامش قص ٣ مم — دقة تقريبية ${printDpi([design.width, design.height], p.id)} نقطة/إنش`}>
+              {exporting === p.id ? "…" : `🖨️ ${p.label}`}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

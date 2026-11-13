@@ -5,6 +5,7 @@ import { requireGamesUser } from "@/lib/games/access";
 import { say } from "@/lib/games/chat";
 import { modeOf } from "@/lib/games/chats";
 import { robotTurn } from "@/lib/claude-run";
+import { addChatSpent } from "@/lib/chat-spend";
 import { GAMES } from "@config/games";
 import { isAdmin } from "@config/site";
 
@@ -22,7 +23,9 @@ export const POST = handle(async (req: Request) => {
   if (message.length > GAMES.messageMax) throw new UserError(`الرسالة أطول من ${GAMES.messageMax} حرف.`);
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   try {
-    return NextResponse.json(await robotTurn(user, b.model, "محادثة قنبر", () => say(user.id, chatId, message, user.email, modeOf(b.mode) || null), { said: message, reply: (r) => r.text }));
+    const r = await robotTurn(user, b.model, "محادثة قنبر", () => say(user.id, chatId, message, user.email, modeOf(b.mode) || null), { said: message, reply: (r) => r.text });
+    const spent = await addChatSpent("games_chats", "id", r.chatId, r.spentHalalas, r.worth);
+    return NextResponse.json({ ...r, spent });
   } catch (e) {
     const why = claudeTrouble(e);
     if (why) throw new UserError(why, 503);

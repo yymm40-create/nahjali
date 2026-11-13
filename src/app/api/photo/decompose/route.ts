@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { requirePhotoUser } from "@/lib/photo/access";
+import { robotTurn } from "@/lib/claude-run";
 import { decomposeReady, liftOut, lookInside, readPieces, retype, MAX_PIECES, type Fill, type Piece } from "@/lib/photo/decompose";
 import { repairReady } from "@/lib/photo/repair";
 import { getProject, saveProject } from "@/lib/photo/projects";
@@ -29,13 +30,16 @@ const onePiece = (p: unknown) => {
  */
 export const POST = handle(async (req: Request) => {
   const { user } = await requirePhotoUser();
-  const b = (await req.json().catch(() => ({}))) as { projectId?: unknown; step?: unknown; file?: unknown; pieces?: unknown; fill?: unknown; piece?: unknown; text?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { projectId?: unknown; step?: unknown; file?: unknown; pieces?: unknown; fill?: unknown; piece?: unknown; text?: unknown; model?: unknown };
   if (typeof b.projectId !== "string" || !UUID.test(b.projectId)) throw new UserError("مشروع غير صحيح.", 400);
 
   const fill: Fill = b.fill === "blur" || b.fill === "none" ? b.fill : "predict";
 
   if (b.step === "read") {
-    const r = await lookInside(user.id, user.email ?? null, b.projectId, typeof b.file === "string" ? b.file : null);
+    // reading the picture is Claude's work: the person's model, its real usage taken like any robot's (lifting and
+    // retyping reserve their own price for the pictures, so they are not wrapped)
+    const projectId = b.projectId;
+    const r = await robotTurn(user, b.model, "زهراء تقرأ عناصر الصورة", () => lookInside(user.id, user.email ?? null, projectId, typeof b.file === "string" ? b.file : null), undefined, { memory: "isolated" });
     return NextResponse.json({ pieces: r.pieces, usd: r.usd, ready: decomposeReady(), predicts: repairReady() });
   }
 

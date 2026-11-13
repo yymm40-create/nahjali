@@ -1,6 +1,11 @@
 // «حيدرة كت»: Claude's conversation of an edit, kept with the project (it survives leaving and coming back, on
 // any device). A long one can be handed over: Claude writes what matters into a summary and a new conversation starts
 // from it. Server only.
+//
+// حيدرا ماكس has SEVERAL conversations in an edit now (like Claude's): the project's main one is this store
+// (editor_chats — the other robots deliver to it), and every other one lives with its motion work in
+// motion_lab_chats (lab-chats.ts), kept by the page: for those the route passes the conversation (`inConversation`),
+// the turns come from the page and nothing is written here.
 
 import { remember } from "@/lib/robot-handoff";
 import { UserError } from "@/lib/api";
@@ -8,8 +13,18 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, claudeWhy, type ClaudeTurn } from "@/lib/film/anthropic";
 import { claudeCharged, type Who } from "./pricing";
 import { stillOpen, type EditorProject } from "./server";
+import { addChatSpent } from "@/lib/chat-spend";
 
 const db = () => createAdminClient();
+
+/** The project as the route hands it over, with the conversation the page is in (absent: the project's main one). */
+export type ChatProject = EditorProject & { conversation?: string | null };
+/** One of حيدرا ماكس's other conversations: a saved one's id, or `new:<tab>` before it is first kept. */
+export function inConversation<P extends EditorProject>(p: P, chat: unknown): P & { conversation?: string } {
+  const c = typeof chat === "string" ? chat.trim().replace(/[^0-9a-z:-]/gi, "").slice(0, 60) : "";
+  return c ? { ...p, conversation: c } : p;
+}
+const conversationOf = (p: Pick<ChatProject, "conversation">) => (typeof p.conversation === "string" && p.conversation ? p.conversation : null);
 
 export interface ChatMsg {
   role: "user" | "assistant";
@@ -25,6 +40,8 @@ export interface Chat {
   chats: number;
   /** false until the owner runs the migration: the page then keeps the chat on the device only */
   stored: boolean;
+  /** exactly what was taken from the wallet across this edit's whole conversation, handoffs included (halalas, not an estimate) */
+  spentHalalas: number;
 }
 
 /** Kept per conversation (older ones are dropped from the start; a handoff keeps their substance). */
@@ -46,13 +63,16 @@ export function readMessages(v: unknown): ChatMsg[] {
     }));
 }
 
-export async function loadChat(p: EditorProject): Promise<Chat> {
-  const { data, error } = await db().from("editor_chats").select("messages,handoff,chats").eq("project_id", p.id).maybeSingle();
-  if (error) return { messages: [], handoff: null, chats: 1, stored: false };
-  return { messages: readMessages(data?.messages), handoff: data?.handoff ?? null, chats: Number(data?.chats ?? 1), stored: true };
+export async function loadChat(p: ChatProject): Promise<Chat> {
+  const { data, error } = await db().from("editor_chats").select("messages,handoff,chats,spent_halalas").eq("project_id", p.id).maybeSingle();
+  if (error) return { messages: [], handoff: null, chats: 1, stored: false, spentHalalas: 0 };
+  // another conversation of the edit: its turns are the page's (kept with its motion work); what the edit has taken
+  // from the wallet stays the project's one running total
+  if (conversationOf(p)) return { messages: [], handoff: null, chats: 1, stored: false, spentHalalas: Math.max(0, Number(data?.spent_halalas ?? 0)) };
+  return { messages: readMessages(data?.messages), handoff: data?.handoff ?? null, chats: Number(data?.chats ?? 1), stored: true, spentHalalas: Math.max(0, Number(data?.spent_halalas ?? 0)) };
 }
 
-async function saveChat(p: EditorProject, c: Omit<Chat, "stored">) {
+async function saveChat(p: EditorProject, c: Omit<Chat, "stored" | "spentHalalas">) {
   const { error } = await db()
     .from("editor_chats")
     .upsert({ project_id: p.id, user_id: p.user_id, messages: c.messages.slice(-CHAT_MAX), handoff: c.handoff, chats: c.chats, updated_at: new Date().toISOString() });
@@ -61,7 +81,8 @@ async function saveChat(p: EditorProject, c: Omit<Chat, "stored">) {
 }
 
 /** Adds turns to the stored conversation (nothing happens before the migration). */
-export async function appendChat(p: EditorProject, add: Omit<ChatMsg, "at">[]) {
+export async function appendChat(p: ChatProject, add: Omit<ChatMsg, "at">[]) {
+  if (conversationOf(p)) return;
   const c = await loadChat(p);
   if (!c.stored) return;
   const at = new Date().toISOString();
@@ -72,8 +93,9 @@ export async function appendChat(p: EditorProject, add: Omit<ChatMsg, "at">[]) {
  * The turns حيدرا ماكس reads: everything while it fits, else his own handoff of what came before (built on the
  * person's «سلّم المحادثة» one, if any) + the latest turns — lib/robot-handoff, so nothing is forgotten.
  */
-export async function rememberedTurns(p: Pick<EditorProject, "id" | "user_id">, c: Pick<Chat, "messages" | "handoff">) {
-  const mem = await remember({ key: `editor:${p.id}`, userId: p.user_id, robot: "حيدرا ماكس (حيدرة كت)", turns: c.messages, window: 16, seed: c.handoff });
+export async function rememberedTurns(p: Pick<ChatProject, "id" | "user_id" | "conversation">, c: Pick<Chat, "messages" | "handoff">) {
+  const conv = conversationOf(p);
+  const mem = await remember({ key: conv ? `editor:${p.id}:${conv}` : `editor:${p.id}`, userId: p.user_id, robot: "حيدرا ماكس (حيدرة كت)", turns: c.messages, window: 16, seed: c.handoff });
   const turns: ClaudeTurn[] = mem.kept.map((m) => ({ role: m.role, content: m.text.slice(0, 2000) }));
   return { turns: [...mem.lead, ...turns], fresh: mem.fresh, usd: mem.usd };
 }
@@ -105,7 +127,7 @@ const HANDOFF_SCHEMA = {
  * Hands the conversation over: Claude writes a handoff (the goal of the edit, the person's taste and decisions, what
  * was done, what is left) and a new, empty conversation starts from it.
  */
-export async function handOff(p: EditorProject, who: Who, b: { messages?: unknown; handoff?: unknown; model?: unknown } = {}): Promise<Chat> {
+export async function handOff(p: ChatProject, who: Who, b: { messages?: unknown; handoff?: unknown; model?: unknown } = {}): Promise<Chat> {
   stillOpen(p);
   const stored = await loadChat(p);
   // before the migration the page keeps the conversation and sends it
@@ -135,5 +157,7 @@ export async function handOff(p: EditorProject, who: Who, b: { messages?: unknow
   );
   const next = { messages: [], handoff: r.data.summary.trim().slice(0, 8000), chats: c.chats + 1 };
   if (stored.stored && !(await saveChat(p, next))) throw new UserError("ما قدرنا نحفظ؛ جرّب مرة ثانية.", 500);
-  return { ...next, stored: stored.stored };
+  // writing the handoff is itself part of this edit's conversation: its own real charge joins the running total
+  const spentHalalas = stored.stored || conversationOf(p) ? await addChatSpent("editor_chats", "project_id", p.id, stored.spentHalalas, r.worth) : stored.spentHalalas + r.worth;
+  return { ...next, stored: stored.stored, spentHalalas };
 }

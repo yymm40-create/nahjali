@@ -1,15 +1,16 @@
 import { after } from "next/server";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
+import { callClaudeJson, claudeCost, totalTokens, type ClaudeTurn } from "./anthropic";
 import { currentClaude, withClaude } from "./claude-model";
-import { addMessage, buildTurns } from "./conversation";
+import { addMessage, stageTurns } from "./conversation";
 import { generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
-import { failJob, JOB_STALE_MS, startJob, succeedJob } from "./usage";
+import { failJob, JOB_STALE_MS, logReplyTokens, replyTokens, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
 import { GENERATOR_FACTS, MASTER_STYLE_ONLY, SHEET_APP_INTEGRATION, SHEET_MAKER_PROMPT, SHEET_MAKER_SCHEMA, STYLE_PLACEHOLDER } from "@config/film-prompts/sheet-maker";
 import { findStyle } from "@config/film-styles";
 import { sheetImpact } from "./impact";
+import { CONVERT_SHEETS, convertSheetPrompt, LIKENESS_SCHEMA, LIKENESS_SYSTEM, PORTRAITS_PER_PHOTO, portraitPrompt, type Likeness } from "@config/film-prompts/convert-person";
 
 import { storage } from "@/lib/storage";
 const STAGE = "sheets";
@@ -25,9 +26,24 @@ const MAX_IMAGES_AT_ONCE = 24;
 // Prefixed so version numbers never collide with the screenwriter's deliverables of the same name
 export type SheetKind = "sheet_understanding" | "sheet_questions" | "style_test" | "style" | "sheet_prompt" | "sheet_handoff";
 // make: generated · as_is: the user's picture is final · reference: one picture to design the sheet from
-// convert: 1–4 photos of a real person turned into a cartoon character sheet in the project's style
+// convert: 1–4 photos of a real person turned into the project's style by the approved method
+// (config/film-prompts/convert-person.ts): each real photo becomes its own single image, and the sheet is made from the
+// chosen single images only
 export type MapChoice = "make" | "as_is" | "reference" | "convert";
 const multiUpload = (c: MapChoice) => c === "convert";
+
+/** Where a converted person's single images live («CHR-01:P»): never a sheet of their own, never in the library. */
+export const portraitKey = (sheetId: string) => `${sheetId}:P`;
+const isPortraitKey = (ref: string) => ref.endsWith(":P");
+/** The real photos of a map item to convert, in the order they were given. */
+const convertUploads = (assets: FilmAsset[], sheetId: string) =>
+  assets.filter((a) => a.kind === "upload" && a.ref_key === sheetId && a.meta?.mode === "convert" && a.status === "uploaded");
+/** The single image chosen for each real photo (one per photo, in the photos' order): the sheet's only references. */
+export function chosenPortraits(assets: FilmAsset[], sheetId: string) {
+  return convertUploads(assets, sheetId).flatMap((u) =>
+    assets.filter((a) => a.kind === "image" && a.ref_key === portraitKey(sheetId) && a.meta?.from === u.id && a.status === "approved").slice(-1),
+  );
+}
 
 export interface MapItem {
   id: string;
@@ -64,6 +80,9 @@ export interface SheetVersion {
     prompt?: string;
     references?: Reply["references"];
     styleId?: string;
+    /** a sheet made from a real person's chosen single images (its pictures use only those) */
+    convert?: boolean;
+    portraits?: string[];
   };
   status: "draft" | "awaiting_approval" | "approved" | "superseded";
   stale: boolean;
@@ -105,7 +124,8 @@ const approvedMap = (vs: SheetVersion[]) => {
 /** Map items (after the master) that still need a prompt: not supplied "as is" and none delivered yet. */
 export function pendingSheets(vs: SheetVersion[]) {
   const { map, choices } = approvedMap(vs);
-  return map.filter((m) => m.id !== MASTER_ID && choices[m.id] !== "as_is" && !vs.some((v) => v.kind === "sheet_prompt" && v.ref_key === m.id));
+  // a real person to convert gets his prompt from the site's method, never from the batch
+  return map.filter((m) => m.id !== MASTER_ID && choices[m.id] !== "as_is" && choices[m.id] !== "convert" && !vs.some((v) => v.kind === "sheet_prompt" && v.ref_key === m.id));
 }
 
 // «كل الشيتات مع بعض»: after the master, every remaining sheet's prompt is written at once (one request per sheet,
@@ -118,7 +138,7 @@ const batchMessage = (items: MapItem[], masterImageId?: string) =>
 /** The approved picture standing behind each sheet ID (a generated sheet or an upload kept as is). */
 export function approvedImages(assets: FilmAsset[]) {
   const out: Record<string, FilmAsset> = {};
-  for (const a of assets) if (a.status === "approved" && a.ref_key !== STYLE_TEST_ID) out[a.ref_key] = a;
+  for (const a of assets) if (a.status === "approved" && a.ref_key !== STYLE_TEST_ID && !isPortraitKey(a.ref_key)) out[a.ref_key] = a;
   return out;
 }
 
@@ -135,7 +155,7 @@ export async function latestJob(projectId: string, operation: string, assetId?: 
   return job;
 }
 
-/** Image jobs still running (style tests and sheets), reaped if stale. */
+/** Image jobs still running (style tests, sheets, a real person's single images), reaped if stale. */
 export async function runningImageJobs(projectId: string) {
   const { data } = await db().from("film_jobs").select("*").eq("project_id", projectId).eq("operation", "sheet_image").eq("status", "running");
   const live: FilmJob[] = [];
@@ -143,6 +163,19 @@ export async function runningImageJobs(projectId: string) {
     if (Date.now() - new Date(j.started_at ?? j.created_at).getTime() > JOB_STALE_MS) {
       await failJob(j.id, "انتهى وقت التوليد قبل ما يكمل");
       if (j.asset_id) await db().from("film_assets").update({ status: "failed", error: "انتهى وقت التوليد" }).eq("id", j.asset_id);
+    } else live.push(j);
+  }
+  return live;
+}
+
+/** A real person's features being written from his photos («نوصف ملامحه»), reaped if stale: the page waits for them too. */
+export async function runningLikeness(projectId: string) {
+  const { data } = await db().from("film_jobs").select("*").eq("project_id", projectId).eq("operation", LIKENESS_OP).eq("status", "running");
+  const live: FilmJob[] = [];
+  for (const j of (data ?? []) as FilmJob[]) {
+    if (Date.now() - new Date(j.started_at ?? j.created_at).getTime() > JOB_STALE_MS) {
+      await failJob(j.id, "انتهى وقت الطلب قبل ما يكمل");
+      if (j.asset_id) await setUploadMeta(j.asset_id, { likeness_state: "failed", likeness_error: "انتهى وقت الطلب" });
     } else live.push(j);
   }
   return live;
@@ -198,7 +231,15 @@ export type SheetAction =
   | { action: "unapprove_image"; assetId: string }
   | { action: "reject_image"; assetId: string }
   | { action: "rename"; assetId: string; name: string }
-  | { action: "remove_upload"; assetId: string };
+  | { action: "remove_upload"; assetId: string }
+  // «حوّل شخصية واقعية»: describe his photos and draw a single image of each (all, or the photos named)
+  | { action: "convert_start"; sheetId: string; uploadIds?: string[] }
+  /** more single images of one real photo; stylize: «طلعت شبه واقعية» */
+  | { action: "convert_portraits"; uploadId: string; count?: number; stylize?: boolean }
+  /** choose (or un-choose) a single image: one per real photo */
+  | { action: "convert_pick"; assetId: string }
+  /** the sheet from the chosen single images only */
+  | { action: "convert_sheet"; sheetId: string; count?: number };
 
 /** jobId: a reply being written now · images: pictures started by this action (the page follows them) · warning: done, but something to know. */
 export type SheetResult = { jobId: string | null; images?: number; warning?: string; understanding?: string };
@@ -257,7 +298,12 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       if (!v || v.status !== "awaiting_approval" || latest(versions, v.kind, v.ref_key)?.id !== v.id) {
         throw new UserError("«اعتمد» يعتمد آخر نسخة معروضة بس. حدّث الصفحة وجرّب.", 409);
       }
-      if (v.kind === "sheet_understanding") return { jobId: await approveMap(project, user, v, input.choices ?? {}, assets) };
+      if (v.kind === "sheet_understanding") {
+        const jobId = await approveMap(project, user, v, input.choices ?? {}, assets);
+        // the style was chosen before (the map edited later): a real person new to convert starts now
+        const warning = await startAllConversions(project, user);
+        return { jobId, ...(warning ? { warning } : {}) };
+      }
       if (v.kind !== "sheet_prompt") throw new UserError("هذا العنصر ما يحتاج اعتماد.", 409);
       await setApproved(v, versions);
       // Approving a prompt starts its picture right away.
@@ -289,7 +335,13 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       if (!text || text.length > 4000) throw new UserError("اكتب التعديل (٤٠٠٠ حرف كحد أقصى).", 400);
       const target = input.versionId ? versions.find((x) => x.id === input.versionId) : undefined;
       const prefix =
-        input.mode === "direct" ? "توجيه / أمر جديد:\n" : target?.kind === "sheet_prompt" ? `تعديل على ${target.ref_key}:\n` : "تعديل:\n";
+        input.mode === "direct"
+          ? "توجيه / أمر جديد:\n"
+          : target?.kind === "sheet_prompt" && target.data.convert
+            ? convertEditNote(target)
+            : target?.kind === "sheet_prompt"
+              ? `تعديل على ${target.ref_key}:\n`
+              : "تعديل:\n";
       const id = await addUserMessage(project.id, prefix + text);
       return { jobId: await queueReply(project, user, id) };
     }
@@ -351,7 +403,75 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       });
       // The course: the user sends the selected style text, stored and used verbatim
       const id = await addUserMessage(project.id, `الستايل المعتمد:\n${style.text}`);
-      return { jobId: await queueReply(project, user, id) };
+      const jobId = await queueReply(project, user, id);
+      // «حوّل شخصية واقعية»: with the style known, every real person's photos start turning into it now
+      const warning = await startAllConversions(project, user);
+      return { jobId, ...(warning ? { warning } : {}) };
+    }
+
+    case "convert_start": {
+      const style = approvedStyle(versions);
+      if (!style) throw new UserError("اعتمد الستايل أول؛ الصور الواقعية تتحول له.", 409);
+      const n = await convertStart(project, user, input.sheetId, assets, style, input.uploadIds);
+      if (!n) throw new UserError("ما فيه صور تنتظر التحويل.", 409);
+      return { jobId: null, images: n };
+    }
+
+    case "convert_portraits": {
+      const style = approvedStyle(versions);
+      if (!style) throw new UserError("اعتمد الستايل أول.", 409);
+      const up = assets.find((a) => a.id === input.uploadId && a.kind === "upload" && a.meta?.mode === "convert" && a.status === "uploaded");
+      const likeness = up?.meta?.likeness as Likeness | undefined;
+      if (!up || !likeness) throw new UserError("ملامح هذي الصورة ما انكتبت بعد.", 409);
+      const count = Math.max(1, Math.min(MAX_ATTEMPTS_AT_ONCE, Math.round(Number(input.count) || PORTRAITS_PER_PHOTO)));
+      let images = 0;
+      try {
+        for (let i = 0; i < count; i++) {
+          await startImage(project, user, portraitJob(up, likeness, style, Boolean(input.stylize)));
+          images++;
+        }
+      } catch (e) {
+        if (!(e instanceof UserError) || !images) throw e;
+        return { jobId: null, images, warning: `بدأت ${images} صور، والباقي ما بدأ: ${e.message}` };
+      }
+      return { jobId: null, images };
+    }
+
+    case "convert_pick": {
+      const a = assets.find((x) => x.id === input.assetId);
+      if (!a || a.kind !== "image" || !isPortraitKey(a.ref_key) || !a.storage_path || !["generated", "approved", "rejected"].includes(a.status)) throw new UserError("هذي الصورة ما تنختار.", 409);
+      if (a.status === "approved") {
+        await db().from("film_assets").update({ status: "generated" }).eq("id", a.id);
+        return { jobId: null };
+      }
+      // one single image per real photo: choosing another puts the old one back with the attempts
+      const older = assets.filter((x) => x.ref_key === a.ref_key && x.id !== a.id && x.meta?.from === a.meta?.from && x.status === "approved").map((x) => x.id);
+      if (older.length) await db().from("film_assets").update({ status: "generated" }).in("id", older);
+      await db().from("film_assets").update({ status: "approved" }).eq("id", a.id);
+      return { jobId: null };
+    }
+
+    case "convert_sheet": {
+      const picks = chosenPortraits(assets, input.sheetId);
+      if (!picks.length) throw new UserError("اختر صورة فردية وحدة على الأقل؛ الشيت ينصنع منها، مو من الصورة الواقعية.", 409);
+      const main = assets.find((a) => a.id === picks[0].meta?.from);
+      const likeness = main?.meta?.likeness as Likeness | undefined;
+      if (!likeness) throw new UserError("ملامح الصورة الأولى ما انكتبت.", 409);
+      if (assets.some((a) => a.kind === "image" && a.ref_key === input.sheetId && a.status === "generating")) throw new UserError("صورة شيته تتولد الحين، انتظرها.", 409);
+      const prompt = convertSheetPrompt(likeness, picks.length);
+      const item = approvedMap(versions).map.find((m) => m.id === input.sheetId);
+      const same = versions.filter((x) => x.kind === "sheet_prompt" && x.ref_key === input.sheetId);
+      const old = same.filter((x) => x.status !== "superseded").map((x) => x.id);
+      if (old.length) await db().from("film_versions").update({ status: "superseded" }).in("id", old);
+      const body = `شيت «${item?.name ?? input.sheetId}» من ${picks.length > 1 ? `صوره الفردية المختارة (${picks.length})` : "صورته الفردية المختارة"} بس، بدون الصورة الواقعية: نفس الشخصية والستايل، والمتغير الخلفية والوقفات.\n\n${FENCE}\n${prompt}\n${FENCE}`;
+      const { data: v, error } = await db().from("film_versions").insert({
+        project_id: project.id, stage: STAGE, kind: "sheet_prompt", ref_key: input.sheetId, version: (same.at(-1)?.version ?? 0) + 1, body,
+        data: { prompt, convert: true, portraits: picks.map((p) => p.id), references: [] }, status: "approved", approved_at: new Date().toISOString(), created_by: "assistant",
+      }).select("id,kind,ref_key,version,body,data,status,stale,created_at").single();
+      if (error) throw error;
+      const r = await tryImage(v as SheetVersion, Math.max(1, Math.min(MAX_ATTEMPTS_AT_ONCE, Math.round(Number(input.count) || CONVERT_SHEETS))));
+      if (!r.images) throw new UserError(r.warning?.replace(/^انعتمد، لكن الصورة ما بدأت: /, "") ?? "ما بدأت الصورة.", 409);
+      return { jobId: null, ...r };
     }
 
     case "generate_image": {
@@ -539,7 +659,7 @@ async function approveMap(project: FilmProject, user: { id: string; email?: stri
         ? `- ${item.id} (${item.name}): عندي صورته الجاهزة، معتمدة كما هي ولا تحتاج برومبت: ${marks}`
         : choice === "reference"
           ? `- ${item.id} (${item.name}): هذي صورة مرجعية من عندي، اصنع الشيت منها بستايل المشروع: ${marks}`
-          : `- ${item.id} (${item.name}): ${ups.length > 1 ? `هذي ${ups.length} صور لشخص حقيقي` : "هذي صورة لشخص حقيقي"}، حوّله إلى شخصية كرتونية بستايل المشروع واصنع منها شيت متكامل مع الحفاظ على ملامحه: ${marks}`,
+          : `- ${item.id} (${item.name}): ${ups.length > 1 ? `هذي ${ups.length} صور لشخص حقيقي` : "هذي صورة لشخص حقيقي"}. الموقع يحوّله بنفسه بعد اعتماد الستايل (كل صورة إلى صورة فردية بالستايل، ثم الشيت من الصور الفردية المختارة)، فلا تكتب برومبت ${item.id} ولا تحطه في دفعة البرومبتات إلا إذا طلبت تعديله: ${marks}`,
     );
   }
   // Must really flip the version: a silent no-op here left the map "awaiting approval" with no job started
@@ -629,6 +749,13 @@ export function sheetHandoff(project: Pick<FilmProject, "title">, versions: Shee
 async function generateSheet(project: FilmProject, user: { id: string; email?: string | null }, prompt: SheetVersion, assets: FilmAsset[]) {
   const sheetId = prompt.ref_key;
   if (!prompt.data.prompt) throw new UserError("برومبت هذا الشيت فاضي.", 409);
+  // a real person converted: the sheet's only references are his chosen single images — no real photo, no master
+  if (convertUploads(assets, sheetId).length) {
+    const picks = chosenPortraits(assets, sheetId);
+    if (!picks.length) throw new UserError("اختر صورته الفردية أول؛ الشيت ينصنع منها، مو من الصورة الواقعية.", 409);
+    await startImage(project, user, { sheetId, prompt: prompt.data.prompt, refs: picks, kind: "sheet", quality: "medium", versionId: prompt.id, meta: { convert: true } });
+    return;
+  }
   const images = approvedImages(assets);
   if (sheetId !== MASTER_ID && !images[MASTER_ID]) throw new UserError("اعتمد صورة الماستر أول؛ هي مرجع الستايل لكل الشيتات.", 409);
   const refIds = new Set((prompt.data.references ?? []).map((r) => r.sheet_id));
@@ -636,7 +763,7 @@ async function generateSheet(project: FilmProject, user: { id: string; email?: s
   refIds.delete(sheetId);
   // The subject's own references come first; the master comes last and is used for style only
   const refs = [...refIds].map((id) => images[id]).filter(Boolean);
-  const own = assets.filter((a) => a.kind === "upload" && a.ref_key === sheetId && (a.meta?.mode === "reference" || a.meta?.mode === "convert") && a.status === "uploaded");
+  const own = assets.filter((a) => a.kind === "upload" && a.ref_key === sheetId && a.meta?.mode === "reference" && a.status === "uploaded");
   refs.push(...own);
   let text = prompt.data.prompt;
   if (sheetId !== MASTER_ID) {
@@ -646,12 +773,16 @@ async function generateSheet(project: FilmProject, user: { id: string; email?: s
   await startImage(project, user, { sheetId, prompt: text, refs, kind: "sheet", versionId: prompt.id, meta: {} });
 }
 
+type ImageJob = { sheetId: string; prompt: string; refs: FilmAsset[]; kind: "test" | "sheet" | "portrait"; quality?: "medium" | "high"; versionId: string | null; meta: Record<string, unknown> };
+
 /** Creates the asset + paid job for one picture and generates it in the background. */
-async function startImage(
-  project: FilmProject,
-  user: { id: string; email?: string | null },
-  o: { sheetId: string; prompt: string; refs: FilmAsset[]; kind: "test" | "sheet"; versionId: string; meta: Record<string, unknown> },
-) {
+async function startImage(project: FilmProject, user: { id: string; email?: string | null }, o: ImageJob) {
+  const p = await prepareImage(project, user, o);
+  after(() => runImage(project, p.jobId, p.assetId, o));
+}
+
+/** The asset + paid job for one picture (the caller runs it). */
+async function prepareImage(project: FilmProject, user: { id: string; email?: string | null }, o: ImageJob) {
   const running = await runningImageJobs(project.id);
   if (running.length >= MAX_IMAGES_AT_ONCE) throw new UserError("فيه صور تتولد الحين، انتظرها تخلص.", 409);
   const { data: asset, error } = await db()
@@ -674,10 +805,10 @@ async function startImage(
     await db().from("film_assets").delete().eq("id", asset.id);
     throw e;
   });
-  after(() => runImage(project, job.id, asset.id, o));
+  return { jobId: job.id, assetId: asset.id as string };
 }
 
-async function runImage(project: FilmProject, jobId: string, assetId: string, o: { sheetId: string; prompt: string; refs: FilmAsset[]; kind: "test" | "sheet" }) {
+async function runImage(project: FilmProject, jobId: string, assetId: string, o: ImageJob) {
   const client = db();
   try {
     const refs: Buffer[] = [];
@@ -689,8 +820,8 @@ async function runImage(project: FilmProject, jobId: string, assetId: string, o:
     const { png, costUsd, tokens } = await generateFilmImage({
       prompt: o.prompt,
       references: refs,
-      size: o.kind === "test" ? IMAGE_SIZES.test : IMAGE_SIZES.sheet,
-      quality: o.kind === "test" ? "medium" : "high",
+      size: IMAGE_SIZES[o.kind],
+      quality: o.quality ?? (o.kind === "sheet" ? "high" : "medium"),
     });
     const path = `${projectDir(project)}/sheets/${assetId}.png`;
     const up = await storage.from(FILM_BUCKET).upload(path, png, { contentType: "image/png", upsert: true });
@@ -761,11 +892,19 @@ const KIND_BY_STAGE: Record<number, SheetKind> = { 2: "sheet_understanding", 3: 
 
 export async function runSheetReply(projectId: string, jobId: string) {
   try {
-    const turns = await buildTurns(projectId, STAGE);
+    // capped and trimmed (lib/film/conversation): a picture is sent again only while it is still needed — the master's,
+    // and a person's photos whose sheet is not drawn yet — and earlier versions of a sheet's prompt read as a stub
+    const assets = await sheetAssets(projectId);
+    const drawn = approvedImages(assets);
+    const needed = new Set([drawn[MASTER_ID]?.id, ...assets.filter((a) => a.kind === "upload" && a.status !== "rejected" && !drawn[a.ref_key]).map((a) => a.id)].filter(Boolean) as string[]);
+    const { turns, usd: handoffUsd } = await stageTurns(projectId, STAGE, { robot: "صانع الشيت الذكي", keepImage: (id) => needed.has(id) });
     if (turns.at(-1)?.role !== "user") throw new Error("nothing to answer");
     const { data: lastAsk } = await db().from("film_messages").select("content").eq("project_id", projectId).eq("stage", STAGE).eq("role", "user").order("created_at", { ascending: false }).limit(1).maybeSingle();
-    if (String(lastAsk?.content ?? "").startsWith(BATCH_REQUEST)) return await runSheetBatch(projectId, jobId, turns);
-    const result = await callClaudeJson<Reply>({ system: SYSTEM, turns, schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS });
+    if (String(lastAsk?.content ?? "").startsWith(BATCH_REQUEST)) return await runSheetBatch(projectId, jobId, turns, handoffUsd);
+    // an hour's cache: between replies the sheet pictures are drawn and the person looks at them (often more than 5
+    // minutes), so on the 5-minute cache most replies wrote the whole conversation (with its pictures) again
+    const result = await callClaudeJson<Reply>({ system: SYSTEM, turns, schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS, cacheTtl: "1h" });
+    logReplyTokens("sheets", projectId, result.usage);
     const r = result.data;
     const { data: asked } = await db()
       .from("film_messages")
@@ -803,8 +942,9 @@ export async function runSheetReply(projectId: string, jobId: string) {
         sheet_map: kind === "sheet_understanding" ? r.sheet_map : undefined,
         prompt: r.prompt || undefined,
         references: r.references?.length ? r.references : undefined,
-        // what this reply cost (shown on its card, in coins)
+        // what this reply cost (shown on its card, in coins), and its tokens by kind (a cache hit or miss)
         cost_usd: claudeCost(result.usage),
+        usage: replyTokens(result.usage),
       },
       // The handoff is passed on in the background and never shown as a step
       status: isHandoff || kind === "style_test" ? "approved" : "awaiting_approval",
@@ -823,11 +963,36 @@ export async function runSheetReply(projectId: string, jobId: string) {
       const images = approvedImages(await sheetAssets(projectId));
       if (map.length && map.every((m) => images[m.id])) await client.from("film_projects").update({ stage: "director" }).eq("id", projectId);
     }
-    await succeedJob(jobId, { costUsd: claudeCost(result.usage), units: totalTokens(result.usage) });
+    await succeedJob(jobId, { costUsd: claudeCost(result.usage) + handoffUsd, units: totalTokens(result.usage) });
   } catch (err) {
     console.error("sheet maker reply failed", err);
     await failJob(jobId, err);
   }
+}
+
+/** Closes the latest turn's shared part in every request of a batch (the cache mark sits on it). */
+export const BATCH_SHARED_END = "(هذا الطلب نفسه يصل لكل شيتات الدفعة؛ المطلوب منك في هذا الطلب بالذات تحته)";
+
+/**
+ * One batch request's turns: the conversation as it is, its latest turn (the batch message, often with the master's
+ * picture) closed by BATCH_SHARED_END — the same text in every request, carrying the cache mark — and then this sheet's own
+ * line, sent with `cacheTail: false` so nothing is marked after it. Before, the line was added to the latest turn and the
+ * mark sat on it: each of the N−1 parallel requests wrote the latest turn (pictures and all) to the cache again with a
+ * line no other request reads; now the first request writes the shared prefix once and every other one reads it.
+ */
+export function batchAsk(turns: ClaudeTurn[], item: { id: string; name: string }): ClaudeTurn[] {
+  return turns.map((t, i) =>
+    i === turns.length - 1
+      ? {
+          ...t,
+          content: [
+            ...(typeof t.content === "string" ? [{ type: "text" as const, text: t.content }] : t.content),
+            { type: "text" as const, text: BATCH_SHARED_END, cache: true },
+            { type: "text" as const, text: `في هذا الطلب بالذات: سلّم برومبت ${item.id} (${item.name}) فقط، كاملًا بصيغة المرحلة 6 (stage 6, sheet_id "${item.id}"). الموقع يطلب باقي الشيتات بالتوازي في طلبات مستقلة، فلا تكتبها هنا ولا تنتظر اعتماد غيره.` },
+          ],
+        }
+      : t,
+  );
 }
 
 /**
@@ -835,30 +1000,22 @@ export async function runSheetReply(projectId: string, jobId: string) {
  * conversation, each delivered as that sheet's Stage 6 prompt (awaiting approval). The replies join the conversation
  * as one message, so later edits and the handoff see them all.
  */
-async function runSheetBatch(projectId: string, jobId: string, turns: Awaited<ReturnType<typeof buildTurns>>) {
+async function runSheetBatch(projectId: string, jobId: string, turns: ClaudeTurn[], handoffUsd = 0) {
   const client = db();
   const versions = await sheetVersions(projectId);
   const pending = pendingSheets(versions);
   if (!pending.length) throw new Error("no sheets left to write");
-  const results = await Promise.allSettled(
-    pending.map(async (item) => {
-      const ask = turns.map((t, i) =>
-        i === turns.length - 1
-          ? {
-              ...t,
-              content: [
-                ...(typeof t.content === "string" ? [{ type: "text" as const, text: t.content }] : t.content),
-                { type: "text" as const, text: `\n\nفي هذا الطلب بالذات: سلّم برومبت ${item.id} (${item.name}) فقط، كاملًا بصيغة المرحلة 6 (stage 6, sheet_id "${item.id}"). الموقع يطلب باقي الشيتات بالتوازي في طلبات مستقلة، فلا تكتبها هنا ولا تنتظر اعتماد غيره.` },
-              ],
-            }
-          : t,
-      );
-      const result = await callClaudeJson<Reply>({ system: SYSTEM, turns: ask, schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS });
+  const one = async (item: (typeof pending)[number]) => {
+      // the shared prefix is marked, the sheet's own line is not (`cacheTail: false`): see batchAsk
+      const result = await callClaudeJson<Reply>({ system: SYSTEM, turns: batchAsk(turns, item), schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS, cacheTtl: "1h", cacheTail: false });
+      logReplyTokens(`sheets-batch ${item.id}`, projectId, result.usage);
       return { item, result };
-    }),
-  );
+  };
+  // the first sheet alone, then the rest together: requests sent all at once over the same long conversation each
+  // wrote it to the cache at full price; after the first one, the others read it from the cache (a tenth of the price)
+  const results = [...(await Promise.allSettled(pending.slice(0, 1).map(one))), ...(await Promise.allSettled(pending.slice(1).map(one)))];
   const done = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
-  const cost = done.reduce((n, d) => n + claudeCost(d.result.usage), 0);
+  const cost = done.reduce((n, d) => n + claudeCost(d.result.usage), handoffUsd);
   const tokens = done.reduce((n, d) => n + totalTokens(d.result.usage), 0);
   if (!done.length) {
     const why = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
@@ -871,7 +1028,7 @@ async function runSheetBatch(projectId: string, jobId: string, turns: Awaited<Re
     if (old.length) await client.from("film_versions").update({ status: "superseded" }).in("id", old);
     const { error } = await client.from("film_versions").insert({
       project_id: projectId, stage: STAGE, kind: "sheet_prompt", ref_key: item.id, version: (same.at(-1)?.version ?? 0) + 1, body: r.content,
-      data: { notes: r.notes, suggestion: r.suggestion?.trim() || undefined, prompt: r.prompt || undefined, references: r.references?.length ? r.references : undefined, cost_usd: claudeCost(result.usage) },
+      data: { notes: r.notes, suggestion: r.suggestion?.trim() || undefined, prompt: r.prompt || undefined, references: r.references?.length ? r.references : undefined, cost_usd: claudeCost(result.usage), usage: replyTokens(result.usage) },
       status: "awaiting_approval", created_by: "assistant",
     });
     if (error) throw error;
@@ -886,6 +1043,115 @@ async function runSheetBatch(projectId: string, jobId: string, turns: Awaited<Re
   ].join("\n\n");
   await client.from("film_messages").insert({ project_id: projectId, stage: STAGE, role: "assistant", content: text });
   await succeedJob(jobId, { costUsd: cost, units: tokens });
+}
+
+// ───────────── «حوّل شخصية واقعية إلى كرتون» (config/film-prompts/convert-person.ts) ─────────────
+
+const LIKENESS_OP = "sheet_likeness";
+const LIKENESS_USD = 0.05;
+const FENCE = "```";
+type Style = { text: string; id: string };
+
+/** The style locked for this project (its text goes into every single image word for word). */
+function approvedStyle(vs: SheetVersion[]): Style | null {
+  const v = latest(vs, "style");
+  return v?.status === "approved" && v.body.trim() ? { text: v.body, id: v.data.styleId ?? "" } : null;
+}
+
+async function setUploadMeta(uploadId: string, patch: Record<string, unknown>) {
+  const { data } = await db().from("film_assets").select("meta").eq("id", uploadId).maybeSingle();
+  await db().from("film_assets").update({ meta: { ...((data?.meta as Record<string, unknown>) ?? {}), ...patch } }).eq("id", uploadId);
+}
+
+/** One single image of one real photo: that photo is its only reference. */
+function portraitJob(up: FilmAsset, l: Likeness, style: Style, stylize: boolean): ImageJob {
+  return { sheetId: portraitKey(up.ref_key), prompt: portraitPrompt(l, style.text, stylize), refs: [up], kind: "portrait", versionId: null, meta: { from: up.id, ...(stylize ? { stylized: true } : {}) } };
+}
+
+/** Every map item to convert whose photos were never described: started now (once the style is locked). */
+async function startAllConversions(project: FilmProject, user: { id: string; email?: string | null }): Promise<string | undefined> {
+  const [versions, assets] = await Promise.all([sheetVersions(project.id), sheetAssets(project.id)]);
+  const style = approvedStyle(versions);
+  if (!style) return;
+  const { map, choices } = approvedMap(versions);
+  for (const m of map) {
+    if (choices[m.id] !== "convert") continue;
+    const fresh = convertUploads(assets, m.id).filter((u) => !u.meta?.likeness && !u.meta?.likeness_state);
+    if (!fresh.length) continue;
+    try {
+      await convertStart(project, user, m.id, assets, style, fresh.map((u) => u.id));
+    } catch (e) {
+      if (e instanceof UserError) return `تحويل «${m.name}» ما بدأ: ${e.message}`;
+      throw e;
+    }
+  }
+}
+
+/**
+ * Step 1 and 2 of the method for the real photos of one map item: each photo's features are written (Claude looks at
+ * that photo), then its single images are drawn from it alone — every photo on its own, as it is.
+ */
+async function convertStart(project: FilmProject, user: { id: string; email?: string | null }, sheetId: string, assets: FilmAsset[], style: Style, uploadIds?: string[]) {
+  const ups = convertUploads(assets, sheetId).filter((u) => (!uploadIds || uploadIds.includes(u.id)) && u.meta?.likeness_state !== "running");
+  let started = 0;
+  for (const up of ups) {
+    const { job } = await startJob({
+      projectId: project.id, user, service: "anthropic", operation: LIKENESS_OP, idempotencyKey: `likeness:${up.id}:${Date.now()}`,
+      estimateUsd: LIKENESS_USD, units: 0, unit: "tokens", assetId: up.id,
+    });
+    await setUploadMeta(up.id, { likeness_state: "running", likeness_error: null });
+    const picked = currentClaude().id;
+    after(() => withClaude(picked, () => describeAndDraw(project, user, up, job.id, style)));
+    started++;
+  }
+  return started;
+}
+
+async function describeAndDraw(project: FilmProject, user: { id: string; email?: string | null }, up: FilmAsset, jobId: string, style: Style) {
+  let likeness: Likeness;
+  try {
+    const link = await storage.from(FILM_BUCKET).createSignedUrl(up.storage_path!, 3600);
+    if (link.error || !link.data) throw link.error ?? new Error("no link to the photo");
+    const r = await callClaudeJson<Likeness>({
+      system: LIKENESS_SYSTEM,
+      turns: [{ role: "user", content: [{ type: "image", url: link.data.signedUrl }, { type: "text", text: `Target style (for "style_short"):\n${style.text}` }] }],
+      schema: LIKENESS_SCHEMA,
+      maxTokens: 3000,
+    });
+    likeness = r.data;
+    await setUploadMeta(up.id, { likeness, likeness_state: "done", likeness_error: null });
+    await succeedJob(jobId, { costUsd: claudeCost(r.usage), units: totalTokens(r.usage) });
+  } catch (err) {
+    console.error("convert: likeness failed", err);
+    await setUploadMeta(up.id, { likeness_state: "failed", likeness_error: String(err instanceof Error ? err.message : err).slice(0, 300) });
+    await failJob(jobId, err);
+    return;
+  }
+  // the single images: drawn here, inside this background task (one more after() would not run from in here)
+  const runs: Promise<void>[] = [];
+  for (let i = 0; i < PORTRAITS_PER_PHOTO; i++) {
+    const o = portraitJob(up, likeness, style, false);
+    try {
+      const p = await prepareImage(project, user, o);
+      runs.push(runImage(project, p.jobId, p.assetId, o));
+    } catch (e) {
+      console.warn("convert: single image not started", e instanceof Error ? e.message : e);
+      break;
+    }
+  }
+  await Promise.all(runs);
+}
+
+/** An edit of a converted sheet goes to the sheet maker with what it is made from (its single images, its prompt). */
+function convertEditNote(v: SheetVersion) {
+  const marks = (v.data.portraits ?? []).map((id) => `[[image:${id}]]`).join(" ");
+  return [
+    `تعديل على ${v.ref_key}:`,
+    `(هذا الشيت حوّله الموقع من صور شخص حقيقي. مراجعه الوحيدة صوره الفردية المختارة ${marks}، بدون الصورة الواقعية وبدون الماستر. برومبته الحالي:`,
+    `${FENCE}\n${v.data.prompt ?? ""}\n${FENCE}`,
+    `اكتب برومبته الجديد كامل بصيغة المرحلة 6 مع التعديل التالي، بنفس الشخصية والستايل، وخلّ references فاضية.)`,
+    "",
+  ].join("\n");
 }
 
 /** Upload of the user's own picture for one map item (step 1: one-time signed URL). */

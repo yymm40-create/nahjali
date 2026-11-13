@@ -8,7 +8,7 @@ import { ASSET_DRAG } from "./Timeline";
 import type { EditorAsset, ImportItem } from "./types";
 import type { UploadItem } from "./useUploads";
 import SfxLibrary from "./SfxLibrary";
-import { useDesktop } from "./desktop";
+import { desktopLinks, useDesktop } from "./desktop";
 
 const KIND_ICON = { video: "video", audio: "music", image: "image" } as const;
 
@@ -19,6 +19,7 @@ export default function Library({
   thumbs,
   uploads,
   onPick,
+  onLink,
   onDismiss,
   onAdd,
   onImported,
@@ -30,6 +31,8 @@ export default function Library({
   thumbs: Record<string, string | null>;
   uploads: UploadItem[];
   onPick: (files: FileList) => void;
+  /** «⬇️ من رابط»: a video downloaded by the desktop program from a YouTube / TikTok… link */
+  onLink?: (link: string) => void;
   onDismiss: (key: string) => void;
   onAdd: (a: EditorAsset) => void;
   onImported: (a: EditorAsset[]) => void;
@@ -39,6 +42,7 @@ export default function Library({
   const [tab, setTab] = useState<"files" | "works" | "sfx">("files");
   const onDesktop = useDesktop();
   const input = useRef<HTMLInputElement>(null);
+  const [link, setLink] = useState("");
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -77,6 +81,27 @@ export default function Library({
               <p className="text-center text-[11px] text-jw-faint">
                 {onDesktop ? "فيديو أو صوت أو صور، أو اسحبها من الفايندر. تبقى في جهازك بدون رفع، وتنزل في التايملاين على طول." : "فيديو أو صوت أو صور، أكثر من ملف مرة وحدة. كل ملف ينزل في التايملاين بعد رفعه."}
               </p>
+              {onDesktop && onLink && (
+                desktopLinks() ? (
+                  <form
+                    className="flex gap-1.5"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const l = link.trim();
+                      if (!/^https?:\/\/\S+$/i.test(l)) return;
+                      onLink(l);
+                      setLink("");
+                    }}
+                  >
+                    <input className="jw-input min-w-0 flex-1 text-xs" dir="ltr" value={link} onChange={(e) => setLink(e.target.value)} placeholder="رابط يوتيوب أو تيك توك…" aria-label="رابط الفيديو" />
+                    <button type="submit" className="jw-btn shrink-0 text-xs" disabled={!/^https?:\/\/\S+$/i.test(link.trim())} title="ينزل الفيديو في جهازك (مجلد التنزيلات ← الجواد AI) ويدخل المكتبة">
+                      ⬇️ نزّل
+                    </button>
+                  </form>
+                ) : (
+                  <p className="text-center text-[11px] text-jw-faint">⬇️ التنزيل من رابط يوتيوب يحتاج آخر نسخة من برنامج «الجواد AI».</p>
+                )
+              )}
             </>
           )}
 

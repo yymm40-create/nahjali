@@ -49,6 +49,7 @@ export default function AccountMenu({ name, email, owner }: { name: string; emai
           <Link href="/jawad-ai/library" className={item}><Icon name="layers" size={16} /> مكتبتي</Link>
           <Link href="/jawad-ai/coins" className={item}><Icon name="wallet" size={16} /> النقود الذكية</Link>
           <Link href="/jawad-ai/film" className={item}><Icon name="film" size={16} /> مشاريع أفلامي</Link>
+          <Link href="/jawad-ai/connect" className={item}>🔗 الجواد في كلاود وشات جي بي تي</Link>
           <Link href="/download" className={`${item} hide-in-app`}>📲 حمّل التطبيق</Link>
           {/* the sister app: «لأجل المهدي» (it has its own way back here, «العودة إلى الجواد الذكي») */}
           <Link href={MAHDI_BASE} className={item}>📿 لأجل المهدي</Link>

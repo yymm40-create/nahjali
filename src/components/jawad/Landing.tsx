@@ -11,7 +11,7 @@ import Link from "next/link";
 import Riyal from "@/components/Riyal";
 import AdVideo from "@/components/jawad/AdVideo";
 import LandingWhatsApp from "@/components/jawad/LandingWhatsApp";
-import { bonusPct, CREDITS, type Pack, type UnitPrices } from "@config/credits";
+import { CREDITS, type Pack, type UnitPrices } from "@config/credits";
 import { waLink } from "@config/course";
 import { giftOpen, SIGNUP_GIFT } from "@config/gift";
 import { JAWAD } from "@config/jawad/brand";
@@ -175,7 +175,7 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
                   {p.tag && <span className="ld-tag">{p.tag}</span>}
                   <b>{p.name}</b>
                   <span className="ld-pprice"><Riyal halalas={p.price * 100} size={22} className="ld-pn" /></span>
-                  <span className="ld-pget">رصيد <Riyal halalas={p.credit * 100} size={14} />{bonusPct(p) > 0 && <em>+{bonusPct(p)}٪</em>}</span>
+                  <span className="ld-pget">رصيد <Riyal halalas={p.credit * 100} size={14} /></span>
                 </Link>
               ))}
             </div>
@@ -194,7 +194,7 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
             </details>
             <details>
               <summary>كيف أدفع؟</summary>
-              <p>تختار باقة الرصيد وتحوّل بتحويل بنكي، وتضغط «تم التحويل»، وينضاف رصيدك بعد ما نتأكد من وصول المبلغ.</p>
+              <p>تختار باقة الرصيد (أو المبلغ اللي تبيه)، وتدفع بالبطاقة أو مدى أو Apple Pay في صفحة دفع آمنة، وينضاف رصيدك فور تأكيد الدفع.</p>
             </details>
             <details>
               <summary>كم سعر الصورة أو الفيديو؟</summary>

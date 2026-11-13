@@ -20,6 +20,7 @@ export const SECTION_IMPLEMENTATIONS = {
   photo: { label: "زهراء فوتو ماستر (برنامج تحرير الصور والتصميم المستقل مع الروبوت «زهراء»)", output: null },
   director: { label: "جواد المخرج (محادثة كاملة بروحها مع مخرج ذكي: يخطط اللقطات ويولّد الصور والفيديو من نفس المحادثة، ويسلّم نفسه لمحادثة جديدة قبل ضغط السياق)", output: null },
   kharq: { label: "محمد الخارق (محادثة عامة في أي موضوع، تفهم المطلوب بالضبط وتسلّم: كلامًا ورسائل وجداول وملفات PDF وصورًا وفيديو)", output: null },
+  ridha: { label: "الرضا فويس (استوديو الصوت مع المهندس «الرضا ماكس»: تسجيل ومسارات ومكس، أوتوتيون ومقامات، تنظيف احترافي، هارموني 3D، وتوزيع سريع بإيقاع لطم أو صفقة)", output: null },
 } as const;
 export type SectionImplementation = keyof typeof SECTION_IMPLEMENTATIONS;
 export const isImplementation = (s: string): s is SectionImplementation => s in SECTION_IMPLEMENTATIONS;
@@ -60,13 +61,15 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
   // open to everyone: the ready kids' booklet, or tables designed with «عباس» أو «زينب» (src/app/jawad-ai/booklet)
   { id: "booklet", name: "كتيب الجداول الذكي", icon: "book", implementation: "booklet", sort: 55, enabled: true },
   { id: "kharq", name: "محمد الخارق", icon: "sparkles", implementation: "kharq", sort: 97, enabled: false },
+  // open to everyone (the owner's order of 12 November 2026: «افتح الرضا فويس للجميع»); the owner can still hide it from the dashboard
+  { id: "ridha", name: "الرضا فويس", icon: "mic", implementation: "ridha", sort: 42, enabled: true },
 ];
 
 /** Paths under /jawad-ai that a section id may not take. */
-export const RESERVED_SECTION_IDS = ["cartoon", "memory", "admin", "login", "username", "coins", "credits", "course", "learn", "api", "works", "film", "director", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet", "zaynab"];
+export const RESERVED_SECTION_IDS = ["cartoon", "memory", "admin", "login", "username", "coins", "credits", "course", "learn", "api", "works", "film", "director", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet", "zaynab", "ridha"];
 
 /** Implementations with their own fixed pages (one section each, not added again by the owner). */
-export const FIXED_IMPLEMENTATIONS: string[] = ["cartoon", "film", "director", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
+export const FIXED_IMPLEMENTATIONS: string[] = ["cartoon", "film", "director", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet", "ridha"];
 
 export const STUDIO_SECTION_IDS = ["images", "video", "audio"] as const;
 export const STUDIO_ROOT_ID = "images";

@@ -4,6 +4,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DESIGNER, isDesignAspect, isDesignKind, type DesignerTextMode, type DesignAspect, type DesignKind } from "@config/designer";
 import { readDesign, readLayers, type Design, type Layer } from "./layers";
+import { isMajlisMaker, readOrder, type MajlisMaker, type MajlisOrder } from "@config/designer-majlis";
 
 const db = () => createAdminClient();
 
@@ -18,7 +19,7 @@ export interface Attachment {
 /** A question of a batch, answered by pressing (or writing). */
 export interface Question {
   label: string;
-  kind: "choice" | "source" | "directions" | "fonts";
+  kind: "choice" | "fonts" | "palettes";
   options: string[];
   multi: boolean;
 }
@@ -59,6 +60,24 @@ export interface PendingDesign {
   art?: string;
   /** of `refs`, the photos to PUT IN the design as they are (a speaker, a baby, a logo): Claude Code draws them in unchanged */
   place?: string[];
+  /**
+   * a CHANGE to a design drawn before: that design's artwork (a designer_files row, whose record keeps the program it
+   * was drawn from) — the program is patched instead of written from zero
+   */
+  base?: string;
+  /** the font of «قائمة الخطوط» the writing is set in (the person's pick, else كاظم's): «حيدرا ماكس» is held to it */
+  fontId?: string;
+  /** a palette of the 100 (Color Hunt) the person picked: it replaces the direction's colours */
+  paletteId?: string;
+  /** a ready majlis design the person picked and filled (its exact program is drawn, not a design from zero) */
+  majlis?: MajlisOrder;
+  /** who makes that ready design: «حيدرا ماكس» in the page ("code", the default) or GPT Image 2.6 / 2 on the server */
+  majlisMaker?: MajlisMaker;
+  /**
+   * a CHANGE asked for a ready majlis design drawn before: the person's words, and the design it changes — its program
+   * («حيدرا ماكس» patches it) or, made by GPT, its picture (GPT edits it)
+   */
+  majlisEdit?: { said: string; prev: string; code?: string; fonts?: { head: string; body: string } };
 }
 
 export interface Chat {
@@ -68,6 +87,8 @@ export interface Chat {
   record: string;
   pending: PendingDesign | null;
   usd: number;
+  /** exactly what was taken from the wallet across this whole conversation (halalas, not an estimate) */
+  spentHalalas: number;
   updatedAt: string;
 }
 
@@ -87,11 +108,11 @@ function readFiles(v: unknown): Attachment[] | undefined {
 export function readQuestions(v: unknown): Question[] | undefined {
   const out = objs(v)
     .map((q): Question => {
-      const kind = q.kind === "source" || q.kind === "directions" || q.kind === "fonts" ? q.kind : "choice";
-      const options = kind === "source" || kind === "fonts" ? [] : (Array.isArray(q.options) ? q.options : []).filter((o): o is string => typeof o === "string" && o.trim().length > 0).map((o) => o.trim().slice(0, 160)).slice(0, 8);
+      const kind = q.kind === "fonts" || q.kind === "palettes" ? q.kind : "choice";
+      const options = kind === "fonts" || kind === "palettes" ? [] : (Array.isArray(q.options) ? q.options : []).filter((o): o is string => typeof o === "string" && o.trim().length > 0).map((o) => o.trim().slice(0, 160)).slice(0, 8);
       return { label: str(q.label, 140).trim(), kind, options, multi: q.multi === true && kind === "choice" };
     })
-    .filter((q) => q.label && (q.kind === "source" || q.kind === "fonts" || q.options.length > 0))
+    .filter((q) => q.label && (q.kind === "fonts" || q.kind === "palettes" || q.options.length > 0))
     .slice(0, 5);
   return out.length ? out : undefined;
 }
@@ -122,6 +143,15 @@ export function cleanHistory(raw: unknown): Turn[] {
   return out;
 }
 
+function readMajlisEdit(v: unknown): PendingDesign["majlisEdit"] | null {
+  if (!v || typeof v !== "object") return null;
+  const e = v as Record<string, unknown>;
+  const said = str(e.said, 2000).trim(), prev = str(e.prev, 60);
+  if (!said || !prev) return null;
+  const f = (e.fonts ?? {}) as Record<string, unknown>;
+  return { said, prev, ...(typeof e.code === "string" && e.code ? { code: e.code.slice(0, 140_000) } : {}), ...(typeof f.head === "string" && typeof f.body === "string" ? { fonts: { head: f.head.slice(0, 60), body: f.body.slice(0, 60) } } : {}) };
+}
+
 export function readPending(v: unknown): PendingDesign | null {
   if (!v || typeof v !== "object") return null;
   const p = v as Record<string, unknown>;
@@ -143,6 +173,10 @@ export function readPending(v: unknown): PendingDesign | null {
     ...(Array.isArray(p.place) && p.place.length ? { place: p.place.filter((r): r is string => typeof r === "string").slice(0, 20) } : {}),
     ...(typeof p.picture === "string" && p.picture.trim() ? { picture: p.picture.trim().slice(0, 4000) } : {}),
     ...(typeof p.art === "string" && p.art ? { art: p.art } : {}),
+    ...(typeof p.base === "string" && p.base ? { base: p.base.slice(0, 60) } : {}),
+    ...(typeof p.fontId === "string" && p.fontId ? { fontId: p.fontId.slice(0, 60) } : {}),
+    ...(typeof p.paletteId === "string" && p.paletteId ? { paletteId: p.paletteId.slice(0, 80) } : {}),
+    ...(readOrder(p.majlis) ? { majlis: readOrder(p.majlis)!, ...(isMajlisMaker(p.majlisMaker) ? { majlisMaker: p.majlisMaker } : {}), ...(readMajlisEdit(p.majlisEdit) ? { majlisEdit: readMajlisEdit(p.majlisEdit)! } : {}) } : {}),
   };
 }
 
@@ -166,6 +200,7 @@ const view = (r: Record<string, unknown>): Chat => ({
   record: str(r.record, 20_000),
   pending: readPending(r.pending),
   usd: Number(r.usd ?? 0),
+  spentHalalas: Math.max(0, Number(r.spent_halalas ?? 0)),
   updatedAt: String(r.updated_at ?? ""),
 });
 

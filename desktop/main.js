@@ -9,6 +9,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { Readable } = require("node:stream");
+const youtube = require("./youtube");
 
 const SITE = new URL(process.env.HAIDARA_URL || "https://www.aljawadai.app");
 // the site's addresses: the domain (with and without www) and the old one, which still opens the same site
@@ -221,6 +222,27 @@ function setupSession() {
       return null;
     }
     return keepMedia(file);
+  });
+  // «⬇️ من رابط»: a video downloaded on this computer (yt-dlp, see youtube.js) and kept like a file of the computer;
+  // its progress goes back to the page that asked
+  ipcMain.handle("youtube:get", async (e, link) => {
+    let origin = "";
+    try {
+      origin = new URL(e.senderFrame.url).origin;
+    } catch {
+      /* none */
+    }
+    if (!isSite(origin)) return { error: "غير مسموح." };
+    const say = (m) => {
+      if (!e.sender.isDestroyed()) e.sender.send("youtube:progress", { link, ...m });
+    };
+    try {
+      const file = await youtube.download({ userData: app.getPath("userData"), outDir: path.join(app.getPath("downloads"), "الجواد AI"), link, say });
+      const id = keepMedia(file);
+      return { id, url: `${SCHEME}://file/${id}`, name: path.basename(file), bytes: fs.statSync(file).size, path: file };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "ما قدرنا ننزّل الفيديو." };
+    }
   });
   // a plain Chrome to the sites (Google's sign-in refuses windows that say «Electron»), plus our own name
   // (the app's own name, in Arabic, would be in it too and is not allowed in a request header)

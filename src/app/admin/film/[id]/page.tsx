@@ -7,6 +7,8 @@ import { projectCost } from "@/lib/film/usage";
 import { FILM_BUCKET, type FilmAsset, type FilmProject } from "@/lib/film/types";
 import { FILM_STAGES, STATUS_LABELS } from "@config/film";
 import { isAdmin } from "@config/site";
+import AdminAccessButton from "@/components/film/AdminAccessButton";
+import { requestsOfAdmin } from "@/lib/film/admin-access";
 
 import { storage } from "@/lib/storage";
 export const metadata = { title: "مشروع فيلم | لوحة التحكم" };
@@ -38,12 +40,13 @@ export default async function AdminFilmProjectPage({ params }: PageProps<"/admin
   if (!p) notFound();
   const project = p as FilmProject;
 
-  const [owner, versions, messages, assets, cost] = await Promise.all([
+  const [owner, versions, messages, assets, cost, myRequests] = await Promise.all([
     db.auth.admin.getUserById(project.user_id),
     db.from("film_versions").select("id,stage,kind,ref_key,version,body,data,status,created_at").eq("project_id", id).order("created_at"),
     db.from("film_messages").select("stage,role,content,created_at").eq("project_id", id).eq("role", "user").order("created_at"),
     db.from("film_assets").select("*").eq("project_id", id).order("created_at"),
     projectCost(id),
+    requestsOfAdmin(me.id),
   ]);
   const all = (versions.data ?? []) as Version[];
   const files = (assets.data ?? []) as FilmAsset[];
@@ -63,6 +66,8 @@ export default async function AdminFilmProjectPage({ params }: PageProps<"/admin
         <p className="text-sm font-bold text-muted">
           {owner.data.user?.email ?? project.user_id} · {FILM_STAGES.find((s) => s.key === project.stage)?.label} · بدأ {when(project.created_at)} · التكلفة <span dir="ltr">{usd(cost.total)}</span>
         </p>
+        {/* «اسمح للأدمن بالدخول»: ask the owner; allowed, the project opens in your own film maker */}
+        <AdminAccessButton projectId={id} request={myRequests[id] ?? null} own={project.user_id === me.id} />
       </header>
 
       <section className="card space-y-2 p-4">

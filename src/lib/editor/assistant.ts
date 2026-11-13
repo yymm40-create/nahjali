@@ -4,6 +4,7 @@
 // The page applies them as one change (one undo).
 
 import { UserError } from "@/lib/api";
+import { listenToLinks } from "@/lib/link-listen";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isLeader, callClaudeJson, callClaudeSearch, claudeCost, claudeWhy, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { asksAboutBackdrop, checkCommands, context, withoutBackdropEdits, type Spoken } from "./assistant-core";
@@ -34,6 +35,8 @@ import { sajjadBrief } from "@/lib/film/sajjad";
 import { checkDesign, deliveryText, DESIGN_SCHEMA, DESIGN_SYSTEM, designPrompt, RESEARCH_SYSTEM, researchPrompt, type HookDesign, type HookInputs } from "./hook-design";
 import { claudeCharged, type Who } from "./pricing";
 import { assetInfo, assetViews, stillOpen, type EditorProject } from "./server";
+import { standingRules } from "./changes";
+import { rulesNote } from "./changes-core";
 
 const db = () => createAdminClient();
 
@@ -70,21 +73,21 @@ const SCHEMA = {
         additionalProperties: false,
         required: ["kind", "text", "style", "prompt", "at", "lengthMs", "clipId", "lang", "domain", "age", "makeKind", "aspect", "seconds", "voice", "withSound", "quality", "place", "name", "track", "layer", "captionStyle", "poem", "then"],
         properties: {
-          kind: { type: "string", enum: ["hook_design", "music", "separate", "scene_cut", "make", "smart_mask", "captions", "voiceprint", "talk_motion", "motion_lab", "upscale", "code_edit", "code_grade", "watch"] },
-          captionStyle: { type: "string", enum: ["karaoke", "classic", "box", "neon", "poem", ""], description: "captions: the look to start from (karaoke = the word being said lights up). Else empty." },
+          kind: { type: "string", enum: ["hook_design", "music", "separate", "scene_cut", "make", "smart_mask", "captions", "voiceprint", "talk_motion", "motion_lab", "upscale", "code_edit", "code_grade", "watch", "reframe", "multicam"] },
+          captionStyle: { type: "string", enum: ["karaoke", "pop2", "classic", "box", "neon", "poem", ""], description: "captions: the look to start from (karaoke = the word being said lights up; pop2 «كلمتين كلمتين» = two big words a line, the spoken one yellow — the Hormozi look for business, advice and hype). Else empty." },
           poem: { type: "string", description: "captions: a poem's verses (one per line, exactly as the person gave them) to time on its recitation in clipId. Else empty." },
           then: { type: "array", items: { type: "string", description: "One editing command as a JSON object string." }, description: "captions: commands to run once the captions exist — \"$CAPTIONS\" is the new caption track's id, and a command whose clipId is \"$EACH\" runs on every caption. Else empty." },
           track: { type: "boolean", description: "smart_mask: follow the subject through the clip (a moving subject in a video). Else false." },
           layer: { type: "number", description: "smart_mask: the grading layer (0…3) whose window it becomes. Else 0." },
           makeKind: { type: "string", enum: ["image", "video", "speech", "sfx", "music", ""], description: "make: what to make. Else empty." },
-          aspect: { type: "string", description: "make image/video: \"1:1\", \"16:9\", \"9:16\", \"3:2\", \"2:3\" (video also \"4:3\", \"3:4\", \"21:9\"); empty = the project's shape." },
-          seconds: { type: "number", description: "make video (4–15), sfx (1–30), music (10–300): length in seconds. Else 0." },
+          aspect: { type: "string", description: "make image/video: \"1:1\", \"16:9\", \"9:16\", \"3:2\", \"2:3\" (video also \"4:3\", \"3:4\", \"21:9\"); empty = the project's shape. reframe: the shape to turn the project into, \"9:16\", \"1:1\" or \"4:5\" (empty = keep the project's)." },
+          seconds: { type: "number", description: "make video (4–15), sfx (1–30), music (10–300): length in seconds. multicam: the shortest shot in seconds (0.8–8; 0 = 2). Else 0." },
           voice: { type: "string", description: "make speech: one of the person's own voices by name (\"voices\"), or a short English description (e.g. \"deep calm male Arabic narrator\"); start it with \"jawad:\", \"openai:\" or \"elevenlabs:\" to choose who speaks it (a library voice is always spoken where it lives). Else empty." },
           withSound: { type: "boolean", description: "make video: with its own generated sound; make music: with singing. Else false." },
           quality: { type: "string", description: "make image: \"low\"|\"medium\"|\"high\" (default high); video: \"480p\"|\"720p\"|\"1080p\" (default 720p). upscale: \"4k\" or \"1080p\" (how far to raise it). Else empty." },
           place: { type: "string", enum: ["over", "main", "audio", "library", ""], description: "make: where the result goes — over (a new track above the video, at \"at\"), main (into the main track at \"at\"), audio (a new sound track at \"at\"), library (only added to the files). Else empty." },
           name: { type: "string", description: "make: a short Arabic name for the file. Else empty." },
-          text: { type: "string", description: "hook_design: the hook text exactly as the person gave it (never reworded, diacritics kept). Else empty." },
+          text: { type: "string", description: "hook_design: the hook text exactly as the person gave it (never reworded, diacritics kept). multicam: the clip id of the camera the person called the wide one («الواسعة»), or empty. Else empty." },
           lang: { type: "string", description: "hook_design: the hook's language (e.g. العربية). captions: \"ar\", \"en\" or \"\" (find it). Else empty." },
           domain: { type: "string", description: "hook_design: the field or project (Arabic). Else empty." },
           age: { type: "string", description: "hook_design: the audience age group. Else empty." },
@@ -92,7 +95,7 @@ const SCHEMA = {
           prompt: { type: "string", description: "music: English description (genre, mood, instruments, tempo). make: the generator's prompt (image/video/sfx/music: detailed English; speech: the exact words to be spoken, in their language). Else empty." },
           at: { type: "number", description: "timeline ms where it goes (hook/music/make), usually 0 or the playhead" },
           lengthMs: { type: "number", description: "music: length in ms (usually the video's length). Else 0." },
-          clipId: { type: "string", description: "separate: the clip whose sound to split; scene_cut / smart_mask: the clip; code_grade: the clips to grade, ids separated by commas; motion_lab: the person's talking clip when the lab builds the piece on it. Else empty." },
+          clipId: { type: "string", description: "separate: the clip whose sound to split; scene_cut / smart_mask: the clip; code_grade: the clips to grade, ids separated by commas; motion_lab: the person's talking clip when the lab builds the piece on it; reframe: the video clips to follow the face in, ids separated by commas (empty = every wide video); multicam: the synced camera clips, ids separated by commas (empty = the cameras the page finds). Else empty." },
         },
       },
     },
@@ -113,7 +116,7 @@ const SCHEMA = {
 
 const SYSTEM = `You are «حيدرا ماكس», the editing assistant inside the «حيدرة كت» video editor (never call yourself Claude; your name is حيدرا ماكس). The person tells you what they want and you change their timeline with editing commands. Speak like a friendly Gulf Arabic editor, in short sentences (use the person's language if they write in another one).
 
-THE TIMELINE (sent with every request as JSON): times are whole milliseconds. Each clip shows its source from "in" to "out" starting at "start" on the timeline; its length is (out-in)/speed. Tracks are drawn bottom to top; the first video track is the main one and, when "magnetic" is true, it has no gaps (clips follow each other in order). Audio tracks are heard only. Text tracks hold text and captions. "library" lists the project's media you can place. "quiet" lists the silent parts of clips that have sound (timeline ms). "speech" lists what is said, phrase by phrase, when it was transcribed. A clip's "grades" are its colour grading layers (only what differs from neutral), "crop" its crop, "nest" the timeline a Nest clip holds; "sequences" lists the project's timelines (the open one is the one you edit); "voices" lists the person's own saved voices (for speech).
+THE TIMELINE (sent with every request as JSON): times are whole milliseconds. Each clip shows its source from "in" to "out" starting at "start" on the timeline; its length is (out-in)/speed (a clip with a "ramp" changes speed inside it along that curve, and its "speed" is the curve's average). Tracks are drawn bottom to top; the first video track is the main one and, when "magnetic" is true, it has no gaps (clips follow each other in order). Audio tracks are heard only. Text tracks hold text and captions. "library" lists the project's media you can place. "quiet" lists the silent parts of clips that have sound (timeline ms). "speech" lists what is said, phrase by phrase, when it was transcribed. A clip's "grades" are its colour grading layers (only what differs from neutral), "crop" its crop, "nest" the timeline a Nest clip holds; "sequences" lists the project's timelines (the open one is the one you edit); "voices" lists the person's own saved voices (for speech).
 
 ${COMMANDS_GUIDE}
 
@@ -129,7 +132,7 @@ RULES:
   Reply in ONE short line that you are writing the program («أكتب برنامج التقطيع…» / «أكتب برنامج التلوين…»); the page reports the result with your scores. A tiny single change the person points at (one split at the playhead, a volume, one transition, a text, adding a clip, captions, music, a ready look by name) stays a plain command.
 - DO THE WHOLE JOB: when a request has several steps (make something, then place, style, animate, colour, mix it), do them all in this one answer — commands first, then requests, and the requests' own follow-ups — instead of telling the person what to press next.
 - «نص الهوك» (a hook text: whenever the person asks for a hook, a hook text or a title hook): it is designed as one piece — the picture of the words (GPT Image 2), its entrance and exit, and two sound effects — by the hook designer, from {"kind":"hook_design","text":...,"lang":...,"domain":...,"age":...,"at":0}. It needs six inputs: the hook text (exactly as given — you never write or change it), its language, the orientation (the project's shape: you know it, never ask), the field or project, the audience age, and WHO MAKES IT — two choices the person picks: (1) «حيدرا ماكس»: you build the hook as an animated code-drawn motion piece, crisp at any size, no picture generation → send {"kind":"motion_lab","prompt":<a brief for a 2–4 second animated hook: the hook text EXACTLY as given, its language, the field, the audience age, the orientation, a bold readable style that fits them, entrance and exit>,"at":0}; (2) «GPT Image 2»: the picture of the words with the hook designer as above → {"kind":"hook_design",…}. If any is missing, ask ONE short grouped question for the missing ones only, always including the two-way choice of who makes it (mention reference pictures are optional for the GPT Image 2 one) and send no request. Once they are all there, send the request for the chosen maker and reply only that it is on its way (the delivery follows).
-- MAKING THINGS (in "requests", not commands): music made for the video (ElevenLabs) → {"kind":"music","prompt":...,"at":0,"lengthMs":<video length>}; a clip's sound split into talking, music and sound effects on three sound tracks → {"kind":"separate","clipId":...}; a long video cut into its scenes wherever the camera or shot changes («قطّع عند تغيّر المشهد», «التقطيع الذكي») → {"kind":"scene_cut","clipId":...} (a video clip; it runs in the person's browser, no cost); «رفع الدقة» («حسّن جودة المقطع», «خلّه 4K», «الفيديو مو واضح») → {"kind":"upscale","clipId":<the video clip>,"quality":"4k" (or "1080p" for a small clip)} — Topaz enlarges it and brings the detail back; it is PAID BY THE SECOND and takes minutes, so only when they ask for it, and only for a video whose long side is under 3800 px (an already-4K clip has nothing to gain: say so instead). The new file is added and the original stays, and the clip swaps to it by itself when it is ready. When you can see the clip is small or soft (its width in the timeline) you may OFFER it in one line — never start it on your own. Use them when asked (or when a hook/music clearly fits the request); do not also add_text the same hook. They cost the person time (and maybe coins), so only when wanted.
+- MAKING THINGS (in "requests", not commands): music made for the video (ElevenLabs) → {"kind":"music","prompt":...,"at":0,"lengthMs":<video length>}; a clip's sound split into talking, music and sound effects on three sound tracks → {"kind":"separate","clipId":...}; a long video cut into its scenes wherever the camera or shot changes («قطّع عند تغيّر المشهد», «التقطيع الذكي») → {"kind":"scene_cut","clipId":...} (a video clip; it runs in the person's browser, no cost); «اتبع الوجه» — a wide (16:9) video turned into a reel that keeps the speaker in frame («حوّله عمودي وخل الكاميرا تتبع وجهي», «ريفريم», «خلني بالنص») → {"kind":"reframe","aspect":"9:16" (or "1:1" / "4:5"; "" keeps the project's shape),"clipId":"" (every wide video) or the clip ids separated by commas} (the page changes the shape, reads the faces in the browser — free — and gives each clip a calm camera path as motion points the person can move afterwards; never imitate it with set_key commands); «بدّل الكاميرات تلقائياً» — two or more cameras of the same moment (a podcast, an interview) cut by who is speaking («بدّل بين الكاميرات», «سوّها مالتي كام», «قص على اللي يتكلم») → {"kind":"multicam","clipId":<the camera clips, ids separated by commas, or "">,"seconds":<shortest shot, 0 = 2>,"text":<the wide camera's clip id when they named one, else "">} (the page reads each camera's microphone in the browser — free — and puts ordinary cuts on one track, the originals kept hidden; the cameras must already be lined up by sound: when their clips plainly are not, send no request and tell them to select the cameras and press «🎯 زامن الصوت» first); to show a cut from another camera afterwards use the command {"type":"multicam_angle","clipId":<the cut>,"cam":<the other camera's original clip id, on a hidden «كاميرا N» track>}; «رفع الدقة» («حسّن جودة المقطع», «خلّه 4K», «الفيديو مو واضح») → {"kind":"upscale","clipId":<the video clip>,"quality":"4k" (or "1080p" for a small clip)} — Topaz enlarges it and brings the detail back; it is PAID BY THE SECOND and takes minutes, so only when they ask for it, and only for a video whose long side is under 3800 px (an already-4K clip has nothing to gain: say so instead). The new file is added and the original stays, and the clip swaps to it by itself when it is ready. When you can see the clip is small or soft (its width in the timeline) you may OFFER it in one line — never start it on your own. Use them when asked (or when a hook/music clearly fits the request); do not also add_text the same hook. They cost the person time (and maybe coins), so only when wanted.
 - MAKING ANYTHING with JAWAD AI's generators → {"kind":"make","makeKind":...,"prompt":...,"place":...,"at":...}: any picture (GPT Image 2: a B-roll shot, a background, a thumbnail, an illustration, a poster, a picture with Arabic writing — quote the Arabic text exactly in «» inside the English prompt), any video shot (Seedance: 4–15 s; describe subject, action, setting, camera move, lighting, style in English), any voice reading a text (speech: the exact words, with diacritics where the pronunciation matters; "voice" picks who reads), any sound effect (English description), any music (English description; withSound true = with singing). Prompts are rich and specific like a professional's. Where it goes: pictures/videos usually "over" at the moment they illustrate (or "main" to insert a shot), sounds "audio" at the moment they belong. Use it whenever the person asks to make/create/generate something (not for the hook text, which has its own designer, and use "music" above for music made to the video's length). It costs coins (the price is shown to the person before it starts) and a video takes a few minutes; it arrives on the timeline by itself. Up to 3 per answer.
 - «بصمة صوتك» (VOICEPRINT; use ONLY when the person explicitly asks to clone or save their own voice; NEVER for ordinary narration or a character voice) → {"kind":"voiceprint","clipId":<a clip where the person talks alone, or "" to record at the microphone>,"name":<the voice's name, e.g. «صوتي»>,"voice":"jawad" (default: JAWAD's own engine — free, unlimited, Arabic dialects) or "elevenlabs"}. The page takes 10 s–2 min of their voice, asks their consent, and keeps it in their voice library; then any "make speech" with that name (or «بصوتي») reads text in their voice. Only the person's own voice, or one they have permission for. Send a clip ONLY when you can see from the timeline that the person is talking in it (a filmed talking clip, "speech" already written on it, or they said so); a motion piece, B-roll, music or any clip you are not sure has their spoken voice gets clipId "" (the microphone) instead — never guess a clip and let the page fail to hear anything.
 - VOICES: you (Claude) write words but have no voice of your own — speech is made by a speech engine. Ordinary narration uses a ready ElevenLabs male voice and needs no saved voice. JAWAD's OWN engine («صوت الجواد»: VoiceStudio on the site's own server) speaks with the person's voiceprint («بصوتي») only when the person explicitly selects their saved voice; start "voice" with "jawad:", "openai:" or "elevenlabs:" to choose (a voice from the person's library always speaks where it lives). The person picks who reads YOUR spoken replies in the panel (🔊).
@@ -164,7 +167,15 @@ ${GRADING_LESSONS}
 
 TRANSITION IDS (by group): ${TR_LIST.map((t) => t.id).join(", ")}.
 
-${KNOW_HOW}
+${KNOW_HOW}`;
+
+/**
+ * The motion skills (~39k tokens: the director, the owner's motion skill and Higgsfield's, the ten styles, the looks,
+ * the moods, Majed's talking reels): read only by a turn about motion — a cut, a caption or a question never needed
+ * them, and every message carried them (the owner, 2 November 2026: every robot like a plain Claude conversation).
+ */
+const MOTION_PACK = `THE MOTION SKILLS (this request is about motion, a hook, a talking reel or a montage):
+YOU DECIDE: the skills below are a LIBRARY and a quality bar (craft, timing, legibility, sound), never a template. The person's request and your own understanding of its subject (what it is, who it is for, the one feeling, what would surprise) decide the idea, the structure, the motion, the palette and the type; follow a style's direction only when the person names or picks it; never reuse a worked example's or a recipe's layout, words or idea, and never repeat what you made for them before unless they ask for the same.
 
 ${DIRECTOR_SKILL}
 
@@ -178,6 +189,19 @@ ${MOTION_STYLES_SKILL}
 ${MOODS_SKILL}
 
 ${MAJED_SKILL}`;
+/** The two systems a turn can read (each stable, so each is cached on its own). */
+const SYSTEM_MOTION = `${SYSTEM}\n\n${MOTION_PACK}`;
+/** Words that make a turn about motion (in the message, or in the last few turns of the conversation it continues). */
+const MOTION_WORDS = /موشن|motion|انيميشن|أنيميشن|إنفوجرافيك|انفوجرافيك|تايبوغرافي|كلمات طائرة|هوك|hook|مونتاج|منتاج|montage|ستايل|أسلوب|اسلوب|ريل|reel|talk_motion|motion_lab|storyboard|مختبر الموشن/i;
+
+/** The checks of a colour change: the commands, the colourist's know-how and its lessons — nothing of motion. */
+const CHECK_SYSTEM = `You are «حيدرا ماكس», the editor and colourist of «حيدرة كت» (never call yourself Claude), checking a colour change you made.
+
+${COMMANDS_GUIDE}
+
+${GRADING_KNOW_HOW}
+
+${GRADING_LESSONS}`;
 
 /** The pictures of the selected clip the page sends (at most 8 small JPEGs), checked. */
 export function readLook(v: unknown, tl: ReturnType<typeof readTimeline>) {
@@ -201,7 +225,7 @@ export function lookParts(look: NonNullable<ReturnType<typeof readLook>>): Claud
 }
 
 export interface MakeRequest {
-  kind: "hook_design" | "music" | "separate" | "scene_cut" | "make" | "smart_mask" | "captions" | "voiceprint" | "talk_motion" | "upscale" | "motion_lab" | "code_edit" | "code_grade" | "watch";
+  kind: "hook_design" | "music" | "separate" | "scene_cut" | "make" | "smart_mask" | "captions" | "voiceprint" | "talk_motion" | "upscale" | "motion_lab" | "code_edit" | "code_grade" | "watch" | "reframe" | "multicam";
   /** captions: the starting look, a poem to time, and the commands run on the new captions */
   captionStyle?: string;
   poem?: string;
@@ -255,7 +279,7 @@ interface Answer {
 const SPOKEN = "\n\n(The person said this by voice and your reply will be read aloud to them: answer in one to three short, natural spoken sentences in their dialect, no lists, no markdown, no emoji; do the commands as usual.)";
 
 /** One request: the person's words (and the last few exchanges) → a reply and checked commands. */
-export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown; watch?: unknown; spoken?: unknown; refs?: unknown; refLooks?: unknown; face?: unknown; model?: unknown }, origin: string | null = null) {
+export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown; watch?: unknown; spoken?: unknown; refs?: unknown; refLooks?: unknown; face?: unknown; model?: unknown; rules?: unknown }, origin: string | null = null) {
   stillOpen(p);
   const message = String(b.message ?? "").trim().slice(0, 2000);
   if (!message) throw new UserError("اكتب وش تبي.", 400);
@@ -295,6 +319,9 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   const frameOrder = Boolean(wantFrame && filmedClip);
   // a motion request: the closest worked pieces of the site's bank (same feeling and skill, then the topic's words) ride with it as examples
   const motionAsk = Boolean((named && !named.talk) || feeling || /موشن|motion|إنفوجرافيك|انفوجرافيك|تايبوغرافي|كلمات طائرة/i.test(message));
+  // the motion skills ride only with a turn about motion (this message, or the conversation it continues)
+  const recent = history.slice(-6).map((t) => (typeof t.content === "string" ? t.content : "")).join("\n");
+  const aboutMotion = motionAsk || Boolean(ten || named || wantFrame || montageAsk) || MOTION_WORDS.test(message) || MOTION_WORDS.test(recent);
   const examples = motionAsk ? motionExamplesBrief(nearestMotionExamples(message, { mood: feeling?.id, style: named && !named.talk ? named.id : undefined }, 2)) : "";
   const turns: ClaudeTurn[] = [
     ...(brief
@@ -352,8 +379,10 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     const parts: ClaudePart[] = typeof last.content === "string" ? [{ type: "text", text: last.content }] : [...last.content];
     parts.push({ type: "text", text: `REFERENCES the person attached to this message (in the library now — use their ids): ${refs.map((a) => `${a.id} · ${a.kind} · «${a.name}»${a.durationMs ? ` · ${(a.durationMs / 1000).toFixed(1)} s` : ""}${a.width ? ` · ${a.width}×${a.height}` : ""}`).join(" | ")}` });
     for (const a of refs) {
-      if (a.kind === "image" && a.url) parts.push({ type: "text", text: `Reference «${a.name}» (${a.id}):` }, { type: "image", url: a.url });
-      for (const f of looks.get(a.id) ?? []) parts.push({ type: "text", text: `Reference video «${a.name}» (${a.id}) at ${(f.t / 1000).toFixed(1)} s:` }, { type: "image64", data: f.data, mediaType: "image/jpeg" });
+      // a picture by its link only when Claude can open it (https); a file kept on the person's computer
+      // (haidara-media://…) comes as pixels from the page (refLooks), or by name
+      if (a.kind === "image" && a.url && /^https:\/\//.test(a.url)) parts.push({ type: "text", text: `Reference «${a.name}» (${a.id}):` }, { type: "image", url: a.url });
+      for (const f of looks.get(a.id) ?? []) parts.push({ type: "text", text: a.kind === "image" ? `Reference «${a.name}» (${a.id}):` : `Reference video «${a.name}» (${a.id}) at ${(f.t / 1000).toFixed(1)} s:` }, { type: "image64", data: f.data, mediaType: "image/jpeg" });
     }
     last.content = parts;
   }
@@ -367,9 +396,19 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     }
   }
 
-  let usd = mem.usd;
+  // a YouTube / TikTok link in the message (or earlier in this conversation): heard by ElevenLabs before the answer,
+  // its words ride with this turn (lib/link-listen)
+  const listened = await listenToLinks(message, history.filter((t) => t.role === "user" && typeof t.content === "string").map((t) => t.content as string));
+  if (listened.block) {
+    const last = merged[merged.length - 1];
+    last.content = [...(typeof last.content === "string" ? [{ type: "text", text: last.content } as ClaudePart] : last.content), { type: "text", text: listened.block }];
+  }
+
+  // «تعليماتي الدايمة»: the person's own style, in this turn's note (nothing when they wrote none)
+  const turnNote = rulesNote(await standingRules(who.id, b.rules)) || undefined;
+  let usd = mem.usd + listened.usd;
   const ask = async (msgs: ClaudeTurn[]) => {
-    const r = await callClaudeJson<Answer>({ system: SYSTEM, turns: msgs, schema: SCHEMA, maxTokens: 16000, effort: "medium", fallback: true, leader: isLeader(who.email), timeoutMs: 420_000 });
+    const r = await callClaudeJson<Answer>({ system: aboutMotion ? SYSTEM_MOTION : SYSTEM, turns: msgs, turnNote, schema: SCHEMA, maxTokens: 16000, effort: "medium", fallback: true, leader: isLeader(who.email), timeoutMs: 420_000 });
     usd += claudeCost(r.usage);
     return r;
   };
@@ -489,7 +528,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
         sfxRequests.push({ kind: "make", makeKind: "sfx", prompt: SFX[kind].prompt, seconds: SFX[kind].seconds, place: "audio", at: first, alsoAt: rest, volume: 0.35, name: SFX[kind].name, text: "", lang: "", domain: "", age: "", style: "", aspect: "", voice: "", withSound: false, quality: "", lengthMs: 0, clipId: "" });
       }
       const frames = planFrames(talk, tl.width, tl.height, talkEnd);
-      const framesAr = { "split-top": "نصين", "split-bottom": "نصين", shrink: "مربع", corner: "زاوية", punch: "زووم" } as const;
+      const framesAr = { "split-top": "نصين", "split-bottom": "نصين", shrink: "مربع", corner: "زاوية", punch: "زووم", card: "كرت" } as const;
       const frameNote = built.windows.length
         ? talk.layout === "mix" || talk.layout === "split" || talk.layout === "corner"
           ? `، بستايل «${frames.style.ar}» ${frames.style.icon} والإطار يتغير ${built.windows.length} مرات (${[...new Set(frames.modes.map((m) => framesAr[m]))].join("، ")})${talk.face ? " على وجهك" : ""}`
@@ -528,7 +567,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     }
   }
   const requests = (answer.requests ?? [])
-    .filter((r) => ((r.kind === "motion_lab" || r.kind === "code_edit") && r.prompt.trim()) || (r.kind === "motion_lab" && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))) || (r.kind === "code_grade" && r.prompt.trim() && r.clipId.split(",").some((id) => tl.tracks.some((t) => t.clips.some((c) => c.id === id.trim())))) || (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || r.kind === "voiceprint" || (r.kind === "talk_motion" && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))) || ((r.kind === "watch" && r.clipId === "film") || (r.kind === "watch" || r.kind === "separate" || r.kind === "scene_cut" || r.kind === "upscale" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
+    .filter((r) => ((r.kind === "motion_lab" || r.kind === "code_edit") && r.prompt.trim()) || (r.kind === "motion_lab" && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))) || (r.kind === "code_grade" && r.prompt.trim() && r.clipId.split(",").some((id) => tl.tracks.some((t) => t.clips.some((c) => c.id === id.trim())))) || (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || r.kind === "voiceprint" || r.kind === "reframe" || r.kind === "multicam" || (r.kind === "talk_motion" && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))) || ((r.kind === "watch" && r.clipId === "film") || (r.kind === "watch" || r.kind === "separate" || r.kind === "scene_cut" || r.kind === "upscale" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
     // the same thing asked twice in one answer (same kind, words and place) is made once
     .filter((r, i, all) => all.findIndex((x) => x.kind === r.kind && x.prompt.trim() === r.prompt.trim() && x.text.trim() === r.text.trim() && x.clipId === r.clipId && (x.makeKind ?? "") === (r.makeKind ?? "")) === i)
     // a motion piece's sounds are the engine's (above); Claude's own sfx requests for it would double them
@@ -591,6 +630,8 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     assets: newAssets,
     // what the whole answer cost in dollars (the route takes it + 40%)
     usd,
+    // what this edit's conversation had taken from the wallet BEFORE this turn (halalas); the route adds this turn's charge
+    spentHalalas: chat.spentHalalas,
   };
 }
 
@@ -653,7 +694,7 @@ export async function gradeCheck(p: EditorProject, who: Who, b: { clipId?: unkno
   const after = look.frames.find((f) => f.graded && f.scope)?.scope ?? null;
   const cases = await caseParts(nearestCases(after, String(b.request ?? ""), 2), origin);
   const r = await claudeCharged(who, b.model, "حيدرا ماكس يشيك التلوين في حيدرة كت", () =>
-    callClaudeJson<{ ok: boolean; verdict: string; commands: string[] }>({ system: SYSTEM, turns: [{ role: "user", content: [{ type: "text", text }, ...lookParts(look), ...cases] }], schema: CHECK_SCHEMA, maxTokens: 12000, effort: "medium", fallback: true }).catch((e) => {
+    callClaudeJson<{ ok: boolean; verdict: string; commands: string[] }>({ system: CHECK_SYSTEM, turns: [{ role: "user", content: [{ type: "text", text }, ...lookParts(look), ...cases] }], schema: CHECK_SCHEMA, maxTokens: 12000, effort: "medium", fallback: true }).catch((e) => {
       console.error("grade check", e);
       throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يشيك الحين.", who.email), 502);
     }),

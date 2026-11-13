@@ -118,7 +118,7 @@ function lighter(id: string, f: Frame): Frame {
   g.drawImage(f.img, 0, 0, w, h);
   return { ...f, img: c, width: w, height: h };
 }
-import { animAt, clipEnd, clipLength, colorFilter, countText, decodeText, kashida, transformAt, transitionAt, wordAt, type AnimLook, type Clip, type TextStyle, type Timeline, type Track, type Transform, type ClipFx, type BlendMode } from "@/lib/editor/model";
+import { animAt, clipEnd, clipLength, colorFilter, countText, decodeText, kashida, transformAt, transitionAt, wordAt, type AnimLook, type Clip, type TextStyle, type Timeline, type Track, type Transform, type ClipFx, type BlendMode, type Backdrop } from "@/lib/editor/model";
 
 export interface Frame {
   img: CanvasImageSource;
@@ -524,7 +524,9 @@ function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Trans
       ctx.fillRect(-w / 2, -h / 2, w, h);
     }
     ctx.filter = filter || "none";
-    ctx.drawImage(cutout(f, f.mask, clip.bg.feather ?? 0.3, clip.bg.despill ?? 0, clip.bg.spillColor ?? ""), -w / 2, -h / 2, w, h);
+    const person = cutout(f, f.mask, clip.bg.feather ?? 0.3, clip.bg.despill ?? 0, clip.bg.spillColor ?? "", clip.bg.fill ?? "");
+    if (clip.bg.edge) personEdge(ctx, person, clip.bg.edge, w, h, Math.max(0, ms - clip.start), base);
+    ctx.drawImage(person, -w / 2, -h / 2, w, h);
   } else if (clip.fx.length || look.tfx.length) {
     // «المؤثرات»: the clip's own effects (and a transition's passing one), on its own time
     const plan = fxPlan(look.tfx.length ? [...clip.fx, ...look.tfx] : clip.fx, Math.max(0, ms - clip.start) / 1000, clipLength(clip) / 1000);
@@ -577,7 +579,7 @@ function softMask(mask: CanvasImageSource, feather: number, w: number, h: number
   return soft;
 }
 
-function cutout(f: Frame, mask: CanvasImageSource, feather = 0.3, despill = 0, spillColor = "") {
+function cutout(f: Frame, mask: CanvasImageSource, feather = 0.3, despill = 0, spillColor = "", fill = "") {
   scratch ??= document.createElement("canvas");
   const k = Math.min(1, 1280 / Math.max(f.width, f.height));
   const w = Math.max(1, Math.round(f.width * k));
@@ -608,7 +610,68 @@ function cutout(f: Frame, mask: CanvasImageSource, feather = 0.3, despill = 0, s
       c.putImageData(img, 0, 0);
     }
   }
+  // «ظل»: the person kept, filled with one colour (a silhouette); the soft edge stays as the mask drew it
+  if (fill) {
+    c.globalCompositeOperation = "source-in";
+    c.fillStyle = fill;
+    c.fillRect(0, 0, w, h);
+    c.globalCompositeOperation = "source-over";
+  }
   return scratch;
+}
+
+let tint: HTMLCanvasElement | null = null;
+/** The cut-out filled with one colour (its soft edge kept), for «حافة الشخص». */
+function tinted(person: HTMLCanvasElement, colour: string) {
+  tint ??= document.createElement("canvas");
+  if (tint.width !== person.width || tint.height !== person.height) {
+    tint.width = person.width;
+    tint.height = person.height;
+  }
+  const c = tint.getContext("2d")!;
+  c.globalCompositeOperation = "source-over";
+  c.clearRect(0, 0, tint.width, tint.height);
+  c.drawImage(person, 0, 0);
+  c.globalCompositeOperation = "source-in";
+  c.fillStyle = colour;
+  c.fillRect(0, 0, tint.width, tint.height);
+  c.globalCompositeOperation = "source-over";
+  return tint;
+}
+
+/**
+ * «حافة الشخص», drawn under the cut-out: a thick white edge (a paper sticker), a soft light around them, or tinted
+ * copies spreading sideways and back on a slow beat (the echo).
+ */
+function personEdge(ctx: CanvasRenderingContext2D, person: HTMLCanvasElement, edge: NonNullable<Backdrop["edge"]>, w: number, h: number, local: number, base: number) {
+  const u = Math.min(w, h) / 1080;
+  if (edge === "sticker") {
+    const white = tinted(person, "#ffffff");
+    const r = 12 * u;
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      ctx.drawImage(white, -w / 2 + Math.cos(a) * r, -h / 2 + Math.sin(a) * r, w, h);
+    }
+  } else if (edge === "glow") {
+    const light = tinted(person, "#ffd79a");
+    ctx.save();
+    ctx.filter = `blur(${(26 * u).toFixed(1)}px)`;
+    ctx.globalAlpha = base * 0.85;
+    ctx.drawImage(light, -w / 2, -h / 2, w, h);
+    ctx.drawImage(light, -w / 2, -h / 2, w, h);
+    ctx.restore();
+  } else {
+    const spread = (40 + 70 * (0.5 + 0.5 * Math.sin((local / 1000) * Math.PI * 1.6))) * u;
+    const cols = ["#7c4dff", "#ff4f8b", "#ff8a3d"];
+    ctx.save();
+    for (let i = 3; i >= 1; i--) {
+      ctx.globalAlpha = base * (0.6 - i * 0.13);
+      const t = tinted(person, cols[i - 1]);
+      ctx.drawImage(t, -w / 2 - i * spread, -h / 2 + i * 4 * u, w, h);
+      ctx.drawImage(t, -w / 2 + i * spread, -h / 2 + i * 4 * u, w, h);
+    }
+    ctx.restore();
+  }
 }
 
 function hexRgb(hex: string): [number, number, number] {
@@ -701,9 +764,103 @@ const ARABIC = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFE
 const wordIn = (p: number, i: number, n: number) => Math.min(1, Math.max(0, p * (n + 1.5) - i));
 const popScale = (a: number) => 0.55 + 0.45 * (1 + 2.70158 * (a - 1) ** 3 + 1.70158 * (a - 1) ** 2);
 
+/**
+ * «ميلان ثلاثي»: the words drawn flat on a page of their own, then laid back onto the frame strip by strip with a
+ * perspective (the canvas has no 3D): turned around the upright axis (`tiltY`, one side nearer) and/or the level axis
+ * (`tiltX`, the top leaning back), about the text's own centre.
+ */
+let tiltPage: HTMLCanvasElement | null = null;
+let tiltPage2: HTMLCanvasElement | null = null;
+let tilting = false;
+const TILT_STRIP = 3;
+function drawTilted(ctx: CanvasRenderingContext2D, clip: Clip, t: Transform, look: Drawn, W: number, H: number, ms: number, tiltY: number, tiltX: number) {
+  const page = (c: HTMLCanvasElement | null) => {
+    const p = c ?? document.createElement("canvas");
+    if (p.width !== W || p.height !== H) {
+      p.width = W;
+      p.height = H;
+    }
+    const g = p.getContext("2d")!;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = "source-over";
+    g.clearRect(0, 0, W, H);
+    return { p, g };
+  };
+  const A = page(tiltPage);
+  tiltPage = A.p;
+  tilting = true;
+  try {
+    drawText(A.g, clip, t, look, W, H, ms);
+  } finally {
+    tilting = false;
+  }
+  // the text's block (with room for its depth, glow and a turn of the clip) is the only part laid back
+  const lay = textLayout(A.g, clip.text!, t.scale * look.scale, W, H);
+  const px = t.x * W + look.dx * W;
+  const py = t.y * H + look.dy * H;
+  const m = lay.size * 1.2;
+  const half = Math.max(lay.w, lay.h) * (t.rotate || look.rotate ? 0.75 : 0.5);
+  const bx0 = Math.max(0, Math.floor(px - (t.rotate || look.rotate ? half : lay.w / 2) - m));
+  const bx1 = Math.min(W, Math.ceil(px + (t.rotate || look.rotate ? half : lay.w / 2) + m));
+  const by0 = Math.max(0, Math.floor(py - (t.rotate || look.rotate ? half : lay.h / 2) - m));
+  const by1 = Math.min(H, Math.ceil(py + (t.rotate || look.rotate ? half : lay.h / 2) + m));
+  if (bx1 <= bx0 || by1 <= by0) return;
+  const P = 0.75 * Math.max(W, H);
+  const ry = (tiltY * Math.PI) / 180;
+  const rx = (tiltX * Math.PI) / 180;
+  // around the upright axis: each column moves in (or out) and shrinks (or grows) with its distance
+  const colX = (x: number) => {
+    const d = x - px;
+    const f = P / (P + d * Math.sin(ry));
+    return { x: px + d * Math.cos(ry) * f, f };
+  };
+  const rowY = (y: number) => {
+    const d = y - py;
+    const f = P / (P - d * Math.sin(rx));
+    return { y: py + d * Math.cos(rx) * f, f };
+  };
+  let src: HTMLCanvasElement = A.p;
+  let out: CanvasRenderingContext2D = ctx;
+  if (tiltY && tiltX) {
+    const B = page(tiltPage2);
+    tiltPage2 = B.p;
+    out = B.g;
+  }
+  if (tiltY) {
+    for (let x = bx0; x < bx1; x += TILT_STRIP) {
+      const sw = Math.min(TILT_STRIP, bx1 - x);
+      const a = colX(x);
+      const b = colX(x + sw);
+      const w = b.x - a.x;
+      if (w <= 0) continue;
+      const f = (a.f + b.f) / 2;
+      out.drawImage(src, x, by0, sw, by1 - by0, a.x, py + (by0 - py) * f, w + 0.6, (by1 - by0) * f);
+    }
+    if (!tiltX) return;
+    src = tiltPage2!;
+    out = ctx;
+  }
+  // around the level axis: each row moves up (or down) and narrows (or widens) with its distance
+  const wx0 = tiltY ? 0 : bx0;
+  const wx1 = tiltY ? W : bx1;
+  for (let y = by0; y < by1; y += TILT_STRIP) {
+    const sh = Math.min(TILT_STRIP, by1 - y);
+    const a = rowY(y);
+    const b = rowY(y + sh);
+    const h = b.y - a.y;
+    if (h <= 0) continue;
+    const f = (a.f + b.f) / 2;
+    out.drawImage(src, wx0, y, wx1 - wx0, sh, px + (wx0 - px) * f, a.y, (wx1 - wx0) * f, h + 0.6);
+  }
+}
+
 function drawText(ctx: CanvasRenderingContext2D, clip: Clip, t: Transform, look: Drawn, W: number, H: number, ms: number) {
   const s0 = clip.text!;
   if (!s0.body.trim()) return;
+  const tiltY = Math.max(-60, Math.min(60, Number(s0.tiltY) || 0));
+  const tiltX = Math.max(-60, Math.min(60, Number(s0.tiltX) || 0));
+  if ((tiltY || tiltX) && !tilting && typeof document !== "undefined") return drawTilted(ctx, clip, t, look, W, H, ms, tiltY, tiltX);
   // «مطّ»: the words stretched with the kashida, settling back; «عدّاد» rolls the numbers up; «فك الشفرة» decodes
   let body = look.kashida > 0 ? kashida(s0.body, Math.round(look.kashida * 5)) : s0.body;
   if (look.count != null) body = countText(body, look.count);
@@ -714,6 +871,8 @@ function drawText(ctx: CanvasRenderingContext2D, clip: Clip, t: Transform, look:
   // «طباعة» on a caption with timed words follows the voice (each word typed while it is said); otherwise its own length
   const spoken = clip.anim?.in === "type" && clip.words.length > 0 && clip.words.length === tokens.length;
   const typed = spoken ? typedBySpeech(clip.words, ms - clip.start) : look.type;
+  // «حرف حرف»: the text rises into place a letter at a time (a word at a time for Arabic)
+  if (look.letters != null && !timed && typed == null) return drawLetters(ctx, s, t, look, W, H);
   // a caption with timed words lights the word being said; «كلمة كلمة» brings the words in one by one
   if (timed || look.words != null || typed != null) return drawCaption(ctx, { ...clip, text: s }, tokens, timed ? wordAt(clip, ms) : -1, t, look, W, H, typed, ms);
   ctx.save();
@@ -772,14 +931,84 @@ function drawText(ctx: CanvasRenderingContext2D, clip: Clip, t: Transform, look:
     write(0, 0.9, s.glow, false);
     ctx.restore();
   }
-  // «تدرّج»: the words filled top to bottom from their colour to the second one
+  // «تدرّج»: the words filled top to bottom (or, «أفقي», along the reading direction) from their colour to the second one
   if (s.grad) {
-    const g = ctx.createLinearGradient(0, top - lh / 2, 0, top + (lines.length - 0.5) * lh);
+    const g = s.gradDir === "h" ? hGrad(ctx, s.body, blockW) : ctx.createLinearGradient(0, top - lh / 2, 0, top + (lines.length - 0.5) * lh);
     g.addColorStop(0, s.color);
     g.addColorStop(1, s.grad);
     write(0, 1, g as unknown as string, true);
   } else write(0, 1, s.color, true);
   if (look.flash > 0) write(0, Math.min(1, look.flash), "#ffffff", false);
+  ctx.restore();
+}
+
+/** «التدرّج أفقي»: from the first colour where the words start reading (the right for Arabic, the left otherwise). */
+const hGrad = (ctx: CanvasRenderingContext2D, body: string, w: number) => (ARABIC.test(body) ? ctx.createLinearGradient(w / 2, 0, -w / 2, 0) : ctx.createLinearGradient(-w / 2, 0, w / 2, 0));
+
+/** «حرف حرف»: how far unit `i` of `n` has risen (0–1) when the whole text is at `p`; about five rise at once. */
+const letterIn = (p: number, i: number, n: number) => Math.min(1, Math.max(0, (p * (n + 5) - i) / 5));
+
+/**
+ * «حرف حرف»: each letter rises a little into place out of a soft blur, one after the other, right to left for
+ * Arabic and left to right otherwise. Arabic goes a whole word at a time, so its joined letters never break apart.
+ */
+function drawLetters(ctx: CanvasRenderingContext2D, s: TextStyle, t: Transform, look: Drawn, W: number, H: number) {
+  ctx.save();
+  place(ctx, t, look, W, H);
+  const { size, lines, widths, lh } = textLayout(ctx, s, t.scale * look.scale, W, H);
+  const rtl = ARABIC.test(s.body);
+  ctx.direction = rtl ? "rtl" : "ltr";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = rtl ? "right" : "left";
+  ctx.lineJoin = "round";
+  const blockW = Math.max(...widths);
+  const top = -((lines.length - 1) * lh) / 2;
+  const space = ctx.measureText(" ").width;
+  const units = lines.map((l) => (rtl ? l.split(/\s+/).filter(Boolean) : letters(l)));
+  const n = units.reduce((m, u) => m + u.length, 0);
+  const fill = s.grad
+    ? (() => {
+        const g = s.gradDir === "h" ? hGrad(ctx, s.body, blockW) : ctx.createLinearGradient(0, top - lh / 2, 0, top + (lines.length - 0.5) * lh);
+        g.addColorStop(0, s.color);
+        g.addColorStop(1, s.grad!);
+        return g;
+      })()
+    : s.color;
+  const base = ctx.globalAlpha;
+  let k = 0;
+  lines.forEach((_, li) => {
+    const y = top + li * lh;
+    const lw = widths[li];
+    const x0 = s.align === "center" ? 0 : s.align === "right" ? blockW / 2 - lw / 2 : -blockW / 2 + lw / 2;
+    if (s.box) {
+      ctx.globalAlpha = base * Math.min(1, (look.letters ?? 1) * 3);
+      ctx.fillStyle = s.box;
+      roundRect(ctx, x0 - lw / 2 - size * 0.3, y - lh / 2, lw + size * 0.6, lh, size * 0.2);
+    }
+    let x = rtl ? x0 + lw / 2 : x0 - lw / 2;
+    for (const u of units[li]) {
+      const w = ctx.measureText(u).width;
+      const a = letterIn(look.letters ?? 1, k++, n);
+      const e = 1 - (1 - a) ** 3;
+      if (a > 0) {
+        ctx.save();
+        ctx.globalAlpha = base * Math.min(1, a * 1.6);
+        if (a < 1) ctx.filter = `blur(${((1 - e) * size * 0.12).toFixed(1)}px)`;
+        ctx.translate(x, y + (1 - e) * size * 0.45);
+        if (!s.box) {
+          ctx.strokeStyle = "rgba(0,0,0,0.55)";
+          ctx.lineWidth = Math.max(2, size * 0.08);
+          ctx.strokeText(u, 0, 0);
+        }
+        // the gradient belongs to the whole block, so it is drawn in the block's own space
+        ctx.translate(-x, -(y + (1 - e) * size * 0.45));
+        ctx.fillStyle = fill;
+        ctx.fillText(u, x, y + (1 - e) * size * 0.45);
+        ctx.restore();
+      }
+      x += rtl ? -(w + space) : w;
+    }
+  });
   ctx.restore();
 }
 

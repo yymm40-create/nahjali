@@ -48,6 +48,7 @@ const TOOL: Record<string, { icon: string; line: string; tint: string }> = {
   content: { icon: "✍️", line: "«محمد باقر»: كاروسيل وريلز ومحتوى يبيع.", tint: "#f472b6" },
   designer: { icon: "🎨", line: "«كاظم»: بطاقات وإعلانات بخطوط عربية.", tint: "#a78bfa" },
   photo: { icon: "📸", line: "«زهراء»: تحرير صورك وتصاميمك بلمسة محترف.", tint: "#fb7185" },
+  ridha: { icon: "🎚️", line: "استوديو صوت كامل: تسجيل ومكس وأوتوتيون وتنظيف وهارموني 3D.", tint: "#2fd6c3" },
   booklet: { icon: "📘", line: "«عباس» و«زينب»: كتيب جداول وتحفيز بصورة طفلك أو صورتك.", tint: "#38bdf8" },
   student: { icon: "🎒", line: "ملخصات وشرح واختبارات من مادتك.", tint: "#7c3aed" },
   games: { icon: "🎮", line: "«قنبر»: صمّم لعبتك وخلّ الموقع يبنيها وتلعبها برابط.", tint: "#34d399" },
@@ -67,7 +68,7 @@ export default async function JawadHome() {
     ]);
     const credits = settings ?? DEFAULT_CREDIT_SETTINGS;
     const tools: LandingTool[] = unifiedStudioNavigation(rt.sections)
-      .filter((s) => s.enabled && s.implementation !== "islamic")
+      .filter((s) => s.enabled && s.implementation !== "islamic" && s.implementation !== "photo")
       .map((s) => {
         const t = TOOL[s.implementation];
         return t ? { href: s.path, name: s.name, ...t } : null;

@@ -10,6 +10,7 @@ import { motionLabel, readMotion, type MotionEl } from "./motion-elements";
 import { TR_LIST } from "./transitions";
 import { isFont } from "./fonts";
 import { readGrades, type Grade } from "./grade";
+import { cutTimed, isFlat, rampArea, rampSource, rampSpeed, rampTimeline, readRamp, type Ramp, type Timed } from "./ramp";
 
 export const EDITOR_VERSION = 1;
 
@@ -44,8 +45,16 @@ export interface TextStyle {
   glow?: string | null;
   /** «تدرّج»: the words filled from `color` at the top to this colour at the bottom (null/absent = one colour) */
   grad?: string | null;
+  /** «تدرّج أفقي»: the gradient runs across the words along their reading direction instead of top to bottom ("h"); absent = "v" */
+  gradDir?: "h" | "v";
   /** «عمق ثلاثي»: the words extruded as a 3D block, 0 (flat) … 1 (deep), its sides a darker shade */
   depth?: number;
+  /**
+   * «ميلان ثلاثي»: the words turned in 3D with a perspective, in degrees (−60…60): `tiltY` around the upright axis (one
+   * side nearer, the other further), `tiltX` around the level axis (the top leaning back). Absent/0 = flat.
+   */
+  tiltY?: number;
+  tiltX?: number;
 }
 
 /** A caption's spoken word: from `s` to `e` ms after the clip starts. */
@@ -61,6 +70,7 @@ export const CAPTION_STYLES = {
   classic: { label: "كلاسيكي", style: { color: "#ffffff", highlight: null, weight: 700, size: 0.052, box: null, font: "readex" } },
   box: { label: "على خلفية", style: { color: "#ffffff", highlight: null, weight: 700, size: 0.05, box: "#000000b3", font: "readex" } },
   neon: { label: "نيون", style: { color: "#b8f53d", highlight: "#ffffff", weight: 900, size: 0.064, box: null, font: "kufi" } },
+  pop2: { label: "كلمتين كلمتين", style: { color: "#ffffff", highlight: "#facc15", weight: 900, size: 0.084, box: null, font: "readex" } },
   poem: { label: "قصيدة", style: { color: "#fef3c7", highlight: "#f59e0b", weight: 700, size: 0.058, box: null, font: "naskh" } },
 } as const satisfies Record<string, { label: string; style: Partial<TextStyle> }>;
 export type CaptionStyle = keyof typeof CAPTION_STYLES;
@@ -130,8 +140,19 @@ export interface Backdrop {
   despill: number;
   /** the cast's colour ("#rrggbb"), or "" = found from the background on each frame */
   spillColor: string;
+  /** «ظل»: the person kept filled with one colour (a silhouette, like a poster), "" = their own picture */
+  fill?: string;
+  /**
+   * «حافة الشخص»: around the cut-out — "sticker" (a thick white edge, like a paper sticker), "glow" (a soft light
+   * around them) or "echo" (tinted copies of them that spread sideways with the beat); none = nothing.
+   */
+  edge?: PersonEdge;
 }
+export const PERSON_EDGES = { sticker: "ستيكر بحافة بيضاء", glow: "توهّج حوله", echo: "نسخ ملوّنة وراه" } as const;
+export type PersonEdge = keyof typeof PERSON_EDGES;
 export const DEFAULT_BACKDROP: Backdrop = { mode: "blur", color: "#16a34a", blur: 40, feather: 0.3, shrink: 0, steady: 0.5, show: false, despill: 0, spillColor: "" };
+/** «ظل»: the colours offered for the silhouette and the paper behind it (the poster look) */
+export const SILHOUETTE = { fill: "#141010", paper: "#efe6d6" } as const;
 
 /** A backdrop as stored or sent, kept inside its bounds (older projects get the default edge settings). */
 export function readBackdrop(v: Record<string, unknown>, base: Backdrop = DEFAULT_BACKDROP): Backdrop {
@@ -146,6 +167,14 @@ export function readBackdrop(v: Record<string, unknown>, base: Backdrop = DEFAUL
     show: v.show === undefined ? base.show : v.show === true,
     despill: Math.round(n(v.despill, 0, 1, base.despill ?? 0) * 100) / 100,
     spillColor: v.spillColor === "" ? "" : typeof v.spillColor === "string" && /^#[0-9a-f]{6}$/i.test(v.spillColor) ? v.spillColor.toLowerCase() : (base.spillColor ?? ""),
+    ...((): { fill?: string } => {
+      const f = v.fill === undefined ? (base.fill ?? "") : v.fill;
+      return typeof f === "string" && /^#[0-9a-f]{6}$/i.test(f) ? { fill: f.toLowerCase() } : {};
+    })(),
+    ...((): { edge?: PersonEdge } => {
+      const e = v.edge === undefined ? base.edge : v.edge;
+      return typeof e === "string" && e in PERSON_EDGES ? { edge: e as PersonEdge } : {};
+    })(),
   };
 }
 
@@ -181,7 +210,8 @@ export const hasSoundFx = (c: { sound: SoundFx | null }) => !!c.sound && (c.soun
 /**
  * Entrances and exits («دخول» / «خروج») for texts and pictures. Letters never fly apart (that breaks the joined Arabic
  * letters): «كتابة» reveals from the right, «كلمة كلمة» pops whole words, «مطّ» uses the kashida, and «طباعة» writes the
- * words as a keyboard does, each letter joining the one before, with a cursor after the last.
+ * words as a keyboard does, each letter joining the one before, with a cursor after the last. «حرف حرف» raises Latin
+ * letters one by one out of a soft blur, and Arabic a whole word at a time.
  */
 export const ANIMS = {
   fade: { label: "ظهور", icon: "◐", ms: 400 },
@@ -205,6 +235,7 @@ export const ANIMS = {
   kashida: { label: "مطّ", icon: "〰️", ms: 650, only: "text" },
   decode: { label: "فك الشفرة", icon: "🔐", ms: 700, only: "text" },
   count: { label: "عدّاد", icon: "🔢", ms: 900, only: "text" },
+  letters: { label: "حرف حرف", icon: "🔠", ms: 900, only: "text" },
   kenburns: { label: "كين بيرنز", icon: "🎞️", ms: 0, only: "media" },
 } as const satisfies Record<string, { label: string; icon: string; ms: number; only?: "text" | "media" }>;
 export type AnimKind = keyof typeof ANIMS;
@@ -247,8 +278,13 @@ export interface AnimLook {
   decode: number | null;
   /** «عدّاد»: the numbers counted up 0–1 (null = their full value) */
   count: number | null;
+  /**
+   * «حرف حرف»: the share of the text risen into place 0–1 (null = all there). Latin letters rise one by one with a
+   * soft blur; Arabic rises a whole word at a time, so its joined letters never break apart.
+   */
+  letters: number | null;
 }
-export const STILL: AnimLook = { alpha: 1, dx: 0, dy: 0, scale: 1, rotate: 0, squash: 1, blur: 0, show: null, flash: 0, smear: 0, tear: 0, seed: 0, words: null, type: null, kashida: 0, decode: null, count: null };
+export const STILL: AnimLook = { alpha: 1, dx: 0, dy: 0, scale: 1, rotate: 0, squash: 1, blur: 0, show: null, flash: 0, smear: 0, tear: 0, seed: 0, words: null, type: null, kashida: 0, decode: null, count: null, letters: null };
 
 const outCubic = (p: number) => 1 - (1 - p) ** 3;
 const outExpo = (p: number) => (p >= 1 ? 1 : 1 - 2 ** (-10 * p));
@@ -349,6 +385,9 @@ function animStep(k: AnimKind, p: number, l: AnimLook, ms: number, entering: boo
     case "words":
       l.words = Math.min(l.words ?? 1, q);
       break;
+    case "letters":
+      l.letters = Math.min(l.letters ?? 1, q);
+      break;
     case "type":
       l.type = Math.min(l.type ?? 1, q);
       break;
@@ -415,8 +454,13 @@ export interface Clip {
   start: number;
   in: number;
   out: number;
-  /** 1 = normal (phase 2 lets people change it) */
+  /** 1 = normal; with a curve (`ramp`) it is the curve's average, so the clip's length stays (out − in) / speed */
   speed: number;
+  /**
+   * «منحنى السرعة»: the speed changing inside the clip (src/lib/editor/ramp.ts); absent/null = one speed all along.
+   * Only on media clips (video or sound), never a picture, a text or a nest.
+   */
+  ramp?: Ramp | null;
   /** 0–2 (1 = as recorded) */
   volume: number;
   /** cover = fill the frame (crop), contain = whole picture with bars */
@@ -460,6 +504,11 @@ export interface Clip {
   fix: Fix | null;
   /** «مسار الموشن»: a motion element drawn live from this data (motion-elements.ts); absent/null on every other clip */
   motion?: MotionEl | null;
+  /**
+   * «بدّل الكاميرات تلقائياً»: a cut made from one of the synced cameras — the id of that camera's original clip (kept,
+   * hidden and quiet, on an «angles» track), so «بدّل الزاوية» can show the same moment from another camera. Video only.
+   */
+  angle?: string | null;
 }
 
 /** What to do with a piece on the red track: the note for Claude and how much of the video is made again. */
@@ -518,6 +567,8 @@ export interface Track {
   role?: TrackRole | null;
   /** «مسار الموشن»: a text-kind track that holds motion elements (never a caption track) */
   motion?: boolean;
+  /** «بدّل الكاميرات تلقائياً»: a video track holding one synced camera's original clip (the cuts are made from it) */
+  angles?: boolean;
   /** clips never overlap and are kept sorted by `start` */
   clips: Clip[];
 }
@@ -604,12 +655,14 @@ export function flatten(tl: Timeline): Timeline {
             const a = Math.max(s0, n.in);
             const b = Math.min(e0, n.out);
             if (b - a < 1) continue;
+            // the part that shows (a clip with a speed curve keeps the part of its curve); the whole clip (to the
+            // millisecond the nest's length was rounded to) stays as it is
+            const cut = a > s0 + 0.5 || b < e0 - 1 ? cutTimed(c, a, b) : null;
             clips.push({
               ...c,
               id: `${n.id}~${c.id}`,
               start: Math.round(a + shift),
-              in: Math.round(c.in + (a - s0) * sp),
-              out: Math.round(c.in + (b - s0) * sp),
+              ...(cut ? { in: cut.in, out: cut.out, speed: cut.speed, ramp: cut.ramp ?? undefined } : {}),
               volume: Math.min(2, c.volume * n.volume),
               grades: [...c.grades, ...n.grades],
               fadeIn: a > s0 ? 0 : c.fadeIn,
@@ -696,8 +749,14 @@ export const duration = (t: Timeline) => t.tracks.reduce((m, tr) => Math.max(m, 
 export const mainTrack = (t: Timeline) => t.tracks.find((x) => x.kind === "video");
 export const isMain = (t: Timeline, trackId: string) => mainTrack(t)?.id === trackId;
 
-/** Where in its source a clip is at timeline time `ms`. */
-export const sourceTime = (c: Clip, ms: number) => c.in + (ms - c.start) * (c.speed || 1);
+/** Where in its source a clip is at timeline time `ms` (a speed curve followed). */
+export const sourceTime = (c: Timed, ms: number) => rampSource(c, ms);
+/** Where on the timeline a clip plays its source moment `src` (ms): the other way of sourceTime. */
+export const timelineTime = (c: Timed, src: number) => rampTimeline(c, src);
+/** How fast a clip plays at timeline time `ms` (its speed, or its curve's speed there). */
+export const speedAt = (c: Timed, ms: number) => rampSpeed(c, ms);
+/** A clip whose speed isn't plain ×1 (a speed, or a curve even when it averages ×1): its sound must be stretched. */
+export const retimed = (c: Pick<Clip, "speed" | "ramp">) => c.speed !== 1 || !!c.ramp;
 /** Clips (with their track) playing at `ms`, bottom to top. */
 export function clipsAt(t: Timeline, ms: number) {
   const out: { track: Track; clip: Clip }[] = [];
@@ -843,7 +902,10 @@ function readText(v: unknown): TextStyle | null {
     highlight: o.highlight == null ? null : color(o.highlight, "#facc15"),
     ...(o.glow == null ? {} : { glow: color(o.glow, "#ffffff") }),
     ...(o.grad == null ? {} : { grad: color(o.grad, "#ffffff") }),
+    ...(o.gradDir === "h" ? { gradDir: "h" as const } : {}),
     ...(o.depth == null || !Number(o.depth) ? {} : { depth: num(o.depth, 0, 1, 0) }),
+    ...(o.tiltY == null || !Number(o.tiltY) ? {} : { tiltY: Math.round(num(o.tiltY, -60, 60, 0)) }),
+    ...(o.tiltX == null || !Number(o.tiltX) ? {} : { tiltX: Math.round(num(o.tiltX, -60, 60, 0)) }),
   };
 }
 
@@ -1038,6 +1100,9 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
   const tr = (o.transform ?? {}) as Record<string, unknown>;
   const inMs = int(o.in, 0, LIMITS.maxMs, 0);
   const out = int(o.out, inMs + LIMITS.minClipMs, LIMITS.maxMs, inMs + STILL_MS);
+  // «منحنى السرعة»: media clips only; the clip's speed is always its curve's average (a flat curve is just that speed)
+  const ramp0 = kind !== "text" && assetId && o.ramp ? readRamp(o.ramp) : null;
+  const ramp = ramp0 && !isFlat(ramp0) ? ramp0 : null;
   return {
     id: id(o.id, "c"),
     assetId,
@@ -1045,7 +1110,8 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
     start: int(o.start, 0, LIMITS.maxMs, 0),
     in: inMs,
     out,
-    speed: num(o.speed, 0.1, 10, 1),
+    speed: ramp ? rampArea(ramp) : ramp0 ? ramp0[0].s : num(o.speed, 0.1, 10, 1),
+    ...(ramp ? { ramp } : {}),
     volume: num(o.volume, 0, 2, 1),
     fit: pick(o.fit, ["cover", "contain"] as const, "cover"),
     transform: readTransform(tr),
@@ -1086,6 +1152,7 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
     sound: kind === "text" ? null : readSound(o.sound),
     anim: kind === "audio" ? null : readAnim(o.anim, kind === "text"),
     fx: kind === "video" ? readFx(o.fx) : [],
+    ...(kind === "video" && typeof o.angle === "string" && ID.test(o.angle) ? { angle: o.angle } : {}),
     bg:
       kind === "video" && o.bg && typeof o.bg === "object"
         ? readBackdrop(o.bg as Record<string, unknown>)
@@ -1120,7 +1187,7 @@ export function readTimeline(raw: unknown, assets: Set<string> | null = null, ne
       list.push(c);
       clips++;
     }
-    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, color: TRACK_COLORS.includes(String(t.color)) ? String(t.color) : null, role: kind === "video" && (t.role === "fix" || t.role === "fixed" || t.role === "cont") ? t.role : null, ...(kind === "text" && t.motion === true ? { motion: true } : {}), clips: settle(list) });
+    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, color: TRACK_COLORS.includes(String(t.color)) ? String(t.color) : null, role: kind === "video" && (t.role === "fix" || t.role === "fixed" || t.role === "cont") ? t.role : null, ...(kind === "text" && t.motion === true ? { motion: true } : {}), ...(kind === "video" && t.angles === true ? { angles: true } : {}), clips: settle(list) });
   }
   if (!tracks.some((t) => t.kind === "video")) tracks.unshift({ id: "main", kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] });
   const width = int(o.width, 144, 4096, 1080);

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { BAKED_TEXT_RULE, DESIGN_ASPECTS, DESIGN_KINDS, DESIGN_SOURCES, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, KAZEM_PERSONA, NO_TEXT_RULE } from "@config/designer";
-import { DESIGN_LIBRARY, findDirection, libraryBlock } from "@config/designer-library";
-import { FONTS } from "@config/jawad/student";
+import { BAKED_TEXT_RULE, DESIGN_ASPECTS, DESIGN_KINDS, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, KAZEM_PERSONA, NO_TEXT_RULE } from "@config/designer";
+import { existsSync } from "node:fs";
+import { HUSSEINI_MOURNING_FEED } from "@config/husseini-mourning";
+import { CONTENT_FONTS } from "@config/content-fonts";
 import { ALL_PERMS, OPEN_PERMS } from "@config/access";
 import { DEFAULT_SECTIONS, FIXED_IMPLEMENTATIONS, RESERVED_SECTION_IDS, sectionPath } from "@config/jawad/sections";
 import { cleanHistory, forModel, readPending, readQuestions, titleOf } from "@/lib/designer/chats";
@@ -14,15 +15,14 @@ import { nearestAspect } from "@/lib/designer/split";
 import { parseVerdict } from "@/lib/designer/tests";
 
 describe("«كاظم»", () => {
-  it("has his persona, and always the platform's rules, tools, fonts and the style library after it", () => {
-    expect(KAZEM_PERSONA.length).toBeGreaterThan(3000);
-    for (const line of ["أنت «كاظم»", "ليس فوانيس وزخارف", "زهراء فوتو ماستر", "المرحلة الثالثة: الملخص قبل التنفيذ"]) expect(KAZEM_PERSONA).toContain(line);
+  it("has a short base persona, and always the platform's rules, tools, the talk, the fonts and the feed after it", () => {
+    for (const line of ["أنت «كاظم»", "زهراء فوتو ماستر", "kind=\"fonts\""]) expect(KAZEM_PERSONA).toContain(line);
     const t = systemText("PERSONA", ["EX"], "REC");
     expect(t.indexOf("PERSONA")).toBeLessThan(t.indexOf(DESIGNER_PLATFORM_RULES));
     expect(t.indexOf(DESIGNER_PLATFORM_RULES)).toBeLessThan(t.indexOf(DESIGNER_TOOLS));
     expect(t.indexOf(DESIGNER_TOOLS)).toBeLessThan(t.indexOf(fontsBlock()));
-    expect(t.indexOf(fontsBlock())).toBeLessThan(t.indexOf(libraryBlock()));
-    expect(t.indexOf(libraryBlock())).toBeLessThan(t.indexOf("EX"));
+    expect(t.indexOf(fontsBlock())).toBeLessThan(t.indexOf(HUSSEINI_MOURNING_FEED));
+    expect(t.indexOf(HUSSEINI_MOURNING_FEED)).toBeLessThan(t.indexOf("EX"));
     expect(t.endsWith("REC")).toBe(true);
     expect(DESIGNER_PLATFORM_RULES).toContain("لا تدّعِ");
     // the owner's order (21 October 2026): «حيدرا ماكس» designs every design in code; GPT Image 2 only paints the
@@ -31,39 +31,34 @@ describe("«كاظم»", () => {
     expect(DESIGNER_PLATFORM_RULES).toContain("بدون أي كتابة فيها");
     expect(DESIGNER_PLATFORM_RULES).toContain("لا يوجد طريق ثالث");
     expect(DESIGNER_PLATFORM_RULES).not.toContain("جواد يرسم التصميم كاملًا بالصورة والكتابة");
-    for (const f of FONTS) expect(fontsBlock()).toContain(f.id);
+    // «قائمة الخطوط»: the same 50 fonts as «صانع المحتوى»
+    for (const f of CONTENT_FONTS) expect(fontsBlock()).toContain(f.id);
+    // the template now tells the same way the platform does: no complete design painted with its writing
+    for (const gone of ["text_mode", "baked", "النص داخل الصورة المرسومة هو الأساس", "ترسل التصميم الكامل إلى «جواد» ليرسمه"]) expect(KAZEM_PERSONA).not.toContain(gone);
+    expect(KAZEM_PERSONA).toContain("«حيدرا ماكس» يصمم التصميم كاملًا بالكود");
+    expect(KAZEM_PERSONA).toContain("kind=\"palettes\"");
   });
 
   it("answers in the shape the site reads: a reply, questions, the record, a design to produce, a split", () => {
     expect(ANSWER_SCHEMA.required).toEqual(["reply", "questions", "record", "produce", "split"]);
-    expect(ANSWER_SCHEMA.properties.questions.items.properties.kind.enum).toEqual(["choice", "source", "directions", "fonts"]);
-    expect(ANSWER_SCHEMA.properties.produce.properties.kind.enum).toEqual(DESIGN_KINDS.map((k) => k.id));
+    expect(ANSWER_SCHEMA.properties.questions.items.properties.kind.enum).toEqual(["choice", "fonts", "palettes"]);
+    expect(Object.keys(ANSWER_SCHEMA.properties.produce.properties)).not.toContain("kind");
     expect(ANSWER_SCHEMA.properties.produce.properties.aspect.enum).toEqual(Object.keys(DESIGN_ASPECTS));
-    expect(ANSWER_SCHEMA.properties.produce.required).toEqual(["on", "kind", "aspect", "picture", "picture_keep", "artwork", "refs", "place", "layers"]);
+    expect(ANSWER_SCHEMA.properties.produce.required).toEqual(["on", "aspect", "picture", "picture_keep", "change", "artwork", "font", "refs", "place", "layers"]);
     expect(Object.keys(ANSWER_SCHEMA.properties.produce.properties)).not.toContain("maker");
-    for (const field of ["\"reply\"", "\"questions\"", "\"record\"", "\"produce\"", "\"split\"", "kind=\"source\"", "kind=\"fonts\"", "kind=\"directions\"", "\"layers\"", "#RRGGBB"]) expect(DESIGNER_TOOLS).toContain(field);
+    for (const field of ["\"reply\"", "\"questions\"", "\"record\"", "\"produce\"", "\"split\"", "kind=\"fonts\"", "kind=\"palettes\"", "\"layers\"", "#RRGGBB"]) expect(DESIGNER_TOOLS).toContain(field);
   });
 });
 
-describe("the style library", () => {
-  it("covers every kind with three directions, real fonts, hex colours and text-free artwork", () => {
-    expect(DESIGN_LIBRARY.map((k) => k.kind)).toEqual(DESIGN_KINDS.map((k) => k.id));
-    for (const k of DESIGN_LIBRARY) {
-      expect(k.directions).toHaveLength(3);
-      expect(k.aspects[0] in DESIGN_ASPECTS).toBe(true);
-      for (const d of k.directions) {
-        expect(d.colors).toHaveLength(4);
-        for (const c of d.colors) expect(c).toMatch(/^#[0-9A-F]{6}$/i);
-        expect(FONTS.some((f) => f.id === d.fonts.title)).toBe(true);
-        expect(FONTS.some((f) => f.id === d.fonts.body)).toBe(true);
-        expect(d.artwork).not.toMatch(/\btext\b.*\bsays\b|"[^"]*[؀-ۿ]+[^"]*"/);
-      }
+describe("the kinds of design", () => {
+  it("are removed while the owner rebuilds them (10 November 2026): one internal kind, no library, no sources", () => {
+    expect(DESIGN_KINDS.map((k) => k.id)).toEqual(["other"]);
+    expect(existsSync("config/designer-library.ts")).toBe(false);
+    for (const gone of ["wedding", "مكتبة الأنماط", "kind=\"source\"", "kind=\"directions\"", "من قوالبنا"]) {
+      expect(KAZEM_PERSONA).not.toContain(gone);
+      expect(DESIGNER_TOOLS).not.toContain(gone);
+      expect(DESIGNER_PLATFORM_RULES).not.toContain(gone);
     }
-    expect(findDirection("wedding-noir-gold")?.name).toBe("ليل وذهب");
-    expect(libraryBlock()).toContain("## husseini_mourning");
-    // the owner's rule: not lanterns and ornament on everything
-    expect(DESIGN_LIBRARY.find((k) => k.kind === "wedding")!.avoid).toContain("فوانيس");
-    expect(DESIGN_SOURCES.map((s) => s.id)).toEqual(["copy", "ours", "scratch", "mix"]);
   });
 });
 
@@ -116,12 +111,13 @@ describe("conversations", () => {
     ]);
     expect(h.map((t) => t.role)).toEqual(["assistant", "user", "assistant"]);
     expect(h[1].files).toEqual([{ id: "f1", kind: "image", name: "tpl.png", durationMs: null }]);
-    expect(h[2].questions?.map((q) => q.kind)).toEqual(["source", "fonts"]);
+    expect(h[2].questions?.map((q) => q.kind)).toEqual(["fonts"]);
     expect(h[2].design?.width).toBe(1536);
     expect(forModel(h)[0].role).toBe("user");
     expect(titleOf("  بطاقة   زواج ")).toBe("بطاقة زواج");
-    expect(readQuestions([{ label: "l", kind: "directions", options: ["a — b — #000000"] }])![0].options).toEqual(["a — b — #000000"]);
-    expect(readPending({ id: "p", at: 2, kind: "wedding", aspect: "2:3", artwork: "art", refs: ["r1"], layers: [{ text: "t" }] })).toMatchObject({ kind: "wedding", aspect: "2:3", textMode: "layers", artwork: "art", refs: ["r1"], keep: null });
+    // an old question of a removed kind reads as a plain choice
+    expect(readQuestions([{ label: "l", kind: "directions", options: ["a — b — #000000"] }])![0]).toMatchObject({ kind: "choice", options: ["a — b — #000000"] });
+    expect(readPending({ id: "p", at: 2, kind: "wedding", aspect: "2:3", artwork: "art", refs: ["r1"], layers: [{ text: "t" }] })).toMatchObject({ kind: "other", aspect: "2:3", textMode: "layers", artwork: "art", refs: ["r1"], keep: null });
     expect(readPending({ artwork: "" })).toBeNull();
     expect(readPending({ artwork: "", keep: "file" })?.keep).toBe("file");
   });
@@ -140,12 +136,12 @@ describe("the section", () => {
 });
 
 describe("the tests", () => {
-  it("makes up to 1000 different scenarios, the same each time, with every kind and the traps", () => {
+  it("makes up to 1000 different scenarios, the same each time, with design asks and the traps", () => {
     const a = scenarios(1000);
     expect(a.length).toBe(1000);
     expect(new Set(a.map((s) => s.message)).size).toBe(1000);
     expect(scenarios(50)).toEqual(a.slice(0, 50));
-    expect(new Set(a.map((s) => s.kind))).toEqual(new Set([...DESIGN_KINDS.map((k) => k.id), "trap"]));
+    expect(new Set(a.map((s) => s.kind))).toEqual(new Set(["design", "trap"]));
     expect(a.filter((s) => s.kind === "trap").length).toBeGreaterThanOrEqual(7);
   });
   it("reads the judge's verdict, and treats junk as a failure", () => {

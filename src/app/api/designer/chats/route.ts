@@ -35,7 +35,7 @@ export const GET = handle(async (req: Request) => {
         }
       : undefined,
   }));
-  return NextResponse.json({ chat: { id: chat.id, title: chat.title, messages, pending: !!chat.pending, record: chat.record } });
+  return NextResponse.json({ chat: { id: chat.id, title: chat.title, messages, pending: !!chat.pending, record: chat.record, spent: chat.spentHalalas } });
 });
 
 /** The person's edits of the last design's layers (kept as they are). */

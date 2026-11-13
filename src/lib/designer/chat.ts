@@ -1,18 +1,21 @@
 // «المصمم الذكي» — one message in a conversation: the persona (the owner's edit or the template), the platform's
-// rules and tools, the fonts, the style library, the project's record, the person's attachments (pictures seen),
-// then «كاظم»'s structured answer: the reply, the questions, the record, and — on an explicit request — a design to
-// produce (the complete design, including its text by default, through جواد's desk) or a
-// picture to split into layers. Server only.
+// rules and tools, the talk and the edits (as «صانع المحتوى» has them), the fonts, the style library, the project's
+// record, the person's attachments (pictures seen), then «كاظم»'s structured answer: the reply, the questions, the
+// record, and — on an explicit request — a design for «حيدرا ماكس» to draw in code (its exact writing in the font
+// picked, its colours, the picture GPT Image 2 paints for it without writing) or a picture to split into layers.
+// Server only.
 
 import { remember, withNote } from "@/lib/robot-handoff";
 import { randomUUID } from "crypto";
 import { isLeader, callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
-import { DESIGNER, DESIGN_ASPECTS, isDesignAspect, isDesignKind, type DesignAspect, type DesignKind } from "@config/designer";
-import { findKindStyle } from "@config/designer-library";
+import { DESIGNER, DESIGN_ASPECTS, isDesignAspect, type DesignAspect, type DesignKind } from "@config/designer";
+import { DESIGNER_VERBOSE_RULES, lastMark } from "@config/designer-talk";
+import { findContentFont } from "@config/content-fonts";
+import { findPalette } from "@config/content-palettes";
 import { cleanHistory, getChat, lastDesignAt, readQuestions, saveChat, type Attachment, type PendingDesign, type Turn } from "./chats";
 import { attachmentsOf, uploadLinks } from "./files";
 import { layersNote, readLayers, sizeOf, type Design } from "./layers";
-import { getPersona, systemText } from "./persona";
+import { getPersona, systemText, turnText } from "./persona";
 
 export const ANSWER_SCHEMA = {
   type: "object",
@@ -29,8 +32,8 @@ export const ANSWER_SCHEMA = {
         required: ["label", "kind", "options", "multi"],
         properties: {
           label: { type: "string", description: "نص السؤال القصير" },
-          kind: { type: "string", enum: ["choice", "source", "directions", "fonts"], description: "choice: خيارات نصية؛ source: بطاقات مصدر التصميم الأربع؛ directions: ٣ اتجاهات من المكتبة؛ fonts: معرض الخطوط" },
-          options: { type: "array", items: { type: "string" }, description: "إجابات قصيرة (٢–٦) لـ choice، و٣ أسطر لـ directions، وفارغة لـ source وfonts" },
+          kind: { type: "string", enum: ["choice", "fonts", "palettes"], description: "choice: خيارات نصية؛ fonts: قائمة الخطوط؛ palettes: معرض الألوان" },
+          options: { type: "array", items: { type: "string" }, description: "إجابات قصيرة (٢–٥) لـ choice، وفارغة لـ fonts وpalettes" },
           multi: { type: "boolean", description: "يجوز اختيار أكثر من إجابة (choice فقط)" },
         },
       },
@@ -39,15 +42,16 @@ export const ANSWER_SCHEMA = {
     produce: {
       type: "object",
       additionalProperties: false,
-      required: ["on", "kind", "aspect", "picture", "picture_keep", "artwork", "refs", "place", "layers"],
+      required: ["on", "aspect", "picture", "picture_keep", "change", "artwork", "font", "refs", "place", "layers"],
       description: "طلب التصميم، فقط بعد طلب صريح. on=false بدون إنتاج.",
       properties: {
         on: { type: "boolean" },
-        kind: { type: "string", enum: ["wedding", "husseini_joy", "husseini_mourning", "newborn", "thumbnail", "latmiya", "other"] },
-        aspect: { type: "string", enum: ["1:1", "2:3", "9:16", "16:9", "3:2"] },
+        aspect: { type: "string", enum: ["1:1", "2:3", "9:16", "16:9", "3:2", "3:4", "4:5"] },
         picture: { type: "string", description: "إذا احتاج التصميم صورة مرسومة (منظر، خلفية واقعية، رسمة، عنصر) لا يقدر الكود يرسمها: توجيهها بالإنجليزية لـ GPT Image 2 — بدون أي كتابة فيها أبدًا، ومع مناطق هادئة للكتابة. وإلا فارغ (حيدرا ماكس يرسم كل شي بالكود)." },
         picture_keep: { type: "boolean", description: "true لإبقاء صورة التصميم السابق كما هي (لما يتغير الكلام أو الألوان أو الترتيب فقط)" },
+        change: { type: "boolean", description: "true إذا كان هذا تعديلًا على التصميم السابق نفسه (كلمة، خطأ إملائي، سطر، لون، حجم، مكان، عنصر يُضاف أو يُشال) — يُعدَّل برنامج التصميم السابق بدل رسمه من الصفر؛ false لتصميم جديد (فكرة أو مناسبة أو قالب آخر)" },
         artwork: { type: "string", description: "توجيه التصميم كاملًا بالإنجليزية لـ «حيدرا ماكس»: الأسلوب، الألوان، الخطوط، التكوين، مكان كل كلمة وكل صورة" },
+        font: { type: "string", description: "معرّف الخط من «قائمة الخطوط» (آخر [خط:…] اختاره العميل، أو اختيارك إن كان auto أو لم يختر)" },
         refs: { type: "array", items: { type: "string" }, description: "معرّفات (id) صور العميل المرفقة المسلَّمة مرجعًا للرسم، أو فارغة" },
         place: { type: "array", items: { type: "string" }, description: "معرّفات (id) صور العميل التي تُوضع داخل التصميم كما هي (صورة الخطيب أو الرادود أو المولود أو الشعار) — مع حيدرا ماكس تنحط الصورة نفسها بلا إعادة رسم للوجه؛ أو فارغة" },
         layers: {
@@ -88,7 +92,7 @@ interface Answer {
   reply: string;
   questions: unknown;
   record: string;
-  produce: { on: boolean; kind: string; aspect: string; picture?: string; picture_keep?: boolean; artwork: string; refs: string[]; place?: string[]; layers: unknown[] };
+  produce: { on: boolean; aspect: string; picture?: string; picture_keep?: boolean; change?: boolean; artwork: string; font?: string; refs: string[]; place?: string[]; layers: unknown[] };
   split: { on: boolean; ref: string };
 }
 
@@ -101,15 +105,30 @@ export interface Reply {
   pending: boolean;
   /** a picture is to be split into layers (the page calls the split step with this upload id) */
   split: string | null;
+  /** what this conversation had taken from the wallet BEFORE this turn (halalas); the route adds this turn's charge */
+  spentHalalas: number;
 }
 
-const KIND_AR = { image: "صورة", video: "فيديو", audio: "صوت" , doc: "ملف PDF" } as const;
+const KIND_AR = { image: "صورة", video: "فيديو", audio: "صوت", doc: "ملف PDF" } as const;
+
+/** The font the writing is set in: the person's last pick of «قائمة الخطوط», else كاظم's (both checked), else none. */
+export function fontFor(userTexts: string[], his: unknown): string | undefined {
+  const picked = lastMark(userTexts, "خط");
+  if (picked && picked !== "auto" && findContentFont(picked)) return picked;
+  return typeof his === "string" && findContentFont(his) ? his : undefined;
+}
+
+/** The palette of the 100 the person picked last (none: the direction's colours, or كاظم's). */
+export function paletteFor(userTexts: string[]): string | undefined {
+  const picked = lastMark(userTexts, "ألوان");
+  return picked && picked !== "auto" && findPalette(picked) ? picked : undefined;
+}
 
 /** What an answer of his looked like to the person beyond its words: the buttons he offered and the design's state. */
 function assistantNote(t: Turn): string {
   const parts: string[] = [];
   if (t.questions?.length) {
-    parts.push(`[الأسئلة التي عُرضت للعميل كأزرار: ${t.questions.map((q, i) => `${i + 1}) ${q.label}${q.kind === "source" ? " (بطاقات المصدر)" : q.kind === "fonts" ? " (معرض الخطوط)" : `: ${q.options.join(" | ")}`}`).join("؛ ")}]`);
+    parts.push(`[الأسئلة التي عُرضت للعميل كأزرار: ${t.questions.map((q, i) => `${i + 1}) ${q.label}${q.kind === "fonts" ? " (قائمة الخطوط)" : q.kind === "palettes" ? " (معرض الألوان)" : `: ${q.options.join(" | ")}`}`).join("؛ ")}]`);
   }
   const d = t.design;
   if (d) {
@@ -136,13 +155,19 @@ function toClaudeTurn(t: Turn, links: Map<string, string>): ClaudeTurn {
   return { role: t.role, content: parts };
 }
 
-/** The person says something in a conversation (a new one when `chatId` is null). */
-export async function say(userId: string, chatId: string | null, message: string, attachmentIds: unknown, email: string | null = null): Promise<Reply> {
+/**
+ * The person says something in a conversation (a new one when `chatId` is null). `verbose`: the longer talk they asked
+ * for (the default is short, to cost less). `from`: they edited an old message of theirs (its index): the talk goes on
+ * from there — what came after it is dropped, and so are the design waiting to be drawn and the record kept for it.
+ */
+export async function say(userId: string, chatId: string | null, message: string, attachmentIds: unknown, email: string | null = null, opts: { verbose?: boolean; from?: number } = {}): Promise<Reply> {
   const said = message.trim().slice(0, DESIGNER.messageMax);
   const { list: files } = await attachmentsOf(userId, attachmentIds);
   if (!said && !files.length) throw new Error("empty message");
-  const before = chatId ? await getChat(userId, chatId) : null;
-  if (chatId && !before) throw new Error("chat not found");
+  const full = chatId ? await getChat(userId, chatId) : null;
+  if (chatId && !full) throw new Error("chat not found");
+  const cut = full && Number.isInteger(opts.from) && opts.from! >= 0 && opts.from! < full.messages.length && full.messages[opts.from!].role === "user" ? opts.from! : -1;
+  const before = full && cut >= 0 ? { ...full, messages: full.messages.slice(0, cut), record: "", pending: null } : full;
   const history = cleanHistory([...(before?.messages ?? []), { role: "user", text: said || "(صور مرفقة)", files: files.length ? files : undefined }]);
   // a long conversation: his own handoff of everything before, then the latest turns (lib/robot-handoff)
   const mem = await remember({ key: `designer:${chatId ?? ""}`, userId, robot: "كاظم (المصمم الذكي)", turns: history, window: DESIGNER.historyTurns });
@@ -150,8 +175,10 @@ export async function say(userId: string, chatId: string | null, message: string
   // pictures of this conversation, by short-lived link, so he can look at them (a template to copy, a photo)
   const links = await uploadLinks(userId, turns.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image" || f.kind === "doc").map((f) => f.id)));
   const persona = await getPersona();
-  const system = systemText(persona.text, [], before?.record ?? "");
-  const r = await callClaudeJson<Answer>({ system, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: DESIGNER.maxTokens, effort: "medium", leader: isLeader(email) });
+  // the same system every message (cached); the record rides with this turn
+  const system = systemText(persona.text);
+  const turnNote = turnText(opts.verbose ? [DESIGNER_VERBOSE_RULES] : [], before?.record ?? "");
+  const r = await callClaudeJson<Answer>({ system, turnNote, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: DESIGNER.maxTokens, effort: "medium", leader: isLeader(email) });
   const a = r.data;
   let usd = claudeCost(r.usage) + mem.usd;
   const questions = readQuestions(a.questions);
@@ -163,11 +190,11 @@ export async function say(userId: string, chatId: string | null, message: string
   let pending: PendingDesign | null = null;
   const mine = new Set(history.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
   if (a.produce?.on) {
-    const kind: DesignKind = isDesignKind(a.produce.kind) ? a.produce.kind : "other";
-    const style = findKindStyle(kind);
-    const aspect: DesignAspect = isDesignAspect(a.produce.aspect) ? a.produce.aspect : ((style?.aspects[0] as DesignAspect | undefined) ?? "1:1");
+    // no kinds for now (the owner is rebuilding them): every design is the one internal kind
+    const kind: DesignKind = "other";
+    const aspect: DesignAspect = isDesignAspect(a.produce.aspect) ? a.produce.aspect : "1:1";
     const artwork = String(a.produce.artwork ?? "").trim().slice(0, 6000);
-    const layers = readLayers(a.produce.layers, style?.directions[0]?.fonts.body ?? "readex");
+    const layers = readLayers(a.produce.layers, "readex-pro");
     // «حيدرا ماكس» designs every design in code with its exact writing; GPT Image 2 only paints the picture it needs
     const maker = "code" as const;
     const textMode = "baked" as const;
@@ -180,6 +207,8 @@ export async function say(userId: string, chatId: string | null, message: string
     // a note that changes only the words, the colours or the layout keeps the picture that was painted
     const keptArt = !picture && a.produce.picture_keep === true && prev?.art ? prev.art : undefined;
     const keep = null;
+    // a change to the design that stands (a word, a typo, a colour, a place) patches its program instead of a new one
+    const base = (a.produce.change === true || a.produce.picture_keep === true) && prev?.state === "ready" && prev.artwork && prev.aspect === aspect ? prev.artwork : undefined;
     if (!artwork) {
       reply.text += "\n\n⚠️ لم أجد توجيهًا للتصميم؛ اطلب التصميم من جديد.";
     } else if (!layers.length) {
@@ -187,7 +216,10 @@ export async function say(userId: string, chatId: string | null, message: string
     } else {
       const design: Design = { id: randomUUID().slice(0, 8), aspect, ...sizeOf(aspect), artwork: keep, textMode, layers: [], state: "drawing" };
       reply.design = design;
-      pending = { id: design.id, at, kind, aspect, textMode, artwork, refs, layers, keep, maker, ...(place.length ? { place } : {}), ...(picture ? { picture } : keptArt ? { art: keptArt } : {}) };
+      const said = history.filter((t) => t.role === "user").map((t) => t.text);
+      const fontId = fontFor(said, a.produce.font);
+      const paletteId = paletteFor(said);
+      pending = { id: design.id, at, kind, aspect, textMode, artwork, refs, layers, keep, maker, ...(place.length ? { place } : {}), ...(picture ? { picture } : keptArt ? { art: keptArt } : {}), ...(base ? { base } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}) };
     }
   }
 
@@ -199,12 +231,14 @@ export async function say(userId: string, chatId: string | null, message: string
     const prev = prevAt >= 0 ? history[prevAt].design : undefined;
     // the split makes its own design: the original picture as the artwork, the cut-out as a layer (filled by the split step)
     const aspect: DesignAspect = prev?.aspect ?? "1:1";
-    reply.design = { id: randomUUID().slice(0, 8), aspect, ...sizeOf(aspect), artwork: null, layers: [], state: "drawing" };
+    reply.design = { id: randomUUID().slice(0, 8), aspect, ...sizeOf(aspect), artwork: null, layers: [], state: "drawing", splitOf: split };
   }
 
-  const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : undefined, pending, addUsd: usd });
+  // an edited old message starts the record again (what he decided after it is gone with the turns that said it)
+  const record = a.record?.trim() ? a.record.trim() : cut >= 0 ? "" : undefined;
+  const id = await saveChat(userId, chatId, { messages, record, pending, addUsd: usd });
   usd = Math.round(usd * 10000) / 10000;
-  return { chatId: id, text: reply.text, questions: questions ?? null, usd, pending: !!pending, split };
+  return { chatId: id, text: reply.text, questions: questions ?? null, usd, pending: !!pending, split, spentHalalas: before?.spentHalalas ?? 0 };
 }
 
 /** The aspects as the page lists them (label and pixels). */

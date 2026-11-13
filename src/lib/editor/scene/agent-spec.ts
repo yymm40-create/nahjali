@@ -410,7 +410,7 @@ This is the machine you write for. Open only what the step needs.
 
 | Step | Open |
 |---|---|
-| Any program you write | references/scene-contract.md (the contract, the kit, the sound kit) and one exemplar from references/exemplars.md |
+| Any program you write | references/scene-contract.md (the contract, the kit, the sound kit); references/exemplars.md only for a technique (never their layouts, ideas or palettes) |
 | Planning | references/quality-bar.md, references/viral-formats.md, references/options-gallery.md (the person's picks are binding) |
 | Reviewing | references/quality-bar.md (the rubric and the cheap-look blacklist) |
 | The person's own video | references/footage.md |
@@ -424,7 +424,7 @@ Before you call lab_render, run \`node assets/check_scene.mjs scene.js\`. \`asse
     { path: "references/quality-bar.md", content: md("The bar, the score sheet and the cheap-look blacklist", `${MILLION_DOLLAR}\n\n## The score sheet (every criterion 1–10; pass ≥ ${PASS}; at most ${MAX_ROUNDS} rounds)\n${RUBRIC.map((r) => `- **${r.id}** (${r.ar}): ${r.en}`).join("\n")}`) },
     { path: "references/viral-formats.md", content: md("Viral formats", VIRAL_FORMATS) },
     { path: "references/options-gallery.md", content: md("The gallery of choices (binding when the person picks one)", gallery) },
-    { path: "references/exemplars.md", content: md("Exemplar scenes", ex) },
+    { path: "references/exemplars.md", content: md("Exemplar scenes — a technique library (never reuse their layouts, ideas, palettes or words)", ex) },
     { path: "references/footage.md", content: md("The person's own filmed video", `${FOOTAGE_SKILL}\n\n${FOOTAGE_KIT_API}\n\n${FOOTAGE_PERSON_API}`) },
     {
       path: "references/cover.md",

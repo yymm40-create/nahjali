@@ -1,4 +1,4 @@
-# Exemplar scenes
+# Exemplar scenes — a technique library (never reuse their layouts, ideas, palettes or words)
 
 ## من الغبار إلى الكلمة
 Shows: particles assembling an Arabic word right→left on a curl flow, landing, light sweep, support line out of blur, blow-away exit, bloom + vignette + grain, a slow push, cues on the changes

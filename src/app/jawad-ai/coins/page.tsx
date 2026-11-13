@@ -5,7 +5,7 @@ import { requireJawadUser } from "@/lib/jawad/server/access";
 import Link from "next/link";
 import { LIBRARY_ADDON, SMART_COIN } from "@config/coins";
 import { libraryAccess } from "@/lib/jawad/server/library-access";
-import { perksOf } from "@/lib/access";
+import { fullAccessOf } from "@/lib/access";
 import Riyal from "@/components/Riyal";
 
 export const metadata = { title: "النقود الذكية" };
@@ -49,7 +49,7 @@ export default async function JawadCoins() {
     coinBalance(user.id),
     createAdminClient().from("smart_coin_ledger").select("id,delta,reason,label,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(500),
     libraryAccess(user.id, owner),
-    perksOf(user.email),
+    fullAccessOf(user.email).then((a) => ({ ...a.perks, red: a.redCoin })),
   ]);
   const left = balance ?? 0;
   const { spent, total } = usedSinceTopUp(ledger ?? [], left);
@@ -79,7 +79,16 @@ export default async function JawadCoins() {
         </div>
       </section>
 
-      {perks.atCost && !owner && (
+      {perks.red && !owner && (
+        <section className="flex items-start gap-3 rounded-2xl border border-red-400/50 bg-red-500/10 p-4" aria-label="نقودك الحمراء">
+          <SmartCoin size={28} />
+          <p className="text-sm">
+            <b className="text-red-600">نقودك حمراء.</b> كل شي تشتريه في الموقع بسعر المنصة نفسها مباشرة: تكلفة الأداة بالضبط بدون أي ربح وبدون تقريب لنص ريال (بالهللة فقط)، وكلاود يحسب مدخلاته ومخرجاته بسعر استخدامه الفعلي.
+          </p>
+        </section>
+      )}
+
+      {perks.atCost && !perks.red && !owner && (
         <section className="flex items-start gap-3 rounded-2xl border border-orange-400/50 bg-orange-500/10 p-4" aria-label="نقودك البرتقالية">
           <SmartCoin size={28} />
           <p className="text-sm">

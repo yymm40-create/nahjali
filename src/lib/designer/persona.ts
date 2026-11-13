@@ -4,9 +4,9 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DESIGNER_KV, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, KAZEM_PERSONA } from "@config/designer";
-import { libraryBlock } from "@config/designer-library";
 import { HUSSEINI_MOURNING_FEED } from "@config/husseini-mourning";
-import { FONTS } from "@config/jawad/student";
+import { CONTENT_FONTS } from "@config/content-fonts";
+import { DESIGNER_EDIT_RULES, DESIGNER_TALK_RULES } from "@config/designer-talk";
 
 const db = () => createAdminClient();
 const MAX = 80_000;
@@ -31,15 +31,22 @@ export async function resetPersona() {
   await db().from("designer_kv").delete().eq("key", DESIGNER_KV.persona);
 }
 
-/** The site's Arabic fonts, as «كاظم» names them in a layer (always the same text, so it caches). */
+/** «قائمة الخطوط» (the same 50 Arabic fonts as «صانع المحتوى»), as «كاظم» names them (always the same text, so it caches). */
 export function fontsBlock(): string {
-  return `الخطوط العربية المتاحة (ضع المعرّف في "font" لكل طبقة؛ معرض kind="fonts" يعرضها للعميل بشكلها):\n${FONTS.map((f) => `- ${f.id} — ${f.label}: ${f.role}`).join("\n")}`;
+  return `قائمة الخطوط (٥٠ خطًا عربيًا؛ ضع المعرّف في "font" وفي كل طبقة؛ kind="fonts" يعرضها للعميل بشكلها):\n${CONTENT_FONTS.map((f) => `- ${f.id} — ${f.name} (${f.group}): ${f.feel}؛ يناسب ${f.bestFor}`).join("\n")}`;
 }
 
 /**
- * The whole system text: the persona, what the platform requires, how its tools are reached, the fonts, the style
- * library, then the project's record.
+ * The whole system text: the persona, what the platform requires, how its tools are reached, the talk and the edits
+ * (as «صانع المحتوى» has them), the fonts, the Husseini feed, then the project's record.
  */
 export function systemText(persona: string, parts: string[] = [], record = "") {
-  return [persona, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, fontsBlock(), libraryBlock(), HUSSEINI_MOURNING_FEED, ...parts, record ? `سجل المشروع الحالي (كما حفظته آخر مرة؛ حدّثه في "record" عند أي تغيير):\n${record}` : ""].filter(Boolean).join("\n\n");
+  return [persona, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, DESIGNER_TALK_RULES, DESIGNER_EDIT_RULES, fontsBlock(), HUSSEINI_MOURNING_FEED, ...parts, recordText(record)].filter(Boolean).join("\n\n");
+}
+
+const recordText = (record: string) => (record ? `سجل المشروع الحالي (كما حفظته آخر مرة؛ حدّثه في "record" عند أي تغيير):\n${record}` : "");
+
+/** What changes from one message to the next (examples, the record): read with this turn, not in the system (cached). */
+export function turnText(parts: string[] = [], record = "") {
+  return [...parts, recordText(record)].filter(Boolean).join("\n\n");
 }

@@ -14,7 +14,11 @@ const headers = () => ({ Authorization: `Key ${process.env.FAL_KEY}`, "Content-T
 export async function falRun<T>(model: string, input: Record<string, unknown>, waitMs = 240_000): Promise<T> {
   if (!falReady()) throw new ProviderError("rejected", "خدمة الفصل غير مفعّلة على الخادم.", "FAL_KEY missing");
   const sub = await fetch(`${QUEUE}/${model}`, { method: "POST", headers: headers(), body: JSON.stringify(input) });
-  if (!sub.ok) throw new ProviderError("rejected", rejectedMessage(sub.status, await sub.text()), `fal ${model} submit ${sub.status}`);
+  if (!sub.ok) {
+    // the provider's own words go in the detail (a locked account or an exhausted balance is the platform's, not the person's)
+    const t = await sub.text();
+    throw new ProviderError("rejected", rejectedMessage(sub.status, t), `fal ${model} submit ${sub.status} ${t.slice(0, 300)}`);
+  }
   const { status_url, response_url } = (await sub.json()) as { request_id: string; status_url: string; response_url: string };
   const until = Date.now() + waitMs;
   while (Date.now() < until) {

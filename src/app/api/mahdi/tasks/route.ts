@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { todayIn } from "@/lib/mahdi/engine";
+import { diffDays, isISODate, todayIn } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError, UUID_RE } from "@/lib/mahdi/server/api";
-import { loadTasks, PRIORITY_TITLE_PREFIX, priorityColumnMissing } from "@/lib/mahdi/server/snapshot";
+import { loadPriorities, loadTasks, PRIORITY_TITLE_PREFIX, priorityColumnMissing } from "@/lib/mahdi/server/snapshot";
 
 const MAX_PER_DAY = 100;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -33,9 +33,27 @@ function fail(error: { code?: string } | null) {
   throw error;
 }
 
-/** «مهام اليوم»: today's tasks. */
+/** The longest stretch of past priorities asked at once (a month report and a bit). */
+const MAX_RANGE_DAYS = 93;
+
+/**
+ * «مهام اليوم»: today's tasks. With `?priorities=1&from=YYYY-MM-DD&to=YYYY-MM-DD`: the «أولويات اليوم» of those days
+ * (past ones are kept, for «حاسبوا أنفسكم»), `ready` false before SQL 0036.
+ */
 export const GET = mahdiRoute(async (req: Request) => {
   const { supabase, profile } = await requireProfile(req);
+  const q = new URL(req.url).searchParams;
+  if (q.get("priorities") === "1") {
+    const from = q.get("from"), to = q.get("to");
+    if (!isISODate(from) || !isISODate(to) || to < from || diffDays(to, from) > MAX_RANGE_DAYS) throw new UserError(t.errors.invalid, 400);
+    try {
+      return NextResponse.json({ ready: true, priorities: await loadPriorities(supabase, from, to) }, { headers: { "Cache-Control": "private, no-store" } });
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === "42P01" || code === "PGRST205") return NextResponse.json({ ready: false, priorities: [] });
+      throw e;
+    }
+  }
   return NextResponse.json({ tasks: await loadTasks(supabase, todayIn(profile.timeZone)).catch(() => []) });
 });
 

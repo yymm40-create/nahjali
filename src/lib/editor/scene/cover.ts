@@ -13,7 +13,7 @@ import { stillOpen, type EditorProject } from "@/lib/editor/server";
 import { checkScene, LAB_FONTS } from "./contract";
 import { SCENE_CONTRACT } from "./skill";
 import { COVER_PASS, COVER_ROUNDS, COVER_RUBRIC, type CoverRubricId } from "./cover-rubric";
-import { COVER_REVIEW_SCHEMA, COVER_SCHEMA } from "./schemas";
+import { askKind, COVER_LAB_SCHEMA, kindAsk, resultOf, soloSchema, type CoverKind } from "./schemas";
 
 export { COVER_PASS, COVER_ROUNDS, COVER_RUBRIC };
 
@@ -46,21 +46,29 @@ function frameOf(p: EditorProject) {
   return { w, h, kind: portrait ? `an Instagram REEL COVER ${w}×${h} (9:16; the safe 1:1 square is y ${Math.round((h - w) / 2)}–${Math.round((h + w) / 2)})` : `a YouTube THUMBNAIL ${w}×${h} (16:9; keep the bottom-right ${Math.round(w * 0.16)}×${Math.round(h * 0.13)} empty for the duration)` };
 }
 
-async function ask<T>(who: Who, model: unknown, label: string, parts: ClaudePart[], schema: object, maxTokens: number, onText?: OnText) {
+/**
+ * One cover call. Like the lab's steps: ONE reply format for the design, its fix and the review (COVER_LAB_SCHEMA, the
+ * branch named by `kind`), the same top-level effort with each reply's level as `turnEffort` (high to design and review,
+ * medium to fix), and an hour's cache — so the review rounds and a fix read the cover system the design wrote.
+ */
+async function ask<T>(who: Who, model: unknown, label: string, parts: ClaudePart[], kind: CoverKind, maxTokens: number, level: "medium" | "high", onText?: OnText) {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
-  return claudeCharged(
+  const r = await claudeCharged(
     who,
     model,
     label,
     () =>
-      callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema, maxTokens, effort: "high", fallback: true, onText }).catch((e) => {
+      // `cacheTail: false`: each call is one request whose turn (the frames, the program, the views) is never sent again —
+      // the cache-write premium on it bought nothing; the system is still cached for the next round
+      askKind(kind, () => callClaudeJson<unknown>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema: COVER_LAB_SCHEMA, schemaFallback: soloSchema(kind), maxTokens, effort: "medium", turnEffort: level, cacheTtl: "1h", onText, cacheTail: false })).catch((e) => {
         console.error("motion lab cover", label, e);
         throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يكمل الكفر الحين. جرّب مرة ثانية.", who.email), 502);
       }),
-    (x) => claudeCost(x.usage),
+    (x) => claudeCost(x.usage) + x.wasted.reduce((s, w) => s + claudeCost(w.usage), 0),
     undefined,
     "max",
   );
+  return { data: resultOf<T>(r.data, kind)!, coins: r.coins, worth: r.worth, model: r.model };
 }
 
 /** What the cover is for: the film's idea, its words and its look (from the plan), and what the person asked. */
@@ -94,13 +102,14 @@ export async function labCoverWrite(p: EditorProject, who: Who, b: Record<string
 ${brief.text}
 FONTS loaded for you: K.fonts.head = ${brief.head} (${FONT_BY_ID.get(brief.head)?.ar ?? ""}), K.fonts.body = ${brief.body}
 THE FILM'S FRAMES you may draw: ${frames.length ? frames.map((_, i) => `K.img("f${i + 1}")`).join(", ") + " (shown below, in order)" : "none — build it from the film's look"}
-${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (fix exactly this, keep everything else):\n${errors || "(no error text)"}` : "Write the COMPLETE program."}`,
+${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (fix exactly this, keep everything else):\n${errors || "(no error text)"}` : "Write the COMPLETE program."}
+${kindAsk("cover")}`,
     },
     ...frames.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `FRAME f${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
   ];
-  const r = await ask<{ headline: string; code: string; notes: string }>(who, b.model, previous ? "مختبر الموشن · تصليح الكفر" : "مختبر الموشن · الكفر", parts, COVER_SCHEMA, 48_000, onText);
+  const r = await ask<{ headline: string; code: string; notes: string }>(who, b.model, previous ? "مختبر الموشن · تصليح الكفر" : "مختبر الموشن · الكفر", parts, "cover", 48_000, previous ? "medium" : "high", onText);
   const chk = checkScene(r.data.code);
-  return { code: chk.code, problems: chk.problems, headline: text(r.data.headline, 80), notes: text(r.data.notes, 600), coins: r.coins, model: r.model };
+  return { code: chk.code, problems: chk.problems, headline: text(r.data.headline, 80), notes: text(r.data.notes, 600), coins: r.coins, worth: r.worth, model: r.model };
 }
 
 export interface CoverReview {
@@ -137,6 +146,7 @@ ${brief.text}
 Below: the cover at full size${tiny ? ", then the SAME cover at the profile grid's size (12 % — what a person really sees)" : ""}${crops.length ? ", then its crops (1:1 and 3:4 from the centre)" : ""}. Judge what you SEE.
 Score every criterion 1–10: ${COVER_RUBRIC.map((r) => `${r.id}: ${r.en}`).join(" | ")}.
 If ANY score is below ${COVER_PASS}, return the COMPLETE revised program that fixes it (keep what already works); otherwise code is empty.
+${kindAsk("cover_review")}
 THE PROGRAM:
 ${code}`,
     },
@@ -145,8 +155,8 @@ ${code}`,
     ...(tiny ? ([{ type: "text", text: "AT THE GRID'S SIZE (12 %):" }, { type: "image64", data: tiny, mediaType: "image/jpeg" }] as ClaudePart[]) : []),
     ...crops.flatMap((d, i): ClaudePart[] => [{ type: "text", text: i === 0 ? "CROP 1:1:" : "CROP 3:4:" }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
   ];
-  const r = await ask<Record<string, unknown>>(who, b.model, `مختبر الموشن · مراجعة الكفر ${round}`, parts, COVER_REVIEW_SCHEMA, 48_000);
+  const r = await ask<Record<string, unknown>>(who, b.model, `مختبر الموشن · مراجعة الكفر ${round}`, parts, "cover_review", 48_000, "high");
   const review = readCoverReview(r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkScene(r.data.code) : null;
-  return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };
+  return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, worth: r.worth, model: r.model };
 }

@@ -147,3 +147,43 @@
 /* «خلص رصيدك»: the top-up of exactly what was needed, one card above the packages */
 .cs-exact { padding-bottom: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .cs-exact .pr-card { width: 100%; max-width: 420px; }
+
+/* the ways to pay as their own logos on white chips (PayMarks.tsx): right above each pay button, and big under the cards with
+   three plain promises — the logos answer «can I pay with mine?» before the tap, at the moment of most doubt */
+.pm { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.pm-label { color: var(--pr-mute, #c9bfe8); font-size: 13px; font-weight: 700; }
+.pm-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.pm-chip { display: grid; place-items: center; width: 64px; height: 40px; padding: 6px 9px; border-radius: 9px; background: #fff; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 6px 16px -8px rgba(0, 0, 0, 0.7); }
+.pm-chip svg { display: block; width: 100%; height: 100%; direction: ltr; }
+.pm.sm { gap: 6px; margin-top: auto; }
+.pm.sm .pm-chip { width: 50px; height: 31px; padding: 5px 7px; border-radius: 7px; }
+.pm.sm + .pr-btn { margin-top: 4px; }
+.pr-btn .pm-lock { width: 15px; height: 15px; margin-inline-end: 7px; opacity: 0.85; }
+.pm-trust { display: grid; gap: 14px; justify-items: center; margin-bottom: 6px; padding: 18px 16px; border-radius: 20px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); }
+.pm-points { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; text-align: start; color: #ece6ff; font-size: 14px; font-weight: 700; }
+.pm-points li { display: flex; align-items: center; gap: 8px; }
+.pm-points .pm-lock, .pm-points i { flex: none; width: 16px; height: 16px; color: var(--cr-green, #4ade80); font-style: normal; text-align: center; line-height: 16px; }
+
+/* «اختر الرصيد اللي تبي تدفعه»: one glowing card above the packages, a big amount field, quick amounts, and its own pay button */
+.cs-custom { padding-bottom: 6px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.cs-custom .cu-card { width: 100%; max-width: 460px; animation: cu-glow 3.2s ease-in-out infinite; }
+@keyframes cu-glow { 50% { box-shadow: 0 30px 80px -26px rgba(255, 138, 31, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.06); } }
+@media (prefers-reduced-motion: reduce) { .cs-custom .cu-card { animation: none; } }
+.cu-field { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 18px; background: rgba(0, 0, 0, 0.28); border: 1.5px solid rgba(255, 255, 255, 0.18); cursor: text; transition: border-color 0.15s; }
+.cu-field:focus-within { border-color: var(--pr-orange); }
+.cu-field input { flex: 1; min-width: 0; width: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: #fff; font: inherit; font-size: 46px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; text-align: right; font-variant-numeric: tabular-nums; }
+.cu-field input::placeholder { color: rgba(255, 255, 255, 0.28); }
+.cu-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.cu-chip { flex: 1 0 auto; min-width: 52px; min-height: 40px; padding: 6px 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.08); color: #fff; font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; }
+.cu-chip.on, .cu-chip:hover { background: rgba(255, 138, 31, 0.22); border-color: var(--pr-orange); }
+.cu-chip:focus-visible { outline: 3px solid var(--pr-orange); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* «عندك كود خصم؟» */
+.cs-code { padding-bottom: 4px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.cs-code-row { width: 100%; max-width: 460px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-radius: 16px; border: 1px dashed rgba(255, 255, 255, 0.28); background: rgba(255, 255, 255, 0.05); }
+.cs-code-row label { color: #fff; font-weight: 800; font-size: 15px; }
+.cs-code-row input { flex: 1 1 140px; min-width: 0; min-height: 40px; padding: 6px 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(0, 0, 0, 0.25); color: #fff; font: inherit; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.cs-code-row input:focus-visible { outline: 3px solid var(--pr-orange); outline-offset: 2px; }
+.cs-code-row .cu-chip { flex: 0 0 auto; }
+.cs-code-ok { color: #86efac; font-weight: 800; font-size: 14.5px; text-align: center; }

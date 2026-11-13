@@ -9,6 +9,8 @@ import { FILM_BUCKET } from "@/lib/film/types";
 import type { FilmItemView, JobView, OutputView, WorkItem, WorksFilter } from "../labels";
 import { JAWAD_BUCKET, loadRuntime } from "./runtime";
 import type { JobRow, OutputRow } from "./jobs";
+import { DEFAULT_VIEW, matchesWorkSearch, normaliseSearch, searchTerms, type WorksView } from "../works-organise";
+import { markedPage, withMarks } from "./works-organise";
 
 import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
@@ -92,42 +94,81 @@ interface FilmAssetRow {
   created_at: string;
 }
 
-/** One page of the user's works. `cursor` is the createdAt of the last item of the previous page. */
-export async function worksPage(userId: string, filter: WorksFilter, cursor: string | null, base = "/jawad-ai/film"): Promise<{ items: WorkItem[]; next: string | null }> {
-  const size = WORKS_PAGE_SIZE;
-  const before = cursor && !Number.isNaN(Date.parse(cursor)) ? new Date(cursor).toISOString() : null;
+/** A search word as a loose LIKE pattern: the letters «أ/ا», «ة/ه», «ى/ي» match each other (exactness is checked after). */
+const likeWord = (t: string) => t.replace(/[^\p{L}\p{N}]/gu, "").replace(/[اهيو]/g, "_");
 
-  let jq = db().from("jawad_jobs").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(size + 1);
-  if (filter !== "all") jq = jq.eq("output_kind", filter);
-  if (before) jq = jq.lt("created_at", before);
+/**
+ * One page of the user's works. `cursor` is the createdAt of the last item of the previous page. `view` («ترتيب أعمالي»):
+ * newest or oldest first, a search in the prompts and generator names, and — once migration 0113 has run — one folder's
+ * works or the ⭐ ones. Each work carries its folder and ⭐ when that table exists.
+ */
+export async function worksPage(userId: string, filter: WorksFilter, cursor: string | null, base = "/jawad-ai/film", view: WorksView = DEFAULT_VIEW): Promise<{ items: WorkItem[]; next: string | null }> {
+  const size = WORKS_PAGE_SIZE;
+  const after = cursor && !Number.isNaN(Date.parse(cursor)) ? new Date(cursor).toISOString() : null;
+  const oldest = view.sort === "old";
+  const terms = searchTerms(view.q);
+  const byTime = (a: { at: string }, b: { at: string }) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0) * (oldest ? -1 : 1);
 
   // Film pictures and videos (only kinds the film maker makes; no audio yet)
   const filmKinds = filter === "all" ? ["image", "video"] : filter === "audio" ? [] : [filter];
   const { data: projects } = filmKinds.length ? await db().from("film_projects").select("id,title").eq("user_id", userId) : { data: [] };
   const titles = new Map(((projects ?? []) as { id: string; title: string }[]).map((p) => [p.id, p.title]));
-  const filmRows = async (): Promise<FilmAssetRow[]> => {
-    if (!titles.size) return [];
-    let q = db()
-      .from("film_assets")
-      .select("id,project_id,kind,ref_key,storage_path,created_at")
-      .in("project_id", [...titles.keys()])
-      .in("kind", filmKinds)
-      .in("status", ["generated", "approved"])
-      .not("storage_path", "is", null);
-    if (before) q = q.lt("created_at", before);
-    const { data } = await q.order("created_at", { ascending: false }).limit(size + 1);
-    return (data ?? []) as FilmAssetRow[];
-  };
 
-  const [jr, film] = await Promise.all([jq, filmRows()]);
-  const jobs = (jr.data ?? []) as JobRow[];
+  let merged: { at: string; job: JobRow | null; film: FilmAssetRow | null }[];
+  const marked = view.folder || view.fav ? await markedPage(userId, view, filter, after, size + 1) : null;
+  if (marked) {
+    // one folder's works or the favourites: their ids come in order from the database, then the rows themselves
+    const jobIds = marked.filter((m) => m.type === "job").map((m) => m.id);
+    const filmIds = marked.filter((m) => m.type === "film").map((m) => m.id);
+    const [jr, fr] = await Promise.all([
+      jobIds.length ? db().from("jawad_jobs").select("*").eq("user_id", userId).in("id", jobIds) : Promise.resolve({ data: [] }),
+      filmIds.length && titles.size ? db().from("film_assets").select("id,project_id,kind,ref_key,storage_path,created_at").in("id", filmIds).in("project_id", [...titles.keys()]) : Promise.resolve({ data: [] }),
+    ]);
+    const jobs = new Map(((jr.data ?? []) as JobRow[]).map((j) => [j.id, j]));
+    const film = new Map(((fr.data ?? []) as FilmAssetRow[]).map((f) => [f.id, f]));
+    merged = marked.flatMap((m): { at: string; job: JobRow | null; film: FilmAssetRow | null }[] => {
+      const job = m.type === "job" ? jobs.get(m.id) : undefined;
+      const f = m.type === "film" ? film.get(m.id) : undefined;
+      return job ? [{ at: job.created_at, job, film: null }] : f ? [{ at: f.created_at, job: null, film: f }] : [];
+    });
+  } else {
+    let jq = db().from("jawad_jobs").select("*").eq("user_id", userId).order("created_at", { ascending: oldest }).limit(size + 1);
+    if (filter !== "all") jq = jq.eq("output_kind", filter);
+    if (after) jq = oldest ? jq.gt("created_at", after) : jq.lt("created_at", after);
+    if (terms.length) {
+      // a loose first pass in the database (the longest word in the prompt, or a generator whose name has it); the exact
+      // match of every word is checked on the page below
+      const word = [...terms].sort((a, b) => b.length - a.length)[0];
+      const rt = await loadRuntime();
+      const named = rt.generators.filter((g) => normaliseSearch(`${g.name} ${g.id}`).includes(word)).map((g) => g.id);
+      const like = likeWord(word);
+      const ors = [like ? `prompt.ilike.%${like}%` : "", named.length ? `generator_id.in.(${named.join(",")})` : ""].filter(Boolean);
+      if (ors.length) jq = jq.or(ors.join(","));
+    }
 
-  const merged = [
-    ...jobs.map((j) => ({ at: j.created_at, job: j as JobRow | null, film: null as FilmAssetRow | null })),
-    ...film.map((f) => ({ at: f.created_at, job: null, film: f })),
-  ]
-    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
-    .slice(0, size + 1);
+    const filmTitles = terms.length ? new Map([...titles].filter(([, t]) => terms.every((w) => normaliseSearch(`${t} الفيلم السينمائي`).includes(w)))) : titles;
+    const filmRows = async (): Promise<FilmAssetRow[]> => {
+      if (!filmTitles.size) return [];
+      let q = db()
+        .from("film_assets")
+        .select("id,project_id,kind,ref_key,storage_path,created_at")
+        .in("project_id", [...filmTitles.keys()])
+        .in("kind", filmKinds)
+        .in("status", ["generated", "approved"])
+        .not("storage_path", "is", null);
+      if (after) q = oldest ? q.gt("created_at", after) : q.lt("created_at", after);
+      const { data } = await q.order("created_at", { ascending: oldest }).limit(size + 1);
+      return (data ?? []) as FilmAssetRow[];
+    };
+
+    const [jr, film] = await Promise.all([jq, filmRows()]);
+    const jobs = (jr.data ?? []) as JobRow[];
+    merged = [
+      ...jobs.map((j) => ({ at: j.created_at, job: j as JobRow | null, film: null as FilmAssetRow | null })),
+      ...film.map((f) => ({ at: f.created_at, job: null, film: f })),
+    ];
+  }
+  merged = merged.sort(byTime).slice(0, size + 1);
   const page = merged.slice(0, size);
   const next = merged.length > size ? page[page.length - 1].at : null;
 
@@ -150,5 +191,7 @@ export async function worksPage(userId: string, filter: WorksFilter, cursor: str
       href: `${base}/${f.project_id}${f.kind === "video" ? "/videos" : "/sheets"}`,
     } satisfies FilmItemView;
   });
-  return { items, next };
+  // a search keeps only the works whose shown prompt and generator have every word (a hidden prompt never matches)
+  const found = terms.length ? items.filter((it) => matchesWorkSearch(it, view.q)) : items;
+  return { items: await withMarks(userId, found), next };
 }

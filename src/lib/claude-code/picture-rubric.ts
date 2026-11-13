@@ -1,6 +1,6 @@
 // «Claude Code» pictures — the frame sizes and the art director's score sheet (pure: the page shows the scores too).
 
-export const PICTURE_SIZES: Record<string, [number, number]> = { "1:1": [1440, 1440], "16:9": [1920, 1080], "9:16": [1080, 1920], "3:2": [1800, 1200], "2:3": [1200, 1800], "4:5": [1440, 1800] };
+export const PICTURE_SIZES: Record<string, [number, number]> = { "1:1": [1440, 1440], "16:9": [1920, 1080], "9:16": [1080, 1920], "3:2": [1800, 1200], "2:3": [1200, 1800], "4:5": [1440, 1800], "3:4": [1536, 2048] };
 
 export const PICTURE_RUBRIC = [
   { id: "ask", ar: "الطلب", en: "It is exactly what the person asked for: the subject, every word written, the mood, the use (a post, a thumbnail, a poster)" },
@@ -12,3 +12,7 @@ export const PICTURE_RUBRIC = [
 ] as const;
 
 export const pictureSize = (aspect: unknown): [number, number] => PICTURE_SIZES[String(aspect)] ?? PICTURE_SIZES["1:1"];
+
+/** A motion carousel's slide: Instagram's own sizes (a tall slide is 4:5, 1080×1350), small enough to render 30 frames a second. */
+export const MOTION_SIZES: Record<string, [number, number]> = { "1:1": [1080, 1080], "2:3": [1080, 1350], "4:5": [1080, 1350], "9:16": [1080, 1350], "16:9": [1920, 1080] };
+export const motionSize = (aspect: unknown): [number, number] => MOTION_SIZES[String(aspect)] ?? MOTION_SIZES["4:5"];
