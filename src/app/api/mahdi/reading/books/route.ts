@@ -35,7 +35,7 @@ export const POST = mahdiRoute(async (req: Request) => {
   if (!title) throw new UserError(t.reading.titleRequired, 400);
   const unit = form.get("unit") === "narration" ? "narration" : "page";
   const pages = Number(form.get("pages"));
-  if (!Number.isInteger(pages) || pages < 1 || pages > 10000) throw new UserError(t.reading.u[unit].totalRequired, 400);
+  if (!Number.isInteger(pages) || pages < 1 || pages > 100000) throw new UserError(t.reading.u[unit].totalRequired, 400);
   const author = cleanLine(form.get("author"), 80);
   const description = cleanText(form.get("description"), 500);
   const cover = form.get("cover");
