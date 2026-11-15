@@ -1359,11 +1359,15 @@ export default function Studio({ section, studioSections, generators: allGenerat
 
       <GeneratorPicker open={picker} onClose={() => setPicker(false)} generators={unified ? generators.filter((g) => generatorById(g.id)?.output === def.output) : generators} current={gen.id} onPick={(id) => (track("studio.generator"), switchGenerator(id))} owner={owner} title={unified ? `اختر مولّد ${def.output === "image" ? "الصور" : def.output === "video" ? "الفيديو" : "الصوت"}` : undefined} />
 
-      <Dialog open={Boolean(confirm)} onClose={() => setConfirm(null)} title="تغيّر السعر">
+      <Dialog open={Boolean(confirm)} onClose={() => setConfirm(null)} title={confirm?.coins === 0 ? "هذا التوليد مجاني" : "تغيّر السعر"}>
         {confirm && (
           <div className="space-y-4 p-4">
             <p className="text-sm">
-              تغيّر سعر هذا التوليد من <b><Riyal halalas={confirm.was} size={13} /></b> إلى <b><Riyal halalas={confirm.coins} size={13} /></b>. لم يُخصم شيء بعد.
+              {confirm.coins === 0 ? (
+                <>هذا التوليد مجاني لك (عرض أو تجربة مجانية)، ولن يُخصم من رصيدك شيء.</>
+              ) : (
+                <>تغيّر سعر هذا التوليد من <b><Riyal halalas={confirm.was} size={13} /></b> إلى <b><Riyal halalas={confirm.coins} size={13} /></b>. لم يُخصم شيء بعد.</>
+              )}
             </p>
             <div className="flex justify-end gap-2">
               <button type="button" className="jw-btn" onClick={() => setConfirm(null)}>إلغاء</button>
@@ -1376,7 +1380,7 @@ export default function Studio({ section, studioSections, generators: allGenerat
                   submit(c);
                 }}
               >
-                أوافق على <Riyal halalas={confirm.coins} size={14} /> وولّد
+                {confirm.coins === 0 ? "ولّد مجانًا" : <>أوافق على <Riyal halalas={confirm.coins} size={14} /> وولّد</>}
               </button>
             </div>
           </div>
