@@ -26,6 +26,7 @@ import { findPalette, paletteBlock } from "@config/content-palettes";
 import { NO_TEXT_RULE } from "@config/designer";
 import { findStyle } from "@config/film-styles";
 import { findMotionCarouselStyle, motionStyleForCode } from "@config/content-motion-carousel";
+import { chatSound, sliceNote, splitSound } from "./sound";
 import { falFile, falReady, falRun, falUrl } from "@/lib/jawad/server/providers/fal";
 import { getChat, saveChat, type Chat, type PendingProduce, type Slide, type SlideFailure, type SlidesBlock } from "./chats";
 import { drawnPng } from "@/lib/jawad/server/uploads";
@@ -74,7 +75,7 @@ export interface CodeSlide {
   /** GPT Image 2's picture is the whole slide: he only writes on it */
   mix?: boolean;
   /** a motion carousel's slide: he writes it as a moving scene of `seconds`, and the page renders it to MP4 */
-  motion?: { seconds: number; style: string; first: boolean; total: number };
+  motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number } };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -459,10 +460,27 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
   refs.push(...mine);
   const artUrl = art ? (links.get(art) ?? null) : null;
   const prompt = slidePrompt({ n: s.n, total, prompt: s.prompt, styleId: p.styleId, carouselId: p.carouselId, fontId: p.fontId, paletteId: p.paletteId, withRef: refs.length > mine.length, userRefs: mine.length });
-  const motion = p.motion ? { seconds: p.motion.seconds, style: motionStyleForCode(p.motion.styleId === "own" ? null : findMotionCarouselStyle(p.motion.styleId), p.motion.own ?? ""), first: s.n === 1, total } : null;
+  const motion: CodeSlide["motion"] | null = p.motion ? { seconds: p.motion.seconds, style: motionStyleForCode(p.motion.styleId === "own" ? null : findMotionCarouselStyle(p.motion.styleId), p.motion.own ?? ""), first: s.n === 1, total } : null;
+  // the person's own sound under the carousel: this slide's part of it (as long as its part, moving on its phrases)
+  let soundNote = "";
+  if (motion) {
+    if (p.sound === undefined) {
+      const snd = await chatSound(userId, messages).catch(() => null);
+      p.sound = snd ? { uploadId: snd.uploadId, speech: snd.phrases.length > 0, slices: splitSound(snd, total, p.motion!.seconds) } : false;
+      await saveChat(userId, chatId, { messages, pending: p });
+    }
+    const slice = p.sound ? p.sound.slices[Math.max(0, p.slides.findIndex((x) => x.n === s.n))] : null;
+    const link = slice && p.sound ? (await uploadLinks(userId, [p.sound.uploadId])).get(p.sound.uploadId) : null;
+    if (slice && link && p.sound) {
+      motion.seconds = Math.max(1, Math.round((slice.to - slice.from) * 100) / 100);
+      motion.voice = { url: link, from: slice.from, to: slice.to };
+      soundNote = sliceNote(slice, p.sound.speech);
+    }
+  }
+  const body = artUrl ? `${prompt}\n\n${motion ? (element ? ELEMENT_NOTE : PICTURE_NOTE) : p.mix ? MIX_NOTE : ART_NOTE}` : prompt;
   return {
     n: s.n,
-    prompt: artUrl ? `${prompt}\n\n${motion ? (element ? ELEMENT_NOTE : PICTURE_NOTE) : p.mix ? MIX_NOTE : ART_NOTE}` : prompt,
+    prompt: soundNote ? `${body}\n\n${soundNote}` : body,
     aspect: p.aspect,
     refs: refs.slice(0, 4),
     photos: artUrl ? [artUrl] : [],

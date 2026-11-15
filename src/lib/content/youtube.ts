@@ -46,6 +46,9 @@ interface Bill {
   userId: string;
   usd: number;
   billed: boolean;
+  /** the video's link key («yt:…»): its words are kept under it */
+  key?: string;
+  part?: Part;
 }
 
 const recPath = (userId: string, key: string) => `yt-dl/${userId}/${key.replace(/[^\w-]/g, "_")}.json`;
@@ -185,8 +188,8 @@ export async function youtubeState(userId: string, key: string): Promise<Youtube
   const usd = Math.round(priceOf(bytes) * 10000) / 10000;
   // the download is paid with the reply that carries its files: the first of them holds the bill
   const first = uploads.video ?? uploads.audio!;
-  await writeJson(billPath(first), { userId, usd, billed: false } satisfies Bill);
-  for (const id of [uploads.video, uploads.audio].filter((x): x is string => !!x && x !== first)) await writeJson(billPath(id), { userId, usd: 0, billed: true } satisfies Bill);
+  await writeJson(billPath(first), { userId, usd, billed: false, key, part: uploads.video === first ? "video" : "audio" } satisfies Bill);
+  if (uploads.audio && uploads.audio !== first) await writeJson(billPath(uploads.audio), { userId, usd: 0, billed: true, key, part: "audio" } satisfies Bill);
   const done: DlRecord = { ...rec, state: "ready", uploads, title, usd, ...(whys.length ? { why: whys.join(" · ").slice(0, 300) } : {}) };
   await writeJson(path, done);
   return { state: "ready", title, files: await viewsOf(userId, done) };
@@ -221,4 +224,10 @@ export async function billYoutube(userId: string, ids: string[]): Promise<{ usd:
     }
   }
   return { usd, ids: found };
+}
+
+/** A downloaded YouTube file's link key and part, or null when it is not one. */
+export async function youtubeOf(userId: string, uploadId: string): Promise<{ key: string; part: Part } | null> {
+  const b = await readJson<Bill>(billPath(uploadId));
+  return b && b.userId === userId && b.key ? { key: b.key, part: b.part ?? "video" } : null;
 }
