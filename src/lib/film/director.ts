@@ -840,6 +840,8 @@ export async function runDirectorReply(projectId: string, jobId: string) {
         generate_audio: isGen ? r.generate_audio : undefined,
         // what this reply cost (shown on its card, in coins)
         cost_usd: claudeCost(result.usage),
+        // the reply's own job: a video made from this version that fails through our account gives it back (lib/prompt-refund)
+        job_id: jobId,
         // its tokens by kind, so a cache hit or miss can be checked against the cost
         usage: replyTokens(result.usage),
       },

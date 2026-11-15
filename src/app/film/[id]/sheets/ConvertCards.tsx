@@ -6,6 +6,7 @@
 
 import Spinner from "@/components/Spinner";
 import { credits } from "@/lib/film/credits";
+import Coined from "@/components/Coined";
 import type { MapItem } from "@/lib/film/sheets";
 import type { CardAsset } from "./SheetCards";
 
@@ -44,7 +45,7 @@ function ConvertCard({ item, assets, styleChosen, busy, send }: { item: MapItem;
       {styleChosen && (
         <div className="space-y-1">
           <button className="btn btn-primary w-full" disabled={busy || !picked || sheetMaking} onClick={() => send({ action: "convert_sheet", sheetId: item.id, count: SHEETS })}>
-            {sheetMaking ? "شيته يتولد…" : `🎬 اصنع الشيت من المختارة (${picked}) ×${SHEETS} · ${credits(SHEET_USD * SHEETS, "image")}`}
+            <Coined text={sheetMaking ? "شيته يتولد…" : `🎬 اصنع الشيت من المختارة (${picked}) ×${SHEETS} · ${credits(SHEET_USD * SHEETS, "image")}`} />
           </button>
           {!picked && <p className="text-xs font-bold text-muted">اختر صورة فردية وحدة على الأقل (الأقرب لوجهه). وحدة تكفي، وأكثر من وحدة يثبّت الشبه.</p>}
           {picked > 0 && <p className="text-xs font-bold text-muted">الشيت يطلع تحت مع باقي الشيتات: اعتمده هناك، أو «ما عجبني» واكتب وش تبي.</p>}
@@ -111,13 +112,13 @@ function PhotoRow({ n, photo, singles, styleChosen, busy, send, sheetId }: { n: 
         <div className="flex flex-wrap gap-1.5">
           {!described && state !== "running" && (
             <button className="btn btn-secondary min-h-9 flex-1 px-2 text-xs" disabled={busy} onClick={() => send({ action: "convert_start", sheetId, uploadIds: [photo.id] })}>
-              {state === "failed" ? "🔁 أعد المحاولة" : `🔄 حوّل هذي الصورة · ${credits(PORTRAIT_USD * PER_PHOTO, "image")}`}
+              <Coined text={state === "failed" ? "🔁 أعد المحاولة" : `🔄 حوّل هذي الصورة · ${credits(PORTRAIT_USD * PER_PHOTO, "image")}`} />
             </button>
           )}
           {described && (
             <>
               <button className="btn btn-ghost min-h-9 flex-1 px-2 text-xs" disabled={busy || drawing} onClick={() => send({ action: "convert_portraits", uploadId: photo.id, count: PER_PHOTO })}>
-                🔁 {PER_PHOTO} محاولات ثانية · {credits(PORTRAIT_USD * PER_PHOTO, "image")}
+                🔁 {PER_PHOTO} محاولات ثانية · <Coined text={credits(PORTRAIT_USD * PER_PHOTO, "image")} />
               </button>
               <button className="btn btn-ghost min-h-9 flex-1 px-2 text-xs" disabled={busy || drawing} onClick={() => send({ action: "convert_portraits", uploadId: photo.id, count: PER_PHOTO, stylize: true })} title="يزيد على نص الستايل: fully animated, more stylized">
                 🎨 طلعت شبه واقعية؟ أكثر كرتونية

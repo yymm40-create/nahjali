@@ -143,7 +143,7 @@ export interface PriceLine {
   centi: number;
 }
 /** `coins`: what the customer pays, in halalas; `was`: the struck full-margin price; `lines`: the cost, in hundredths of a halala. */
-export type PriceResult = { ok: true; coins: number; was?: number; lines: PriceLine[]; usdCeiling: number | null } | { ok: false; reason: string };
+export type PriceResult = { ok: true; coins: number; lines: PriceLine[]; usdCeiling: number | null } | { ok: false; reason: string };
 
 /** Everything the rules need to judge one request. */
 export interface RequestDraft {

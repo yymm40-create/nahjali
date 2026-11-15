@@ -6,6 +6,7 @@ import ReplyView from "./ReplyView";
 import ActionBar, { type SendMode } from "./ActionBar";
 import { STATUS_LABELS } from "@config/film";
 import { credits } from "@/lib/film/credits";
+import Coined from "@/components/Coined";
 
 export const statusChip = (s: string) =>
   s === "approved" ? "bg-teal text-white" : s === "awaiting_approval" || s === "generated" ? "bg-gold text-on-gold" : s === "failed" ? "bg-red-500 text-white" : "";
@@ -71,7 +72,7 @@ export default function StepCard({
         <h2 className="text-xl font-extrabold">{title} <span className="text-sm text-muted">· النسخة {v.version}</span></h2>
         {open && <button type="button" className="text-sm font-bold text-muted underline" onClick={() => setOpen(false)}>صغّره</button>}
         <span className="flex items-center gap-1.5">
-          {typeof v.data.cost_usd === "number" && <span className="chip text-xs" title="تكلفة هذا الرد">{credits(v.data.cost_usd, "claude")}</span>}
+          {typeof v.data.cost_usd === "number" && <span className="chip text-xs" title="تكلفة هذا الرد"><Coined text={credits(v.data.cost_usd, "claude")} /></span>}
           <span className={`chip ${statusChip(v.status)}`}>{STATUS_LABELS[v.status]}</span>
         </span>
       </header>

@@ -233,6 +233,8 @@ export interface NotificationSettings {
   quietStart: string;
   quietEnd: string;
   habitReminders: boolean;
+  /** the kinds of «تنبيهات تجيبك للتطبيق» the person switched OFF (migration 0102; every kind is on until then) */
+  engage?: Partial<Record<"morning" | "review_day" | "review_week" | "streak" | "comeback", boolean>>;
 }
 
 /** A book of the shared catalogue. */

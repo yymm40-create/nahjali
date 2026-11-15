@@ -61,10 +61,13 @@ export default function ReadPdfPage() {
           local = Number(localStorage.getItem(lastPageKey(userId, id))) || 0;
         } catch {}
         setInfo(i);
+        // The private link is read in parts only when the browser may see its range answer; otherwise pdf.js would
+        // download the whole book first (hundreds of MB for «الكافي»), so our own address — which answers in parts — is used
+        const own = `/api/mahdi/reading/books/${id}/file`;
         try {
-          opened = await openPdf(i.url);
+          opened = await openPdf((await readsInParts(i.url)) ? i.url : own);
         } catch {
-          opened = await openPdf(`/api/mahdi/reading/books/${id}/file`);
+          opened = await openPdf(own);
         }
         if (!live) return void opened.destroy();
         const start = Math.min(Math.max(1, Math.max(i.page, local)), opened.numPages);
@@ -290,4 +293,15 @@ export default function ReadPdfPage() {
       )}
     </div>
   );
+}
+
+/** Whether this browser can read the file's link in parts (a range answer whose headers it is allowed to see). */
+async function readsInParts(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, { headers: { Range: "bytes=0-1" } });
+    void res.body?.cancel();
+    return res.status === 206 && Boolean(res.headers.get("content-range"));
+  } catch {
+    return false;
+  }
 }

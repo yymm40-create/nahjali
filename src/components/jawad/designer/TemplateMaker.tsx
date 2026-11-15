@@ -120,7 +120,7 @@ export default function TemplateMaker({ onClose }: { onClose: () => void }) {
         <input ref={input} type="file" hidden accept="image/png,image/jpeg,image/webp" onChange={(e) => void upload(e.target.files?.[0])} />
         <div className="mj-row">
           <button type="button" className="dz-mini" onClick={() => input.current?.click()}>{file ? "🔁 صورة ثانية" : "📤 ارفع التصميم"}</button>
-          <input value={title} placeholder="اسم القالب (مثل: يا زهراء)" onChange={(e) => setTitle(e.target.value)} style={{ flex: 1, height: 36, borderRadius: 10, border: "1px solid #d8dbe8", padding: "0 10px" }} />
+          <input value={title} placeholder="اسم القالب (مثل: عظّم الله أجوركم)" onChange={(e) => setTitle(e.target.value)} style={{ flex: 1, height: 36, borderRadius: 10, border: "1px solid #d8dbe8", padding: "0 10px" }} />
         </div>
         {file && (
           <>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { CONTACT_EMAIL, LEGAL_UPDATED, NAHJ_ALI_HIDDEN, SITE_NAME } from "@config/site";
 import { BANK_TRANSFER_ENABLED, CARD_PAYMENT_PUBLIC } from "@config/pricing";
 
-export const metadata = { title: "الشروط والأحكام" };
+export const metadata = { title: "الشروط والأحكام", description: "شروط استخدام الجواد الذكي: الخدمة، والرصيد والدفع، والمحتوى المسموح، والمسؤولية.", alternates: { canonical: "/terms" } };
 
 /** «الجواد الذكي»'s terms (while «نهج علي» is hidden, config/site.ts). */
 const JAWAD_SECTIONS: { title: string; body: string[] }[] = [
