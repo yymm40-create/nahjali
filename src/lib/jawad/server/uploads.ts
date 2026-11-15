@@ -57,7 +57,7 @@ export async function signUpload(userId: string, b: { kind?: unknown; mime?: unk
   const mime = String(b.mime ?? "");
   const bytes = Number(b.bytes);
   const kind = UPLOAD_MIMES[mime];
-  if (!kind || kind !== b.kind) throw new UserError("نوع الملف غير مقبول. المقبول: صور PNG/JPG/WEBP، فيديو MP4/MOV، صوت MP3/WAV.", 400);
+  if (!kind || kind !== b.kind) throw new UserError("نوع الملف غير مقبول. المقبول: صور PNG/JPG/WEBP، فيديو MP4/MOV، صوت بأي صيغة (MP3/WAV/M4A/AAC/OGG/OPUS/FLAC/AMR/AIFF/WebM).", 400);
   if (!Number.isFinite(bytes) || bytes <= 0 || bytes > MAX_UPLOAD_BYTES) throw new UserError("حجم الملف أكبر من ٢٠٠ ميجا.", 400);
   const { count } = await db().from("jawad_uploads").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "pending");
   if ((count ?? 0) >= MAX_PENDING) throw new UserError("عندك ملفات كثيرة قيد الرفع. انتظر حتى تكتمل.", 429);
