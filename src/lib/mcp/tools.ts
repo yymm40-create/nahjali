@@ -87,7 +87,7 @@ const addFile: ToolDef = {
   name: "jawad_add_file",
   title: "أضف ملف",
   description:
-    "Adds a file (image PNG/JPG/WEBP, video MP4/MOV, audio MP3/WAV, or PDF; up to 100 MB) to the person's JAWAD AI files and returns its upload_id, usable as a reference in studio_generate, as an attachment in carousel_chat / designer_chat, as a source in student_new, or in haidara_new_project. In ChatGPT pass the file the person attached as `file`. Otherwise pass a public `url`. In Claude, files attached to the chat cannot reach this tool: give the person jawad_upload_page instead.",
+    "Adds a file (image PNG/JPG/WEBP, video MP4/MOV, audio MP3/WAV/M4A/AAC/OGG/FLAC/AMR/AIFF/WebM, or PDF; up to 100 MB) to the person's JAWAD AI files and returns its upload_id, usable as a reference in studio_generate, as an attachment in carousel_chat / designer_chat, as a source in student_new, or in haidara_new_project. In ChatGPT pass the file the person attached as `file`. Otherwise pass a public `url`. In Claude, files attached to the chat cannot reach this tool: give the person jawad_upload_page instead.",
   inputSchema: obj({
     url: { type: "string", description: "A public link to the file." },
     file: { type: "object", description: "A file the person attached in ChatGPT.", properties: { download_url: { type: "string" }, file_id: { type: "string" } }, required: ["download_url"], additionalProperties: true },

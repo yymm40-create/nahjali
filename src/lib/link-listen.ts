@@ -115,13 +115,13 @@ function ready(url: string, title: string, h: Heard): Kept {
 }
 
 /** One link heard (or read back): a background one is waited for until `until`. Never throws. */
-async function hear(url: string, until: number, write: boolean): Promise<{ kept: Kept | null; fresh: boolean }> {
-  const key = keyOf(url)!;
+async function hear(url: string, until: number, write: boolean, file?: { key: string; title: string }): Promise<{ kept: Kept | null; fresh: boolean }> {
+  const key = file?.key ?? keyOf(url)!;
   let k = await readKept(key);
   if (k?.status === "ready" || (k?.status === "failed" && !write)) return { kept: k, fresh: false };
   if (!k || k.status === "failed") {
     if (!write) return { kept: null, fresh: false };
-    const title = await titleOf(url);
+    const title = file ? file.title : await titleOf(url);
     try {
       const r = await elevenTranscribeUrl({ url, waitMs: Math.max(20_000, until - Date.now()), metadata: { linkKey: key } });
       if ("heard" in r) {
@@ -214,4 +214,55 @@ function describe(url: string, k: Kept | null): string {
   const text = k.text ?? "";
   const cut = text.length > HEARD_CHARS ? `${text.slice(0, HEARD_CHARS)}\n…(باقي الكلام مقطوع: الفيديو أطول من المسموح في الرد)` : text;
   return `### ${name}\nالرابط: ${url}${k.seconds ? ` · المدة ${clock(k.seconds)}` : ""}\n\n${cut}`;
+}
+
+// ───────────────────────────── the person's own sounds and videos ─────────────────────────────
+// «خله يقبل ينرسل له فيديو ويستخرج الصوت ويسوي ترانسكربت» (the owner, 15 Nov 2026): a sound or a video attached in
+// «صانع المحتوى» is heard the same way — ElevenLabs reads the stored file by a short-lived link (it takes the sound out of
+// a video itself) and writes what is said; the words are kept by the upload's id, so later turns read them back free.
+
+export interface HeardFile {
+  id: string;
+  kind: "audio" | "video";
+  name: string;
+  /** a short-lived link to the stored file (only needed for the files of the latest message) */
+  url?: string;
+}
+
+const fileKey = (id: string) => `up:${id}`;
+
+/** The sounds and videos of the latest message are heard now (or read back); earlier ones are only read back. */
+export async function listenToFiles(latest: HeardFile[], earlier: HeardFile[] = [], o: { budgetMs?: number } = {}): Promise<{ block: string; usd: number }> {
+  if (!latest.length && !earlier.length) return { block: "", usd: 0 };
+  const until = Date.now() + (o.budgetMs ?? 150_000);
+  const now = latest.slice(0, 4);
+  const heardNow = await Promise.all(now.map((f) => (f.url ? hear(f.url, until, true, { key: fileKey(f.id), title: f.name }) : Promise.resolve({ kept: null, fresh: false }))));
+  const past = earlier.filter((f) => !now.some((n) => n.id === f.id)).slice(-4);
+  const heardPast = await Promise.all(past.map((f) => hear("", until, false, { key: fileKey(f.id), title: f.name })));
+  let usd = 0;
+  const lines: string[] = [];
+  heardNow.forEach(({ kept, fresh }, i) => {
+    if (fresh && kept?.seconds) usd += mediaUsd(kept.seconds);
+    lines.push(describeFile(now[i], kept));
+  });
+  for (const f of latest.slice(4)) lines.push(`• «${f.name}»: ما انسمع (أكثر من ٤ ملفات صوت أو فيديو في رسالة وحدة). قل للعميل يرسله في رسالة ثانية.`);
+  heardPast.forEach(({ kept }, i) => {
+    if (kept?.status === "ready") lines.push(describeFile(past[i], kept));
+  });
+  if (!lines.length) return { block: "", usd };
+  const block = [
+    "## الصوت والفيديو المرفقين — مسموعين",
+    "العميل أرفق ملف صوت أو فيديو. جواد طلّع الصوت منه وسمعه بأداة ElevenLabs وكتب كلامه تحت. اشتغل منه مباشرة: لخّصه، اقتبس منه، أو ابنِ منه المحتوى المطلوب، واستخدم الصوت نفسه في العمل إذا طلب (الملف يوصل لحيدرة كت مع الحزمة). لا تقل إنك ما تقدر تسمع الملفات. صور الفيديو (إن وُجدت) مرفقة كلوحة لقطات منفصلة.",
+    ...lines,
+  ].join("\n\n");
+  return { block, usd };
+}
+
+function describeFile(f: HeardFile, k: Kept | null): string {
+  const name = `«${f.name}» (${f.kind === "video" ? "فيديو" : "صوت"}) [id ${f.id}]`;
+  if (!k || k.status === "failed") return `• ${name}: ما قدرنا نسمع كلامه${k?.why ? ` (${k.why})` : ""}. إذا كان موسيقى أو بدون كلام فهذا طبيعي؛ غير كذا قل للعميل بلطف.`;
+  if (k.status === "pending") return `• ${name}: الملف طويل وتفريغه شغّال الحين. قل للعميل إنك تسمعه، ويرسل أي رسالة بعد دقيقة أو دقيقتين وتكمل منه.`;
+  const text = k.text ?? "";
+  const cut = text.length > HEARD_CHARS ? `${text.slice(0, HEARD_CHARS)}\n…(باقي الكلام مقطوع: الملف أطول من المسموح في الرد)` : text;
+  return `### ${name}${k.seconds ? ` · المدة ${clock(k.seconds)}` : ""}\n\n${cut}`;
 }

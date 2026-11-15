@@ -29,7 +29,8 @@ import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
 import { attachedPictures, CAROUSEL_QUESTION, carouselHold, pickedCarousel, pickedFont, pickedKind, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "./maker";
 import { lastSlidesAt } from "./produce";
-import { listenToLinks } from "@/lib/link-listen";
+import { listenToFiles, listenToLinks } from "@/lib/link-listen";
+import { billYoutube } from "./youtube";
 import { randomUUID } from "crypto";
 
 const db = () => createAdminClient();
@@ -187,7 +188,8 @@ function toClaudeTurn(t: Turn, links: Map<string, string>): ClaudeTurn {
   for (const f of t.files) {
     const url = links.get(f.id);
     if (!url) continue;
-    // a picture is looked at; a PDF is READ (its own pages, by link), and a video or a sound is only named
+    // a picture is looked at (a video's frames come as their own picture: «لقطات من …»); a PDF is READ (its own pages,
+    // by link); a video's or a sound's words are written for him in the turn note (lib/link-listen listenToFiles)
     if (f.kind === "image") parts.push({ type: "image", url });
     else if (f.kind === "doc") parts.push({ type: "doc", url, name: f.name });
   }
@@ -242,6 +244,19 @@ export async function say(userId: string, chatId: string | null, message: string
   // works from what is said in it (lib/link-listen)
   const listened = await listenToLinks(said, turns.filter((t) => t.role === "user").slice(0, -1).map((t) => t.text), { budgetMs: 120_000 });
   if (listened.block) parts.unshift(listened.block);
+  // a sound or a video attached (now or earlier in the talk): its sound heard and written the same way, by the file's id
+  const av = (fs: Attachment[] | undefined) => (fs ?? []).filter((f) => f.kind === "audio" || f.kind === "video");
+  // a YouTube video the page downloaded for this message: paid with this reply (once); its words come through the link
+  const yt = await billYoutube(userId, files.map((f) => f.id)).catch(() => ({ usd: 0, ids: new Set<string>() }));
+  const nowAv = av(files).filter((f) => !yt.ids.has(f.id));
+  const avLinks = nowAv.length ? await uploadLinks(userId, nowAv.map((f) => f.id)) : new Map<string, string>();
+  const heardFiles = await listenToFiles(
+    nowAv.map((f) => ({ id: f.id, kind: f.kind as "audio" | "video", name: f.name, url: avLinks.get(f.id) })),
+    turns.filter((t) => t.role === "user").slice(0, -1).flatMap((t) => av(t.files)).map((f) => ({ id: f.id, kind: f.kind as "audio" | "video", name: f.name })),
+    { budgetMs: 120_000 },
+  );
+  if (heardFiles.block) parts.unshift(heardFiles.block);
+
   const system = systemText(persona.text, [catalogBlock()]);
   const turnNote = turnText(parts, before?.record ?? "");
   // a carousel that stopped half way (a wallet ran out, a closed page): «كمّل» goes on drawing it as it was — no new
@@ -256,7 +271,7 @@ export async function say(userId: string, chatId: string | null, message: string
   const waitingNote = !unfinished || !left.length ? "" : (`[كاروسيل ما خلص رسمه: الشرائح ${left.join("، ")} تنتظر بنفس التصميم والشخصيات اللي انرسمت، والموقع يكملها بنفسه بعد ردّك. لا تعيد تخطيط الكاروسيل ولا تغيّر شخصياته أو تصميمه أو نصوصه، ولا تطلب produce جديد، إلا إذا طلب العميل تغييرًا صريحًا.]`);
   const r = await callClaudeJson<Answer>({ system, turnNote: waitingNote ? `${waitingNote}\n\n${turnNote}` : turnNote, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email) });
   const a = r.data;
-  let usd = claudeCost(r.usage) + mem.usd + listened.usd;
+  let usd = claudeCost(r.usage) + mem.usd + listened.usd + heardFiles.usd + yt.usd;
   const questions = readQuestions(a.questions);
   const reply: Turn = { role: "assistant", text: withNote(a.reply.trim() || "…", mem.fresh), ...(questions ? { questions } : {}) };
   const messages = [...history, reply];

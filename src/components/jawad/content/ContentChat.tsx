@@ -20,6 +20,7 @@ import FontTable, { type FontItem } from "./FontTable";
 import MotionCarouselTable from "./MotionCarouselTable";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { drawWithCode, pngBody, smallJpeg } from "@/components/claude-code/draw";
+import { downloadYoutube, sheetOf, youtubeLinks } from "./media-prep";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean; video?: string; videoUrl?: string | null; videoDownload?: string | null }
@@ -573,6 +574,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const [spent, setSpent] = useState(0);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<"" | "writing" | "producing">("");
+  /** what the page is preparing before the message goes (a YouTube download, a video's frames) */
+  const [prep, setPrep] = useState<string | null>(null);
   /** what «Claude Code» is doing on the slide it draws now */
   const [codeStep, setCodeStep] = useState<string | null>(null);
   /** the mind the person picked, for «Claude Code»'s drawing (read inside the produce loop) */
@@ -776,6 +779,12 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
           const conf = await postJson<{ upload: { id: string; status: string; error: string | null; url: string | null } }>("/api/jawad/uploads/confirm", { id: signed.id });
           if (conf.upload?.status !== "ready") throw new Error(conf.upload?.error ?? "تعذّر فحص الملف.");
           setPending((p) => [...p, { id: conf.upload.id, kind: probe.kind, name: file.name, durationMs: probe.durationMs, url: conf.upload.url }]);
+          // a video: its frames go with it as one sheet he looks at (its sound is heard on the server)
+          if (probe.kind === "video") {
+            const local = URL.createObjectURL(file);
+            const sheet = await sheetOf(local, file.name).finally(() => URL.revokeObjectURL(local));
+            if (sheet) setPending((p) => [...p, sheet]);
+          }
         } catch (e) {
           setMsgs((m) => [...m, { role: "assistant", text: `${file.name}: ${e instanceof Error ? e.message : "تعذّر الرفع."}`, error: true }]);
         }
@@ -821,7 +830,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   async function send(text = q) {
     const typed = text.trim();
     if ((!typed && !pending.length) || busy || uploading) return;
-    const files = pending;
+    const files = [...pending];
     // the first message of a path carries its mark; an edited old message keeps the mark it had, and the talk goes on from there
     const editing = editFrom;
     const keepPath = editing != null ? (msgs[editing]?.text.match(/\[مسار:[a-z0-9-]+\]/)?.[0] ?? "") : "";
@@ -836,7 +845,23 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     setMsgs((m) => (editing != null ? [...m.slice(0, editing), mine] : [...m, mine]));
     let produceId: string | null = null;
     let mediaId: string | null = null;
+    let dlNote = "";
     try {
+      // a YouTube link: downloaded first (the video, its sound and its frames), like Claude does it, and attached
+      for (const link of editing == null ? youtubeLinks(typed) : []) {
+        try {
+          const got = await downloadYoutube(link, setPrep);
+          if (got?.length) {
+            files.push(...got.filter((g) => !files.some((f) => f.id === g.id)).slice(0, Math.max(0, JAWAD_ATTACHMENT_LIMIT - files.length)));
+            // the person's message (the last one) shows what was downloaded
+            setMsgs((m) => m.map((x, i) => (i === m.length - 1 && x.role === "user" ? { ...x, files: [...files] } : x)));
+          }
+        } catch (e) {
+          dlNote = `${e instanceof Error ? e.message : "ما قدرنا ننزّل الفيديو."} ${persona} سمع كلامه من الرابط بس.`;
+        } finally {
+          setPrep(null);
+        }
+      }
       const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string; lab?: string } | null; media: MediaView[] | null; spent?: number }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id), model: claude.id, verbose, ...(from !== undefined ? { from } : {}) });
       setChatId(r.chatId);
       setSpent(Math.max(0, Number(r.spent) || 0));
@@ -849,7 +874,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
           const i = copy.map((x) => !!x.slides).lastIndexOf(true);
           if (i >= 0) copy[i] = { ...copy[i], slides: { ...copy[i].slides!, todo: r.pending.todo, running: true, report: undefined } };
         }
-        return [...copy, reply];
+        return [...copy, ...(dlNote ? [{ role: "assistant" as const, text: dlNote, error: true }] : []), reply];
       });
       void refresh();
       if (r.pending) produceId = r.chatId;
@@ -1020,7 +1045,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
             {busy === "writing" && (
               <div className="ct-think">
                 <span className="ct-dots"><span /><span /><span /></span>
-                {persona} يكتب…
+                {prep ?? `${persona} يكتب…`}
               </div>
             )}
             <div ref={end} />
@@ -1052,7 +1077,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                 </button>
               </div>
               <div className="ct-compose-row">
-                <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/mpeg,audio/wav,application/pdf" onChange={(e) => void attach(e.target.files)} />
+                <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.oga,.flac,.amr,.aif,.aiff,.webm,application/pdf" onChange={(e) => void attach(e.target.files)} />
                 <button type="button" className="ct-attach" aria-label="أرفق حتى 20 ملفًا" title="أرفق حتى 20 صورة أو فيديو أو صوت أو PDF" disabled={uploading || !!busy || pending.length >= JAWAD_ATTACHMENT_LIMIT} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
                 <MicButton onText={(t) => setQ((v) => (v.trim() ? `${v.trim()} ${t}` : t))} disabled={!!busy || uploading} className="ct-attach" />
                 <textarea

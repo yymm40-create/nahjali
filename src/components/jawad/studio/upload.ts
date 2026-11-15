@@ -18,7 +18,7 @@ export async function probeFile(file: File, expected?: RefKind): Promise<LocalPr
   if (file.size > MAX_UPLOAD_BYTES) throw new Error("حجم الملف أكبر من ٢٠٠ ميجا.");
   const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
   const s = sniff(head);
-  if (!s || !UPLOAD_MIMES[s.mime]) throw new Error("نوع الملف غير مقبول (المقبول: PNG/JPG/WEBP، MP4/MOV، MP3/WAV).");
+  if (!s || !UPLOAD_MIMES[s.mime]) throw new Error("نوع الملف غير مقبول (المقبول: PNG/JPG/WEBP، MP4/MOV، صوت بأي صيغة: MP3/WAV/M4A/AAC/OGG/OPUS/FLAC/AMR/AIFF/WebM).");
   if (expected && s.kind !== expected) throw new Error(`هذا الملف ${KIND_AR[s.kind]} وليس ${KIND_AR[expected]}.`);
   // a PDF has no pixels and no length to read
   if (s.kind === "doc") return { mime: s.mime, kind: s.kind, width: null, height: null, durationMs: null };
@@ -34,11 +34,16 @@ export async function probeFile(file: File, expected?: RefKind): Promise<LocalPr
     el.preload = "metadata";
     el.muted = true;
     el.src = url;
-    await new Promise<void>((ok, fail) => {
+    const read = new Promise<void>((ok, fail) => {
       el.onloadedmetadata = () => ok();
       el.onerror = () => fail(new Error("تعذّر قراءة الملف؛ قد يكون تالفًا أو بترميز غير مدعوم في المتصفح."));
       setTimeout(() => fail(new Error("تعذّر قراءة الملف في الوقت المتوقع.")), 15_000);
     });
+    // a sound the browser can't play itself (Ogg / AMR on Safari…) still goes up: the server reads its length from the bytes
+    if (s.kind === "audio") {
+      const played = await read.then(() => true, () => false);
+      if (!played) return { mime: s.mime, kind: s.kind, width: null, height: null, durationMs: null };
+    } else await read;
     const v = el as HTMLVideoElement;
     return {
       mime: s.mime,

@@ -5,9 +5,12 @@
 export type Sniffed =
   | { kind: "image"; mime: "image/png" | "image/jpeg" | "image/webp" }
   | { kind: "video"; mime: "video/mp4" | "video/quicktime" }
-  | { kind: "audio"; mime: "audio/mpeg" | "audio/wav" }
+  | { kind: "audio"; mime: AudioMime }
   | { kind: "doc"; mime: "application/pdf" }
   | null;
+
+/** Every sound the uploads take (the owner, 15 Nov 2026: «خله يقبل كل الاصوات»); each generator narrows it to what it reads. */
+export type AudioMime = "audio/mpeg" | "audio/wav" | "audio/mp4" | "audio/aac" | "audio/ogg" | "audio/flac" | "audio/webm" | "audio/amr" | "audio/aiff";
 
 const ascii = (b: Uint8Array, at: number, len: number) => String.fromCharCode(...b.subarray(at, at + len));
 
@@ -21,13 +24,22 @@ export function sniff(b: Uint8Array): Sniffed {
   if (ascii(b, 4, 4) === "ftyp") {
     const brand = ascii(b, 8, 4);
     if (brand === "qt  ") return { kind: "video", mime: "video/quicktime" };
-    // Audio-only MPEG-4 brands are not videos
-    if (/^(M4A |M4B |M4P |F4A )$/.test(brand)) return null;
+    // audio-only MPEG-4 brands: an M4A sound (iPhone voice memos, iTunes, most phone recorders)
+    if (/^(M4A |M4B |M4P |F4A |F4B )$/.test(brand)) return { kind: "audio", mime: "audio/mp4" };
     return { kind: "video", mime: "video/mp4" };
   }
   // a PDF: the robots read it themselves (a lecture, a report, a form to follow)
   if (ascii(b, 0, 5) === "%PDF-") return { kind: "doc", mime: "application/pdf" };
+  if (ascii(b, 0, 4) === "OggS") return { kind: "audio", mime: "audio/ogg" };
+  if (ascii(b, 0, 4) === "fLaC") return { kind: "audio", mime: "audio/flac" };
+  if (ascii(b, 0, 5) === "#!AMR") return { kind: "audio", mime: "audio/amr" };
+  if (ascii(b, 0, 4) === "FORM" && /^AIF[FC]$/.test(ascii(b, 8, 4))) return { kind: "audio", mime: "audio/aiff" };
+  // WebM / Matroska (a browser or WhatsApp-web recording): taken as a sound; a WebM video is heard the same way
+  if (b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return { kind: "audio", mime: "audio/webm" };
+  // an ID3 tag can sit before AAC as well as MP3: what follows the tag decides
   if (ascii(b, 0, 3) === "ID3") return { kind: "audio", mime: "audio/mpeg" };
+  // AAC in ADTS frames (layer bits 00, which MP3 never has)
+  if (b[0] === 0xff && (b[1] & 0xf6) === 0xf0) return { kind: "audio", mime: "audio/aac" };
   if (b[0] === 0xff && (b[1] & 0xe0) === 0xe0 && ((b[1] >> 1) & 0x3) !== 0) return { kind: "audio", mime: "audio/mpeg" };
   return null;
 }
@@ -178,11 +190,117 @@ export function probeMp3(b: Uint8Array): Probe {
   return {};
 }
 
+const le32 = (b: Uint8Array, o: number) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
+const AAC_RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
+
+/** AAC (ADTS): every frame holds 1024 samples; the frames are counted. */
+export function probeAdts(b: Uint8Array): Probe {
+  let o = ascii(b, 0, 3) === "ID3" ? 10 + (((b[6] & 0x7f) << 21) | ((b[7] & 0x7f) << 14) | ((b[8] & 0x7f) << 7) | (b[9] & 0x7f)) : 0;
+  let frames = 0;
+  let rate = 0;
+  while (o + 7 <= b.length) {
+    if (b[o] !== 0xff || (b[o + 1] & 0xf6) !== 0xf0) break;
+    rate ||= AAC_RATES[(b[o + 2] >> 2) & 0xf] ?? 0;
+    const len = ((b[o + 3] & 3) << 11) | (b[o + 4] << 3) | (b[o + 5] >> 5);
+    if (len < 7) break;
+    frames++;
+    o += len;
+  }
+  return rate && frames ? { durationMs: Math.round(((frames * 1024) / rate) * 1000) } : {};
+}
+
+/** Ogg (Opus / Vorbis): the last page's granule position over the sample rate. */
+export function probeOgg(b: Uint8Array): Probe {
+  const head = ascii(b, 0, Math.min(b.length, 200));
+  let rate = 0;
+  if (head.includes("OpusHead")) rate = 48000;
+  else {
+    const v = head.indexOf("\x01vorbis");
+    if (v >= 0) rate = le32(b, v + 12);
+  }
+  if (!rate) return {};
+  for (let o = b.length - 14; o >= 0 && o > b.length - 200_000; o--) {
+    if (b[o] !== 0x4f || ascii(b, o, 4) !== "OggS") continue;
+    const granule = le32(b, o + 6) + le32(b, o + 10) * 2 ** 32;
+    // Opus starts with a pre-skip (usually 312 samples), small enough to leave in
+    return granule > 0 && granule < 2 ** 52 ? { durationMs: Math.round((granule / rate) * 1000) } : {};
+  }
+  return {};
+}
+
+/** FLAC: STREAMINFO's total samples over its sample rate. */
+export function probeFlac(b: Uint8Array): Probe {
+  if (b.length < 26) return {};
+  const rate = (b[18] << 12) | (b[19] << 4) | (b[20] >> 4);
+  const total = (b[21] & 0x0f) * 2 ** 32 + u32(b, 22);
+  return rate && total ? { durationMs: Math.round((total / rate) * 1000) } : {};
+}
+
+/** AMR (narrow band): 20 ms frames, each as long as its mode says. */
+export function probeAmr(b: Uint8Array): Probe {
+  const SIZES = [13, 14, 16, 18, 20, 21, 27, 32, 6, 0, 0, 0, 0, 0, 0, 1];
+  let o = 6;
+  let frames = 0;
+  while (o < b.length) {
+    const size = SIZES[(b[o] >> 3) & 0xf];
+    if (!size) break;
+    frames++;
+    o += size;
+  }
+  return frames ? { durationMs: frames * 20 } : {};
+}
+
+/** AIFF: COMM's frame count over its 80-bit sample rate. */
+export function probeAiff(b: Uint8Array): Probe {
+  let o = 12;
+  while (o + 8 <= b.length) {
+    const id = ascii(b, o, 4);
+    const size = u32(b, o + 4);
+    if (id === "COMM") {
+      const frames = u32(b, o + 10);
+      const exp = (((b[o + 16] & 0x7f) << 8) | b[o + 17]) - 16383;
+      const rate = u32(b, o + 18) * 2 ** (exp - 31);
+      return rate ? { durationMs: Math.round((frames / rate) * 1000) } : {};
+    }
+    o += 8 + size + (size & 1);
+  }
+  return {};
+}
+
+/** WebM / Matroska: Segment Info's Duration (float) × TimecodeScale (ns, 1 ms when absent). */
+export function probeWebm(b: Uint8Array): Probe {
+  const end = Math.min(b.length, 64_000);
+  let scale = 1_000_000;
+  for (let o = 0; o + 4 < end; o++) {
+    if (b[o] === 0x2a && b[o + 1] === 0xd7 && b[o + 2] === 0xb1) {
+      const len = b[o + 3] & 0x7f;
+      if (len >= 1 && len <= 4) {
+        let v = 0;
+        for (let i = 0; i < len; i++) v = v * 256 + b[o + 4 + i];
+        if (v) scale = v;
+      }
+    }
+    if (b[o] === 0x44 && b[o + 1] === 0x89 && (b[o + 2] === 0x84 || b[o + 2] === 0x88)) {
+      const dv = new DataView(b.buffer, b.byteOffset + o + 3, b[o + 2] === 0x84 ? 4 : 8);
+      const d = b[o + 2] === 0x84 ? dv.getFloat32(0) : dv.getFloat64(0);
+      if (Number.isFinite(d) && d > 0) return { durationMs: Math.round((d * scale) / 1_000_000) };
+    }
+  }
+  return {};
+}
+
 /** Dimensions / duration / fps of a sniffed audio or video file. */
 export function probe(b: Uint8Array, s: NonNullable<Sniffed>): Probe {
   if (s.kind === "video") return probeIsoBmff(b);
   if (s.mime === "audio/wav") return probeWav(b);
   if (s.mime === "audio/mpeg") return probeMp3(b);
+  if (s.mime === "audio/mp4") return probeIsoBmff(b);
+  if (s.mime === "audio/aac") return probeAdts(b);
+  if (s.mime === "audio/ogg") return probeOgg(b);
+  if (s.mime === "audio/flac") return probeFlac(b);
+  if (s.mime === "audio/amr") return probeAmr(b);
+  if (s.mime === "audio/aiff") return probeAiff(b);
+  if (s.mime === "audio/webm") return probeWebm(b);
   return {};
 }
 
@@ -196,6 +314,13 @@ export const UPLOAD_MIMES: Record<string, "image" | "video" | "audio" | "doc"> =
   "video/quicktime": "video",
   "audio/mpeg": "audio",
   "audio/wav": "audio",
+  "audio/mp4": "audio",
+  "audio/aac": "audio",
+  "audio/ogg": "audio",
+  "audio/flac": "audio",
+  "audio/webm": "audio",
+  "audio/amr": "audio",
+  "audio/aiff": "audio",
 };
 export const UPLOAD_EXT: Record<string, string> = {
   "application/pdf": "pdf",
@@ -206,6 +331,13 @@ export const UPLOAD_EXT: Record<string, string> = {
   "video/quicktime": "mov",
   "audio/mpeg": "mp3",
   "audio/wav": "wav",
+  "audio/mp4": "m4a",
+  "audio/aac": "aac",
+  "audio/ogg": "ogg",
+  "audio/flac": "flac",
+  "audio/webm": "webm",
+  "audio/amr": "amr",
+  "audio/aiff": "aiff",
 };
 /** The storage limit per file (Supabase Free plan). */
 /** A reference file: up to 200 MB (R2 holds it; the server reads it once to check what it is). */
