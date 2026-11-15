@@ -57,6 +57,7 @@ import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, stemsOf, type Stem } fro
 
 import { storage } from "@/lib/storage";
 import type { CartoonPlan } from "./cartoon";
+import { offer10Covers } from "./offer10";
 const db = () => createAdminClient();
 
 export type JobStatus = "queued" | "submitting" | "running" | "saving" | "succeeded" | "failed" | "cancelled";
@@ -77,7 +78,7 @@ export interface JobRow {
    * modelPrompt: the prompt as the model receives it (each «@name» written the model's way, or Arabic words written
    * phonetically by «النطق الدقيق»), when it differs. diction: the words whose pronunciation was set.
    */
-  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; signupFreeImage?: boolean; /** fal: the endpoint a video was sent to (text- or image-to-video) */ falModel?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; /** the Claude model the person chose (config/claude-models.ts): «النطق الدقيق» runs on it, never dearer than its fixed price */ claude?: string; film?: { projectId: string; assetId?: string; genId?: string; title?: string } };
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; signupFreeImage?: boolean; /** «عرض الـ١٠ ريال» made it free */ offer10?: boolean; /** fal: the endpoint a video was sent to (text- or image-to-video) */ falModel?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; /** the Claude model the person chose (config/claude-models.ts): «النطق الدقيق» runs on it, never dearer than its fixed price */ claude?: string; film?: { projectId: string; assetId?: string; genId?: string; title?: string } };
   refs: { uploadId: string; kind: string; role: RefRole; name?: string }[];
   price_coins: number;
   price_breakdown: { label: string; centi: number }[];
@@ -306,12 +307,15 @@ export async function createJob(user: { id: string; email?: string | null }, own
   // The user confirms the exact amount: any difference (a price changed since the page loaded) is asked again
   // «أول تجربة مجانية»: set only by the server after it checked the offer and that this is the account's first attempt
   const freeFirst = server.free === true && !signupFreeImage;
+  // «عرض الـ١٠ ريال»: a paid offer still running for this generator (config/jawad/offer10.ts) makes the job free
+  const offer10 = !freeFirst && !signupFreeImage && !owner && !server.team && !server.cartoon && e.price.coins > 0 && (await offer10Covers(user.id, def.id, e.settings).catch(() => false));
+  const freeLine = signupFreeImage ? { label: "صورة ترحيبية مجانية", centi: 0 } : freeFirst ? { label: "أول تجربة مجانية", centi: 0 } : offer10 ? { label: "مجاني من عرض الـ١٠ ريال", centi: 0 } : null;
   // a code's «بسعر التكلفة»: the tool's own cost (the price table's lines, in hundredths of a halala), no profit
-  const atCost = !owner && !server.team && !signupFreeImage && !freeFirst && e.price.coins > 0 && (await perksOf(user.email)).atCost;
+  const atCost = !owner && !server.team && !freeLine && e.price.coins > 0 && (await perksOf(user.email)).atCost;
   const payCoins = atCost ? costOfLines(e.price.lines) : e.price.coins;
   const payLines = atCost ? [{ label: "بسعر التكلفة (بدون ربح)", centi: payCoins * 100 }] : e.price.lines;
-  const chargeCoins = signupFreeImage || freeFirst ? 0 : payCoins;
-  if (Number(b.expectedCoins) !== chargeCoins) return { kind: "price_changed", coins: chargeCoins, lines: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : freeFirst ? [{ label: "أول تجربة مجانية", centi: 0 }] : payLines, prices: table };
+  const chargeCoins = freeLine ? 0 : payCoins;
+  if (Number(b.expectedCoins) !== chargeCoins) return { kind: "price_changed", coins: chargeCoins, lines: freeLine ? [freeLine] : payLines, prices: table };
 
   // «الفصل الذكي»: the frames the studio took of the video are kept with the job (Claude watches them for the music
   // and the effects; the dialogue needs only the video)
@@ -331,8 +335,8 @@ export async function createJob(user: { id: string; email?: string | null }, own
   const modelPrompt = style ? withStyle(asWritten, style.text, def.output === "video" ? style.videoText : undefined) : asWritten;
 
   // made inside a team series' edit («المسلسل الذكي»): its «نقود الفريق الذكي» pays, not the person's own coins
-  const teamPays = !signupFreeImage && !freeFirst && !owner && !!server.team && payCoins > 0;
-  const charge = !signupFreeImage && !freeFirst && !owner && !server.team && payCoins > 0;
+  const teamPays = !freeLine && !owner && !!server.team && payCoins > 0;
+  const charge = !freeLine && !owner && !server.team && payCoins > 0;
   const { data, error } = await db().rpc("jawad_create_job", {
     p_job: {
       user_id: user.id,
@@ -344,10 +348,10 @@ export async function createJob(user: { id: string; email?: string | null }, own
       mode: e.mode.id,
       output_kind: def.output,
       prompt,
-      inputs: { settings: e.settings, instructions, refStyle, origin, ...(server.cartoon ? { cartoon: server.cartoon } : {}), ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}), ...(signupFreeImage ? { signupFreeImage: true } : {}), ...(def.output === "audio" && findClaudeModel(b.model) ? { claude: String(b.model) } : {}) },
+      inputs: { settings: e.settings, instructions, refStyle, origin, ...(server.cartoon ? { cartoon: server.cartoon } : {}), ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}), ...(signupFreeImage ? { signupFreeImage: true } : {}), ...(offer10 ? { offer10: true } : {}), ...(def.output === "audio" && findClaudeModel(b.model) ? { claude: String(b.model) } : {}) },
       refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
       price_coins: chargeCoins,
-      price_breakdown: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : freeFirst ? [{ label: "أول تجربة مجانية", centi: 0 }] : payLines,
+      price_breakdown: freeLine ? [freeLine] : payLines,
       pricing_version: priceVersion(table),
       cost_usd_estimate: e.price.usdCeiling ?? "",
     },
