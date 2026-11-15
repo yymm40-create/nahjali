@@ -21,6 +21,7 @@ import MotionCarouselTable from "./MotionCarouselTable";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { drawWithCode, pngBody, smallJpeg } from "@/components/claude-code/draw";
 import { downloadYoutube, sheetOf, youtubeLinks } from "./media-prep";
+import { joinSlidesToReel } from "./slides-reel";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean; video?: string; videoUrl?: string | null; videoDownload?: string | null }
@@ -397,6 +398,37 @@ async function putVideo(blob: Blob, fileName: string): Promise<string> {
   return conf.upload.id;
 }
 
+/** «🎬 حوّله ريل»: the carousel's slides joined in order into one 9:16 video (lib: ./slides-reel), downloaded. */
+function ReelButton({ items }: { items: SlideView[] }) {
+  const [p, setP] = useState<number | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  async function make() {
+    setErr(null);
+    setP(0);
+    try {
+      const ordered = [...items].sort((a, b) => a.n - b.n);
+      const blob = await joinSlidesToReel(ordered.map((x) => ({ video: x.videoUrl ?? null, image: x.url })), setP);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "ريل_الكاروسيل.mp4";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "ما قدرنا نطلّع الريل.");
+    } finally {
+      setP(null);
+    }
+  }
+  return (
+    <>
+      <button className="ct-mini" type="button" disabled={p != null} onClick={() => void make()} title="الشرائح كلها بالترتيب في مقطع واحد 9:16 بصوتها">
+        {p != null ? `🎬 أجمع الريل… ${Math.round(p * 100)}٪` : "🎬 حوّله ريل (مقطع واحد)"}
+      </button>
+      {err && <small style={{ color: "#f87171" }}>{err}</small>}
+    </>
+  );
+}
+
 /** The carousel of an answer: tiles in order, the drawing ones as moving placeholders, each made one with its check. */
 export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; step?: string | null }) {
   const ns = [...new Set([...s.items.map((i) => i.n), ...s.todo])].sort((a, b) => a - b);
@@ -487,6 +519,7 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, st
       {!s.running && s.items.length > 0 && (
         <div className="ct-actions">
           <button className="ct-mini" type="button" onClick={onDownloadAll}>⬇️ حمّل كل الشرائح ({s.items.length})</button>
+          {s.items.length > 1 && <ReelButton items={s.items} />}
         </div>
       )}
     </div>
