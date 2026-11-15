@@ -54,6 +54,11 @@ export const FEATURES = [
   { id: "studio.smart_select", section: "studio", label: "«✨ تحديد ذكي» في أدوات الصورة" },
   { id: "studio.outpaint", section: "studio", label: "«وسّع الصورة» (إرسال)" },
   { id: "studio.upscale", section: "studio", label: "«ارفع دقة الصورة» (إرسال)" },
+  { id: "studio.taste_make", section: "studio", label: "«🎨 ذوقي»: صنع ذوق من الصور" },
+  { id: "studio.taste_use", section: "studio", label: "«🎨 ذوقي»: اختيار ذوق للتوليد" },
+  { id: "studio.taste_manage", section: "studio", label: "«🎨 ذوقي»: تسمية أو حذف ذوق" },
+  { id: "studio.brand_save", section: "studio", label: "«هويتي»: حفظ الهوية (ألوان، شعار، خطوط، نبرة)" },
+  { id: "studio.brand_use", section: "studio", label: "«طبّق هويتي» في التوليد" },
 
   // «حيدرة كت» (/jawad-ai/editor)
   { id: "editor.open", section: "editor", label: "فتح مشروع في حيدرة كت" },
