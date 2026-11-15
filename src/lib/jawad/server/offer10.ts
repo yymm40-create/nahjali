@@ -1,4 +1,4 @@
-// «عرض الـ١٠ ريال» (config/jawad/offer10.ts): the purchase through Moyasar and what is still free for one person. Server only.
+// «عرض الـ٢٥ ريال» (config/jawad/offer10.ts): the purchase through Moyasar and what is still free for one person. Server only.
 // The purchase is kept in jawad_settings under «offer10:<user id>» (no new table): the invoices made for it, and `paidAt`
 // once one of them is READ from Moyasar as paid. Free jobs carry `inputs.offer10 = true`; usage is counted from them.
 
