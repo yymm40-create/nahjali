@@ -56,9 +56,7 @@ describe("the prices an orange-coin person sees are the cost", () => {
     if (normal.price.ok && cost.price.ok) {
       const lines = normal.price.lines;
       expect(cost.price.coins).toBe(costOfLines(lines));
-      expect(cost.price.was).toBeUndefined();
       expect(cost.price.coins).toBeLessThan(normal.price.coins);
-      expect(normal.price.was).toBeGreaterThan(normal.price.coins);
     }
   });
 

@@ -9,6 +9,7 @@ import type { EditorAsset, ImportItem } from "./types";
 import type { UploadItem } from "./useUploads";
 import SfxLibrary from "./SfxLibrary";
 import { desktopLinks, useDesktop } from "./desktop";
+import { askShorts } from "./shorts-ask";
 
 const KIND_ICON = { video: "video", audio: "music", image: "image" } as const;
 
@@ -43,6 +44,8 @@ export default function Library({
   const onDesktop = useDesktop();
   const input = useRef<HTMLInputElement>(null);
   const [link, setLink] = useState("");
+  // «ابحث في مقاطعك»: words said in the files (opens «ابحث في الكلام» with the results)
+  const [said, setSaid] = useState("");
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -62,6 +65,21 @@ export default function Library({
 
       {tab === "files" ? (
         <div className="jw-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-2">
+          {assets.some((a) => a.kind !== "image") && (
+            <form
+              className="flex gap-1.5"
+              role="search"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (said.trim()) askShorts({ tab: "search", query: said.trim() });
+              }}
+            >
+              <input className="jw-input min-w-0 flex-1 text-xs" dir="auto" value={said} onChange={(e) => setSaid(e.target.value)} placeholder="ابحث في كلام مقاطعك…" aria-label="ابحث في كلام مقاطعك" />
+              <button type="submit" className="jw-btn shrink-0 text-xs" disabled={!said.trim()} title="كل مكان انقالت فيه هالكلمات في ملفاتك المكتوب كلامها (مجاني)">
+                <Icon name="search" size={14} /> ابحث
+              </button>
+            </form>
+          )}
           {!readOnly && (
             <>
               <input

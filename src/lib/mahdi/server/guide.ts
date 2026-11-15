@@ -66,7 +66,7 @@ export async function attachGuidePdf(userId: string, body: Record<string, unknow
   const gb = isGuideKey(id) ? guideBook(id) : undefined;
   if (!gb) throw new UserError(t.errors.notFound, 404);
   const pages = Number(body.pages);
-  if (!Number.isInteger(pages) || pages < 1 || pages > 10000) throw new UserError(t.reading.u.page.totalRequired, 400);
+  if (!Number.isInteger(pages) || pages < 1 || pages > 100000) throw new UserError(t.reading.u.page.totalRequired, 400);
   const pdf = await checkUploadedPdf(userId, body.pdf);
   const db = createAdminClient();
   const fail = async (e: unknown): Promise<never> => {

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CONTACT_EMAIL, LEGAL_UPDATED, SITE_NAME } from "@config/site";
 
-export const metadata = { title: "سياسة الاسترجاع والاستبدال" };
+export const metadata = { title: "سياسة الاسترجاع والاستبدال", description: "سياسة الاسترجاع والاستبدال في الجواد الذكي: التوليد الفاشل يرجع رصيده، وشراء الرصيد نهائي، وحالات الخطأ في الدفع.", alternates: { canonical: "/refund" } };
 
 /**
  * «سياسة الاسترجاع والاستبدال»: the payment gateway asks for one. It follows the terms (/terms): a failed generation goes

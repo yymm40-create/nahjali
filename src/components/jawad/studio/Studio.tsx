@@ -252,7 +252,7 @@ export default function Studio({ section, studioSections, generators: allGenerat
       saved = {
         ...base,
         ...(gid ? { generatorId: gid } : {}),
-        prompt: handed.prompt,
+        prompt: handed.prompt || base.prompt || "",
         settings: gid ? { ...(base.settings ?? {}), [gid]: { ...(base.settings?.[gid] ?? {}), ...settingsOk } as Settings } : base.settings,
         refStyle: gid && handed.refStyle && gdef?.modes.some((m) => m.refStyle === handed.refStyle) ? { ...(base.refStyle ?? {}), [gid]: handed.refStyle } : base.refStyle,
         styleId: handed.styleId ?? "",
@@ -266,7 +266,9 @@ export default function Studio({ section, studioSections, generators: allGenerat
       };
       const list = handed.refs.map((r) => `@${r.name} (${r.what})`).join("، ");
       const gname = gid ? generators.find((g) => g.id === gid)?.name : null;
-      setNotice(
+      // from a generator's own page (/jawad-ai/models): the generator only, no prompt
+      if (!handed.prompt) setNotice(gname ? `اخترنا لك ${gname}. اكتب وصفك بالعربي واضغط «توليد»، والسعر يبين لك قبل.` : "هالمولّد غير متاح لحسابك الحين، فاختر مولّد ثاني.");
+      else setNotice(
         `جهّزنا برومبت «${handed.label}» من طرق إبداعية` +
           (gname ? ` على ${gname} بنفس الإعدادات.` : `، بس مولّده غير متاح لحسابك الحين فاختر مولّد.`) +
           (list ? ` أضف مراجعك أنت بالترتيب: ${list}، وبتاخذ هالأسماء تلقائيًا.` : " عدّل اللي تبيه واضغط «توليد».")
@@ -1306,7 +1308,7 @@ export default function Studio({ section, studioSections, generators: allGenerat
                 {price != null && (
                   <span className="ms-1 flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--jw-on-accent)_15%,transparent)] px-2 py-0.5 text-sm">
                     {/* the owner sees the very price a customer sees (and the note below: nothing is taken from him) */}
-                    <Riyal halalas={price} was={ev?.price.ok ? ev.price.was : null} size={15} />
+                    <Riyal halalas={price} size={15} />
                   </span>
                 )}
               </button>
@@ -1399,11 +1401,15 @@ export default function Studio({ section, studioSections, generators: allGenerat
 
       <GeneratorPicker open={picker} onClose={() => setPicker(false)} generators={unified ? generators.filter((g) => generatorById(g.id)?.output === def.output) : generators} current={gen.id} onPick={(id) => (track("studio.generator"), switchGenerator(id))} owner={owner} title={unified ? `اختر مولّد ${def.output === "image" ? "الصور" : def.output === "video" ? "الفيديو" : "الصوت"}` : undefined} />
 
-      <Dialog open={Boolean(confirm)} onClose={() => setConfirm(null)} title="تغيّر السعر">
+      <Dialog open={Boolean(confirm)} onClose={() => setConfirm(null)} title={confirm?.coins === 0 ? "هذا التوليد مجاني" : "تغيّر السعر"}>
         {confirm && (
           <div className="space-y-4 p-4">
             <p className="text-sm">
-              تغيّر سعر هذا التوليد من <b><Riyal halalas={confirm.was} size={13} /></b> إلى <b><Riyal halalas={confirm.coins} size={13} /></b>. لم يُخصم شيء بعد.
+              {confirm.coins === 0 ? (
+                <>هذا التوليد مجاني لك (عرض أو تجربة مجانية)، ولن يُخصم من رصيدك شيء.</>
+              ) : (
+                <>تغيّر سعر هذا التوليد من <b><Riyal halalas={confirm.was} size={13} /></b> إلى <b><Riyal halalas={confirm.coins} size={13} /></b>. لم يُخصم شيء بعد.</>
+              )}
             </p>
             <div className="flex justify-end gap-2">
               <button type="button" className="jw-btn" onClick={() => setConfirm(null)}>إلغاء</button>
@@ -1416,7 +1422,7 @@ export default function Studio({ section, studioSections, generators: allGenerat
                   submit(c);
                 }}
               >
-                أوافق على <Riyal halalas={confirm.coins} size={14} /> وولّد
+                {confirm.coins === 0 ? "ولّد مجانًا" : <>أوافق على <Riyal halalas={confirm.coins} size={14} /> وولّد</>}
               </button>
             </div>
           </div>

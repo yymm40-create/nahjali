@@ -75,7 +75,7 @@ export default function AddBookPage() {
     e.preventDefault();
     const pages = Math.round(parseNumberInput(form.pages));
     if (!form.title.trim()) return setError(t.reading.titleRequired);
-    if (!(pages >= 1 && pages <= 10000)) return setError(t.reading.u[form.unit].totalRequired);
+    if (!(pages >= 1 && pages <= 100000)) return setError(t.reading.u[form.unit].totalRequired);
     setBusy(true);
     setError("");
     const data = new FormData();

@@ -87,11 +87,11 @@ export const servedModel = (id: unknown): ClaudeModel | null =>
 export const TYPICAL_REPLY = { inputTokens: 20_000, outputTokens: 2_000 } as const;
 export const typicalReplyUsd = (m: ClaudeModel) => (TYPICAL_REPLY.inputTokens * m.rates.input + TYPICAL_REPLY.outputTokens * m.rates.output) / 1_000_000;
 
-/** The platform's only profit on Claude's usage, in percent — shown to the person wherever the model is chosen (the owner, 26 October 2026). */
-export const CLAUDE_MARGIN_PCT = 60;
+/** The platform's only profit on Claude's usage, in percent — shown to the person wherever the model is chosen (the owner, 13 November 2026: the Claude robots 30٪, everything else 60٪). */
+export const CLAUDE_MARGIN_PCT = 30;
 /** The profit on «حيدرا ماكس»'s work: the robots writing a program for the job (src/lib/claude-code, حيدرة كت's cut and
- * colour programs, the motion lab) — its real usage + this, like Claude's (the owner, 26 October 2026: the robots' 60٪). */
-export const HAIDARA_MAX_MARGIN_PCT = 60;
+ * colour programs, the motion lab) — its real usage + this, like Claude's (a Claude robot too: 30٪). */
+export const HAIDARA_MAX_MARGIN_PCT = 30;
 
 /** Where the person's choice is kept on this device. */
 export const CLAUDE_MODEL_KEY = "jw-claude-model";

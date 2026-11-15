@@ -75,19 +75,18 @@ function readCodes(v: unknown): TopupCode[] {
 }
 
 /**
- * «المشهد السينمائي» (owner, 17 October 2026; re-priced with the margins of 21 October 2026, and Claude's 60٪ of
- * 26 October 2026): the balance one cinematic scene costs, end to end, at the owner's usual margins (videos 40٪, GPT Image 2
- * pictures 30٪, Claude its real cost + 60٪) —
- * the owner's basis: Seedance 2.0 at its 15-second limit in 480p, ONE take (¤6), 4 sheets with no redraws (¤8), and ONE
- * reply each from the screenwriter, the sheet maker and the director plus the small helpers, at what the film code
- * reserves for each (¤16.20 at 60٪) = ¤30.20, rounded up to the whole riyal (the owner's cap: never above ¤50). The trial is ¤10.
+ * «المشهد السينمائي» (owner, 17 October 2026; re-priced with the margins of 13 November 2026: 60٪ on everything, Claude
+ * its real cost + 30٪): the balance one cinematic scene costs, end to end —
+ * the owner's basis: Seedance 2.0 at its 15-second limit in 480p, ONE take, 4 sheets with no redraws, and ONE reply
+ * each from the screenwriter, the sheet maker and the director plus the small helpers, at what the film code reserves
+ * for each = ¤29.68, rounded up to the whole riyal (the owner's cap: never above ¤50). The trial is ¤10.
  */
-export const SCENE_PACK_SAR = 31;
+export const SCENE_PACK_SAR = 30;
 
 /**
  * «الطالب الذكي» (owner, 18 October 2026): ¤12 — one PDF of 5–10 pages turned into ONE output (a summary or an
  * explanation, the ready template, no generated pictures). Measured on the site's real student projects: a short one
- * end to end (reading, understanding, plan, writing) came to ¤2.40–¤8 at the owner's margins (Claude its cost + 40٪),
+ * end to end (reading, understanding, plan, writing) came to ¤2.40–¤8 at the owner's margins of then (Claude its cost + 40٪; cheaper now at + 30٪),
  * so ¤12 makes one comfortably, often two. Paid after use: nothing is held, each step takes what it really cost.
  */
 export const STUDENT_PACK_SAR = 12;

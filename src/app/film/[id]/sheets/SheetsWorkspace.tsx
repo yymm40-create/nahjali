@@ -1,6 +1,7 @@
 "use client";
 
 import { credits, creditsRange } from "@/lib/film/credits";
+import Coined from "@/components/Coined";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode, useCallback, useTransition } from "react";
@@ -217,7 +218,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           <button className="btn btn-primary w-full text-xl" disabled={busy} onClick={() => send({ action: "start" })}>
             {busy ? "نرسل…" : "ابدأ مع صانع الشيت"}
           </button>
-          <p className="text-xs font-bold text-muted">كل رد {creditsRange(0.05, 0.8, "claude")}</p>
+          <p className="text-xs font-bold text-muted">كل رد <Coined text={creditsRange(0.05, 0.8, "claude")} /></p>
         </div>
       )}
 
@@ -289,7 +290,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           <p className="text-sm font-extrabold">⚡ اصنعهم كلهم مع بعض</p>
           {waitingPrompts.length > 1 && (
             <button className="btn btn-primary w-full" disabled={busy || writing} onClick={() => send({ action: "approve_all_prompts" })}>
-              {busy ? "نرسل…" : `✅ اعتمد كل البرومبتات (${waitingPrompts.length}) وولّد صورها مرة وحدة · تقريبًا ${credits(waitingPrompts.length * 0.4, "image")}`}
+              <Coined text={busy ? "نرسل…" : `✅ اعتمد كل البرومبتات (${waitingPrompts.length}) وولّد صورها مرة وحدة · تقريبًا ${credits(waitingPrompts.length * 0.4, "image")}`} />
             </button>
           )}
           {readyImages.length > 1 && (
@@ -315,7 +316,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
       )}
       {orderedSheets.length > 0 && (
         <label className="flex items-center gap-2 text-sm font-bold">
-          <input type="checkbox" className="size-5" checked={autoMake} onChange={(e) => setAutoMake(e.target.checked)} /> ولّد الصور أول ما توصل أوصافها (٥ في نفس الوقت) · كل صورة {SHEET_COST}
+          <input type="checkbox" className="size-5" checked={autoMake} onChange={(e) => setAutoMake(e.target.checked)} /> ولّد الصور أول ما توصل أوصافها (٥ في نفس الوقت) · كل صورة <Coined text={SHEET_COST} />
         </label>
       )}
       <SheetCards
@@ -585,7 +586,7 @@ function StyleTest({
           <p className="text-sm font-bold text-muted">💡 خريطة {styles.length} ستايل في ١٤ عائلة، كل واحد تحت شركته أو مدرسته (دوّر بالاسم أو بالشركة). اختر ٢ أو ٣ أشكال رسم، نجرّبها على لقطة من قصتك، وبعدين تختار اللي يعجبك — وبعد الاعتماد ينرسم الماستر وكل الشيتات لحالهم.</p>
           <StyleBrowser skin="film" styles={styles} selected={picked} onPick={toggle} cols="grid-cols-2" />
           <button className="btn btn-primary sticky bottom-3 w-full" disabled={busy || picked.length === 0} onClick={() => { onTest(picked); setPicked([]); }}>
-            ولّد صور الاختبار ({picked.length}) · تقريبًا {credits(picked.length * 0.06, "image")}
+            ولّد صور الاختبار ({picked.length}) · تقريبًا <Coined text={credits(picked.length * 0.06, "image")} />
           </button>
         </div>
       )}

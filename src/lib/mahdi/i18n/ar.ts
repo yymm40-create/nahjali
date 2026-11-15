@@ -1476,7 +1476,7 @@ export const ar = {
     coverTooBig: "الصورة كبيرة. اختر صورة أصغر من 8 ميجابايت.",
     coverBadType: "اختر صورة بصيغة JPG أو PNG أو WEBP.",
     titleRequired: "اكتب اسم الكتاب.",
-    pagesRequired: "اكتب عدد صفحات الكتاب (من 1 إلى 10000).",
+    pagesRequired: "اكتب عدد صفحات الكتاب (من 1 إلى 100000).",
     dailyLimit: "أضفت كتبًا كثيرة اليوم. حاول غدًا.",
     // book page
     about: "عن الكتاب",
@@ -1575,7 +1575,7 @@ export const ar = {
       page: {
         count: (n: number) => `${n} صفحة`,
         total: "عدد الصفحات",
-        totalRequired: "اكتب عدد صفحات الكتاب (من 1 إلى 10000).",
+        totalRequired: "اكتب عدد صفحات الكتاب (من 1 إلى 100000).",
         editBelowRead: (n: number) => `فيه من قرأ إلى صفحة ${n}؛ ما يصير العدد أقل منها.`,
         progress: (a: number, b: number) => `${a} من ${b} صفحة`,
         startQ: "من أي صفحة تبدأ؟",
@@ -1597,7 +1597,7 @@ export const ar = {
       narration: {
         count: (n: number) => `${n} رواية`,
         total: "عدد الروايات",
-        totalRequired: "اكتب عدد روايات الكتاب (من 1 إلى 10000).",
+        totalRequired: "اكتب عدد روايات الكتاب (من 1 إلى 100000).",
         editBelowRead: (n: number) => `فيه من قرأ إلى الرواية ${n}؛ ما يصير العدد أقل منها.`,
         progress: (a: number, b: number) => `${a} من ${b} رواية`,
         startQ: "من أي رواية تبدأ؟",

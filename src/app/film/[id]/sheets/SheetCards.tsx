@@ -9,6 +9,7 @@ import { useState } from "react";
 import { postJson } from "@/lib/fetch";
 import Spinner from "@/components/Spinner";
 import { credits } from "@/lib/film/credits";
+import Coined from "@/components/Coined";
 import type { SheetVersion } from "@/lib/film/sheets";
 
 export interface CardAsset {
@@ -124,7 +125,7 @@ function SheetCard({ projectId, id, title, prompts, images, busy, send, onEdit, 
             </button>
           ))}
           <button className="btn btn-secondary min-h-9 flex-1 px-3 text-sm" disabled={busy || !!generating} onClick={() => send(ready ? { action: "generate_image", sheetId: id, count } : { action: "approve", versionId: latest!.id, count })}>
-            {live.length ? "🔁 ولّد" : "🖼️ ولّد"} ×{count} · {credits(SHEET_USD * count, "image")}
+            {live.length ? "🔁 ولّد" : "🖼️ ولّد"} ×{count} · <Coined text={credits(SHEET_USD * count, "image")} />
           </button>
         </div>
       )}
