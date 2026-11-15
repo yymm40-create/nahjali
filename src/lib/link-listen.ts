@@ -64,6 +64,8 @@ interface Kept {
   id?: string;
   text?: string;
   seconds?: number;
+  /** the phrases with their times (s), for motion built on the words (lib/content/sound) */
+  parts?: { text: string; from: number; to: number }[];
   why?: string;
   at: string;
 }
@@ -109,10 +111,35 @@ async function titleOf(url: string) {
 const secondsOf = (h: Heard) => (h.words.length ? h.words[h.words.length - 1].end : 0);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** The words in short phrases (a breath, a sentence's end, or 12 words), each with when it is said. */
+export function phrasesOf(h: Heard): { text: string; from: number; to: number }[] {
+  const out: { text: string; from: number; to: number }[] = [];
+  let cur: Heard["words"] = [];
+  const flush = () => {
+    if (cur.length) out.push({ text: cur.map((w) => w.text).join(" ").replace(/\s+([،,.؟?!:؛])/g, "$1").trim(), from: Math.round(cur[0].start * 100) / 100, to: Math.round(cur[cur.length - 1].end * 100) / 100 });
+    cur = [];
+  };
+  for (const w of h.words) {
+    if (!String(w.text ?? "").trim()) continue;
+    if (cur.length && w.start - cur[cur.length - 1].end > 0.45) flush();
+    cur.push(w);
+    if (cur.length >= 12 || (cur.length >= 4 && /[.!?؟،,؛]$/.test(w.text.trim()))) flush();
+  }
+  flush();
+  return out;
+}
+
 function ready(url: string, title: string, h: Heard): Kept {
   const text = transcriptText(h);
-  return text ? { url, title, status: "ready", text, seconds: Math.round(secondsOf(h)), at: new Date().toISOString() } : { url, title, status: "failed", why: "ما فيه كلام مسموع", at: new Date().toISOString() };
+  return text ? { url, title, status: "ready", text, seconds: Math.round(secondsOf(h)), parts: phrasesOf(h).slice(0, 2000), at: new Date().toISOString() } : { url, title, status: "failed", why: "ما فيه كلام مسموع", at: new Date().toISOString() };
 }
+
+/** What was heard under a key (a link's «yt:…», a file's «up:<id>»): its phrases and length, or null. */
+export async function heardParts(key: string): Promise<{ seconds: number; parts: { text: string; from: number; to: number }[] } | null> {
+  const k = await readKept(key);
+  return k?.status === "ready" ? { seconds: k.seconds ?? 0, parts: k.parts ?? [] } : null;
+}
+export const fileHeardKey = (id: string) => `up:${id}`;
 
 /** One link heard (or read back): a background one is waited for until `until`. Never throws. */
 async function hear(url: string, until: number, write: boolean, file?: { key: string; title: string }): Promise<{ kept: Kept | null; fresh: boolean }> {

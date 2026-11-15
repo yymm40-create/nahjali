@@ -33,6 +33,34 @@ export interface DrawResult {
   video?: Blob;
 }
 
+/** A part of a sound file (from–to, in seconds) as a WAV blob, for one slide's mix. */
+async function soundPart(url: string, from: number, to: number): Promise<Blob> {
+  const RATE = 48000;
+  const bytes = await (await fetch(url)).arrayBuffer();
+  const all = await new OfflineAudioContext(2, 1, RATE).decodeAudioData(bytes);
+  const a = Math.max(0, Math.round(from * RATE));
+  const n = Math.max(1, Math.min(all.length - a, Math.round((to - from) * RATE)));
+  const ch = [0, 1].map((c) => all.getChannelData(Math.min(c, all.numberOfChannels - 1)).subarray(a, a + n));
+  const buf = new ArrayBuffer(44 + n * 4);
+  const v = new DataView(buf);
+  const str = (o: number, s: string) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  str(0, "RIFF");
+  v.setUint32(4, 36 + n * 4, true);
+  str(8, "WAVE");
+  str(12, "fmt ");
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 2, true);
+  v.setUint32(24, RATE, true);
+  v.setUint32(28, RATE * 4, true);
+  v.setUint16(32, 4, true);
+  v.setUint16(34, 16, true);
+  str(36, "data");
+  v.setUint32(40, n * 4, true);
+  for (let i = 0; i < n; i++) for (let c = 0; c < 2; c++) v.setInt16(44 + i * 4 + c * 2, Math.max(-1, Math.min(1, ch[c][i] ?? 0)) * 0x7fff, true);
+  return new Blob([buf], { type: "audio/wav" });
+}
+
 /** A motion carousel's slide: drawn as a moving scene, its frames reviewed, then rendered to MP4 here with its sound. */
 export interface DrawMotion {
   n: number;
@@ -42,6 +70,8 @@ export interface DrawMotion {
   total: number;
   /** the library's sound effects (id → link), for the scene's cues */
   sfx?: Record<string, string>;
+  /** the person's own sound under this slide (its part, in seconds of the file): the slide lasts exactly that long */
+  voice?: { url: string; from: number; to: number } | null;
 }
 
 /**
@@ -333,7 +363,7 @@ async function prepare(o: DrawOptions) {
   const loaded = (await Promise.all(list.map(async (url) => ({ bm: await photoBitmap(url, side), small: await smallJpeg(url) })))).filter((p): p is { bm: ImageBitmap; small: string } => !!p.bm && !!p.small);
   const assets = loaded.map((p, i) => ({ id: `photo${i + 1}`, bitmap: p.bm }));
   const photos = loaded.map((p) => p.small);
-  const motion = o.motion ? { n: o.motion.n, motion: { seconds: o.motion.seconds, style: o.motion.style, first: o.motion.first, total: o.motion.total } } : {};
+  const motion = o.motion ? { n: o.motion.n, motion: { seconds: o.motion.seconds, style: o.motion.style, first: o.motion.first, total: o.motion.total, ...(o.motion.voice ? { voiced: true } : {}) } } : {};
   const call = <T>(body: Record<string, unknown>) => postJson<T>(URL, { model: o.model, prompt: o.prompt, aspect: o.aspect, style: o.style, references: o.references, photos, from: o.from ?? "studio", ...motion, ...body }, o.signal);
   return { assets, call };
 }
@@ -510,8 +540,11 @@ async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
     o.onStep({ text: `🔊 أركّب صوت الشريحة ${m.n}…` });
     const synth = info!.sound ? await host.sound().catch(() => null) : null;
     const cues = readCues(info!.cues, info!.duration).flatMap((c) => (m.sfx?.[c.sfx] ? [{ url: m.sfx[c.sfx], t: c.t, vol: c.vol }] : []));
-    const audio = synth || cues.length ? await mixSoundtrack({ duration: info!.duration, synth, cues, voice: null, music: null }) : null;
-    const video = await renderVideo(host, { duration: info!.duration, fps: 30, blur: info!.blur, sub: info!.blur > 0 ? 3 : 1, audio }, (p) => o.onStep({ text: `🎞️ أطلّع فيديو الشريحة ${m.n}… ${Math.round(p * 100)}٪` }), o.signal);
+    // the person's own sound: this slide's part of it, and the slide lasts exactly as long as that part
+    const own = m.voice ? await soundPart(m.voice.url, m.voice.from, m.voice.to).catch(() => null) : null;
+    const length = m.voice ? Math.max(0.5, m.voice.to - m.voice.from) : info!.duration;
+    const audio = synth || cues.length || own ? await mixSoundtrack({ duration: length, synth, cues, voice: own, music: null }) : null;
+    const video = await renderVideo(host, { duration: length, fps: 30, blur: info!.blur, sub: info!.blur > 0 ? 3 : 1, audio }, (p) => o.onStep({ text: `🎞️ أطلّع فيديو الشريحة ${m.n}… ${Math.round(p * 100)}٪` }), o.signal);
     return { ...best!.result, coins, video };
   } finally {
     host.destroy();

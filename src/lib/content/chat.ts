@@ -31,6 +31,7 @@ import { attachedPictures, CAROUSEL_QUESTION, carouselHold, pickedCarousel, pick
 import { lastSlidesAt } from "./produce";
 import { listenToFiles, listenToLinks } from "@/lib/link-listen";
 import { billYoutube } from "./youtube";
+import { chatSound } from "./sound";
 import { randomUUID } from "crypto";
 
 const db = () => createAdminClient();
@@ -256,6 +257,12 @@ export async function say(userId: string, chatId: string | null, message: string
     { budgetMs: 120_000 },
   );
   if (heardFiles.block) parts.unshift(heardFiles.block);
+  // the conversation's sound goes INTO the motion (lib/content/sound): he is told how, so he plans for it
+  const snd = await chatSound(userId, turns).catch(() => null);
+  if (snd)
+    parts.unshift(
+      `## صوت العميل يدخل الموشن\nالصوت «${snd.name}» (${Math.round(snd.seconds)} ث${snd.phrases.length ? "، فيه كلام" : "، موسيقى أو بدون كلام"}) هو صوت الموشن تلقائيًا:\n- موشن كاروسيل: الموقع يقسم الصوت على الشرائح بالترتيب بلا فراغ (كل شريحة طولها جزءها، والقطع عند نهاية جملة)، وكل شريحة تتحرك على جملها، وزر «حوّله ريل» يطلع الصوت متصل. ${snd.phrases.length ? "فخلّ الشرائح بنفس ترتيب الكلام، وكل شريحة عن الجزء اللي ينقال فيها، واختر عدد شرائح يناسب طول الكلام (تقريبًا شريحة لكل ٥–١٠ ثواني)." : "الموسيقى تنقسم على الشرائح بأطوالها."}\n- موشن جرافيكس: ينتقل مع الحزمة لمختبر الموشن ${snd.phrases.length ? "كصوت المشهد، والحركة تنبني على كلامه بأوقاته" : "كموسيقى المشهد"}.\nإذا قال العميل ما يبي صوته في الموشن، قل له يرسل رسالة بدون الملف ويقول «بدون صوتي».`,
+    );
 
   const system = systemText(persona.text, [catalogBlock()]);
   const turnNote = turnText(parts, before?.record ?? "");
@@ -436,7 +443,11 @@ async function openEditRoom(userId: string, h: Answer["handoff"], history: Turn[
   // writes the scenario by itself when it is opened (before migration 0087 the package stays with حيدرا ماكس, as before)
   let lab: string | undefined;
   if (sb || /موشن|motion/i.test(pkg)) {
-    const r = await saveLabChat(p, userId, { title, state: { brief: pkg.slice(0, 6000), seconds: 15, chat: [{ role: "user", text: `📨 من محمد باقر — «${title}»:\n${pkg.slice(0, 1800)}` }], autoPlan: true } }).catch((e: unknown) => (console.error("content handoff lab", e), null));
+    // the conversation's sound goes with it: the piece's voice (the motion built on its phrases) or its music
+    const snd = await chatSound(userId, history).catch(() => null);
+    const sound = snd ? { uploadId: snd.uploadId, name: snd.name, seconds: snd.seconds, lines: snd.phrases.slice(0, 400), speech: snd.phrases.length > 0 } : null;
+    const soundBrief = !sound ? "" : sound.speech ? `\n\nصوت العميل «${sound.name}» (${Math.round(sound.seconds)} ث) هو صوت المشهد كما هو: المشهد بطوله، والحركة على كلامه بأوقاته:\n${sound.lines.map((l) => `[${l.from.toFixed(1)}–${l.to.toFixed(1)}] ${l.text}`).join("\n").slice(0, 3500)}` : `\n\nصوت العميل «${sound.name}» (${Math.round(sound.seconds)} ث) هو موسيقى المشهد.`;
+    const r = await saveLabChat(p, userId, { title, state: { brief: (pkg + soundBrief).slice(0, 9000), seconds: sound ? Math.min(180, Math.max(5, Math.round(sound.seconds))) : 15, chat: [{ role: "user", text: `📨 من محمد باقر — «${title}»:\n${pkg.slice(0, 1800)}` }], autoPlan: true, ...(sound ? { importedSound: sound, voiceOn: sound.speech, musicMode: sound.speech ? "code" : "own" } : {}) } }).catch((e: unknown) => (console.error("content handoff lab", e), null));
     if (r?.id) lab = r.id;
   }
   return { id: p.id, title, ...(lab ? { lab } : {}) };
