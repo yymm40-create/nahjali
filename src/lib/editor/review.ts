@@ -6,8 +6,8 @@
 import { clipLength, flatten, sourceTime, timelineTime, type Timeline } from "./model";
 import type { Ramp } from "./ramp";
 
-/** Shown (one line) wherever the review is offered before the database file 0117 has run. */
-export const REVIEW_NOT_READY = "مراجعة العميل تحتاج تحديث قاعدة البيانات أول (ملف 0117).";
+/** Shown (one line) wherever the review is offered before the database file 0119 has run. */
+export const REVIEW_NOT_READY = "مراجعة العميل تحتاج تحديث قاعدة البيانات أول (ملف 0119).";
 export const REVIEW_OWNER_ONLY = "بس صاحب المشروع يقدر يشاركه للمراجعة ويدير تعليقاته.";
 
 export const REVIEW_LIMITS = {

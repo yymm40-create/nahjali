@@ -1,7 +1,7 @@
 // «رابط مراجعة للعميل» in «حيدرة كت» — server only. The project's owner shares a version (an uploaded copy of an export:
 // the site's checked upload flow, jawad_uploads), turns the link on or off, sets its end and «يقدر ينزّل», replies and
 // resolves; the public page (no sign-in) may only read an active link and comment on it, cleaned and limited
-// (review.ts). Until migration 0117 runs every call answers REVIEW_NOT_READY (503) — or `ready: false` for a read.
+// (review.ts). Until migration 0119 runs every call answers REVIEW_NOT_READY (503) — or `ready: false` for a read.
 
 import { createHash } from "crypto";
 import { UserError } from "@/lib/api";
@@ -210,7 +210,7 @@ export async function ownerReview(p: ReviewProject, userId: string, now = Date.n
   };
 }
 
-/** Step 1 of an upload for the review: the site's own signed upload (MP4/MOV, 200 MB), only once 0117 is in. */
+/** Step 1 of an upload for the review: the site's own signed upload (MP4/MOV, 200 MB), only once 0119 is in. */
 export async function signReviewUpload(p: ReviewProject, userId: string, b: { mime?: unknown; bytes?: unknown; fileName?: unknown }) {
   owner(p, userId);
   await reviewOf(p.id);
