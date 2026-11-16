@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 
 // Moyasar's form (Moyasar.js): the card number goes from the buyer's browser straight to Moyasar, never to our server.
 const MPF = "https://cdn.moyasar.com/mpf/1.19.0";
+// Apple Pay's label goes to Moyasar as the merchant's display_name, which takes ASCII only: an Arabic label fails the
+// merchant check and the Apple Pay sheet closes as soon as it opens (16 Nov 2026).
 // Apple Pay accepts cards from these countries (Moyasar's default is Saudi Arabia only)
 const GCC = ["SA", "KW", "IQ", "BH", "AE", "QA", "OM"];
 
@@ -52,7 +54,7 @@ export default function CheckoutForm(p: { amount: number; description: string; k
           supported_networks: ["mada", "visa", "mastercard"],
           // which purchase this payment is for: the return and the webhook settle it by this, checked against our own record
           metadata: { kind: p.kind, ref: p.refId },
-          ...(p.applePay ? { apple_pay: { country: "SA", label: "الجواد الذكي", validate_merchant_url: "https://api.moyasar.com/v1/applepay/initiate", supported_countries: GCC } } : {}),
+          ...(p.applePay ? { apple_pay: { country: "SA", label: "JAWAD AI", validate_merchant_url: "https://api.moyasar.com/v1/applepay/initiate", supported_countries: GCC } } : {}),
         });
         setReady(true);
       })
