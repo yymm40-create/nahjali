@@ -679,7 +679,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     looping.current.add(`p:${id}`);
     setBusy("producing");
     let first = true;
-    type Step = { spent?: number; aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number } }; sfx?: Record<string, string> } };
+    type Step = { spent?: number; aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number } }; sfx?: Record<string, string>; stage?: "still"; still?: { code: string; fonts: { head: string; body: string } } } };
     const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}), ...(r.code?.mix || old?.mix ? { mix: true } : {}), ...(r.code?.motion || old?.motion ? { motion: r.code?.motion ?? old?.motion } : {}) }));
     try {
       for (let guard = 0; guard < 80; guard++) {
@@ -693,18 +693,23 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
           if (r.code.photos?.length) setCodeStep(`🖼️ صورة الشريحة ${r.code.n} جاهزة من GPT Image 2 (بدون كتابة)`);
           const motion = r.code.motion ? { n: r.code.n, ...r.code.motion, sfx: r.code.sfx } : null;
           const n = r.code.n;
+          // a motion carousel in two stages: first every slide's still (sent back with its program), then each still animated
+          const stillStage = r.code.stage === "still";
+          if (stillStage) setCodeStep(`🖼️ المرحلة ١: أصمم الشريحة ${n} ثابتة (بعدها نحرّكها)…`);
+          else if (r.code.still) setCodeStep(`🎬 المرحلة ٢: حيدرا ماكس يحرّك تصميم الشريحة ${n} الجاهز…`);
+          const extra = stillStage ? { stillFor: "motion" } : r.code.still ? { still: r.code.still.code, stillFonts: r.code.still.fonts } : undefined;
           // each slide on its own (the owner, 16 Nov 2026): a slide that cannot be drawn is recorded as failed and the next one
           // starts; «أعد المحاولة» redraws it alone. Stopped by the person, or no balance left: everything stops as before.
           let body: Record<string, unknown>;
           try {
-            const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "content", motion, onStep: (st) => setCodeStep(st.text) });
+            const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "content", motion, extra, onStep: (st) => setCodeStep(st.text) });
             // a motion slide: its MP4 goes up as the person's upload, and the server records it with the slide
             let video: string | undefined;
             if (drawn.video) {
               setCodeStep(`⬆️ أرفع فيديو الشريحة ${n}…`);
               video = await putVideo(drawn.video, `slide-${String(n).padStart(2, "0")}.mp4`);
             }
-            body = { n, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(video ? { video } : {}) };
+            body = { n, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(video ? { video } : {}), ...(stillStage ? { stage: "still", program: drawn.program?.code ?? "", fonts: drawn.program?.fonts ?? null } : {}) };
           } catch (e) {
             const why = e instanceof Error ? e.message : "";
             if ((e instanceof Error && e.name === "AbortError") || /رصيد|اشحن|الاتصال|متصفحك/.test(why)) throw e;

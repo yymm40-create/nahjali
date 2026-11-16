@@ -30,6 +30,8 @@ import { chatSound, sliceNote, splitSound } from "./sound";
 import { falFile, falReady, falRun, falUrl } from "@/lib/jawad/server/providers/fal";
 import { getChat, saveChat, type Chat, type PendingProduce, type Slide, type SlideFailure, type SlidesBlock } from "./chats";
 import { drawnPng } from "@/lib/jawad/server/uploads";
+import { storage } from "@/lib/storage";
+import { JAWAD_BUCKET } from "@/lib/jawad/server/runtime";
 import { addProduced, addProducedFromOutput, addProducedVideo, attachmentsOf, deleteProduced, producedBytes, producedLinks, producedRow, uploadLinks } from "./files";
 import { checkSlide, fixNote, showsRealWoman, WOMAN_PROBLEM, type SlideCheck } from "./verify";
 
@@ -76,6 +78,10 @@ export interface CodeSlide {
   mix?: boolean;
   /** a motion carousel's slide: he writes it as a moving scene of `seconds`, and the page renders it to MP4 */
   motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number } };
+  /** stage 1 of a motion carousel: draw this slide as a STILL (the final frame of its motion), at the motion size */
+  stage?: "still";
+  /** stage 2: the approved still's program, which he animates (instead of writing the slide from zero) */
+  still?: { code: string; fonts: { head: string; body: string } };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -294,9 +300,12 @@ export async function produce(userId: string, chatId: string, o: { retry?: numbe
 
   // «Claude Code»: nothing is drawn here — the page gets the next slide's brief, draws it, and sends it back
   if (p.maker === "code") {
-    const next = todo.find((s) => s.n === 1) ?? todo[0];
+    // a motion carousel in two stages: every waiting slide's still first (slide 1 first), then each still is animated
+    const needStill = p.motion ? todo.filter((s) => !p.stills?.[String(s.n)]) : [];
+    const next = needStill.length ? (needStill.find((s) => s.n === 1) ?? needStill[0]) : (todo.find((s) => s.n === 1) ?? todo[0]);
     const state = await finish([]);
-    return next ? { ...state, code: await codeSlide(userId, chatId, messages, p, next, c.total, base.get(1) ?? p.made.find((s) => s.n === 1) ?? null, who) } : state;
+    const slide1 = p.made.find((s) => s.n === 1) ?? p.stills?.["1"]?.slide ?? base.get(1) ?? null;
+    return next ? { ...state, code: await codeSlide(userId, chatId, messages, p, next, c.total, slide1, who, needStill.length ? "still" : "motion") } : state;
   }
 
   // the reference of every slide: slide 1 (made now, or the one that stands)
@@ -339,6 +348,8 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
   }
 
   const items = new Map(base);
+  // a two-stage motion carousel: the stills show while their motion is being made
+  for (const st of Object.values(p.stills ?? {})) items.set(st.slide.n, st.slide);
   for (const s of p.made) items.set(s.n, s);
   const doneNow = new Set([...p.made.map((s) => s.n), ...p.failed.map((f) => f.n)]);
   const left = p.slides.filter((s) => !doneNow.has(s.n)).map((s) => s.n);
@@ -408,7 +419,7 @@ const pictureFrom = (prompt: string) => `The full picture of this slide, with ca
 
 /** The brief of one slide for «حيدرا ماكس»: the slide's full prompt (its exact writing), the shape, slide 1 and the
  * person's pictures as references — and its painted picture, made now by GPT Image 2 (no writing) when it needs one. */
-async function codeSlide(userId: string, chatId: string, messages: Chat["messages"], p: PendingProduce, s: PendingProduce["slides"][number], total: number, slide1: Slide | null, who: DeskWho): Promise<CodeSlide> {
+async function codeSlide(userId: string, chatId: string, messages: Chat["messages"], p: PendingProduce, s: PendingProduce["slides"][number], total: number, slide1: Slide | null, who: DeskWho, stage: "still" | "motion" = "motion"): Promise<CodeSlide> {
   let art = p.arts?.[String(s.n)] ?? null;
   const car = p.carouselId ? findCarouselStyle(p.carouselId) : null;
   const font = p.fontId ? findContentFont(p.fontId) : null;
@@ -460,7 +471,7 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
   refs.push(...mine);
   const artUrl = art ? (links.get(art) ?? null) : null;
   const prompt = slidePrompt({ n: s.n, total, prompt: s.prompt, styleId: p.styleId, carouselId: p.carouselId, fontId: p.fontId, paletteId: p.paletteId, withRef: refs.length > mine.length, userRefs: mine.length });
-  const motion: CodeSlide["motion"] | null = p.motion ? { seconds: p.motion.seconds, style: motionStyleForCode(p.motion.styleId === "own" ? null : findMotionCarouselStyle(p.motion.styleId), p.motion.own ?? ""), first: s.n === 1, total } : null;
+  const motion: CodeSlide["motion"] | null = p.motion && stage === "motion" ? { seconds: p.motion.seconds, style: motionStyleForCode(p.motion.styleId === "own" ? null : findMotionCarouselStyle(p.motion.styleId), p.motion.own ?? ""), first: s.n === 1, total } : null;
   // the person's own sound under the carousel: this slide's part of it (as long as its part, moving on its phrases)
   let soundNote = "";
   if (motion) {
@@ -478,9 +489,13 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
     }
   }
   const body = artUrl ? `${prompt}\n\n${motion ? (element ? ELEMENT_NOTE : PICTURE_NOTE) : p.mix ? MIX_NOTE : ART_NOTE}` : prompt;
+  // stage 2: the approved still he animates
+  const still = motion ? await stillProgram(p.stills?.[String(s.n)]?.program) : null;
   return {
     n: s.n,
     prompt: soundNote ? `${body}\n\n${soundNote}` : body,
+    ...(p.motion && stage === "still" ? { stage: "still" as const } : {}),
+    ...(still ? { still } : {}),
     aspect: p.aspect,
     refs: refs.slice(0, 4),
     photos: artUrl ? [artUrl] : [],
@@ -509,8 +524,44 @@ export async function codeSlideFailed(userId: string, chatId: string, b: { n?: u
   return settle({ userId, chatId, chat, p, messages, at, base }, [{ failed: { n: s.n, reason: why, text: s.text, prompt: s.prompt }, usd: 0 }]);
 }
 
+const stillPath = (userId: string, chatId: string, pid: string, n: number) => `content-stills/${userId}/${chatId}/${pid}-${n}.json`;
+
+/** A kept still program (stage 1 of a motion carousel), or null. */
+async function stillProgram(path: string | undefined): Promise<CodeSlide["still"] | null> {
+  if (!path) return null;
+  try {
+    const { data } = await storage.from(JAWAD_BUCKET).download(path);
+    if (!data) return null;
+    const j = JSON.parse(await data.text()) as { code?: unknown; fonts?: { head?: unknown; body?: unknown } };
+    if (typeof j.code !== "string" || !j.code.trim()) return null;
+    return { code: j.code, fonts: { head: String(j.fonts?.head ?? ""), body: String(j.fonts?.body ?? "") } };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stage 1 of a motion carousel: the still the page drew (its PNG and its program) is kept and shown; the slide stays
+ * waiting for its motion (stage 2).
+ */
+async function keepStill(userId: string, chatId: string, chat: Chat, p: PendingProduce, s: PendingProduce["slides"][number], bytes: Buffer, meta: { width: number; height: number }, b: { program?: unknown; fonts?: unknown }): Promise<Produced> {
+  const file = await addProduced({ userId, chatId, bytes, name: `still-${String(s.n).padStart(2, "0")}`, width: meta.width, height: meta.height, meta: { slide: s.n, aspect: p.aspect, text: s.text, batch: p.id, maker: "code", stage: "still" } });
+  const code = typeof b.program === "string" ? b.program.slice(0, 160_000) : "";
+  let path = "";
+  if (code.trim()) {
+    path = stillPath(userId, chatId, p.id, s.n);
+    const fonts = (b.fonts && typeof b.fonts === "object" ? b.fonts : {}) as { head?: unknown; body?: unknown };
+    await storage.from(JAWAD_BUCKET).upload(path, Buffer.from(JSON.stringify({ code, fonts: { head: String(fonts.head ?? ""), body: String(fonts.body ?? "") } })), { contentType: "application/json", upsert: true });
+  }
+  p.stills = { ...(p.stills ?? {}), [String(s.n)]: { slide: { n: s.n, fileId: file.id, name: file.name, text: s.text }, program: path } };
+  const messages = [...chat.messages];
+  const at = Math.min(p.at, messages.length - 1);
+  const base = new Map((messages[at]?.slides?.items ?? []).map((x) => [x.n, x]));
+  return settle({ userId, chatId, chat, p, messages, at, base }, []);
+}
+
 /** The PNG the page drew from «حيدرا ماكس»'s program becomes slide `n` of the carousel being made. */
-export async function produceFromCode(userId: string, chatId: string, b: { n?: unknown; png?: unknown; pngUpload?: unknown; rounds?: unknown; scores?: unknown; video?: unknown }): Promise<Produced> {
+export async function produceFromCode(userId: string, chatId: string, b: { n?: unknown; png?: unknown; pngUpload?: unknown; rounds?: unknown; scores?: unknown; video?: unknown; stage?: unknown; program?: unknown; fonts?: unknown }): Promise<Produced> {
   const chat = await getChat(userId, chatId);
   if (!chat) throw new Error("chat not found");
   const p = chat.pending;
@@ -530,6 +581,8 @@ export async function produceFromCode(userId: string, chatId: string, b: { n?: u
     const base = new Map((messages[at]?.slides?.items ?? []).map((x) => [x.n, x]));
     return settle({ userId, chatId, chat, p, messages, at, base }, [{ failed: { n: s.n, reason: `${WOMAN_PROBLEM}. غيّر الصورة أو وصفها ثم أعد المحاولة.`, text: s.text, prompt: s.prompt }, usd: seen.usd }]);
   }
+  // stage 1 of a motion carousel: the still is kept, and the slide waits for its motion
+  if (p.motion && b.stage === "still") return keepStill(userId, chatId, chat, p, s, bytes, { width: meta.width, height: meta.height }, b);
   // a motion carousel's slide comes with its MP4 (put up by the page as the person's upload, then recorded here)
   const video = p.motion ? await producedVideo(userId, chatId, b.video, s.n, p.id) : null;
   const file = await addProduced({
