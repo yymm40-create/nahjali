@@ -24,6 +24,8 @@ export function rulesFor(path: string, method: string): Rule[] {
   if ((path === "/api/course/order" || path === "/api/course/moyasar" || path === "/api/course/code" || path === "/api/course/transferred" || path === "/api/credits/order" || path === "/api/credits/transferred") && method === "POST") out.push({ key: "course", max: 20, windowMs: 10 * 60_000 });
   // «ادفع بالمبلغ اللي تبيه» (/api/pay) is open without sign-in: each press makes a Moyasar invoice, so a few, never a flood
   if (path === "/api/pay" && method === "POST") out.push({ key: "pay", max: 15, windowMs: 10 * 60_000 });
+  // «صفحة الدفع»: each return or webhook reads one payment from Moyasar — a buyer comes back once or twice, Moyasar retries a few times
+  if ((path === "/api/checkout/return" && method === "GET") || (path === "/api/checkout/webhook" && method === "POST")) out.push({ key: "checkout", max: 30, windowMs: 10 * 60_000 });
   // the password of the hidden «الخطيب الذكي»: a few tries, then a pause
   if (path === "/api/khateeb/enter" && method === "POST") out.push({ key: "khateeb", max: 8, windowMs: 10 * 60_000 });
   // «عباس سبع القنطرة» (the coach of «الصحة العلوية») is free for the person: a conversation, never a flood

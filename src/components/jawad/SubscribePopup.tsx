@@ -11,7 +11,7 @@ import Dialog from "./Dialog";
 import Riyal from "@/components/Riyal";
 
 const KEY = "jw-subscribe-popup";
-const QUIET = ["/jawad-ai/credits", "/jawad-ai/login", "/jawad-ai/username", "/jawad-ai/account", "/jawad-ai/coins", "/jawad-ai/admin", "/jawad-ai/course", "/jawad-ai/learn", "/jawad-ai/pay", "/jawad-ai/offer"];
+const QUIET = ["/jawad-ai/credits", "/jawad-ai/login", "/jawad-ai/username", "/jawad-ai/account", "/jawad-ai/coins", "/jawad-ai/admin", "/jawad-ai/course", "/jawad-ai/learn", "/jawad-ai/pay", "/jawad-ai/checkout", "/jawad-ai/offer"];
 
 export interface PopupPack {
   id: string;
