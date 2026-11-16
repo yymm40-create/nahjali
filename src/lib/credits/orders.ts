@@ -237,6 +237,10 @@ async function newCardOrder(user: { id: string; email?: string | null }, b: { pa
     const { data, error } = await db().from("credit_orders").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", again[0].id).eq("status", "started").select("*").single();
     if (!error && data) return { order: view(data), pack: { ...pack, name: p.name, price: p.price }, name, phone };
   }
+  // a new amount or package: this person's earlier UNPAID card tries are closed instead of blocking them (they still had
+  // «عندك طلبات شحن مفتوحة كثيرة» after 4 tries, 16 Nov 2026). Safe for a late payment: confirmCreditOrder also accepts a
+  // closed («rejected») order, and Moyasar's return / webhook settle it by its id. Bank-transfer orders are not touched.
+  await db().from("credit_orders").update({ status: "rejected", note: "auto: replaced by a newer card try", updated_at: new Date().toISOString() }).eq("user_id", user.id).eq("status", "started").or("note.like.moyasar:%,note.like.paylink:%");
   const { count } = await db().from("credit_orders").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "started").gte("created_at", since);
   if ((count ?? 0) >= CREDITS.maxOpen) throw new UserError("عندك طلبات شحن مفتوحة كثيرة؛ انتظر قليلًا أو راسلنا.", 429);
   const { data, error } = await saveOrder((on) => db().from("credit_orders").insert({ user_id: user.id, pack_id: pack.id, ...(on && source ? { ...fields, source } : fields) }).select("*").single());
