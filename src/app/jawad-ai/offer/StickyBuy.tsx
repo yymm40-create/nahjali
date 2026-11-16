@@ -7,7 +7,10 @@ export default function StickyBuy({ children }: { children: ReactNode }) {
   const [show, setShow] = useState(false);
   useEffect(() => {
     const targets = [...document.querySelectorAll(".ox-hero-buy, .ox-end")];
-    if (!targets.length || typeof IntersectionObserver === "undefined") return setShow(true);
+    if (!targets.length || typeof IntersectionObserver === "undefined") {
+      const t = setTimeout(() => setShow(true), 0);
+      return () => clearTimeout(t);
+    }
     const seen = new Map<Element, boolean>();
     const io = new IntersectionObserver((entries) => {
       entries.forEach((e) => seen.set(e.target, e.isIntersecting));
