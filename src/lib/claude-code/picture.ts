@@ -133,13 +133,20 @@ const jpeg = (v: unknown) => (typeof v === "string" && /^[A-Za-z0-9+/=]+$/.test(
 const font = (v: unknown, d: string) => (typeof v === "string" && LAB_FONTS.includes(v) ? v : d);
 const fontMenu = () => LAB_FONTS.map((id) => `${id} (${FONT_BY_ID.get(id)?.kind})`).join(", ");
 
-async function ask<T>(user: RobotUser, model: unknown, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "medium" | "high" = "high", system = SYSTEM) {
+/** how long one answer may take: 5 minutes; a motion slide 10 (a heavy cover slide ran past 5 every time, 16 Nov 2026 — the
+ * route allows 800 s) */
+export const PICTURE_MS = 300_000;
+export const MOTION_MS = 600_000;
+/** the message a timed-out answer carries: the page reads it to try the slide once more with lighter thinking */
+export const LATE = "خدمة الذكاء الاصطناعي تأخرت. أعد المحاولة.";
+
+async function ask<T>(user: RobotUser, model: unknown, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "medium" | "high" = "high", system = SYSTEM, ms = PICTURE_MS) {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
-  const deadline = AbortSignal.timeout(300_000);
+  const deadline = AbortSignal.timeout(ms);
   return robotTurn(user, model, label, async () => {
     const r = await callClaudeJson<T>({ system, turns: [{ role: "user", content: parts }], schema, maxTokens, effort, fallback: true, signal: deadline }).catch((e) => {
       console.error("claude code picture", label, e);
-      if (deadline.aborted) throw new UserError("خدمة الذكاء الاصطناعي تأخرت. أعد المحاولة.", 504);
+      if (deadline.aborted) throw new UserError(LATE, 504);
       throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يكمل الصورة الحين. جرّب مرة ثانية.", user.email), 502);
     });
     return { ...r, usd: claudeCost(r.usage) };
@@ -187,7 +194,7 @@ Return the COMPLETE program and the two fonts it uses.`,
     ...photosParts(b.photos),
     ...refsParts(b.references),
   ];
-  const r = await ask<{ code: string; fonts: { head: string; body: string }; notes: string }>(user, b.model, motion ? (previous ? "حيدرا ماكس · تصليح الشريحة المتحركة" : "حيدرا ماكس · شريحة متحركة") : previous ? "حيدرا ماكس · تصليح الصورة" : "حيدرا ماكس · رسم الصورة", parts, WRITE_SCHEMA, 64_000, "high", motion ? MOTION_SYSTEM : SYSTEM);
+  const r = await ask<{ code: string; fonts: { head: string; body: string }; notes: string }>(user, b.model, motion ? (previous ? "حيدرا ماكس · تصليح الشريحة المتحركة" : "حيدرا ماكس · شريحة متحركة") : previous ? "حيدرا ماكس · تصليح الصورة" : "حيدرا ماكس · رسم الصورة", parts, WRITE_SCHEMA, 64_000, motion && b.light === true ? "medium" : "high", motion ? MOTION_SYSTEM : SYSTEM, motion ? MOTION_MS : PICTURE_MS);
   const chk = checkScene(r.data.code);
   return { code: chk.code, problems: chk.problems, fonts: pin ? { head: pin, body: pin } : { head: font(r.data.fonts?.head, LAB_FONTS[0]), body: font(r.data.fonts?.body, LAB_FONTS[0]) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, model: r.model };
 }
@@ -257,7 +264,7 @@ ${code}`,
     ...photosParts(b.photos),
     ...refsParts(b.references),
   ];
-  const r = await ask<Record<string, unknown>>(user, b.model, motion ? `حيدرا ماكس · مراجعة الشريحة المتحركة ${round}` : `حيدرا ماكس · مراجعة الصورة ${round}`, parts, motion ? MOTION_REVIEW_SCHEMA : patch ? REVIEW_EDIT_SCHEMA : REVIEW_SCHEMA, 64_000, "high", motion ? MOTION_SYSTEM : SYSTEM);
+  const r = await ask<Record<string, unknown>>(user, b.model, motion ? `حيدرا ماكس · مراجعة الشريحة المتحركة ${round}` : `حيدرا ماكس · مراجعة الصورة ${round}`, parts, motion ? MOTION_REVIEW_SCHEMA : patch ? REVIEW_EDIT_SCHEMA : REVIEW_SCHEMA, 64_000, motion && b.light === true ? "medium" : "high", motion ? MOTION_SYSTEM : SYSTEM, motion ? MOTION_MS : PICTURE_MS);
   const s = (r.data.scores ?? {}) as Record<string, unknown>;
   const scores = Object.fromEntries(rubric.map((x) => [x.id, Math.max(1, Math.min(10, Math.round(Number(s[x.id]) || 1)))])) as Record<string, number>;
   const pass = Object.values(scores).every((v) => v >= CODE_PASS);
