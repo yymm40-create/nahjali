@@ -167,6 +167,12 @@ export interface PendingProduce {
   paletteId?: string;
   /** a motion carousel: «حيدرا ماكس» makes every slide a short video with its sound */
   motion?: MotionPlan;
+  /**
+   * a motion carousel is built in TWO stages (the owner, 16 Nov 2026: «يفترض تنصنع الصور قبل… بعدها يستوي الموشن»): first every
+   * slide as a still (its GPT Image 2 picture and «حيدرا ماكس»'s design), then each still is animated. By slide number: the
+   * still shown meanwhile, and where its program is kept (storage path; "" when the page sent none)
+   */
+  stills?: Record<string, { slide: Slide; program: string }>;
   /** made in this production so far */
   made: Slide[];
   failed: SlideFailure[];
@@ -338,6 +344,7 @@ export function readPending(v: unknown): PendingProduce | null {
     ...(typeof p.paletteId === "string" && findPalette(p.paletteId) ? { paletteId: p.paletteId } : {}),
     ...(readMotion(p.motion) ? { motion: readMotion(p.motion)! } : {}),
     ...(p.sound === false ? { sound: false as const } : p.sound && typeof p.sound === "object" && typeof (p.sound as { uploadId?: unknown }).uploadId === "string" && Array.isArray((p.sound as { slices?: unknown }).slices) ? { sound: p.sound as NonNullable<Exclude<PendingProduce["sound"], false>> } : {}),
+    ...(p.stills && typeof p.stills === "object" && !Array.isArray(p.stills) ? { stills: Object.fromEntries(Object.entries(p.stills as Record<string, unknown>).filter(([, v]) => !!v && typeof v === "object" && typeof (v as { program?: unknown }).program === "string" && typeof (v as { slide?: { fileId?: unknown } }).slide?.fileId === "string")) as NonNullable<PendingProduce["stills"]> } : {}),
     ...(p.arts && typeof p.arts === "object" && !Array.isArray(p.arts) ? { arts: Object.fromEntries(Object.entries(p.arts as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> } : {}),
     made: objs(p.made).filter((x) => typeof x.fileId === "string").map(readSlide),
     failed: objs(p.failed).map(readFailure),

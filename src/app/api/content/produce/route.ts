@@ -19,7 +19,7 @@ const UUID = /^[0-9a-f-]{36}$/i;
  */
 export const POST = handle(async (req: Request) => {
   const { user } = await requireContentUser();
-  const b = (await req.json().catch(() => ({}))) as { chatId?: unknown; retry?: unknown; n?: unknown; png?: unknown; pngUpload?: unknown; rounds?: unknown; scores?: unknown; video?: unknown; codeFailed?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { chatId?: unknown; retry?: unknown; n?: unknown; png?: unknown; pngUpload?: unknown; rounds?: unknown; scores?: unknown; video?: unknown; codeFailed?: unknown; stage?: unknown; program?: unknown; fonts?: unknown };
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   if (!chatId) throw new UserError("محادثة غير صحيحة.", 400);
   const retry = b.retry === "failed" ? ("failed" as const) : Array.isArray(b.retry) ? b.retry.map(Number).filter((n) => Number.isInteger(n) && n > 0 && n <= 40).slice(0, 40) : undefined;

@@ -173,8 +173,13 @@ export async function pictureWrite(user: RobotUser, b: Record<string, unknown>) 
   const prompt = text(b.prompt, 16000);
   if (prompt.length < 2) throw new UserError("اكتب وش تبي في الصورة.", 400);
   const motion = readMotionSlide(b.motion);
-  const [w, h] = motion ? motionSize(b.aspect) : pictureSize(b.aspect);
+  // the still of a motion carousel's slide (stage 1) is drawn at the motion size, so stage 2 can animate it as it is
+  const stillFor = b.stillFor === "motion" && !motion;
+  const [w, h] = motion || stillFor ? motionSize(b.aspect) : pictureSize(b.aspect);
   const style = text(b.style, 2000);
+  // stage 2: the approved still's program, to animate (not on a fix: the fix carries its own program)
+  const still = motion && !text(b.code, 10) ? text(b.still, 160_000) : "";
+  const stillFonts = (b.stillFonts && typeof b.stillFonts === "object" ? b.stillFonts : {}) as { head?: unknown; body?: unknown };
   // the font the person chose in «صانع المحتوى» (carried in the look): every word is set in it
   const pin = pinnedFont(style);
   const previous = text(b.code, 140_000);
@@ -183,8 +188,10 @@ export async function pictureWrite(user: RobotUser, b: Record<string, unknown>) 
   const parts: ClaudePart[] = [
     {
       type: "text",
-      text: `${previous ? (motion ? "FIX the slide's program below." : "FIX the picture's program below.") : motion ? "MAKE this motion slide in code." : "DRAW this picture in code."}
+      text: `${previous ? (motion ? "FIX the slide's program below." : "FIX the picture's program below.") : still ? "ANIMATE this slide: its STILL design below is finished and approved." : motion ? "MAKE this motion slide in code." : "DRAW this picture in code."}
 ${motion ? motionLines(motion, b.n) : ""}
+${stillFor ? "THIS IS THE STILL DESIGN OF A MOTION SLIDE (stage 1 of 2): draw the slide's FINAL, complete frame — every word, picture and shape in place. In the next stage this exact program is animated, so build it in clean, separate layers (background, picture, each text block, decorations) that can each move on their own." : ""}
+${still ? `THE STILL (the slide as it must look when its motion settles): keep its layout, every word exactly, its fonts, colours, picture placement and decorations exactly as they are — do NOT redesign. Turn this program into a moving scene: bring the parts in and move them as the motion style says (entrances, camera, light, the style's moves, sound cues), so the frame at the end equals this still${motion?.first ? ", and the frame at t = 0 already shows the complete design (it is the cover)" : ""}.\nTHE STILL'S PROGRAM:\n${still}` : ""}
 THE REQUEST (the person's words — every word they want written appears EXACTLY as given, Arabic right to left): ${prompt}
 FRAME: ${w}×${h} (${b.aspect ?? "1:1"}) · ${pin ? `THE FONT the person chose (catalogue id): ${pin} — set every Arabic word in it, and return it as both fonts` : `FONTS you may pick (catalogue ids): ${fontMenu()}`}
 ${style ? `THE LOOK the person chose («الستايل»), to follow in every shape, light and texture: ${style}` : "No look chosen: pick a bold, original one that fits the request (never the safe template look)."}
@@ -194,9 +201,11 @@ Return the COMPLETE program and the two fonts it uses.`,
     ...photosParts(b.photos),
     ...refsParts(b.references),
   ];
-  const r = await ask<{ code: string; fonts: { head: string; body: string }; notes: string }>(user, b.model, motion ? (previous ? "حيدرا ماكس · تصليح الشريحة المتحركة" : "حيدرا ماكس · شريحة متحركة") : previous ? "حيدرا ماكس · تصليح الصورة" : "حيدرا ماكس · رسم الصورة", parts, WRITE_SCHEMA, 64_000, motion && b.light === true ? "medium" : "high", motion ? MOTION_SYSTEM : SYSTEM, motion ? MOTION_MS : PICTURE_MS);
+  const r = await ask<{ code: string; fonts: { head: string; body: string }; notes: string }>(user, b.model, motion ? (previous ? "حيدرا ماكس · تصليح الشريحة المتحركة" : "حيدرا ماكس · شريحة متحركة") : previous ? "حيدرا ماكس · تصليح الصورة" : "حيدرا ماكس · رسم الصورة", parts, WRITE_SCHEMA, 64_000, motion && (b.light === true || !!still) ? "medium" : "high", motion ? MOTION_SYSTEM : SYSTEM, motion ? MOTION_MS : PICTURE_MS);
   const chk = checkScene(r.data.code);
-  return { code: chk.code, problems: chk.problems, fonts: pin ? { head: pin, body: pin } : { head: font(r.data.fonts?.head, LAB_FONTS[0]), body: font(r.data.fonts?.body, LAB_FONTS[0]) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, model: r.model };
+  // the animated still keeps the still's fonts
+  const keep = still && LAB_FONTS.includes(String(stillFonts.head)) ? { head: String(stillFonts.head), body: font(stillFonts.body, String(stillFonts.head)) } : null;
+  return { code: chk.code, problems: chk.problems, fonts: pin ? { head: pin, body: pin } : keep ? keep : { head: font(r.data.fonts?.head, LAB_FONTS[0]), body: font(r.data.fonts?.body, LAB_FONTS[0]) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, model: r.model };
 }
 
 /**
