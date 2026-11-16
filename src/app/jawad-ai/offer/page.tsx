@@ -5,6 +5,7 @@ import { OFFER10, OFFER10_GRANTS, offer10End, offer10Phase, offer10Start } from 
 import Riyal from "@/components/Riyal";
 import OfferBuy from "./OfferBuy";
 import Countdown from "./Countdown";
+import StickyBuy from "./StickyBuy";
 import TryModel from "@/components/jawad/models/TryModel";
 import "@/components/jawad/landing.css";
 import "./offer.css";
@@ -113,7 +114,7 @@ export default async function OfferPage({ searchParams }: { searchParams: Promis
           {!bought && (
             <div className="ox-sum">
               <span>القيمة لو دفعتها بالسعر العادي</span>
-              <s>{worth}+ ريال</s>
+              <s>{worth.toLocaleString("ar-SA")} ريال وأكثر</s>
               <span>مع العرض</span>
               <b><Riyal halalas={OFFER10.priceSar * 100} size={30} /></b>
             </div>
@@ -179,13 +180,13 @@ export default async function OfferPage({ searchParams }: { searchParams: Promis
       </section>
 
       {!bought && open && (
-        <div className="ox-sticky">
+        <StickyBuy>
           <div className="ox-sticky-p">
             <s>١٠٠</s>
             <Riyal halalas={OFFER10.priceSar * 100} size={22} />
           </div>
           <OfferBuy login={login} compact />
-        </div>
+        </StickyBuy>
       )}
     </div>
   );
