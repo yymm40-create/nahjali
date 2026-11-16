@@ -692,15 +692,27 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
           const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
           if (r.code.photos?.length) setCodeStep(`🖼️ صورة الشريحة ${r.code.n} جاهزة من GPT Image 2 (بدون كتابة)`);
           const motion = r.code.motion ? { n: r.code.n, ...r.code.motion, sfx: r.code.sfx } : null;
-          const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "content", motion, onStep: (st) => setCodeStep(st.text) });
-          // a motion slide: its MP4 goes up as the person's upload, and the server records it with the slide
-          let video: string | undefined;
-          if (drawn.video) {
-            setCodeStep(`⬆️ أرفع فيديو الشريحة ${r.code.n}…`);
-            video = await putVideo(drawn.video, `slide-${String(r.code.n).padStart(2, "0")}.mp4`);
+          const n = r.code.n;
+          // each slide on its own (the owner, 16 Nov 2026): a slide that cannot be drawn is recorded as failed and the next one
+          // starts; «أعد المحاولة» redraws it alone. Stopped by the person, or no balance left: everything stops as before.
+          let body: Record<string, unknown>;
+          try {
+            const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "content", motion, onStep: (st) => setCodeStep(st.text) });
+            // a motion slide: its MP4 goes up as the person's upload, and the server records it with the slide
+            let video: string | undefined;
+            if (drawn.video) {
+              setCodeStep(`⬆️ أرفع فيديو الشريحة ${n}…`);
+              video = await putVideo(drawn.video, `slide-${String(n).padStart(2, "0")}.mp4`);
+            }
+            body = { n, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(video ? { video } : {}) };
+          } catch (e) {
+            const why = e instanceof Error ? e.message : "";
+            if ((e instanceof Error && e.name === "AbortError") || /رصيد|اشحن|الاتصال|متصفحك/.test(why)) throw e;
+            setCodeStep(`⚠️ الشريحة ${n} ما انرسمت — أكمل الباقي، وتقدر تعيدها بعدين`);
+            body = { n, codeFailed: why || "ما انرسمت" };
           }
           setCodeStep(null);
-          r = await postJson<Step>("/api/content/produce", { chatId: id, n: r.code.n, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(video ? { video } : {}) });
+          r = await postJson<Step>("/api/content/produce", { chatId: id, ...body });
           show(r);
           if (typeof r.spent === "number") setSpent(r.spent);
         }
