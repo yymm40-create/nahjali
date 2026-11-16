@@ -486,7 +486,20 @@ const stopped = (o: DrawOptions) => {
  * scene's own sound() and the library's effects at its cues). `png` is its last frame.
  */
 async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
-  const { assets, call } = await prepare({ ...o, photos: (o.photos ?? []).slice(0, PHOTOS_PER_ROUND) });
+  const { assets, call: callFull } = await prepare({ ...o, photos: (o.photos ?? []).slice(0, PHOTOS_PER_ROUND) });
+  // a heavy slide whose answer ran past the server's 10 minutes is asked once more with lighter thinking, and the rest of
+  // this slide stays light (a cover slide timed out on every «كمّل الرسم», 16 Nov 2026)
+  let light = false;
+  const call = async <T,>(body: Record<string, unknown>): Promise<T> => {
+    try {
+      return await callFull<T>(light ? { ...body, light: true } : body);
+    } catch (e) {
+      if (light || !(e instanceof Error) || !e.message.includes("تأخرت")) throw e;
+      light = true;
+      o.onStep({ text: `⏱️ الشريحة ${m.n} ثقيلة — حيدرا ماكس يعيدها بتفكير أخف…` });
+      return callFull<T>({ ...body, light: true });
+    }
+  };
   let coins = 0;
   o.onStep({ text: `🎬 حيدرا ماكس يكتب الشريحة ${m.n} مشهدًا متحركًا…` });
   let w = await call<Wrote>({ action: "write" });
