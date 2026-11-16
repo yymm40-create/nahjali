@@ -60,3 +60,16 @@ describe("checkout landing and limits", () => {
     expect(rulesFor("/api/checkout/webhook", "POST").some((r) => r.key === "checkout")).toBe(true);
   });
 });
+
+describe("apple pay switch", () => {
+  it("is on unless turned off", async () => {
+    const { applePayOn } = await import("@/lib/credits/checkout");
+    const old = process.env.NEXT_PUBLIC_MOYASAR_APPLE_PAY;
+    delete process.env.NEXT_PUBLIC_MOYASAR_APPLE_PAY;
+    expect(applePayOn()).toBe(true);
+    process.env.NEXT_PUBLIC_MOYASAR_APPLE_PAY = "0";
+    expect(applePayOn()).toBe(false);
+    if (old === undefined) delete process.env.NEXT_PUBLIC_MOYASAR_APPLE_PAY;
+    else process.env.NEXT_PUBLIC_MOYASAR_APPLE_PAY = old;
+  });
+});
