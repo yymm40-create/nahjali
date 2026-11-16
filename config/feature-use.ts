@@ -57,6 +57,11 @@ export const FEATURES = [
   { id: "studio.dub", section: "studio", label: "«دبلجة» (إرسال)" },
   { id: "studio.voice_change", section: "studio", label: "«غيّر الصوت» (إرسال)" },
   { id: "studio.lipsync", section: "studio", label: "«حرّك الشفايف» (إرسال)" },
+  { id: "studio.taste_make", section: "studio", label: "«🎨 ذوقي»: صنع ذوق من الصور" },
+  { id: "studio.taste_use", section: "studio", label: "«🎨 ذوقي»: اختيار ذوق للتوليد" },
+  { id: "studio.taste_manage", section: "studio", label: "«🎨 ذوقي»: تسمية أو حذف ذوق" },
+  { id: "studio.brand_save", section: "studio", label: "«هويتي»: حفظ الهوية (ألوان، شعار، خطوط، نبرة)" },
+  { id: "studio.brand_use", section: "studio", label: "«طبّق هويتي» في التوليد" },
 
   // «حيدرة كت» (/jawad-ai/editor)
   { id: "editor.open", section: "editor", label: "فتح مشروع في حيدرة كت" },
@@ -100,6 +105,10 @@ export const FEATURES = [
   { id: "editor.transcript_edit", section: "editor", label: "«النص»: حذف كلمات من النص (التحرير من الكلام)" },
   { id: "editor.filler_removal", section: "editor", label: "«النص»: «شيل الحشو»" },
   { id: "editor.auto_reframe", section: "editor", label: "«اتبع الوجه» (تحويل تلقائي للعمودي)" },
+  { id: "editor.shorts_find", section: "editor", label: "«طلّع مقاطع قصيرة»: طلّع اللحظات من فيديو طويل" },
+  { id: "editor.shorts_make", section: "editor", label: "«طلّع مقاطع قصيرة»: «سوّه مقطع» (تسلسل جديد)" },
+  { id: "editor.speech_search", section: "editor", label: "«ابحث في الكلام»: بحث عن كلمات في المقاطع" },
+  { id: "editor.speech_search_add", section: "editor", label: "«ابحث في الكلام»: «ضيفه» على التايملاين" },
   { id: "editor.speed_ramp", section: "editor", label: "«منحنى السرعة» (منحنى جاهز أو تعديل نقاطه)" },
   { id: "editor.caption_translate", section: "editor", label: "«ترجم الكابشن» (مسار ترجمة جديد)" },
   { id: "editor.export_preset", section: "editor", label: "«مقاس جاهز للمنصة» في نافذة التصدير" },

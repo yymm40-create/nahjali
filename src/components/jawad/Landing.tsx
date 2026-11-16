@@ -26,11 +26,14 @@ export interface LandingTool {
   tint: string;
 }
 
-export default function Landing({ loginHref, samples, tools, models, packs, featured, freeImageOn = false, units = null, whatsapp = "" }: {
+export default function Landing({ loginHref, samples, tools, models, packs, featured, freeImageOn = false, units = null, whatsapp = "", made = null }: {
+  /** pictures and videos really made here in the last 30 days, rounded down (lib/jawad/server/social-proof), or null */
+  made?: number | null;
   loginHref: string;
   samples: string[];
   tools: LandingTool[];
-  models: string[];
+  /** the generators live now, each linking to its own page (/jawad-ai/models/<id>) */
+  models: { id: string; name: string }[];
   packs: Pack[];
   featured: string;
   /** the signup free picture is on for an account made today: the offer goes in the strip and on the button */
@@ -61,7 +64,7 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
       ) : giftOpen() ? (
         <Link href={loginHref} className="ld-promo">🎁 سجّل الحين وخذ <b><Riyal halalas={SIGNUP_GIFT.halalas} size={14} /> مجانًا</b> في رصيدك — العرض لين ٦ الصبح بس</Link>
       ) : (
-        <Link href={CREDITS.base} className="ld-promo">🎁 كل ما كبرت الباقة زاد رصيدك المجاني — <b>شوف الباقات</b></Link>
+        <Link href={CREDITS.base} className="ld-promo">🎁 بدون اشتراك: كل ريال تشحنه يصير ريال رصيد، وما ينتهي — <b>شوف الباقات</b></Link>
       )}
 
       <header className="ld-hero">
@@ -82,6 +85,7 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
               {prices.map((p, i) => <span key={i}>{p}</span>)}
             </p>
           )}
+          {made != null && <p className="ld-proof">✨ <b dir="ltr">+{made.toLocaleString("en")}</b> صورة وفيديو انصنعت في الجواد آخر ٣٠ يوم</p>}
           <p className="ld-note">بدون اشتراك · تدفع بالريال · رصيدك ما ينتهي · يرد عليك إنسان</p>
           {JAWAD.heroVideoUrl && (
             <div className="ld-video">
@@ -93,8 +97,10 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
           <div className="ld-strip" aria-hidden>
             <div className="ld-track" style={{ ["--n" as string]: samples.length }}>
               {strip.map((u, i) => (
+                // the owner's sample pictures, as small WebPs kept by the CDN (app/files/thumb); decorative, so they never
+                // compete with the headline: low priority, decoded off the main thread, sized so nothing jumps
                 // eslint-disable-next-line @next/next/no-img-element -- the owner's sample pictures from storage
-                <img key={i} src={u} alt="" loading={i < 6 ? "eager" : "lazy"} />
+                <img key={i} src={u} alt="" width={210} height={280} loading={i < 4 ? "eager" : "lazy"} fetchPriority="low" decoding="async" />
               ))}
             </div>
           </div>
@@ -147,8 +153,13 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
             <h2 className="ld-h">أقوى النماذج في العالم، بين يديك</h2>
             <p className="ld-lead">ما تحتاج تشترك في كل موقع لحاله: نفس المولدات العالمية، برصيد واحد.</p>
             <ul className="ld-models">
-              {models.map((m) => <li key={m} dir="ltr">{m}</li>)}
+              {models.map((m) => (
+                <li key={m.id} dir="ltr">
+                  <Link href={`/jawad-ai/models/${m.id}`}>{m.name}</Link>
+                </li>
+              ))}
             </ul>
+            <Link href="/jawad-ai/models" className="ld-models-all">كل المولدات وأسعارها ←</Link>
           </div>
         </section>
       )}
@@ -168,7 +179,7 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
         <section className="ld-sec ld-alt">
           <div className="ld-in">
             <h2 className="ld-h">باقات تناسبك</h2>
-            <p className="ld-lead">تدفع مرة وحدة، وكل ما كبرت الباقة زاد رصيدك المجاني.</p>
+            <p className="ld-lead">تدفع مرة وحدة، ورصيدك ما ينتهي، وتصرف منه على قد اللي تسويه بس.</p>
             <div className="ld-packs">
               {show.map((p) => (
                 <Link key={p.id} href={`${CREDITS.base}?pack=${p.id}`} className={`ld-pack${p.id === featured ? " star" : ""}`}>

@@ -4,6 +4,7 @@
 // made ticking under it, «المكتبة» a tap away, «الرجوع الذكي» when an edit reached later work, and the open step's work
 // beside it all. Moving between steps never leaves this shell (the step's panel slides in).
 
+import Coined from "@/components/Coined";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -103,7 +104,7 @@ export default function FilmStage({ projectId, title, kind, stage, videosOpen, c
             <div className="fs-title">
               <span className="fs-kicker">{kind === "film" ? "فيلم سينمائي" : "مشهد قصير"}</span>
               <h1 title={title}>{title}</h1>
-              <p>{cost} · {FILM_STAGES.find((s) => s.key === stage)?.label}</p>
+              <p><Coined text={cost} /> · {FILM_STAGES.find((s) => s.key === stage)?.label}</p>
             </div>
             <button type="button" className="fs-tool" aria-pressed={lib} onClick={() => setLib(true)} title="كل اللي انصنع في هذا المشهد">
               🗂️ <span className="hidden sm:inline">المكتبة</span>

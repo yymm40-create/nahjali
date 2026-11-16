@@ -944,6 +944,8 @@ export async function runSheetReply(projectId: string, jobId: string) {
         references: r.references?.length ? r.references : undefined,
         // what this reply cost (shown on its card, in coins), and its tokens by kind (a cache hit or miss)
         cost_usd: claudeCost(result.usage),
+        // the reply's own job: a picture made from this version that fails through our account gives it back (lib/prompt-refund)
+        job_id: jobId,
         usage: replyTokens(result.usage),
       },
       // The handoff is passed on in the background and never shown as a step
@@ -1028,7 +1030,7 @@ async function runSheetBatch(projectId: string, jobId: string, turns: ClaudeTurn
     if (old.length) await client.from("film_versions").update({ status: "superseded" }).in("id", old);
     const { error } = await client.from("film_versions").insert({
       project_id: projectId, stage: STAGE, kind: "sheet_prompt", ref_key: item.id, version: (same.at(-1)?.version ?? 0) + 1, body: r.content,
-      data: { notes: r.notes, suggestion: r.suggestion?.trim() || undefined, prompt: r.prompt || undefined, references: r.references?.length ? r.references : undefined, cost_usd: claudeCost(result.usage), usage: replyTokens(result.usage) },
+      data: { notes: r.notes, suggestion: r.suggestion?.trim() || undefined, prompt: r.prompt || undefined, references: r.references?.length ? r.references : undefined, cost_usd: claudeCost(result.usage), usage: replyTokens(result.usage), job_id: jobId },
       status: "awaiting_approval", created_by: "assistant",
     });
     if (error) throw error;

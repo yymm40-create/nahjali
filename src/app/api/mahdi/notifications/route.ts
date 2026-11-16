@@ -3,6 +3,7 @@ import { reminderSlots, toMinutes, type ReminderMode } from "@/lib/mahdi/engine"
 import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { oneOf, parseBool, parseTime } from "@/lib/mahdi/server/validate";
+import { parseEngage } from "@/lib/mahdi/engage";
 
 /** Saves the reminder settings: `{ mode, times, quietStart, quietEnd, habitReminders }` (through RLS: only my row). */
 export const PUT = mahdiRoute(async (req: Request) => {
@@ -22,6 +23,11 @@ export const PUT = mahdiRoute(async (req: Request) => {
   if (mode !== "off" && reminderSlots(mode, times).length === 0) throw new UserError(t.errors.invalid, 400);
 
   const row = { user_id: user.id, mode, times, quiet_start: quietStart, quiet_end: quietEnd, habit_reminders: parseBool(body.habitReminders) };
-  check(await supabase.from("mahdi_notification_settings").upsert(row));
-  return NextResponse.json({ notifications: { mode, times, quietStart, quietEnd, habitReminders: row.habit_reminders } });
+  // «تنبيهات تجيبك للتطبيق»: what the person switched off (needs migration 0102; the rest is saved without it)
+  const engage = parseEngage(body.engage);
+  const withEngage = "engage" in body ? await supabase.from("mahdi_notification_settings").upsert({ ...row, engage }) : null;
+  const missing = withEngage?.error && ["42703", "PGRST204"].includes((withEngage.error as { code?: string }).code ?? "");
+  if (!withEngage || missing) check(await supabase.from("mahdi_notification_settings").upsert(row));
+  else check(withEngage);
+  return NextResponse.json({ notifications: { mode, times, quietStart, quietEnd, habitReminders: row.habit_reminders, engage: withEngage && !missing ? engage : parseEngage(body.engage) }, engageReady: !missing });
 });

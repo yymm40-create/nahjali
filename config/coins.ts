@@ -1,9 +1,9 @@
 // «النقود الذكية»: the site's money, counted in RIYALS. The wallet holds halalas (1 riyal = 100 halalas; whole numbers
 // in the database), every price is shown in riyals, and the customer's price is built like this:
 //   cost (what the provider charges us, in dollars) → riyals at the dollar rate → rounded UP to the step (half a
-//   riyal) → plus our profit (the margin, rounded up to the step too). Next to it the «was» price: the same with the
-//   full margin, struck through — the launch discount. The owner sets the rate, the step and both margins from
-//   /admin/limits; the defaults below hold until then. Pure (pages and server alike).
+//   riyal) → plus our profit (the margin, rounded up to the step too). No discount and no struck «كان» price (the owner,
+//   13 November 2026): the price is the price. The owner sets the rate, the step and the profit from /admin/limits; the
+//   defaults below hold until then. Pure (pages and server alike).
 
 import { CLAUDE_MARGIN_PCT, HAIDARA_MAX_MARGIN_PCT } from "./claude-models";
 
@@ -25,25 +25,18 @@ export interface Pricing {
   usdToSar: number;
   /** prices are rounded up to this (halalas): 50 = half a riyal */
   stepHalalas: number;
-  /** our profit on the cost, in percent — what the customer pays now (the launch discount) */
+  /** our profit on the cost, in percent — on EVERYTHING but Claude's own work (the robots and «حيدرا ماكس»: CLAUDE_MARGIN_PCT) */
   marginPct: number;
-  /** the full margin, in percent — the struck «was» price */
-  wasMarginPct: number;
-  /** our profit on a GPT Image 2 PICTURE (the studio's GPT Image 2, the film's sheets, the student's pages, covers, booklets…), in percent; the other picture models take the general margin */
-  imageMarginPct: number;
-  /** our profit on a VIDEO someone makes (Seedance, Kling, lip-sync, upscaling…), in percent */
-  videoMarginPct: number;
 }
 
 /**
- * The owner's margins (21 October 2026): GPT Image 2's pictures 30٪, videos 40٪ (Seedance, Kling…; «سيدنس الواقعي» its
- * own 10٪, config/jawad/generators.ts), Claude's own work and «حيدرا ماكس» 60٪ since 26 October 2026 (its real usage + 60٪, `claudeHalalas`),
- * everything else (the other picture models, sound, the owner's fixed fees) the general 40٪. The struck «كان» price keeps
- * the same gap above each as the general one does (+30 points).
+ * The owner's margins (13 November 2026): 60٪ on everything in the program — pictures, videos, sound, the owner's fixed
+ * fees, «سيدنس الواقعي» too — except Claude's own work (the robots' replies and «حيدرا ماكس»'s programs): its real usage
+ * + 30٪ (`claudeHalalas`). No discount, no struck price.
  */
-export const DEFAULT_PRICING: Pricing = { usdToSar: 3.75, stepHalalas: 50, marginPct: 40, wasMarginPct: 70, imageMarginPct: 30, videoMarginPct: 40 };
+export const DEFAULT_PRICING: Pricing = { usdToSar: 3.75, stepHalalas: 50, marginPct: 60 };
 
-/** What a price is for: its profit follows it. "max" is «حيدرا ماكس»'s work: priced like Claude's (its real usage), at its own profit. */
+/** What a price is for. "max" is «حيدرا ماكس»'s work: priced like Claude's (its real usage), at its profit. */
 export type PriceKind = "image" | "video" | "claude" | "max" | "other";
 /** Claude's own work (a robot's reply, or «حيدرا ماكس»'s program): its real usage plus its profit, to the halala only. */
 export const isClaudeKind = (kind: PriceKind): kind is "claude" | "max" => kind === "claude" || kind === "max";
@@ -58,31 +51,11 @@ export function setPricing(p: Partial<Pricing> | null | undefined) {
     usdToSar: n.usdToSar > 0 ? n.usdToSar : DEFAULT_PRICING.usdToSar,
     stepHalalas: Number.isInteger(n.stepHalalas) && n.stepHalalas >= 1 ? n.stepHalalas : DEFAULT_PRICING.stepHalalas,
     marginPct: n.marginPct >= 0 ? n.marginPct : DEFAULT_PRICING.marginPct,
-    wasMarginPct: n.wasMarginPct >= 0 ? n.wasMarginPct : DEFAULT_PRICING.wasMarginPct,
-    imageMarginPct: n.imageMarginPct >= 0 ? n.imageMarginPct : DEFAULT_PRICING.imageMarginPct,
-    videoMarginPct: n.videoMarginPct >= 0 ? n.videoMarginPct : DEFAULT_PRICING.videoMarginPct,
   };
 }
 
-/**
- * «أسبوع العرض» (the owner, 26 October 2026; extended two more weeks on 1 November 2026, to the end of 16 November 2026
- * Saudi time): every profit except Claude's work (the robots and «حيدرا ماكس», 60٪) is 10٪
- * until `until` — over the owner's settings too — and then the margins above come back by themselves. The struck «كان»
- * price keeps its gap above the profit in force, so during the week it shows the usual price.
- */
-export const PROMO = { marginPct: 10, until: Date.parse("2026-11-16T21:00:00Z") } as const;
-// the tests price at the usual margins unless one sets the clock (setPromoClock)
-let promoClock = () => (typeof process !== "undefined" && process.env.VITEST ? Infinity : Date.now());
-export const setPromoClock = (now: () => number) => {
-  promoClock = now;
-};
-export const promoActive = (now = promoClock()) => now < PROMO.until;
-
-/** The profit (percent) on a kind of price. Claude's and «حيدرا ماكس»'s are fixed by the owner (see `claudeHalalas`). */
-export const marginFor = (kind: PriceKind, p = current) =>
-  kind === "claude" ? CLAUDE_MARGIN_PCT : kind === "max" ? HAIDARA_MAX_MARGIN_PCT : promoActive() ? PROMO.marginPct : kind === "image" ? p.imageMarginPct : kind === "video" ? p.videoMarginPct : p.marginPct;
-/** The struck «was» margin of a kind: the same gap above it as the general one. */
-export const wasMarginFor = (kind: PriceKind, p = current) => marginFor(kind, p) + Math.max(0, p.wasMarginPct - p.marginPct);
+/** The profit (percent) on a kind of price: Claude's and «حيدرا ماكس»'s are fixed (see `claudeHalalas`), everything else the one margin. */
+export const marginFor = (kind: PriceKind, p = current) => (kind === "claude" ? CLAUDE_MARGIN_PCT : kind === "max" ? HAIDARA_MAX_MARGIN_PCT : p.marginPct);
 
 /** The dollars behind one halala of cost at the default rate (the generators' default prices are in hundredths of it). */
 export const COIN_COST_USD = SMART_COIN.unitSar / DEFAULT_PRICING.usdToSar;
@@ -106,15 +79,12 @@ export function sellHalalas(cost: number, p = current, marginPct = p.marginPct) 
 export const sellKind = (cost: number, kind: PriceKind = "other", p = current) =>
   isClaudeKind(kind) ? (cost > 0 ? Math.max(1, Math.ceil((cost * (100 + marginFor(kind, p))) / 100 - 1e-9)) : 0) : sellHalalas(cost, p, marginFor(kind, p));
 
-/** The struck «was» price (the full margin) for the same cost (none for Claude: its price is never discounted). */
-export const wasHalalas = (cost: number, p = current, kind: PriceKind = "other") => (isClaudeKind(kind) ? sellKind(cost, kind, p) : sellHalalas(cost, p, wasMarginFor(kind, p)));
-
 /** The customer's price, in halalas, for an operation of this kind that costs us `usd` (0 for nothing). */
 export const coinsFor = (usd: number, kind: PriceKind = "other") => (isClaudeKind(kind) ? claudeHalalas(usd, current, kind) : sellHalalas(costHalalas(usd), current, marginFor(kind)));
 
 /**
  * What a robot's conversation costs the person: Claude's real usage of the chosen model plus the platform's profit
- * (`CLAUDE_MARGIN_PCT`, «حيدرا ماكس»'s programs `HAIDARA_MAX_MARGIN_PCT` — both 60٪ since 26 October 2026) and nothing else — no rounding up to the step (that would be a bigger profit on a
+ * (`CLAUDE_MARGIN_PCT`, «حيدرا ماكس»'s programs `HAIDARA_MAX_MARGIN_PCT` — both 30٪ since 13 November 2026) and nothing else — no rounding up to the step (that would be a bigger profit on a
  * small reply), only to the halala.
  */
 export function claudeHalalas(usd: number, p = current, kind: "claude" | "max" = "claude"): number {

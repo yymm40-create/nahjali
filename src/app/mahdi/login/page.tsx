@@ -1,3 +1,4 @@
+import AndroidNews from "@/components/mahdi/AndroidNews";
 import { redirect } from "next/navigation";
 import { getMahdiSession } from "@/lib/mahdi/server/session";
 import { safeNext } from "@/lib/mahdi/client/derive";
@@ -11,5 +12,10 @@ export default async function MahdiLogin({ searchParams }: { searchParams: Promi
   const target = safeNext(next);
   const { user } = await getMahdiSession();
   if (user) redirect(target);
-  return <LoginForm next={target} failed={Boolean(error)} />;
+  return (
+    <>
+      <AndroidNews floating />
+      <LoginForm next={target} failed={Boolean(error)} />
+    </>
+  );
 }

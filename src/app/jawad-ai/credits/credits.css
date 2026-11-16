@@ -187,3 +187,7 @@
 .cs-code-row input:focus-visible { outline: 3px solid var(--pr-orange); outline-offset: 2px; }
 .cs-code-row .cu-chip { flex: 0 0 auto; }
 .cs-code-ok { color: #86efac; font-weight: 800; font-size: 14.5px; text-align: center; }
+
+/* «انصنع في الجواد»: the real count, under the promise */
+.cs-proof { margin: 10px 0 0; font-size: 15px; color: rgba(255, 255, 255, 0.86); }
+.cs-proof b { font-weight: 800; }
