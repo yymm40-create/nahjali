@@ -1,35 +1,85 @@
-/* «عرض الـ٢٥ ريال» — on top of landing.css. Phone first: the countdown, three cards under each other (side by side from 760px),
-   then the price and the one big button. */
-.ox-hero { padding-bottom: 20px; }
-.ox-sec { padding: 18px 0 110px; }
-.ox-cd { display: grid; justify-items: center; gap: 6px; margin-top: 18px; }
-.ox-cd-l { color: var(--ld-mute); font-size: 14px; }
+/* «عرض الـ٢٥ ريال» — on top of landing.css. Phone first. A fiery hero on the offer's own key visual (رعد ونار), the price
+   struck from 100 to 25, the countdown and the button above the fold; then the value, the real samples made with the offer,
+   three steps, the questions, and a sticky buy bar on the phone. */
+.ox { padding-bottom: 96px; }
+.ox-hero { position: relative; overflow: hidden; text-align: center; padding: 34px 0 30px; min-height: 86svh; display: grid; align-items: end; }
+.ox-hero-bg { position: absolute; inset: 0; background: url(/jawad-ai/offer/hero.jpg) center 30% / cover no-repeat; }
+.ox-hero-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10, 6, 24, 0.35) 0%, rgba(10, 6, 24, 0.15) 30%, rgba(10, 6, 24, 0.82) 62%, #0a0618 100%), radial-gradient(60% 40% at 50% 100%, rgba(255, 106, 0, 0.35), transparent 70%); }
+.ox-hero-in { position: relative; display: grid; justify-items: center; gap: 14px; }
+.ox-tag { display: inline-flex; align-items: center; gap: 8px; padding: 7px 16px; border-radius: 999px; background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(248, 113, 113, 0.5); color: #fecaca; font-size: 13.5px; font-weight: 700; backdrop-filter: blur(6px); }
+.ox-tag i { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 10px #ef4444; animation: ox-blink 1.2s infinite; }
+.ox-tag-ok { background: rgba(34, 197, 94, 0.16); border-color: rgba(74, 222, 128, 0.5); color: #bbf7d0; }
+@keyframes ox-blink { 50% { opacity: 0.25; } }
+.ox-h1 { font-size: clamp(34px, 10vw, 66px) !important; line-height: 1.22 !important; text-shadow: 0 6px 30px rgba(0, 0, 0, 0.7); }
+.ox-was { color: #d6cdee; font-size: 0.8em; text-decoration-thickness: 4px; text-decoration-color: #ef4444; }
+.ox-fire { display: inline-flex; align-items: center; gap: 10px; color: transparent; background: linear-gradient(180deg, #fff3b0 0%, #ffc83d 30%, #ff8a1f 62%, #e3330b 100%); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 0 18px rgba(255, 120, 20, 0.75)) drop-shadow(0 4px 0 rgba(90, 20, 0, 0.6)); font-size: 1.12em; }
+.ox-fire-rl { color: #ffc83d; }
+.ox-sub { max-width: 560px; color: #e8e1fb; font-size: clamp(15.5px, 4.2vw, 19px); text-wrap: pretty; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8); }
+.ox-hero-buy { display: grid; justify-items: center; gap: 8px; width: 100%; margin-top: 4px; }
+.ox-pay { color: var(--ld-mute); font-size: 12.5px; }
+
+.ox-cd { display: grid; justify-items: center; gap: 6px; }
+.ox-cd-l { color: #fecaca; font-size: 14px; font-weight: 700; }
 .ox-cd-n { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
-.ox-cd-n b { min-width: 64px; padding: 8px 6px; border-radius: 14px; background: rgba(255, 255, 255, 0.08); border: 1px solid var(--ld-line); font-size: 34px; font-weight: 800; text-align: center; }
+.ox-cd-n b { min-width: 68px; padding: 8px 6px; border-radius: 16px; background: rgba(10, 6, 24, 0.7); border: 1.5px solid rgba(255, 138, 31, 0.55); box-shadow: 0 0 22px -6px rgba(255, 138, 31, 0.7); font-size: 36px; font-weight: 800; text-align: center; backdrop-filter: blur(6px); }
 .ox-cd-n i { font-style: normal; font-size: 28px; color: #fdba74; }
 .ox-cd-u { display: flex; flex-direction: row-reverse; gap: 6px; color: var(--ld-mute); font-size: 12px; }
-.ox-cd-u span { min-width: 64px; text-align: center; }
+.ox-cd-u span { min-width: 68px; text-align: center; }
 .ox-cd-u span + span { margin-inline-end: 14px; }
-.ox-closed { margin-top: 16px; color: var(--ld-mute); }
+.ox-closed { color: var(--ld-mute); }
+
+.ox-sec { padding: 34px 0 6px; }
+.ox-h2 { font-size: clamp(24px, 6.4vw, 36px); font-weight: 800; text-align: center; margin-bottom: 16px !important; }
+.ox-sec-sub { max-width: 620px; margin: -6px auto 18px !important; text-align: center; color: var(--ld-mute); font-size: 15.5px; }
 
 .ox-cards { display: grid; gap: 14px; max-width: 860px; margin-inline: auto; }
 @media (min-width: 760px) { .ox-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: none; } }
-.ox-card { display: grid; gap: 8px; align-content: start; justify-items: start; padding: 22px 18px 18px; border-radius: 22px; background: rgba(255, 255, 255, 0.05); border: 2px solid var(--ld-line); }
+.ox-card { position: relative; display: grid; gap: 6px; align-content: start; justify-items: start; padding: 20px 18px 18px; border-radius: 22px; background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03)); border: 1.5px solid var(--ld-line); }
+.ox-seedance { border-color: rgba(255, 138, 31, 0.6); box-shadow: 0 0 0 4px rgba(255, 138, 31, 0.08), 0 18px 40px -20px rgba(255, 138, 31, 0.6); }
+.ox-card-top { display: flex; align-items: center; justify-content: space-between; width: 100%; }
 .ox-ic { font-size: 34px; line-height: 1; }
-.ox-card h2 { font-size: 22px; font-weight: 800; }
-.ox-line { font-size: 17px; font-weight: 700; color: #fdba74; }
-.ox-free { color: #22c55e; font-weight: 800; font-size: 14.5px; }
+.ox-worth { padding: 4px 12px; border-radius: 999px; background: rgba(34, 197, 94, 0.14); color: #86efac; font-size: 13px; font-weight: 800; }
+.ox-card h3 { margin: 0; font-size: 22px; font-weight: 800; }
+.ox-line { font-size: 17px; font-weight: 800; color: #fdba74; }
+.ox-usual { color: var(--ld-mute); font-size: 13.5px; }
 .ox-left { color: #e3dbfb; font-size: 15px; }
 .ox-note { color: var(--ld-mute); font-size: 13px; }
 .ox-try { min-height: 48px; padding-inline: 18px; font-size: 16px; margin-top: 4px; }
+.ox-sum { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 14px; max-width: 520px; margin: 18px auto 0; padding: 16px 20px; border-radius: 20px; background: rgba(255, 138, 31, 0.08); border: 1.5px dashed rgba(255, 138, 31, 0.5); font-size: 15px; color: var(--ld-mute); }
+.ox-sum s { color: #fca5a5; font-weight: 800; font-size: 20px; text-decoration-thickness: 3px; justify-self: end; }
+.ox-sum b { color: #fff; font-size: 30px; font-weight: 800; justify-self: end; }
 
-.ox-buy { display: grid; justify-items: center; gap: 10px; margin-top: 26px; text-align: center; }
-.ox-price { font-size: 18px; color: var(--ld-mute); }
-.ox-price b { font-size: 44px; font-weight: 800; color: #fff; }
-.ox-go { width: min(100%, 420px); }
-.ox-go:disabled { opacity: 0.7; }
-.ox-safe { font-size: 13px; }
-.ox-ok, .ox-err { max-width: 860px; margin: 0 auto 14px; padding: 12px 16px; border-radius: 14px; text-align: center; font-weight: 700; }
+.ox-show-grid { display: grid; gap: 14px; }
+@media (min-width: 760px) { .ox-show-grid { grid-template-columns: 340px 1fr; align-items: start; } }
+.ox-vid, .ox-sheet { margin: 0; position: relative; border-radius: 20px; overflow: hidden; border: 1.5px solid var(--ld-line); background: #000; }
+.ox-vid video { display: block; width: 100%; aspect-ratio: 9 / 16; object-fit: cover; max-height: 78svh; }
+.ox-sheet img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #fff; }
+.ox-sheets { display: grid; gap: 12px; }
+.ox-vid figcaption, .ox-sheet figcaption { position: absolute; top: 10px; inset-inline-start: 10px; padding: 4px 12px 6px; border-radius: 999px; background: rgba(10, 6, 24, 0.78); font-size: 13px; font-weight: 700; backdrop-filter: blur(6px); }
+
+.ox-steps { display: grid; gap: 10px; max-width: 860px; margin-inline: auto; }
+@media (min-width: 760px) { .ox-steps { grid-template-columns: repeat(3, 1fr); } }
+.ox-steps li { display: grid; grid-template-columns: 48px 1fr; grid-template-rows: auto auto; column-gap: 12px; align-items: center; padding: 14px 16px; border-radius: 18px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--ld-line); }
+.ox-steps b { grid-row: span 2; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: linear-gradient(180deg, #ffb52e, #f26a0d); color: #2a1200; font-size: 22px; font-weight: 800; }
+.ox-steps span { font-weight: 800; font-size: 16.5px; }
+.ox-steps small { color: var(--ld-mute); font-size: 13px; }
+
+.ox-faq { display: grid; gap: 8px; max-width: 760px; margin-inline: auto; }
+.ox-faq details { padding: 12px 16px; border-radius: 16px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--ld-line); }
+.ox-faq summary { cursor: pointer; font-weight: 800; font-size: 16px; }
+.ox-faq p { margin-top: 6px; color: var(--ld-mute); font-size: 14.5px; }
+.ox-end { display: grid; justify-items: center; gap: 10px; margin: 26px auto 10px; text-align: center; font-size: 18px; }
+.ox-end b { color: #fdba74; }
+
+.ox-go { width: min(100%, 440px); font-size: 20px; animation: ox-pulse 2.2s ease-in-out infinite; }
+.ox-go:disabled { opacity: 0.7; animation: none; }
+@keyframes ox-pulse { 50% { box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), 0 14px 30px -8px rgba(255, 138, 31, 0.75), 0 0 0 10px rgba(255, 138, 31, 0.12); } }
+@media (prefers-reduced-motion: reduce) { .ox-go, .ox-tag i { animation: none; } }
+.ox-go-s { width: auto; min-height: 50px; padding: 8px 20px; font-size: 17px; }
+.ox-sticky { position: fixed; z-index: 40; inset-inline: 10px; bottom: max(10px, env(safe-area-inset-bottom)); display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 8px 8px 16px; padding-inline-start: 16px; border-radius: 22px; background: rgba(18, 10, 42, 0.92); border: 1px solid rgba(255, 138, 31, 0.45); box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6); backdrop-filter: blur(10px); }
+.ox-sticky-p { display: flex; align-items: baseline; gap: 8px; font-weight: 800; font-size: 22px; }
+.ox-sticky-p s { color: #fca5a5; font-size: 15px; text-decoration-thickness: 2px; }
+@media (min-width: 900px) { .ox-sticky { display: none; } .ox { padding-bottom: 40px; } }
+.ox-ok, .ox-err { max-width: 860px; margin: 14px auto 0; padding: 12px 16px; border-radius: 14px; text-align: center; font-weight: 700; }
 .ox-ok { background: rgba(34, 197, 94, 0.14); color: #86efac; }
 .ox-err { background: rgba(239, 68, 68, 0.14); color: #fca5a5; }
-.ox-rl { vertical-align: middle; } .ox-pn { font-size: 40px; font-weight: 800; color: #fff; }
