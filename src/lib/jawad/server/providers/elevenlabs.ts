@@ -403,3 +403,43 @@ export async function elevenAlign(o: { file: Blob; name: string; text: string })
   const j = (await res.json()) as { words?: { text: string; start: number; end: number }[] };
   return (j.words ?? []).filter((w) => w.text.trim()).map((w) => ({ text: w.text.trim(), start: w.start, end: w.end }));
 }
+
+// ───────────────────────────── voice changer · dubbing («أدوات الصوت») ─────────────────────────────
+
+/** «غيّر الصوت»: the same words and delivery in another voice (speech to speech), as MP3. */
+export async function elevenVoiceChange(o: { voiceId: string; file: Buffer; mime: string; name: string; model: string; denoise: boolean }) {
+  const form = new FormData();
+  form.append("audio", new Blob([new Uint8Array(o.file)], { type: o.mime }), o.name);
+  form.append("model_id", o.model);
+  if (o.denoise) form.append("remove_background_noise", "true");
+  const res = await call(`/v1/voice-changer/${encodeURIComponent(o.voiceId)}?output_format=${FORMAT}`, { method: "POST", body: form, timeoutMs: 280_000 }, "voice-changer");
+  return audioOf(res, "voice-changer");
+}
+
+/** «دبلجة»: starts a dub of one file (the dubbing resource API); returns its id, followed with elevenDubStatus. */
+export async function elevenDubCreate(o: { file: Buffer; mime: string; name: string; fields: Record<string, string> }) {
+  const form = new FormData();
+  form.append("file", new Blob([new Uint8Array(o.file)], { type: o.mime }), o.name);
+  for (const [k, v] of Object.entries(o.fields)) form.append(k, v);
+  const res = await call("/v1/dubbing", { method: "POST", body: form, timeoutMs: 240_000 }, "dubbing");
+  const j = (await res.json()) as { dubbing_id?: string; expected_duration_sec?: number };
+  if (!j.dubbing_id) throw new ProviderError("unknown", "ما رجع ElevenLabs برقم للدبلجة.", "dubbing: no dubbing_id");
+  return { id: j.dubbing_id, expectedSec: j.expected_duration_sec ?? null };
+}
+
+/** Where a dub stands: «dubbing» while it works, «dubbed» when ready, «failed» with its reason. */
+export async function elevenDubStatus(id: string): Promise<{ status: "running" | "succeeded" | "failed"; error: string | null }> {
+  const res = await fetch(`${BASE}/v1/dubbing/${encodeURIComponent(id)}`, { headers: { "xi-api-key": apiKey() }, signal: AbortSignal.timeout(30_000) });
+  if (!res.ok) throw new Error(`dubbing status ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const j = (await res.json()) as { status?: string; error?: string | null };
+  const s = String(j.status ?? "").toLowerCase();
+  if (s === "dubbed") return { status: "succeeded", error: null };
+  if (s === "failed" || j.error) return { status: "failed", error: j.error ?? s };
+  return { status: "running", error: null };
+}
+
+/** The dubbed file of a finished dub in one language (MP3 for a sound, MP4 for a video). */
+export async function elevenDubFile(id: string, lang: string) {
+  const res = await call(`/v1/dubbing/${encodeURIComponent(id)}/audio/${encodeURIComponent(lang)}`, { method: "GET", timeoutMs: 180_000 }, "dubbing-file");
+  return audioOf(res, "dubbing-file");
+}

@@ -32,6 +32,28 @@ import {
   type OutpaintShape,
   type UpscaleEngine,
 } from "./image-tools";
+import {
+  billedSeconds,
+  CONSENT_FACE,
+  CONSENT_KEY,
+  CONSENT_MISSING,
+  CONSENT_VOICE,
+  DUB_ID,
+  DUB_LANGS,
+  DUB_SPEAKERS,
+  LIPSYNC_ID,
+  LIPSYNC_MODELS,
+  lipsyncEngine,
+  lipsyncSeconds,
+  lipsyncUsd,
+  talkingEngine,
+  VOICE_CHANGE_ID,
+  VOICE_CHANGE_MODEL,
+  VOICE_TOOL_MAX_MS,
+  VOICE_TOOL_MIN_MS,
+  VOICE_TOOL_USD,
+  VOICE_TOOLS_CHECKED,
+} from "./voice-tools";
 
 const CHECKED = "2026-10-04";
 
@@ -2449,7 +2471,232 @@ const imageUpscale: GeneratorDef = {
   notes: ["طلب متزامن: يرجع بالصورة المكبّرة ونحفظها في «أعمالي» كنتيجة جديدة."],
 };
 
-export const GENERATORS: GeneratorDef[] = [gptImage2, gptImage26, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, kling4, kling4Edit, kling4Flash, kling4FlashEdit, wan3, geminiOmni, geminiOmni12, geminiOmni12Edit, miniTts, elevenV4, jawadVoice, elevenSfx, elevenMusic, smartSplit, imageInpaint, imageOutpaint, imageUpscale];
+// ───────────── «أدوات الصوت»: دبلجة · غيّر الصوت · حرّك الشفايف (ElevenLabs · fal.ai) ─────────────
+// Generators of the «صوت» kind that work on the person's own file (a video, a recording, or a photo with a sound):
+// the same job, price, hold/refund and «أعمالي» as any generation, priced by the file's real length before anything
+// runs. Hidden until the owner turns each on. The costs and their sources are in config/jawad/voice-tools.ts.
+
+const VT_VIDEO = (maxMs: number) => ({ mimes: ["video/mp4", "video/quicktime"], maxBytes: 200 * MB, minMs: VOICE_TOOL_MIN_MS, maxMs });
+const VT_AUDIO = (maxMs: number) => ({ mimes: ["audio/mpeg", "audio/wav"], maxBytes: 200 * MB, minMs: VOICE_TOOL_MIN_MS, maxMs });
+const vtSources = (extra: { label: string; url: string }[]) => extra.map((x) => ({ ...x, checked: VOICE_TOOLS_CHECKED }));
+/** The one file a dub or a voice change works on: the video, else the recording. */
+const sourceOf = (refs: RefMeta[]) => refs.find((r) => r.kind === "video") ?? refs.find((r) => r.kind === "audio");
+/** Nothing is written for these tools: the box says so instead of asking for a description. */
+const NO_TEXT = { label: "ما يحتاج كتابة", placeholder: "هالأداة تشتغل على ملفك وإعداداتك؛ اللي تكتبه هنا ما يُرسل." };
+const noTextPrompt = { ...NO_TEXT, max: 2000, arabic: true };
+const oneSource = (refs: RefMeta[]): Issue[] =>
+  refs.some((r) => r.kind === "video") && refs.some((r) => r.kind === "audio") ? [{ field: "refs", message: "أضف ملف واحد بس: الفيديو أو التسجيل." }] : [];
+const consentOption = (label: string) => ({ key: CONSENT_KEY, label, kind: "bool" as const, default: false, hint: "ما نغيّر صوت أو وجه أحد بدون إذنه، ولا أصوات مشاهير." });
+const consentIssue = (s: Settings): Issue[] => (s[CONSENT_KEY] === true ? [] : [{ field: CONSENT_KEY, message: CONSENT_MISSING }]);
+
+const dubMode: ModeDef = { id: "dub", label: "دبلجة ملف", refStyle: "references", refs: { video: { min: 0, max: 1 }, audio: { min: 0, max: 1 } }, needsOneOf: ["video", "audio"], promptRequired: false, prompt: NO_TEXT };
+const dubbing: GeneratorDef = {
+  id: DUB_ID,
+  name: "دبلجة",
+  output: "audio",
+  defaultSection: "audio",
+  provider: { id: "elevenlabs", label: "ElevenLabs Dubbing" },
+  model: { id: "dubbing_v1", family: "ElevenLabs Dubbing", version: "v1 (dubbing resource API)" },
+  api: { name: "ElevenLabs Dubbing API", endpoint: "POST /v1/dubbing · GET /v1/dubbing/{dubbing_id} · GET /v1/dubbing/{dubbing_id}/audio/{language_code}", tracking: "async", progress: "none", cancel: "none" },
+  modes: [dubMode],
+  options: [
+    { key: "lang", label: "دبلجه إلى", kind: "choice", default: "en", values: DUB_LANGS.map((l) => ({ value: l.code, label: l.label })) },
+    { key: "speakers", label: "كم واحد يتكلم؟", kind: "choice", default: "auto", values: DUB_SPEAKERS.map((v) => ({ value: v, label: v === "auto" ? "تلقائي" : v })) },
+    { key: "keepBackground", label: "خلّ الموسيقى والمؤثرات", kind: "bool", default: true, hint: "تبقى خلفية المقطع تحت الأصوات الجديدة؛ طفّها للخطب والكلام بدون خلفية." },
+  ],
+  files: { video: VT_VIDEO(VOICE_TOOL_MAX_MS.dub), audio: VT_AUDIO(VOICE_TOOL_MAX_MS.dub) },
+  prompt: noTextPrompt,
+  priceKeys: [{ key: "sec", label: "كل ثانية من الملف (للغة وحدة)", defaultCenti: centiFor(VOICE_TOOL_USD.dubPerMin / 60), basis: `سعر ElevenLabs المنشور للدبلجة (Dubbing v1 بدون علامة مائية): $${VOICE_TOOL_USD.dubPerMin} لكل دقيقة من الملف الأصلي` }],
+  modeFor: () => dubMode,
+  rules(d) {
+    return {
+      options: opt(dubbing.options),
+      issues: oneSource(d.refs),
+      notes: [
+        "يترجم الكلام للغة اللي تختارها ويقوله بنفس أصوات المتكلمين، ونفس طول المقطع.",
+        `فيديو أو تسجيل حتى ${VOICE_TOOL_MAX_MS.dub / 60_000} دقائق. ترجع لك نسخة الفيديو المدبلجة والصوت المدبلج لحاله.`,
+        "الشفايف ما تتحرك مع اللغة الجديدة؛ إذا تبيها تتحرك ودّ الفيديو المدبلج لـ«حرّك الشفايف».",
+      ],
+    };
+  },
+  price(d, _mode, table) {
+    const src = sourceOf(d.refs);
+    if (!src?.durationMs) return { ok: false, reason: "أضف الفيديو أو التسجيل أولًا." };
+    const per = table.sec;
+    if (per == null) return { ok: false, reason: "سعر الدبلجة لم يُحدد بعد." };
+    const sec = billedSeconds(src.durationMs);
+    return total([{ label: `دبلجة · ${sec} ث`, centi: sec * per }], dubbing.costUsd(d, dubMode));
+  },
+  costUsd(d) {
+    const src = sourceOf(d.refs);
+    return src?.durationMs ? (billedSeconds(src.durationMs) * VOICE_TOOL_USD.dubPerMin) / 60 : null;
+  },
+  sources: vtSources([
+    { label: "ElevenLabs — API pricing (Dubbing v1: $0.33/min with watermark, $0.50/min without; v2 $2.20/min)", url: "https://elevenlabs.io/pricing/api" },
+    { label: "ElevenLabs — Dub a video or an audio file (POST /v1/dubbing: target_lang, num_speakers 0 = auto, drop_background_audio, watermark)", url: "https://elevenlabs.io/docs/api-reference/dubbing/create" },
+    { label: "ElevenLabs — Get dubbing (status, target_languages, error)", url: "https://elevenlabs.io/docs/api-reference/dubbing/get" },
+    { label: "ElevenLabs — Get dubbed file (MP3 or MP4)", url: "https://elevenlabs.io/docs/api-reference/dubbing/audio/get" },
+    { label: "ElevenLabs — Dubbing (all audio and video types; replace the original's audio track with the dubbed audio)", url: "https://elevenlabs.io/docs/capabilities/dubbing" },
+    { label: "ElevenLabs — Create dubbing project (the newer API: dubbing_v2 by default, FLAC output; not used)", url: "https://elevenlabs.io/docs/api-reference/dubbing/create-project" },
+  ]),
+  verification: [
+    { item: "الطلب", status: "verified", note: "POST /v1/dubbing (multipart): file + target_lang (ISO 639-1) + num_speakers (0 = تلقائي) + drop_background_audio + watermark=false؛ يرجع dubbing_id ثم نتابع GET /v1/dubbing/{id} حتى «dubbed»." },
+    { item: "الصوت لا الفيديو", status: "verified", note: "نرسل صوت الفيديو فقط (نطلعه على خادمنا بدون إعادة ترميز) ونركّب الصوت المدبلج على الفيديو الأصلي بنفسنا، وهذا اللي تنصح فيه ElevenLabs للإنتاج؛ فما فيه علامة مائية على الفيديو." },
+    { item: "النموذج والسعر", status: "unverified", note: `لا تذكر صفحة POST /v1/dubbing رقم النموذج؛ نسعّر بسعر Dubbing v1 بدون علامة ($${VOICE_TOOL_USD.dubPerMin}/دقيقة). الواجهة الأحدث (/v1/dubbing/project) افتراضها v2 بـ $2.20/دقيقة ولا نستخدمها. تأكد من فاتورة أول تجربة.` },
+    { item: "التقريب", status: "unverified", note: "الصفحة تقول «لكل دقيقة» ولا تذكر التقريب؛ نحسب بالثانية مقرّبة للأعلى." },
+    { item: "صيغة الناتج", status: "verified", note: "GET /v1/dubbing/{id}/audio/{lang} يرجع MP3 للصوت؛ لو رجع MP4 نطلع صوته." },
+  ],
+  notes: ["الدبلجة تنسخ أصوات المتكلمين: دبلج بس مقاطع تملكها أو عندك إذن أصحابها."],
+};
+
+const voiceChangeMode: ModeDef = { id: "voice_change", label: "غيّر صوت ملف", refStyle: "references", refs: { video: { min: 0, max: 1 }, audio: { min: 0, max: 1 } }, needsOneOf: ["video", "audio"], promptRequired: false, prompt: NO_TEXT };
+const voiceChanger: GeneratorDef = {
+  id: VOICE_CHANGE_ID,
+  name: "غيّر الصوت",
+  output: "audio",
+  defaultSection: "audio",
+  provider: { id: "elevenlabs", label: "ElevenLabs Voice Changer" },
+  model: { id: VOICE_CHANGE_MODEL, family: "Voice Changer (speech to speech)", version: "sts v2" },
+  api: { name: "ElevenLabs Voice Changer API", endpoint: "POST /v1/voice-changer/{voice_id}", tracking: "sync", progress: "none", cancel: "none" },
+  modes: [voiceChangeMode],
+  options: [
+    { key: "voice", label: "الصوت الجديد", kind: "choice", ltr: true, default: ELEVEN_DEFAULT_VOICE, values: [{ value: ELEVEN_DEFAULT_VOICE, label: "George" }], accepts: ELEVEN_VOICE, picker: "voice" },
+    { key: "denoise", label: "نظّف الخلفية قبل التحويل", kind: "bool", default: false, hint: "يشيل الضجة والموسيقى من التسجيل الأصلي (أنظف للكلام)." },
+    consentOption(CONSENT_VOICE),
+  ],
+  files: { video: VT_VIDEO(VOICE_TOOL_MAX_MS.voiceChange), audio: VT_AUDIO(VOICE_TOOL_MAX_MS.voiceChange) },
+  prompt: noTextPrompt,
+  priceKeys: [{ key: "sec", label: "كل ثانية من الملف", defaultCenti: centiFor(VOICE_TOOL_USD.voiceChangePerMin / 60), basis: `سعر ElevenLabs المنشور لمغيّر الصوت: $${VOICE_TOOL_USD.voiceChangePerMin} للدقيقة` }],
+  modeFor: () => voiceChangeMode,
+  rules(d) {
+    return {
+      options: opt(voiceChanger.options),
+      issues: [...oneSource(d.refs), ...consentIssue(d.settings)],
+      notes: [
+        "نفس كلامك ونفس طريقة إلقائك، بصوت ثاني: من أصواتك في «مكتبتي» أو أصوات ElevenLabs الجاهزة.",
+        `تسجيل أو فيديو حتى ${VOICE_TOOL_MAX_MS.voiceChange / 60_000} دقائق. لو كان فيديو يرجع لك الفيديو بالصوت الجديد والصوت لحاله.`,
+      ],
+    };
+  },
+  price(d, _mode, table) {
+    const src = sourceOf(d.refs);
+    if (!src?.durationMs) return { ok: false, reason: "أضف التسجيل أو الفيديو أولًا." };
+    const per = table.sec;
+    if (per == null) return { ok: false, reason: "سعر تغيير الصوت لم يُحدد بعد." };
+    const sec = billedSeconds(src.durationMs);
+    return total([{ label: `غيّر الصوت · ${sec} ث`, centi: sec * per }], voiceChanger.costUsd(d, voiceChangeMode));
+  },
+  costUsd(d) {
+    const src = sourceOf(d.refs);
+    return src?.durationMs ? (billedSeconds(src.durationMs) * VOICE_TOOL_USD.voiceChangePerMin) / 60 : null;
+  },
+  sources: vtSources([
+    { label: "ElevenLabs — API pricing (Voice Changer $0.12/min)", url: "https://elevenlabs.io/pricing/api" },
+    { label: "ElevenLabs — Voice changer (POST /v1/voice-changer/{voice_id}: audio, model_id, remove_background_noise, output_format)", url: "https://elevenlabs.io/docs/api-reference/speech-to-speech/convert" },
+    { label: "ElevenLabs — Voice changer capability (eleven_multilingual_sts_v2, 5-minute segments)", url: "https://elevenlabs.io/docs/overview/capabilities/voice-changer" },
+  ]),
+  verification: [
+    { item: "النموذج", status: "verified", note: "eleven_multilingual_sts_v2 (المنصوح به، متعدد اللغات)؛ أقصى مقطع ٥ دقائق." },
+    { item: "الأصوات", status: "verified", note: "أصوات ElevenLabs الجاهزة (ليست أصوات مشاهير) + أصوات الشخص في «مكتبتي»؛ لا نعرض مكتبة الأصوات العامة." },
+    { item: "الفيديو", status: "verified", note: "نطلع صوت الفيديو على خادمنا بدون إعادة ترميز ونرسله، ثم نركّب الصوت الجديد (MP3) على نفس الفيديو." },
+    { item: "صيغ الدخل", status: "unverified", note: "الصفحة ما تذكر الصيغ المقبولة؛ نرسل MP3 أو WAV أو صوت الفيديو (AAC في M4A)." },
+  ],
+  notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي.", "لا يُغيَّر صوت شخص إلا بإذنه."],
+};
+
+const lipsyncVideoMode: ModeDef = { id: "lipsync_video", label: "فيديو وجه + صوت", refStyle: "references", refs: { video: { min: 1, max: 1 }, audio: { min: 1, max: 1 } }, promptRequired: false, prompt: NO_TEXT };
+const lipsyncPhotoMode: ModeDef = { id: "lipsync_photo", label: "صورة + صوت", refStyle: "references", refs: { image: { min: 1, max: 1 }, audio: { min: 1, max: 1 } }, promptRequired: false, prompt: NO_TEXT };
+const LS_KEY = { veed: "veed:sec", sync2: "sync2:sec", sync2pro: "sync2pro:sec", kling: "kling:sec", omnihuman: "omnihuman:sec" } as const;
+const LS_LABEL = { veed: "اقتصادي", sync2: "احترافي", sync2pro: "الأدق", kling: "اقتصادي", omnihuman: "الأعلى جودة" } as const;
+const lipsync: GeneratorDef = {
+  id: LIPSYNC_ID,
+  name: "حرّك الشفايف",
+  output: "audio",
+  defaultSection: "audio",
+  provider: { id: "fal", label: "fal.ai (VEED Lipsync · Sync Lipsync 2 · Kling AI Avatar · OmniHuman 1.5)" },
+  model: { id: LIPSYNC_MODELS.veed, family: "VEED Lipsync · Sync lipsync-2 / 2-pro · Kling AI Avatar v2 · OmniHuman v1.5", version: "fal" },
+  api: { name: "fal.ai queue", endpoint: `POST ${LIPSYNC_MODELS.veed} · POST ${LIPSYNC_MODELS.sync2} · POST ${LIPSYNC_MODELS.kling} · POST ${LIPSYNC_MODELS.omnihuman}`, tracking: "async", progress: "none", cancel: "none" },
+  modes: [lipsyncVideoMode, lipsyncPhotoMode],
+  options: [
+    {
+      key: "engine", label: "الجودة", kind: "choice", default: "veed",
+      values: [
+        { value: "veed", label: LS_LABEL.veed, hint: "VEED: سريع وأرخص بكثير" },
+        { value: "sync2", label: LS_LABEL.sync2, hint: "Sync lipsync-2: أدق في الأسنان والملامح" },
+        { value: "sync2pro", label: LS_LABEL.sync2pro, hint: "Sync lipsync-2-pro: للقطات القريبة" },
+      ],
+    },
+    {
+      key: "photoEngine", label: "الجودة", kind: "choice", default: "kling",
+      values: [
+        { value: "kling", label: LS_LABEL.kling, hint: "Kling AI Avatar" },
+        { value: "omnihuman", label: LS_LABEL.omnihuman, hint: "OmniHuman 1.5: حركة رأس وجسم أطبع" },
+      ],
+    },
+    consentOption(CONSENT_FACE),
+  ],
+  files: {
+    video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 200 * MB, minMs: VOICE_TOOL_MIN_MS, maxMs: VOICE_TOOL_MAX_MS.lipsync, minSide: 128 },
+    audio: { mimes: ["audio/mpeg", "audio/wav"], maxBytes: 50 * MB, minMs: VOICE_TOOL_MIN_MS, maxMs: Math.max(VOICE_TOOL_MAX_MS.lipsync, VOICE_TOOL_MAX_MS.talking) },
+    image: { mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 20 * MB, minSide: 256, maxSide: 8192 },
+  },
+  prompt: noTextPrompt,
+  priceKeys: [
+    { key: LS_KEY.veed, label: "فيديو · اقتصادي (كل ثانية)", defaultCenti: centiFor(VOICE_TOOL_USD.lipsync.veed), basis: `سعر fal المنشور لـ ${LIPSYNC_MODELS.veed}: $0.40 للدقيقة` },
+    { key: LS_KEY.sync2, label: "فيديو · احترافي (كل ثانية)", defaultCenti: centiFor(VOICE_TOOL_USD.lipsync.sync2), basis: `سعر fal المنشور لـ ${LIPSYNC_MODELS.sync2} (lipsync-2): $3 للدقيقة` },
+    { key: LS_KEY.sync2pro, label: "فيديو · الأدق (كل ثانية)", defaultCenti: centiFor(VOICE_TOOL_USD.lipsync.sync2pro), basis: "سعر fal المنشور لـ fal-ai/sync-lipsync/v2/pro (lipsync-2-pro): $5 للدقيقة" },
+    { key: LS_KEY.kling, label: "صورة · اقتصادي (كل ثانية)", defaultCenti: centiFor(VOICE_TOOL_USD.talking.kling), basis: `سعر fal المنشور لـ ${LIPSYNC_MODELS.kling}: $${VOICE_TOOL_USD.talking.kling} للثانية` },
+    { key: LS_KEY.omnihuman, label: "صورة · الأعلى جودة (كل ثانية)", defaultCenti: centiFor(VOICE_TOOL_USD.talking.omnihuman), basis: `سعر fal المنشور لـ ${LIPSYNC_MODELS.omnihuman}: $${VOICE_TOOL_USD.talking.omnihuman} للثانية (720p)` },
+  ],
+  modeFor: (_style, refs) => (refs.some((r) => r.kind === "image") ? lipsyncPhotoMode : lipsyncVideoMode),
+  rules(d, mode) {
+    const photo = mode.id === lipsyncPhotoMode.id;
+    const issues: Issue[] = consentIssue(d.settings);
+    const audio = d.refs.find((r) => r.kind === "audio");
+    const limit = photo ? VOICE_TOOL_MAX_MS.talking : VOICE_TOOL_MAX_MS.lipsync;
+    if (audio?.durationMs && audio.durationMs > limit) issues.push({ field: "refs", message: `الصوت أطول من ${limit / 1000} ثانية؛ قصّره أو اختر صوت أقصر.` });
+    return {
+      options: opt(lipsync.options, photo ? { engine: { hidden: true } } : { photoEngine: { hidden: true } }),
+      issues,
+      notes: photo
+        ? ["صورة وجه واضح من الأمام + صوت (من «أعمالي» أو ترفعه) ← فيديو يتكلم فيه الوجه بنفس الصوت، وطوله طول الصوت.", `الصوت حتى ${VOICE_TOOL_MAX_MS.talking / 1000} ثانية.`]
+        : ["فيديو فيه وجه واضح + صوت (من «أعمالي» أو ترفعه) ← نفس الفيديو والفم يتحرك مع الصوت الجديد.", `الفيديو والصوت حتى ${VOICE_TOOL_MAX_MS.lipsync / 1000} ثانية؛ السعر على الأطول منهم.`, "تبي صورة بدل الفيديو؟ أضف صورة وصوت ويصير فيديو يتكلم."],
+    };
+  },
+  price(d, mode, table) {
+    const photo = mode.id === lipsyncPhotoMode.id;
+    const audio = d.refs.find((r) => r.kind === "audio");
+    const video = d.refs.find((r) => r.kind === "video");
+    if (!audio?.durationMs || (!photo && !video?.durationMs)) return { ok: false, reason: photo ? "أضف الصورة والصوت أولًا." : "أضف الفيديو والصوت أولًا." };
+    const engine = photo ? talkingEngine(d.settings.photoEngine) : lipsyncEngine(d.settings.engine);
+    const per = table[LS_KEY[engine]];
+    if (per == null) return { ok: false, reason: "سعر هذي الجودة لم يُحدد بعد." };
+    const sec = lipsyncSeconds({ videoMs: video?.durationMs, audioMs: audio.durationMs, photo });
+    return total([{ label: `${photo ? "صورة تتكلم" : "حرّك الشفايف"} · ${LS_LABEL[engine]} · ${sec} ث`, centi: sec * per }], lipsync.costUsd(d, mode));
+  },
+  costUsd(d, mode) {
+    const audio = d.refs.find((r) => r.kind === "audio");
+    if (!audio?.durationMs) return null;
+    return lipsyncUsd({ videoMs: d.refs.find((r) => r.kind === "video")?.durationMs, audioMs: audio.durationMs, photo: mode.id === lipsyncPhotoMode.id, settings: d.settings });
+  },
+  sources: vtSources([
+    { label: "fal.ai — veed/lipsync (video_url + audio_url; $0.40/min)", url: "https://fal.ai/models/veed/lipsync" },
+    { label: "fal.ai — fal-ai/sync-lipsync/v2 (model lipsync-2 | lipsync-2-pro, sync_mode; $3/min)", url: "https://fal.ai/models/fal-ai/sync-lipsync/v2" },
+    { label: "fal.ai — fal-ai/sync-lipsync/v2/pro ($5/min)", url: "https://fal.ai/models/fal-ai/sync-lipsync/v2/pro" },
+    { label: "fal.ai — fal-ai/kling-video/ai-avatar/v2/standard (image_url + audio_url; $0.0562/s)", url: "https://fal.ai/models/fal-ai/kling-video/ai-avatar/v2/standard" },
+    { label: "fal.ai — fal-ai/bytedance/omnihuman/v1.5 (image_url + audio_url, 720p up to 60 s; $0.16/s)", url: "https://fal.ai/models/fal-ai/bytedance/omnihuman/v1.5" },
+    { label: "fal.ai — fal-ai/latentsync (compared: $0.20 up to 40 s, then $0.005/s)", url: "https://fal.ai/models/fal-ai/latentsync" },
+  ]),
+  verification: [
+    { item: "الفيديو", status: "verified", note: "VEED: video_url + audio_url. Sync: video_url + audio_url + model (lipsync-2 / lipsync-2-pro) + sync_mode (cut_off، وbounce لما الصوت أطول من الفيديو)." },
+    { item: "الصورة", status: "verified", note: "Kling AI Avatar v2 Standard: image_url + audio_url (+ prompt). OmniHuman 1.5: image_url + audio_url + resolution 720p (حتى ٦٠ ثانية صوت)." },
+    { item: "الثواني المحسوبة", status: "unverified", note: "VEED وSync يسعّرون «لكل دقيقة فيديو» ولا يقولون أي الطولين؛ نحسب على الأطول من الفيديو والصوت كسقف. الصورة: على طول الصوت (OmniHuman يذكره)." },
+    { item: "الحدود", status: "unverified", note: `حدود VEED وKling للطول غير منشورة؛ نوقف عند ${VOICE_TOOL_MAX_MS.lipsync / 1000} ثانية.` },
+  ],
+  notes: ["لا يُحرّك وجه شخص إلا بإذنه، ولا وجوه مشاهير."],
+};
+
+export const GENERATORS: GeneratorDef[] = [gptImage2, gptImage26, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, kling4, kling4Edit, kling4Flash, kling4FlashEdit, wan3, geminiOmni, geminiOmni12, geminiOmni12Edit, miniTts, elevenV4, jawadVoice, elevenSfx, elevenMusic, smartSplit, imageInpaint, imageOutpaint, imageUpscale, dubbing, voiceChanger, lipsync];
 export const generatorById = (id: string) => GENERATORS.find((g) => g.id === id);
 
 /** The settings a generator starts with. */
