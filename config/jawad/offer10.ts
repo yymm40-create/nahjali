@@ -1,4 +1,4 @@
-// «عرض الـ١٠ ريال» (the owner, 15 November 2026): pay 10 riyals once and get, from the moment of payment —
+// «عرض الـ٢٥ ريال» (the owner, 15 November 2026): pay 25 riyals once (first set at 10, raised the same day) and get, from the moment of payment —
 //   · Nano Banana Pro without a limit for one day,
 //   · 20 GPT Image 2 pictures within two days,
 //   · 3 Seedance 2.0 videos at 480p within two days.
@@ -7,7 +7,7 @@
 
 export const OFFER10 = {
   path: "/jawad-ai/offer",
-  priceSar: 10,
+  priceSar: 25,
   /** the 48 hours the offer can be bought in (Riyadh time) */
   startsAt: "2026-11-15T18:00:00+03:00",
   hours: 48,
@@ -31,7 +31,7 @@ export interface Offer10Grant {
 }
 
 export const OFFER10_GRANTS: Offer10Grant[] = [
-  { key: "nano", generatorId: "google-nano-banana-pro", name: "Nano Banana Pro", hours: 24, cap: null, resolution: null, line: "بلا حدود لمدة يوم كامل", unit: "صورة" },
+  { key: "nano", generatorId: "google-nano-banana-pro", name: "Nano Banana Pro", hours: 24, cap: null, resolution: "1K", line: "بلا حدود يوم كامل (دقة 1K)", unit: "صورة" },
   { key: "gpt", generatorId: "openai-gpt-image-2", name: "GPT Image 2", hours: 48, cap: 20, resolution: null, line: "٢٠ صورة خلال يومين", unit: "صورة" },
   { key: "seedance", generatorId: "byteplus-seedance-2-0", name: "Seedance 2.0", hours: 48, cap: 3, resolution: "480p", line: "٣ فيديوهات بدقة 480p خلال يومين", unit: "فيديو" },
 ];

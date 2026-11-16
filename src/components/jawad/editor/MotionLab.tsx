@@ -89,6 +89,9 @@ interface Saved {
   cover?: { code: string; headline: string; assetId: string | null; review: CoverScores | null } | null;
   /** a conversation another robot opened with a brief (محمد باقر's motion piece): the scenario is written by itself */
   autoPlan?: boolean;
+  /** the person's own sound handed over by «محمد باقر» (lib/content/sound): the piece's voice (its phrases with their
+   * times lead the motion) or, without words, its music */
+  importedSound?: ImportedSound | null;
   /** the videos uploaded in this conversation (library files; their links are renewed from the library on opening) */
   uploadedFoots?: FootageSource[];
   /** exactly what was taken from the wallet for حيدرا ماكس's Claude steps in this conversation so far (halalas, not
@@ -194,12 +197,16 @@ export interface LabSource {
 }
 /** how the person's video sits in a shot, in the plan's list */
 const FRAME_AR: Record<FootageFrame, string> = { full: "🧍 ملء الشاشة", card: "🪟 بطاقة عائمة", split: "◧ شاشة مقسومة", corner: "⭕ بالزاوية", away: "✨ موشن كامل", over: "🔤 كلام بجنبك" };
-type MusicMode = "code" | "eleven" | "none";
+type MusicMode = "code" | "eleven" | "none" | "own";
+interface ImportedSound { uploadId: string; name: string; seconds: number; lines: { text: string; from: number; to: number }[]; speech: boolean }
 const MUSIC_MODES: { id: MusicMode; ar: string; tip: string }[] = [
   { id: "code", ar: "🎹 موسيقى بالكود", tip: "حيدرا ماكس يكتبها بالكود على إيقاع المشهد (مجانًا)" },
   { id: "eleven", ar: "🎵 موسيقى ElevenLabs", tip: "تنصنع وقت التصدير وتنحسب بسعرها" },
   { id: "none", ar: "🔇 بدون موسيقى", tip: "مؤثرات (وصوتك) فقط" },
+  { id: "own", ar: "🎧 صوتك المرفق", tip: "الصوت اللي أرسلته لمحمد باقر، موسيقى المشهد" },
 ];
+/** A stored upload's short-lived link (the person's own file). */
+const uploadLink = (id: string) => api<{ uploads: { id: string; url: string | null }[] }>(`/api/jawad/uploads?ids=${id}`).then((r) => r.uploads.find((u) => u.id === id)?.url ?? null);
 /** the library's sounds (their links), read once for the preview and the mix */
 let sfxLinks: Promise<Map<string, string>> | null = null;
 const libraryLinks = () =>
@@ -536,6 +543,32 @@ export default function MotionLab({
   const [voiceOn, setVoiceOn] = useState(false);
   const [musicMode, setMusicMode] = useState<MusicMode>("code");
   const [take, setTake] = useState<LabVoiceTake | null>(null);
+  /** the person's own sound from «محمد باقر» (voice or music), and its link while this page is open */
+  const [imported, setImported] = useState<ImportedSound | null>(null);
+  const importedUrl = useRef<{ id: string; url: string } | null>(null);
+  const ownMusic = async () => {
+    if (!imported || musicMode !== "own") return null;
+    if (importedUrl.current?.id !== imported.uploadId) {
+      const url = await uploadLink(imported.uploadId).catch(() => null);
+      if (url) importedUrl.current = { id: imported.uploadId, url };
+    }
+    return importedUrl.current?.url ?? null;
+  };
+  // a voice handed over: taken as the recorded narration, with the times ElevenLabs heard (no re-recording, no cleaning)
+  useEffect(() => {
+    if (!imported?.speech || !voiceOn || take || !imported.lines.length) return;
+    let off = false;
+    void (async () => {
+      const url = await uploadLink(imported.uploadId).catch(() => null);
+      if (!url || off) return;
+      const blob = await fetch(url).then((r) => r.blob()).catch(() => null);
+      if (!blob || off) return;
+      setTake({ blob, url: URL.createObjectURL(blob), seconds: imported.seconds, lines: imported.lines, note: `🎧 صوتك «${imported.name}» من محمد باقر، كما هو.` });
+    })();
+    return () => {
+      off = true;
+    };
+  }, [imported, voiceOn, take]);
   const [soundtrack, setSoundtrack] = useState<AudioBuffer | null>(null);
   const [soundBusy, setSoundBusy] = useState(false);
   const [alsoDownload, setAlsoDownload] = useState(false);
@@ -623,7 +656,8 @@ export default function MotionLab({
     setTransparent(false);
     setTransparentCode(Boolean(s.transparentCode));
     setVoiceOn(Boolean(s.voiceOn));
-    setMusicMode(s.musicMode === "eleven" || s.musicMode === "none" ? s.musicMode : "code");
+    setImported(s.importedSound && typeof s.importedSound === "object" && typeof s.importedSound.uploadId === "string" ? s.importedSound : null);
+    setMusicMode(s.musicMode === "eleven" || s.musicMode === "none" || (s.musicMode === "own" && s.importedSound) ? s.musicMode : "code");
     setReviewMode(s.reviewMode === "balanced" || s.reviewMode === "precise" ? s.reviewMode : "fast");
     const ids = s.footIds ?? (s.footId ? [s.footId] : []);
     if (ids.length) {
@@ -727,7 +761,7 @@ export default function MotionLab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store, initialSource, chatId]);
   const name = named || ownName;
-  const saved = (): Saved => ({ brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footIds, footMeta: foot?.meta ?? null, personOn, chat: chat.slice(-80), params, versions: versions.slice(-KEEP_VERSIONS), made, cover, uploadedFoots: savedFoots.filter((c) => c.clipId.startsWith("up-")), spentHalalas: spent, placedId, named: name });
+  const saved = (): Saved => ({ brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footIds, footMeta: foot?.meta ?? null, personOn, chat: chat.slice(-80), params, versions: versions.slice(-KEEP_VERSIONS), made, cover, uploadedFoots: savedFoots.filter((c) => c.clipId.startsWith("up-")), spentHalalas: spent, placedId, named: name, importedSound: imported });
   useEffect(() => {
     try {
       localStorage.setItem(key(store), JSON.stringify({ ...extraState, ...saved(), serverId }));
@@ -735,7 +769,7 @@ export default function MotionLab({
       /* not kept */
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store, brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footIds, foot, personOn, chat, params, versions, made, cover, serverId, spent, placedId, name, extraState]);
+  }, [store, brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footIds, foot, personOn, chat, params, versions, made, cover, serverId, spent, placedId, name, extraState, imported]);
   // …and on the server, a moment after the last change (one save at a time; the first one makes the conversation)
   const saving = useRef<Promise<unknown> | null>(null);
   const saveFailed = useRef(false);
@@ -864,8 +898,10 @@ export default function MotionLab({
       // the voice that leads the mix: the person's video's own sound, or their recorded narration
       const parts = source ? await footSound() : [];
       const voice = source ? null : (take?.blob ?? null);
-      if (!synth && !cues.length && !voice && !parts.length && !o.music) return null;
-      const mix = await mixSoundtrack({ duration: o.got.duration, synth, cues, voice, voiceParts: parts, music: o.music ?? null });
+      // «🎧 صوتك المرفق»: the person's own sound is the music
+      const music = o.music ?? (await ownMusic());
+      if (!synth && !cues.length && !voice && !parts.length && !music) return null;
+      const mix = await mixSoundtrack({ duration: o.got.duration, synth, cues, voice, voiceParts: parts, music });
       return mix;
     } finally {
       setSoundBusy(false);
@@ -2297,7 +2333,7 @@ export default function MotionLab({
               </span>
             </label>
             <div className="mlab-pills">
-              {MUSIC_MODES.map((m) => (
+              {MUSIC_MODES.filter((m) => m.id !== "own" || imported).map((m) => (
                 <button key={m.id} type="button" disabled={busy} className="mlab-pill" aria-pressed={musicMode === m.id} title={m.tip} onClick={() => setMusicMode(m.id)}>
                   {m.ar}
                 </button>
@@ -2461,7 +2497,7 @@ export default function MotionLab({
               {soundBusy ? "🔊 أجهّز الصوت…" : soundtrack ? `🔊 الصوت يطلع مع الفيديو: مؤثرات بالكود${source ? " + صوتك من الفيديو" : take ? " + صوتك" : ""}${musicMode === "code" ? " + موسيقى بالكود" : musicMode === "eleven" ? " (وموسيقى ElevenLabs تنصنع وقت التصدير)" : ""}.` : "🔇 المشهد ما كتب له صوت. قل لحيدرا ماكس «أضف صوت»."}
             </p>
             <div className="mlab-pills">
-              {MUSIC_MODES.map((m) => (
+              {MUSIC_MODES.filter((m) => m.id !== "own" || imported).map((m) => (
                 <button key={m.id} type="button" disabled={stage === "rendering"} className="mlab-pill" aria-pressed={musicMode === m.id} title={m.tip} onClick={() => setMusicMode(m.id)}>
                   {m.ar}
                 </button>

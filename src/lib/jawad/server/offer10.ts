@@ -1,9 +1,10 @@
-// «عرض الـ١٠ ريال» (config/jawad/offer10.ts): the purchase through Moyasar and what is still free for one person. Server only.
+// «عرض الـ٢٥ ريال» (config/jawad/offer10.ts): the purchase through Moyasar and what is still free for one person. Server only.
 // The purchase is kept in jawad_settings under «offer10:<user id>» (no new table): the invoices made for it, and `paidAt`
 // once one of them is READ from Moyasar as paid. Free jobs carry `inputs.offer10 = true`; usage is counted from them.
 
 import { UserError } from "@/lib/api";
-import { createInvoice, getInvoice, invoicePaid, moyasarEnabled } from "@/lib/credits/moyasar";
+import { createInvoice, getInvoice, halalas, invoicePaid, moyasarEnabled, type Payment } from "@/lib/credits/moyasar";
+import { checkoutUrl, formEnabled, formPaymentPaid } from "@/lib/credits/checkout";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { OFFER10, OFFER10_GRANTS, offer10GrantFor, offer10Open, type Offer10Key } from "@config/jawad/offer10";
 
@@ -38,11 +39,14 @@ export async function startOffer10(user: { id: string }, origin: string): Promis
   const pass = await readPass(user.id);
   if (pass.paidAt) throw new UserError("اشتركت في العرض من قبل، وهو شغّال في حسابك.", 409);
   if (!offer10Open()) throw new UserError("انتهى وقت العرض.", 410);
+  const description = `عرض الجواد الذكي (${OFFER10.priceSar} SAR): Nano Banana Pro + GPT Image 2 + Seedance 2.0`;
+  // our own page with Moyasar's form (the Payments API), settled by settleOffer10Payment; the invoice page only without its key
+  if (formEnabled()) return { url: checkoutUrl(origin, { k: "offer10", ref: user.id, a: halalas(OFFER10.priceSar), d: description, back: OFFER10.path }) };
   const back = `${origin}${OFFER10.path}`;
   const settle = `${origin}/api/jawad/offer10/settle?u=${encodeURIComponent(user.id)}`;
   const inv = await createInvoice({
     amount: OFFER10.priceSar,
-    description: `عرض الجواد الذكي (${OFFER10.priceSar} SAR): Nano Banana Pro + GPT Image 2 + Seedance 2.0`,
+    description,
     callbackUrl: settle,
     successUrl: `${settle}&back=1`,
     backUrl: back,
@@ -64,6 +68,16 @@ export async function settleOffer10(userId: string): Promise<boolean> {
     }
   }
   return false;
+}
+
+/** A payment on our checkout page, READ from Moyasar by the caller: a paid one for the offer's price, made for this account, starts it (once). */
+export async function settleOffer10Payment(userId: string, p: Payment): Promise<boolean> {
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) return false;
+  const pass = await readPass(userId);
+  if (pass.paidAt) return true;
+  if (!formPaymentPaid(p, "offer10", userId, halalas(OFFER10.priceSar))) return false;
+  await writePass(userId, { ...pass, paidAt: new Date().toISOString(), invoiceId: `pay:${p.id}` });
+  return true;
 }
 
 export interface Offer10Use {
