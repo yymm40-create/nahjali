@@ -70,6 +70,8 @@ export interface JobView {
   refs: { uploadId: string; kind: "image" | "video" | "audio"; role: "first_frame" | "last_frame" | "reference"; name?: string }[];
   /** The prompt as the model received it, when «@name» mentions (or Arabic words, by «النطق الدقيق») were written its way. */
   modelPrompt: string | null;
+  /** «🎨 ذوقي» / «طبّق هويتي» it was made with (their pictures are among `refs`; «نسخة ثانية» asks for them again) */
+  look?: { tasteId?: string; brand?: { logo: boolean } };
   /** «النطق الدقيق»: the words whose pronunciation was set, each with its full vowels. */
   diction: { word: string; vocalized: string }[];
   priceCoins: number;

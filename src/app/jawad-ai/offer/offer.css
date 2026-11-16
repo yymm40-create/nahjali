@@ -1,0 +1,35 @@
+/* «عرض الـ١٠ ريال» — on top of landing.css. Phone first: the countdown, three cards under each other (side by side from 760px),
+   then the price and the one big button. */
+.ox-hero { padding-bottom: 20px; }
+.ox-sec { padding: 18px 0 110px; }
+.ox-cd { display: grid; justify-items: center; gap: 6px; margin-top: 18px; }
+.ox-cd-l { color: var(--ld-mute); font-size: 14px; }
+.ox-cd-n { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.ox-cd-n b { min-width: 64px; padding: 8px 6px; border-radius: 14px; background: rgba(255, 255, 255, 0.08); border: 1px solid var(--ld-line); font-size: 34px; font-weight: 800; text-align: center; }
+.ox-cd-n i { font-style: normal; font-size: 28px; color: #fdba74; }
+.ox-cd-u { display: flex; flex-direction: row-reverse; gap: 6px; color: var(--ld-mute); font-size: 12px; }
+.ox-cd-u span { min-width: 64px; text-align: center; }
+.ox-cd-u span + span { margin-inline-end: 14px; }
+.ox-closed { margin-top: 16px; color: var(--ld-mute); }
+
+.ox-cards { display: grid; gap: 14px; max-width: 860px; margin-inline: auto; }
+@media (min-width: 760px) { .ox-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: none; } }
+.ox-card { display: grid; gap: 8px; align-content: start; justify-items: start; padding: 22px 18px 18px; border-radius: 22px; background: rgba(255, 255, 255, 0.05); border: 2px solid var(--ld-line); }
+.ox-ic { font-size: 34px; line-height: 1; }
+.ox-card h2 { font-size: 22px; font-weight: 800; }
+.ox-line { font-size: 17px; font-weight: 700; color: #fdba74; }
+.ox-free { color: #22c55e; font-weight: 800; font-size: 14.5px; }
+.ox-left { color: #e3dbfb; font-size: 15px; }
+.ox-note { color: var(--ld-mute); font-size: 13px; }
+.ox-try { min-height: 48px; padding-inline: 18px; font-size: 16px; margin-top: 4px; }
+
+.ox-buy { display: grid; justify-items: center; gap: 10px; margin-top: 26px; text-align: center; }
+.ox-price { font-size: 18px; color: var(--ld-mute); }
+.ox-price b { font-size: 44px; font-weight: 800; color: #fff; }
+.ox-go { width: min(100%, 420px); }
+.ox-go:disabled { opacity: 0.7; }
+.ox-safe { font-size: 13px; }
+.ox-ok, .ox-err { max-width: 860px; margin: 0 auto 14px; padding: 12px 16px; border-radius: 14px; text-align: center; font-weight: 700; }
+.ox-ok { background: rgba(34, 197, 94, 0.14); color: #86efac; }
+.ox-err { background: rgba(239, 68, 68, 0.14); color: #fca5a5; }
+.ox-rl { vertical-align: middle; } .ox-pn { font-size: 40px; font-weight: 800; color: #fff; }

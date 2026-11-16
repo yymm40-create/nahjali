@@ -5,14 +5,15 @@ import { t } from "@/lib/mahdi/i18n";
 import Icon from "./Icon";
 import { ANDROID_APK } from "./InstallCard";
 
-const SEEN = "mahdi-android-news-1";
+// -2: the first copy was only inside the app, so people who closed it there see it again (now on the visitors' pages too)
+const SEEN = "mahdi-android-news-2";
 const A = t.androidNews;
 
 /**
  * The announcement «التطبيق صار على الأندرويد»: shown on every page to everyone until they close it (or download),
- * never inside the installed app. Android phones get the download button; others see where to send it.
+ * never inside the installed app. `floating` (visitors' pages: start, sign-in, sign-up) pins it to the top of the screen instead of the page flow. Android phones get the download button; others see where to send it.
  */
-export default function AndroidNews() {
+export default function AndroidNews({ floating = false }: { floating?: boolean }) {
   const [show, setShow] = useState(false);
   const [android, setAndroid] = useState(false);
   useEffect(() => {
@@ -35,7 +36,7 @@ export default function AndroidNews() {
     setShow(false);
   };
   return (
-    <section className="m-card mx-4 mt-3 flex flex-wrap items-center gap-3 p-4 sm:mx-6 lg:mx-10" role="status" aria-labelledby="android-news">
+    <section className={`m-card flex flex-wrap items-center gap-3 p-4 ${floating ? "fixed inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-40 mx-auto max-w-lg shadow-lg" : "mx-4 mt-3 sm:mx-6 lg:mx-10"}`} role="status" aria-labelledby="android-news">
       <span className="text-2xl" aria-hidden="true">📱</span>
       <div className="min-w-0 flex-1">
         <p id="android-news" className="font-semibold">{A.title}</p>

@@ -82,6 +82,10 @@ export interface Draft {
   mainRefs?: string[] | null;
   /** «جرّبه في الاستوديو»: the names the handed-over prompt mentions (@img1…), given to the next references of that kind */
   wantNames?: { name: string; kind: RefKind }[];
+  /** «🎨 ذوقي»: one of the person's tastes ("" = none) */
+  tasteId?: string;
+  /** «طبّق هويتي», and whether the logo goes in */
+  brand?: { on: boolean; logo: boolean };
 }
 
 export interface ExtraPrompt {

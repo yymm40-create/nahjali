@@ -7,7 +7,7 @@ import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { listEditorProjects } from "@/lib/editor/server";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "حيدرة كت" };
+export const metadata = { title: "حيدرة كت", description: "حيدرة كت: مونتاج فيديو عربي من الجوال أو الكمبيوتر، مع «حيدرا ماكس» يسوي الموشن جرافكس والكابشن والتلوين بكلامك." };
 
 /** «حيدرة كت»: the person's edits and a new one (for those «السماح» lets in; editing asks to sign in first). */
 export default async function EditorPage() {

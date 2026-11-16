@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { postJson } from "@/lib/fetch";
 import { credits } from "@/lib/film/credits";
+import Coined from "@/components/Coined";
 import { useFilmBase } from "../FilmBase";
 import RobotFace from "@/components/RobotFace";
 import { parseStory } from "@/lib/film/story-map";
@@ -103,7 +104,7 @@ export default function ScenePrep({ seriesId, episodeId, sceneId, initialTitle =
             />
           )}
           <button type="button" className="btn btn-primary min-h-11 w-full" disabled={!mode || !!busy || (mode === "mine" && text.trim().length < 10)} onClick={() => understand()}>
-            {busy ? "سجاد يقرا…" : <><RobotFace id="sajjad" size={18} /> {mode === "sajjad" ? `سجاد، اكتبه · ${credits(0.15, "claude")}` : `سجاد، افهمه · ${credits(0.15, "claude")}`}</>}
+            {busy ? "سجاد يقرا…" : <><RobotFace id="sajjad" size={18} /> <Coined text={mode === "sajjad" ? `سجاد، اكتبه · ${credits(0.15, "claude")}` : `سجاد، افهمه · ${credits(0.15, "claude")}`} /></>}
           </button>
         </>
       ) : (
