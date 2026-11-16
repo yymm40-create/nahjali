@@ -1,7 +1,7 @@
 // «عرض الـ٢٥ ريال» (the owner, 15 November 2026): pay 25 riyals once (first set at 10, raised the same day) and get, from the moment of payment —
 //   · Nano Banana Pro without a limit for one day,
 //   · 20 GPT Image 2 pictures within two days,
-//   · 3 Seedance 2.0 videos at 480p within two days.
+//   · 4 Seedance 2.0 videos at 480p within two days (raised from 3 on 16 Nov: «نرفعها ٤» — a one-minute film).
 // The offer itself can be bought for 48 hours only. What one person has used is counted from their own jobs
 // (src/lib/jawad/server/offer10.ts); a failed or cancelled job never counts.
 
@@ -33,7 +33,7 @@ export interface Offer10Grant {
 export const OFFER10_GRANTS: Offer10Grant[] = [
   { key: "nano", generatorId: "google-nano-banana-pro", name: "Nano Banana Pro", hours: 24, cap: null, resolution: "1K", line: "بلا حدود يوم كامل (دقة 1K)", unit: "صورة" },
   { key: "gpt", generatorId: "openai-gpt-image-2", name: "GPT Image 2", hours: 48, cap: 20, resolution: null, line: "٢٠ صورة خلال يومين", unit: "صورة" },
-  { key: "seedance", generatorId: "byteplus-seedance-2-0", name: "Seedance 2.0", hours: 48, cap: 3, resolution: "480p", line: "٣ فيديوهات بدقة 480p خلال يومين", unit: "فيديو" },
+  { key: "seedance", generatorId: "byteplus-seedance-2-0", name: "Seedance 2.0", hours: 48, cap: 4, resolution: "480p", line: "٤ فيديوهات بدقة 480p خلال يومين (فلم دقيقة)", unit: "فيديو" },
 ];
 
 export const offer10Start = () => Date.parse(OFFER10.startsAt);

@@ -12,7 +12,7 @@ import "./offer.css";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "عرض الـ٢٥ ريال",
-  description: "اشترك بـ٢٥ ريال: Nano Banana Pro بلا حدود يوم كامل بدقة 1K، و٢٠ صورة GPT Image 2، و٣ فيديوهات Seedance 2.0 مجانية. العرض ٤٨ ساعة بس.",
+  description: "اشترك بـ٢٥ ريال: Nano Banana Pro بلا حدود يوم كامل بدقة 1K، و٢٠ صورة GPT Image 2، و٤ فيديوهات Seedance 2.0 مجانية. العرض ٤٨ ساعة بس.",
 };
 
 const ICON: Record<string, string> = { nano: "🍌", gpt: "🎨", seedance: "🎬" };
