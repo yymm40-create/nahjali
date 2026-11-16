@@ -226,11 +226,19 @@ async function newCardOrder(user: { id: string; email?: string | null }, b: { pa
   if (name.length < 2 || name.length > 80) throw new UserError("اكتب اسمك (يظهر في إيصال الدفع).", 400);
   const phone = cleanPhone(b.phone);
   if (!phone) throw new UserError("رقم الجوال غير صحيح؛ اكتبه مع المفتاح أو بصيغة 05xxxxxxxx.", 400);
-  const { count } = await db().from("credit_orders").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "started").gte("created_at", new Date(Date.now() - 3600_000).toISOString());
-  if ((count ?? 0) >= CREDITS.maxOpen) throw new UserError("عندك طلبات شحن مفتوحة كثيرة؛ انتظر قليلًا أو راسلنا.", 429);
   const source = cleanSource(b.source, ad);
   const p = await priced(s, pack, user.id, b.code);
   const fields = { email: user.email ?? "", name, phone, pack_name: p.name, price_sar: p.price, credit_sar: p.credit };
+  // pressing «ادفع» again (a closed payment window, Apple Pay cancelled, the back button) reuses the unpaid order of the same
+  // package and price from the last hour instead of opening a new one — the buyer was blocked after 4 tries (16 Nov 2026)
+  const since = new Date(Date.now() - 3600_000).toISOString();
+  const { data: again } = await db().from("credit_orders").select("*").eq("user_id", user.id).eq("status", "started").eq("pack_id", pack.id).eq("price_sar", p.price).gte("created_at", since).order("created_at", { ascending: false }).limit(1);
+  if (again?.[0]) {
+    const { data, error } = await db().from("credit_orders").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", again[0].id).eq("status", "started").select("*").single();
+    if (!error && data) return { order: view(data), pack: { ...pack, name: p.name, price: p.price }, name, phone };
+  }
+  const { count } = await db().from("credit_orders").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "started").gte("created_at", since);
+  if ((count ?? 0) >= CREDITS.maxOpen) throw new UserError("عندك طلبات شحن مفتوحة كثيرة؛ انتظر قليلًا أو راسلنا.", 429);
   const { data, error } = await saveOrder((on) => db().from("credit_orders").insert({ user_id: user.id, pack_id: pack.id, ...(on && source ? { ...fields, source } : fields) }).select("*").single());
   wrap(error);
   return { order: view(data!), pack: { ...pack, name: p.name, price: p.price }, name, phone };
