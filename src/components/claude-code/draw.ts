@@ -487,19 +487,10 @@ const stopped = (o: DrawOptions) => {
  */
 async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
   const { assets, call: callFull } = await prepare({ ...o, photos: (o.photos ?? []).slice(0, PHOTOS_PER_ROUND) });
-  // a heavy slide whose answer ran past the server's 10 minutes is asked once more with lighter thinking, and the rest of
-  // this slide stays light (a cover slide timed out on every «كمّل الرسم», 16 Nov 2026)
-  let light = false;
-  const call = async <T,>(body: Record<string, unknown>): Promise<T> => {
-    try {
-      return await callFull<T>(light ? { ...body, light: true } : body);
-    } catch (e) {
-      if (light || !(e instanceof Error) || !e.message.includes("تأخرت")) throw e;
-      light = true;
-      o.onStep({ text: `⏱️ الشريحة ${m.n} ثقيلة — حيدرا ماكس يعيدها بتفكير أخف…` });
-      return callFull<T>({ ...body, light: true });
-    }
-  };
+  // a slide set aside once (its answer ran past the time) comes back last with lighter thinking; the page sets the slide
+  // aside (it never waits twice in a row): each piece of work ends under 10 minutes (the owner, 17 Nov 2026)
+  const light = o.extra?.light === true;
+  const call = <T,>(body: Record<string, unknown>): Promise<T> => callFull<T>(light ? { ...body, light: true } : body);
   let coins = 0;
   o.onStep({ text: `🎬 حيدرا ماكس يكتب الشريحة ${m.n} مشهدًا متحركًا…` });
   let w = await call<Wrote>({ action: "write" });
@@ -551,7 +542,9 @@ async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
     if (best!.code !== code) info = await host.load(best!.code, { w: W, h: H, fps: 30, assets, fonts: sceneFonts(fonts) });
     stopped(o);
     o.onStep({ text: `🔊 أركّب صوت الشريحة ${m.n}…` });
-    const synth = info!.sound ? await host.sound().catch(() => null) : null;
+    // the sound effects come ONLY from the library made with ElevenLabs (the owner, 16 Nov 2026: «المؤثرات الصوتية لابد
+    // تاخذها من ألف لابس… المؤثر بالكود مزعج»): a scene's own sound() made in code is never played
+    const synth = null;
     const cues = readCues(info!.cues, info!.duration).flatMap((c) => (m.sfx?.[c.sfx] ? [{ url: m.sfx[c.sfx], t: c.t, vol: c.vol }] : []));
     // the person's own sound: this slide's part of it, and the slide lasts exactly as long as that part
     const own = m.voice ? await soundPart(m.voice.url, m.voice.from, m.voice.to).catch(() => null) : null;

@@ -26,7 +26,7 @@ import { joinSlidesToReel } from "./slides-reel";
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean; video?: string; videoUrl?: string | null; videoDownload?: string | null }
 interface FailView { n: number; reason: string; detail?: string; text: string }
-interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code"; mix?: boolean; motion?: unknown }
+interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code"; mix?: boolean; motion?: unknown; phase?: "pictures" | "approve"; deferred?: number[] }
 interface MediaView {
   id: string; kind: "image" | "video"; name: string; aspect: string; refs?: string[]; state: "todo" | "running" | "done" | "failed";
   url?: string | null; download?: string | null; error?: string; detail?: string; transient?: boolean; tries?: number;
@@ -430,7 +430,7 @@ function ReelButton({ items }: { items: SlideView[] }) {
 }
 
 /** The carousel of an answer: tiles in order, the drawing ones as moving placeholders, each made one with its check. */
-export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; step?: string | null }) {
+export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, onApprove, onRedoPicture, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; onApprove?: () => void; onRedoPicture?: (n: number, note: string) => void; step?: string | null }) {
   const ns = [...new Set([...s.items.map((i) => i.n), ...s.todo])].sort((a, b) => a - b);
   const done = s.items.filter((i) => !s.todo.includes(i.n)).length;
   const aspect = s.aspect.replace(":", " / ") || "1 / 1";
@@ -440,7 +440,12 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, st
         <div className="ct-progress" role="status" aria-live="polite">
           <span className="ct-spin" aria-hidden />
           <div>
-            {s.motion ? (
+            {s.phase === "pictures" ? (
+              <>
+                <b>🖼️ المرحلة ١: GPT Image 2 يرسم صور الشرائح… ({s.items.length} من {s.total})</b>
+                <small>نرسم صور كل الشرائح أول (بدون كتابة). لما تخلص تشوفها هنا وتعتمدها أو تعيد أي صورة، وبعدها يبدأ حيدرا ماكس بالتصميم{s.motion ? " والحركة" : ""}. لا تقفل الصفحة.</small>
+              </>
+            ) : s.motion ? (
               <>
                 <b>🎬 حيدرا ماكس يصنع الموشن كاروسيل… ({done} من {s.total})</b>
                 <small>{step ? `${step} — ` : ""}يكتب كل شريحة مشهدًا متحركًا، ويشوف فريماتها ويصلّحها، ثم تطلع هنا فيديو MP4 بصوته (دقايق للشريحة). لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
@@ -461,8 +466,35 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, st
                 <small>محمد باقر سلّم الطلب لجواد، وكل شريحة يولّدها جواد ثم يفحص باقر كتابتها العربية، وتأخذ نحو دقيقة. لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
               </>
             )}
+            {!!s.motion && s.phase !== "pictures" && <small className="ct-steps">الترتيب: ١) صور الشرائح ← ٢) تصميم كل شريحة ثابتة ← ٣) تحريك كل شريحة. كل خطوة تخلص في أقل من ١٠ دقايق؛ الشريحة اللي تطوّل نأجلها ونكمّل الباقي، ونرجع لها في الآخر.</small>}
+            {!!s.deferred?.length && <small className="ct-steps">⏭️ مؤجّلة للآخر: الشريحة {s.deferred.join("، ")} (طوّلت، بنرجع لها بطريقة أخف).</small>}
             <span className="bar"><i style={{ width: `${s.total ? Math.round((done / s.total) * 100) : 0}%` }} /></span>
           </div>
+        </div>
+      )}
+      {s.phase === "approve" && !s.running && onApprove && (
+        <div className="ct-failed ct-approve">
+          <b>🖼️ صور الشرائح جاهزة — راجعها قبل التصميم{s.motion ? " والحركة" : ""}</b>
+          <small> إذا صورة ما عجبتك أعدها (واكتب وش يتغير فيها). إذا كلها تمام اعتمدها، ويبدأ حيدرا ماكس يصمم كل شريحة{s.motion ? " ثم يحرّكها" : ""}.</small>
+          {onRedoPicture && (
+            <div className="ct-actions">
+              {s.items.map((i) => (
+                <button
+                  key={i.n}
+                  type="button"
+                  className="ct-mini"
+                  disabled={busy}
+                  onClick={() => {
+                    const note = window.prompt(`وش تبي يتغير في صورة الشريحة ${i.n}؟ (اتركه فاضي لصورة جديدة بنفس الوصف)`, "");
+                    if (note !== null) onRedoPicture(i.n, note);
+                  }}
+                >
+                  🔄 أعد صورة {i.n}
+                </button>
+              ))}
+            </div>
+          )}
+          <button type="button" className="ct-mini ct-go" disabled={busy} onClick={onApprove}>✅ اعتمد الصور وابدأ التصميم</button>
         </div>
       )}
       <div className="ct-slides">
@@ -674,16 +706,16 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const looping = useRef(new Set<string>());
 
   /** The produce step: the server draws a few slides a call; this asks again while it says `running`. */
-  const runProduce = useCallback(async (id: string, retry?: number[] | "failed") => {
+  const runProduce = useCallback(async (id: string, retry?: number[] | "failed", more?: Record<string, unknown>) => {
     if (looping.current.has(`p:${id}`)) return;
     looping.current.add(`p:${id}`);
     setBusy("producing");
     let first = true;
-    type Step = { spent?: number; aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number } }; sfx?: Record<string, string>; stage?: "still"; still?: { code: string; fonts: { head: string; body: string } } } };
-    const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}), ...(r.code?.mix || old?.mix ? { mix: true } : {}), ...(r.code?.motion || old?.motion ? { motion: r.code?.motion ?? old?.motion } : {}) }));
+    type Step = { spent?: number; aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; phase?: "pictures" | "approve"; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number } }; sfx?: Record<string, string>; stage?: "still"; still?: { code: string; fonts: { head: string; body: string } }; light?: true }; deferred?: number[] };
+    const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, phase: r.phase, deferred: r.deferred, ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}), ...(r.code?.mix || old?.mix ? { mix: true } : {}), ...(r.code?.motion || old?.motion ? { motion: r.code?.motion ?? old?.motion } : {}) }));
     try {
       for (let guard = 0; guard < 80; guard++) {
-        let r = await postJson<Step>("/api/content/produce", { chatId: id, ...(first && retry ? { retry } : {}) });
+        let r = await postJson<Step>("/api/content/produce", { chatId: id, ...(first && retry ? { retry } : {}), ...(first && more ? more : {}) });
         first = false;
         show(r);
         if (typeof r.spent === "number") setSpent(r.spent);
@@ -697,7 +729,9 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
           const stillStage = r.code.stage === "still";
           if (stillStage) setCodeStep(`🖼️ المرحلة ١: أصمم الشريحة ${n} ثابتة (بعدها نحرّكها)…`);
           else if (r.code.still) setCodeStep(`🎬 المرحلة ٢: حيدرا ماكس يحرّك تصميم الشريحة ${n} الجاهز…`);
-          const extra = stillStage ? { stillFor: "motion" } : r.code.still ? { still: r.code.still.code, stillFonts: r.code.still.fonts } : undefined;
+          const lighter = r.code.light === true;
+          if (lighter) setCodeStep(`↩️ رجعنا للشريحة ${n} اللي طوّلت — هالمرة بطريقة أخف وأسرع…`);
+          const extra = { ...(stillStage ? { stillFor: "motion" } : r.code.still ? { still: r.code.still.code, stillFonts: r.code.still.fonts } : {}), ...(lighter ? { light: true } : {}) };
           // each slide on its own (the owner, 16 Nov 2026): a slide that cannot be drawn is recorded as failed and the next one
           // starts; «أعد المحاولة» redraws it alone. Stopped by the person, or no balance left: everything stops as before.
           let body: Record<string, unknown>;
@@ -713,8 +747,15 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
           } catch (e) {
             const why = e instanceof Error ? e.message : "";
             if ((e instanceof Error && e.name === "AbortError") || /رصيد|اشحن|الاتصال|متصفحك/.test(why)) throw e;
-            setCodeStep(`⚠️ الشريحة ${n} ما انرسمت — أكمل الباقي، وتقدر تعيدها بعدين`);
-            body = { n, codeFailed: why || "ما انرسمت" };
+            if (/تأخرت/.test(why) && !lighter) {
+              // each piece of work ends under 10 minutes (the owner, 17 Nov 2026): a slide that runs past it is set aside, the
+              // rest are made, and it comes back last with lighter thinking
+              setCodeStep(`⏭️ الشريحة ${n} طوّلت أكثر من ٩ دقايق — نكمّل باقي الشرائح ونرجع لها في الآخر بطريقة أخف`);
+              body = { deferSlide: n };
+            } else {
+              setCodeStep(`⚠️ الشريحة ${n} ما انرسمت — كمّلنا الباقي، وتقدر تعيدها لحالها بزر «أعد المحاولة»`);
+              body = { n, codeFailed: why || "ما انرسمت" };
+            }
           }
           setCodeStep(null);
           r = await postJson<Step>("/api/content/produce", { chatId: id, ...body });
@@ -1071,6 +1112,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                       onRetry={(ns) => chatId && void runProduce(chatId, ns)}
                       onDownloadAll={() => downloadAll(m.slides!.items)}
                       onResume={() => chatId && void runProduce(chatId)}
+                      onApprove={() => chatId && void runProduce(chatId, undefined, { approvePictures: true })}
+                      onRedoPicture={(n, note) => chatId && void runProduce(chatId, undefined, { redoPicture: n, note })}
                       step={codeStep}
                     />
                   )}

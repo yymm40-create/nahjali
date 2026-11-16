@@ -69,6 +69,10 @@ export interface SlidesBlock {
   paletteId?: string;
   /** a motion carousel: every slide is a short video (its plan, kept for a slide made again) */
   motion?: MotionPlan;
+  /** "pictures": GPT Image 2 is painting the slides' pictures; "approve": they are painted and wait for the person's approval */
+  phase?: "pictures" | "approve";
+  /** slides set aside after running past the time (done after the rest) */
+  deferred?: number[];
 }
 
 /** A motion carousel being made: its motion style (or "own" with the person's words), how its pictures are made, each slide's length. */
@@ -173,6 +177,14 @@ export interface PendingProduce {
    * still shown meanwhile, and where its program is kept (storage path; "" when the page sent none)
    */
   stills?: Record<string, { slide: Slide; program: string }>;
+  /**
+   * the pictures come FIRST (the owner, 16 Nov 2026: «أول شيء تصنع الصور… بعد ما يعتمد كل الصور تبدأ مرحلة الموشن والكود»):
+   * GPT Image 2 paints every slide's picture, the person looks at them (and redraws any), and only after they approve does
+   * «حيدرا ماكس» design and move the slides
+   */
+  picturesOk?: boolean;
+  /** slides whose work ran past the time once: set aside, done after the others with lighter thinking (17 Nov 2026) */
+  deferred?: number[];
   /** made in this production so far */
   made: Slide[];
   failed: SlideFailure[];
@@ -344,6 +356,8 @@ export function readPending(v: unknown): PendingProduce | null {
     ...(typeof p.paletteId === "string" && findPalette(p.paletteId) ? { paletteId: p.paletteId } : {}),
     ...(readMotion(p.motion) ? { motion: readMotion(p.motion)! } : {}),
     ...(p.sound === false ? { sound: false as const } : p.sound && typeof p.sound === "object" && typeof (p.sound as { uploadId?: unknown }).uploadId === "string" && Array.isArray((p.sound as { slices?: unknown }).slices) ? { sound: p.sound as NonNullable<Exclude<PendingProduce["sound"], false>> } : {}),
+    ...(p.picturesOk === true ? { picturesOk: true } : {}),
+    ...(Array.isArray(p.deferred) ? { deferred: (p.deferred as unknown[]).map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 40) } : {}),
     ...(p.stills && typeof p.stills === "object" && !Array.isArray(p.stills) ? { stills: Object.fromEntries(Object.entries(p.stills as Record<string, unknown>).filter(([, v]) => !!v && typeof v === "object" && typeof (v as { program?: unknown }).program === "string" && typeof (v as { slide?: { fileId?: unknown } }).slide?.fileId === "string")) as NonNullable<PendingProduce["stills"]> } : {}),
     ...(p.arts && typeof p.arts === "object" && !Array.isArray(p.arts) ? { arts: Object.fromEntries(Object.entries(p.arts as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> } : {}),
     made: objs(p.made).filter((x) => typeof x.fileId === "string").map(readSlide),
