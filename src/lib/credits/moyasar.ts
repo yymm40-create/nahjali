@@ -93,11 +93,15 @@ export interface Payment {
   /** the invoice it paid, when it came from one */
   invoiceId: string;
   description: string;
+  /** what our checkout page put on it (`kind`, `ref`): which order this payment is for — Moyasar.js form payments only */
+  metadata: Record<string, string>;
 }
 
 /** One payment as Moyasar holds it (what Moyasar appends as `id` when it sends the payer back to an invoice's success_url). */
 export async function getPayment(id: string): Promise<Payment> {
-  const r = await call<{ id?: unknown; amount?: unknown; currency?: unknown; status?: unknown; invoice_id?: unknown; description?: unknown }>(`/payments/${encodeURIComponent(id)}`, "GET");
+  const r = await call<{ id?: unknown; amount?: unknown; currency?: unknown; status?: unknown; invoice_id?: unknown; description?: unknown; metadata?: unknown }>(`/payments/${encodeURIComponent(id)}`, "GET");
+  const meta: Record<string, string> = {};
+  if (r?.metadata && typeof r.metadata === "object" && !Array.isArray(r.metadata)) for (const [k, v] of Object.entries(r.metadata as Record<string, unknown>)) if (v != null) meta[k] = String(v);
   return {
     id: String(r?.id ?? ""),
     amount: Number(r?.amount ?? NaN),
@@ -105,5 +109,6 @@ export async function getPayment(id: string): Promise<Payment> {
     status: String(r?.status ?? ""),
     invoiceId: String(r?.invoice_id ?? ""),
     description: String(r?.description ?? ""),
+    metadata: meta,
   };
 }

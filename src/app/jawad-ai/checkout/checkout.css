@@ -1,0 +1,10 @@
+/* «صفحة الدفع»: the order line on top, Moyasar's form under it (its own styles, light card so its fields read clearly) */
+.co-card { gap: 14px; }
+.co-sum { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding-bottom: 12px; border-bottom: 1px solid var(--ld-line); }
+.co-what { min-width: 0; font-size: 14px; line-height: 1.6; opacity: 0.9; overflow-wrap: anywhere; }
+.co-amount { flex: none; font-size: 26px; font-weight: 800; white-space: nowrap; }
+.co-amount small { font-size: 13px; font-weight: 600; opacity: 0.7; }
+.co-form { min-width: 0; padding: 14px 12px; border-radius: 18px; background: #fff; color: #111; }
+.co-form .mysr-form { max-width: 100%; }
+.co-wait { margin: 6px 0; text-align: center; font-size: 14px; color: #555; direction: rtl; }
+.co-back { justify-self: center; font-size: 14px; opacity: 0.75; text-decoration: underline; }

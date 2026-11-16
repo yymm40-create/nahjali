@@ -8,6 +8,7 @@ import { grantCoins } from "@/lib/coins";
 import { COURSE, PRODUCT_LABEL, cleanPhone, codedOffer, isLadder, isProduct, offerFor, offersAt, type Bank, type Product, type CourseSettings } from "@config/course";
 import { loadSettings } from "./settings";
 import * as moyasar from "@/lib/credits/moyasar";
+import { checkoutUrl, formEnabled, formPaymentPaid } from "@/lib/credits/checkout";
 import { notifyPaid, notifyTransfer } from "./telegram";
 
 const db = () => createAdminClient();
@@ -147,10 +148,13 @@ export async function startCardOrder(user: { id: string; email?: string | null }
   if (!moyasar.moyasarEnabled()) throw new UserError("الدفع بالبطاقة غير متاح الحين؛ تواصل معنا.", 503);
   const { order } = await startOrder(user, b, Date.now(), false);
   const named = await titled(order);
+  const description = `${named.courseTitle || COURSE.name} — ${PRODUCT_LABEL[order.product]}`;
+  // our own page with Moyasar's form (the Payments API), settled by settleCourseFormPayment; the invoice page only without its key
+  if (formEnabled()) return { order, url: checkoutUrl(origin, { k: "course", ref: order.id, a: moyasar.halalas(order.amount), d: description, back: `${COURSE.base}/${order.courseId}?cancelled=1` }) };
   try {
     const inv = await moyasar.createInvoice({
       amount: order.amount,
-      description: `${named.courseTitle || COURSE.name} — ${PRODUCT_LABEL[order.product]}`,
+      description,
       callbackUrl: `${origin}/api/course/moyasar/webhook?order=${order.id}`,
       successUrl: `${origin}/api/course/moyasar/return?order=${order.id}`,
       backUrl: `${origin}${COURSE.base}/${order.courseId}?cancelled=1`,
@@ -185,6 +189,24 @@ export async function settleCardOrder(orderId: string): Promise<{ order: Order; 
     }
   }
   if (!paid) return { order: o, paid: false };
+  return paidByCard(o);
+}
+
+/**
+ * A payment on our checkout page (Moyasar's form), READ from Moyasar by the caller: only a paid one, in riyals, for this order's
+ * price, made for THIS order (its metadata), unlocks it — once, however many times the return or the webhook runs.
+ */
+export async function settleCourseFormPayment(orderId: string, p: moyasar.Payment): Promise<{ order: Order; paid: boolean } | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) return null;
+  const o = await getOrder(orderId);
+  if (!o) return null;
+  if (o.status === "confirmed") return { order: o, paid: true };
+  if (!formPaymentPaid(p, "course", o.id, moyasar.halalas(o.amount))) return { order: o, paid: false };
+  return paidByCard(o);
+}
+
+/** Paid by card: confirmed (the course opens by itself) and the owner told, once. */
+async function paidByCard(o: Order): Promise<{ order: Order; paid: boolean }> {
   const { order, already } = await confirmOrder(o.id, "ميسّر (بطاقة)");
   // the owner's phone: a failure to message must never fail the buyer
   if (!already) {

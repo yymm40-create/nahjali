@@ -15,6 +15,7 @@ import { activeCode, codeMark, CREDITS, discounted, packOf, type CreditSettings 
 import { loadSettings as loadCourseSettings } from "@/lib/course/settings";
 import { addInvoice, getInvoice, invoicePaid, paylinkEnabled } from "./paylink";
 import * as moyasar from "./moyasar";
+import { checkoutUrl, formEnabled, formPaymentPaid } from "./checkout";
 import { loadCreditSettings } from "./settings";
 import { notifyCreditTransfer } from "./telegram";
 
@@ -291,10 +292,16 @@ export async function settlePaylinkOrder(orderId: string): Promise<{ order: Cred
 export async function startMoyasarOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown; code?: unknown }, ad: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null | undefined, origin: string, debug = false): Promise<{ order: CreditOrder; url: string }> {
   if (!moyasar.moyasarEnabled()) throw new UserError("الدفع بالبطاقة غير متاح الحين؛ استخدم التحويل البنكي.", 503);
   const { order, pack } = await newCardOrder(user, b, ad);
+  const description = `رصيد الجواد الذكي — باقة ${pack.name}`;
+  // our own page with Moyasar's form (the Payments API), settled by settleCreditFormPayment; the invoice page only without its key
+  if (formEnabled()) {
+    await db().from("credit_orders").update({ note: "moyasar:form", updated_at: new Date().toISOString() }).eq("id", order.id);
+    return { order, url: checkoutUrl(origin, { k: "credits", ref: order.id, a: moyasar.halalas(pack.price), d: description, back: "/jawad-ai/credits?cancelled=1" }) };
+  }
   try {
     const inv = await moyasar.createInvoice({
       amount: pack.price,
-      description: `رصيد الجواد الذكي — باقة ${pack.name}`,
+      description,
       callbackUrl: `${origin}/api/credits/moyasar/webhook?order=${order.id}`,
       successUrl: `${origin}/api/credits/moyasar/return?order=${order.id}`,
       backUrl: `${origin}/jawad-ai/credits?cancelled=1`,
@@ -317,15 +324,31 @@ export async function settleMoyasarOrder(orderId: string): Promise<{ order: Cred
   if (!/^[0-9a-f-]{36}$/i.test(orderId)) return null;
   const o = await getCreditOrder(orderId);
   if (!o) return null;
-  const inv = /^moyasar:(.+)$/.exec(o.note)?.[1];
-  if (!inv) return { order: o, paid: false };
   if (o.status === "confirmed") return { order: o, paid: true };
+  const inv = /^moyasar:(.+)$/.exec(o.note)?.[1];
+  // a form payment is settled from the payment itself (settleCreditFormPayment), never from an invoice
+  if (!inv || inv === "form" || inv.startsWith("pay:")) return { order: o, paid: false };
   try {
     if (!moyasar.invoicePaid(await moyasar.getInvoice(inv), inv, o.price)) return { order: o, paid: false };
   } catch (e) {
     console.error("moyasar getInvoice", o.id, e);
     return { order: o, paid: false };
   }
+  const { order } = await confirmCreditOrder(o.id, "moyasar");
+  return { order, paid: order.status === "confirmed" };
+}
+
+/**
+ * A payment on our checkout page (Moyasar's form), READ from Moyasar by the caller: only a paid one, in riyals, for this order's
+ * price, made for THIS order (its metadata), adds the balance — once, however many times the return or the webhook runs.
+ */
+export async function settleCreditFormPayment(orderId: string, p: moyasar.Payment): Promise<{ order: CreditOrder; paid: boolean } | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) return null;
+  const o = await getCreditOrder(orderId);
+  if (!o) return null;
+  if (o.status === "confirmed") return { order: o, paid: true };
+  if (!formPaymentPaid(p, "credits", o.id, moyasar.halalas(o.price))) return { order: o, paid: false };
+  await db().from("credit_orders").update({ note: `moyasar:pay:${p.id}`, updated_at: new Date().toISOString() }).eq("id", o.id);
   const { order } = await confirmCreditOrder(o.id, "moyasar");
   return { order, paid: order.status === "confirmed" };
 }
