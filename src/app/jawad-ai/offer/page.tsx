@@ -11,13 +11,13 @@ import "./offer.css";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  title: "عرض الـ١٠ ريال",
-  description: "اشترك بـ١٠ ريال: Nano Banana Pro بلا حدود يوم كامل، و٢٠ صورة GPT Image 2، و٣ فيديوهات Seedance 2.0 مجانية. العرض ٤٨ ساعة بس.",
+  title: "عرض الـ٢٥ ريال",
+  description: "اشترك بـ٢٥ ريال: Nano Banana Pro بلا حدود يوم كامل بدقة 1K، و٢٠ صورة GPT Image 2، و٣ فيديوهات Seedance 2.0 مجانية. العرض ٤٨ ساعة بس.",
 };
 
 const ICON: Record<string, string> = { nano: "🍌", gpt: "🎨", seedance: "🎬" };
 
-/** «عرض الـ١٠ ريال» (config/jawad/offer10.ts): open to everyone; buying needs sign-in; after paying it shows what is left. */
+/** «عرض الـ٢٥ ريال» (config/jawad/offer10.ts): open to everyone; buying needs sign-in; after paying it shows what is left. */
 export default async function OfferPage({ searchParams }: { searchParams: Promise<{ paid?: string; unpaid?: string }> }) {
   const sp = await searchParams;
   const { user } = await jawadSession();

@@ -144,6 +144,8 @@ export interface PendingProduce {
   slides: { n: number; text: string; prompt: string; picture?: string }[];
   /** the pictures GPT Image 2 painted for slides (no writing in them), by slide number → content_files id */
   arts?: Record<string, string>;
+  /** a motion carousel over the person's own sound (lib/content/sound): the sound and each slide's part of it, worked out once */
+  sound?: { uploadId: string; speech: boolean; slices: { from: number; to: number; lines: { text: string; from: number; to: number }[] }[] } | false;
   /** the message index the slides are attached to */
   at: number;
   styleId: string;
@@ -335,6 +337,7 @@ export function readPending(v: unknown): PendingProduce | null {
     ...(typeof p.fontId === "string" && findContentFont(p.fontId) ? { fontId: p.fontId } : {}),
     ...(typeof p.paletteId === "string" && findPalette(p.paletteId) ? { paletteId: p.paletteId } : {}),
     ...(readMotion(p.motion) ? { motion: readMotion(p.motion)! } : {}),
+    ...(p.sound === false ? { sound: false as const } : p.sound && typeof p.sound === "object" && typeof (p.sound as { uploadId?: unknown }).uploadId === "string" && Array.isArray((p.sound as { slices?: unknown }).slices) ? { sound: p.sound as NonNullable<Exclude<PendingProduce["sound"], false>> } : {}),
     ...(p.arts && typeof p.arts === "object" && !Array.isArray(p.arts) ? { arts: Object.fromEntries(Object.entries(p.arts as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> } : {}),
     made: objs(p.made).filter((x) => typeof x.fileId === "string").map(readSlide),
     failed: objs(p.failed).map(readFailure),

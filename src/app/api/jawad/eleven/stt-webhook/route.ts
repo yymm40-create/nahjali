@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     await createAdminClient().from("student_jobs").update({ error: message }).eq("id", meta.studentJob).eq("kind", "media").in("status", ["queued", "running"]);
   }
   // a video link heard for «محمد باقر» or «حيدرا ماكس» (lib/link-listen): its kept transcript is marked failed
-  if (event?.type === "webhook_error" && typeof meta.linkKey === "string" && /^(yt|tt):[\w-]{6,40}$/.test(meta.linkKey)) {
+  if (event?.type === "webhook_error" && typeof meta.linkKey === "string" && /^((yt|tt):[\w-]{6,40}|up:[0-9a-f-]{36})$/i.test(meta.linkKey)) {
     await linkFailed(meta.linkKey, typeof event.error_message === "string" ? event.error_message.replace(/\s+/g, " ").trim() : "ما قدرنا نجيب الفيديو");
   }
   return NextResponse.json({ ok: true });

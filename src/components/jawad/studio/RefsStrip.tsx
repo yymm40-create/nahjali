@@ -191,7 +191,7 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
     for (const f of files) {
       const s = sniff(new Uint8Array(await f.slice(0, 64).arrayBuffer()));
       if (!s) {
-        setDropError(`«${f.name}»: نوع غير مقبول (المقبول: PNG/JPG/WEBP، MP4/MOV، MP3/WAV).`);
+        setDropError(`«${f.name}»: نوع غير مقبول (المقبول: PNG/JPG/WEBP، MP4/MOV، صوت بأي صيغة: MP3/WAV/M4A/AAC/OGG/OPUS/FLAC/AMR/AIFF/WebM).`);
         continue;
       }
       if (s.kind === "doc") {

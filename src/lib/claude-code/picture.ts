@@ -124,7 +124,8 @@ const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 export function readMotionSlide(v: unknown): { seconds: number; style: string; first: boolean; total: number } | null {
   if (!v || typeof v !== "object") return null;
   const m = v as Record<string, unknown>;
-  return { seconds: Math.max(3, Math.min(8, Number(m.seconds) || 5)), style: text(m.style, 3000), first: m.first === true, total: Math.max(1, Math.min(20, Math.round(Number(m.total) || 1))) };
+  // a slide over the person's own sound is as long as its part of it (lib/content/sound), up to 40 s
+  return { seconds: Math.max(m.voiced === true ? 1 : 3, Math.min(m.voiced === true ? 40 : 8, Number(m.seconds) || 5)), style: text(m.style, 3000), first: m.first === true, total: Math.max(1, Math.min(20, Math.round(Number(m.total) || 1))) };
 }
 const motionLines = (m: { seconds: number; style: string; first: boolean; total: number }, n?: unknown) =>
   `THIS IS A MOTION SLIDE${Number(n) ? ` (slide ${Number(n)} of ${m.total})` : ""}: duration ${m.seconds} s${m.first ? " — THE COVER: its frame at t = 0 is already the complete, readable design" : ""}.\n${m.style}`;
