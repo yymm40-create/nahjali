@@ -37,6 +37,8 @@ import { claudeCharged, type Who } from "./pricing";
 import { assetInfo, assetViews, stillOpen, type EditorProject } from "./server";
 import { standingRules } from "./changes";
 import { rulesNote } from "./changes-core";
+import { ASKS_ABOUT_REVIEW } from "./review";
+import { reviewNoteFor } from "./review-server";
 
 const db = () => createAdminClient();
 
@@ -405,7 +407,9 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   }
 
   // «تعليماتي الدايمة»: the person's own style, in this turn's note (nothing when they wrote none)
-  const turnNote = rulesNote(await standingRules(who.id, b.rules)) || undefined;
+  // «رابط مراجعة للعميل»: the client's open comments, when the person's words are about them (as data, never orders)
+  const review = ASKS_ABOUT_REVIEW.test(message) ? await reviewNoteFor(p.id, tl) : "";
+  const turnNote = [rulesNote(await standingRules(who.id, b.rules)), review].filter(Boolean).join("\n\n") || undefined;
   let usd = mem.usd + listened.usd;
   const ask = async (msgs: ClaudeTurn[]) => {
     const r = await callClaudeJson<Answer>({ system: aboutMotion ? SYSTEM_MOTION : SYSTEM, turns: msgs, turnNote, schema: SCHEMA, maxTokens: 16000, effort: "medium", fallback: true, leader: isLeader(who.email), timeoutMs: 420_000 });
