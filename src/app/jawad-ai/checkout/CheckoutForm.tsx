@@ -57,8 +57,9 @@ function diagnoseApplePay() {
       this.addEventListener("paymentauthorized", () => log("paymentauthorized"));
     }
   }
-  Object.assign(Diag, { canMakePayments: (Base as unknown as { canMakePayments: () => boolean }).canMakePayments, supportsVersion: (Base as unknown as { supportsVersion: (n: number) => boolean }).supportsVersion, STATUS_SUCCESS: 0, STATUS_FAILURE: 1, __diag: true });
-  for (const k of Object.getOwnPropertyNames(Base)) if (!(k in Diag)) try { Object.defineProperty(Diag, k, Object.getOwnPropertyDescriptor(Base, k)!); } catch { /* read-only */ }
+  // the statics (canMakePayments, STATUS_SUCCESS…) are inherited from ApplePaySession; assigning them threw on iOS Safari
+  // («Attempted to assign to readonly property») and broke the page (16 Nov 2026)
+  Object.defineProperty(Diag, "__diag", { value: true });
   w.ApplePaySession = Diag as unknown as typeof Base;
   window.addEventListener("error", (e) => log("window-error", `${e.message}`));
   window.addEventListener("unhandledrejection", (e) => log("rejection", err(e.reason)));
@@ -93,7 +94,13 @@ export default function CheckoutForm(p: { amount: number; description: string; k
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    if (p.applePay) diagnoseApplePay();
+    // diagnosis only: it must never stop the payment form
+    if (p.applePay)
+      try {
+        diagnoseApplePay();
+      } catch {
+        /* ignore */
+      }
     loadMoyasar()
       .then(() => {
         moyasar()!.init({
