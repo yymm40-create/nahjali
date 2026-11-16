@@ -490,6 +490,25 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
   };
 }
 
+/**
+ * A slide the page could not draw (his answer ran out of time, the scene would not run…): it is recorded as failed and the
+ * carousel goes on to the next slide — each slide on its own (the owner, 16 Nov 2026: «خل يقسم الشغلة يشتغل كل سلايدة
+ * بروحها»; one heavy cover slide used to stop the whole carousel). «أعد المحاولة» draws the failed ones again.
+ */
+export async function codeSlideFailed(userId: string, chatId: string, b: { n?: unknown; codeFailed?: unknown }): Promise<Produced> {
+  const chat = await getChat(userId, chatId);
+  if (!chat) throw new Error("chat not found");
+  const p = chat.pending;
+  if (!p || p.maker !== "code") throw new UserError("ما فيه كاروسيل ينتظر حيدرا ماكس في هذي المحادثة.", 409);
+  const s = p.slides.find((x) => x.n === Number(b.n));
+  if (!s || p.made.some((x) => x.n === s.n) || p.failed.some((x) => x.n === s.n)) throw new UserError("هذي الشريحة مو بانتظار الرسم.", 409);
+  const why = String(b.codeFailed ?? "").replace(/\s+/g, " ").trim().slice(0, 300) || "ما انرسمت";
+  const messages = [...chat.messages];
+  const at = Math.min(p.at, messages.length - 1);
+  const base = new Map((messages[at]?.slides?.items ?? []).map((x) => [x.n, x]));
+  return settle({ userId, chatId, chat, p, messages, at, base }, [{ failed: { n: s.n, reason: why, text: s.text, prompt: s.prompt }, usd: 0 }]);
+}
+
 /** The PNG the page drew from «حيدرا ماكس»'s program becomes slide `n` of the carousel being made. */
 export async function produceFromCode(userId: string, chatId: string, b: { n?: unknown; png?: unknown; pngUpload?: unknown; rounds?: unknown; scores?: unknown; video?: unknown }): Promise<Produced> {
   const chat = await getChat(userId, chatId);
