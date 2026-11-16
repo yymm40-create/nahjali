@@ -41,7 +41,7 @@ THE SLIDE AS A FILM: set duration to the slide's seconds and blur 0–0.5. Each 
 - SLIDE 1 IS THE COVER: its frame at t = 0 is already a complete, readable design (the title fully there); only secondary things move in;
 - one or two things move at a time, never everything; motion follows the reading order;
 - keep every word and key shape inside the centre 3:4 of the frame and ~150 px off the edges (the profile grid crops to 3:4);
-- sound: write a soft, short effect for each entry (cues from the library, or your own in sound(K, S)) — a tick, a breath of air, a soft pop, a gentle whoosh; never music, never an ambient bed, never loud.
+- sound: ONLY the library's effects (made with ElevenLabs), placed with cues — one soft, short effect for each entry (a tick, a breath of air, a soft pop, a gentle whoosh); NEVER write sound(K, S) or any sound made in code (the owner: code-made sound is annoying — it is not played); never music, never an ambient bed, never loud.
 
 ${MILLION_DOLLAR}
 
@@ -51,7 +51,7 @@ ${SCENE_CONTRACT}`;
 export const MOTION_RUBRIC = [
   ...PICTURE_RUBRIC,
   { id: "motion", ar: "الحركة", en: "The motion serves the meaning: entrances in reading order, one or two moves at a time, every word lands by 40% and holds still and readable, slide 1's first frame is a complete cover, the last frame is a finished state" },
-  { id: "sound", ar: "الصوت", en: "Sound (read the program's cues and sound() against the frames): one soft short effect per entry, on the landing frames, nothing loud, no music or ambient bed" },
+  { id: "sound", ar: "الصوت", en: "Sound (read the program's cues against the frames — only library effects, never sound() made in code): one soft short effect per entry, on the landing frames, nothing loud, no music or ambient bed" },
 ] as const;
 
 const WRITE_SCHEMA = {
@@ -133,10 +133,10 @@ const jpeg = (v: unknown) => (typeof v === "string" && /^[A-Za-z0-9+/=]+$/.test(
 const font = (v: unknown, d: string) => (typeof v === "string" && LAB_FONTS.includes(v) ? v : d);
 const fontMenu = () => LAB_FONTS.map((id) => `${id} (${FONT_BY_ID.get(id)?.kind})`).join(", ");
 
-/** how long one answer may take: 5 minutes; a motion slide 10 (a heavy cover slide ran past 5 every time, 16 Nov 2026 — the
- * route allows 800 s) */
+/** how long one answer may take: 5 minutes; a motion carousel's slide 9 — each piece of work ends under 10 minutes (the owner,
+ * 17 Nov 2026: «يخلص في أقل من 10 دقائق، بعدين يسوي الباقي»); a slide that runs past it is set aside and done after the rest */
 export const PICTURE_MS = 300_000;
-export const MOTION_MS = 600_000;
+export const MOTION_MS = 540_000;
 /** the message a timed-out answer carries: the page reads it to try the slide once more with lighter thinking */
 export const LATE = "خدمة الذكاء الاصطناعي تأخرت. أعد المحاولة.";
 
@@ -201,7 +201,7 @@ Return the COMPLETE program and the two fonts it uses.`,
     ...photosParts(b.photos),
     ...refsParts(b.references),
   ];
-  const r = await ask<{ code: string; fonts: { head: string; body: string }; notes: string }>(user, b.model, motion ? (previous ? "حيدرا ماكس · تصليح الشريحة المتحركة" : "حيدرا ماكس · شريحة متحركة") : previous ? "حيدرا ماكس · تصليح الصورة" : "حيدرا ماكس · رسم الصورة", parts, WRITE_SCHEMA, 64_000, motion && (b.light === true || !!still) ? "medium" : "high", motion ? MOTION_SYSTEM : SYSTEM, motion ? MOTION_MS : PICTURE_MS);
+  const r = await ask<{ code: string; fonts: { head: string; body: string }; notes: string }>(user, b.model, motion ? (previous ? "حيدرا ماكس · تصليح الشريحة المتحركة" : "حيدرا ماكس · شريحة متحركة") : previous ? "حيدرا ماكس · تصليح الصورة" : "حيدرا ماكس · رسم الصورة", parts, WRITE_SCHEMA, 64_000, (motion || stillFor) && (b.light === true || !!still) ? "medium" : "high", motion ? MOTION_SYSTEM : SYSTEM, motion || stillFor ? MOTION_MS : PICTURE_MS);
   const chk = checkScene(r.data.code);
   // the animated still keeps the still's fonts
   const keep = still && LAB_FONTS.includes(String(stillFonts.head)) ? { head: String(stillFonts.head), body: font(stillFonts.body, String(stillFonts.head)) } : null;

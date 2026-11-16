@@ -744,3 +744,9 @@
 .ct-compose-opts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ct-verbose.on { background: color-mix(in srgb, var(--ct-teal) 24%, transparent); color: #fff; }
 .ct-editbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; font-size: 12.5px; color: #e9dfcf; background: color-mix(in srgb, var(--ct-amber) 14%, transparent); border: 1px dashed color-mix(in srgb, var(--ct-amber) 50%, transparent); }
+/* the pictures come first: the person approves them (or redraws any) before «حيدرا ماكس» designs and moves the slides */
+.ct-approve { display: grid; gap: 8px; border-color: rgba(34, 197, 94, 0.45); background: rgba(34, 197, 94, 0.08); }
+.ct-approve small { color: #bbf7d0; font-size: 12.5px; }
+.ct-approve .ct-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ct-go { justify-self: start; background: linear-gradient(180deg, #34d399, #16a34a); color: #04210f; font-weight: 800; border: 0; padding-inline: 18px; }
+.ct-steps { display: block; margin-top: 4px; color: #fcd34d; font-size: 12px; }

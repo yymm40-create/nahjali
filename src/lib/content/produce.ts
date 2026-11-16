@@ -62,6 +62,10 @@ export interface Produced {
   usd: number;
   /** «Claude Code»: the next slide for the page to draw in code (then it sends the picture back) */
   code?: CodeSlide;
+  /** the pictures stage: being painted, or waiting for the person's approval */
+  phase?: "pictures" | "approve";
+  /** slides set aside after running past the time (they come back last) */
+  deferred?: number[];
 }
 
 /** One slide «حيدرا ماكس» draws in the person's browser: its full brief (the exact writing in it), shape, references,
@@ -80,6 +84,8 @@ export interface CodeSlide {
   motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number } };
   /** stage 1 of a motion carousel: draw this slide as a STILL (the final frame of its motion), at the motion size */
   stage?: "still";
+  /** set aside once (it ran past the time): this time with lighter thinking */
+  light?: true;
   /** stage 2: the approved still's program, which he animates (instead of writing the slide from zero) */
   still?: { code: string; fonts: { head: string; body: string } };
 }
@@ -281,7 +287,7 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
  * One call of the produce step: draws the next few slides, saves what exists, and says what is left. `retry` first
  * plans the drawing again of the given slides (or «failed»: all that failed) of the last carousel.
  */
-export async function produce(userId: string, chatId: string, o: { retry?: number[] | "failed"; owner?: boolean; email?: string | null; origin?: string } = {}): Promise<Produced> {
+export async function produce(userId: string, chatId: string, o: { retry?: number[] | "failed"; owner?: boolean; email?: string | null; origin?: string; approvePictures?: boolean; redoPicture?: { n: number; note: string }; deferSlide?: number } = {}): Promise<Produced> {
   let chat = await getChat(userId, chatId);
   if (!chat) throw new Error("chat not found");
   if (o.retry && (o.retry === "failed" || o.retry.length)) chat = await planRetry(userId, chat, o.retry);
@@ -294,18 +300,61 @@ export async function produce(userId: string, chatId: string, o: { retry?: numbe
   const base = new Map((messages[at]?.slides?.items ?? []).map((s) => [s.n, s]));
   const who: DeskWho = { id: userId, email: o.email, owner: await unlimitedFor(o.email), origin: o.origin ?? "" };
   const c = { userId, chatId, owner: !!o.owner, who, t0, total: p.mode === "all" ? p.slides.length : Math.max(base.size, ...p.slides.map((s) => s.n)) };
-  const finish = (results: SlideResult[]) => settle({ userId, chatId, chat: chat!, p, messages, at, base }, results);
+  const finish = (results: SlideResult[], phase?: "pictures" | "approve") => settle({ userId, chatId, chat: chat!, p, messages, at, base }, results, phase);
   const done = new Set([...p.made.map((s) => s.n), ...p.failed.map((f) => f.n)]);
   const todo = p.slides.filter((s) => !done.has(s.n)).sort((a, b) => a.n - b.n);
 
   // «Claude Code»: nothing is drawn here — the page gets the next slide's brief, draws it, and sends it back
   if (p.maker === "code") {
+    // STAGE 0, the pictures first: GPT Image 2 paints every slide that has a picture, then they wait for the person's approval
+    if (o.approvePictures) p.picturesOk = true;
+    const withPicture = todo.filter((s) => !!pictureBrief(p, s).brief);
+    if (!p.picturesOk && withPicture.length) {
+      // a picture the person asked to redraw (with what to change)
+      if (o.redoPicture) {
+        const s = withPicture.find((x) => x.n === o.redoPicture!.n);
+        const old = s ? p.arts?.[String(s.n)] : null;
+        if (s && old) {
+          const rest = { ...(p.arts ?? {}) };
+          delete rest[String(s.n)];
+          p.arts = rest;
+          await deleteProduced(userId, old).catch(() => undefined);
+          const note = o.redoPicture.note.trim().slice(0, 600);
+          if (note) s.picture = `${s.picture ?? pictureFrom(s.prompt)}\n\nCHANGE THE PERSON ASKED FOR (follow it): ${note}`;
+        }
+      }
+      const missing = withPicture.filter((s) => !p.arts?.[String(s.n)]).sort((a, b) => a.n - b.n);
+      if (missing.length) {
+        // slide 1 first (it sets the look), then a few side by side
+        const batch = missing[0].n === 1 && !p.arts?.["1"] ? [missing[0]] : missing.slice(0, CHUNK);
+        const results: SlideResult[] = await Promise.all(
+          batch.map(async (s) => {
+            try {
+              await paintArt(userId, chatId, messages, p, s, who);
+              return { usd: 0 };
+            } catch (e) {
+              return { failed: { n: s.n, reason: e instanceof UserError ? e.message : "ما قدر جواد يرسم صورة الشريحة الحين.", text: s.text, prompt: s.prompt }, usd: 0 };
+            }
+          }),
+        );
+        const stillMissing = withPicture.some((s) => !p.arts?.[String(s.n)] && !results.some((r) => r.failed?.n === s.n));
+        return finish(results, stillMissing ? "pictures" : "approve");
+      }
+      return finish([], "approve");
+    }
+    // a slide whose work ran past the time is set aside: the others go first, it comes back last with lighter thinking
+    if (o.deferSlide && todo.some((s) => s.n === o.deferSlide) && !(p.deferred ?? []).includes(o.deferSlide)) p.deferred = [...(p.deferred ?? []), o.deferSlide];
+    const later = new Set(p.deferred ?? []);
+    const order = (list: typeof todo) => [...list.filter((s) => !later.has(s.n)), ...list.filter((s) => later.has(s.n))];
     // a motion carousel in two stages: every waiting slide's still first (slide 1 first), then each still is animated
-    const needStill = p.motion ? todo.filter((s) => !p.stills?.[String(s.n)]) : [];
-    const next = needStill.length ? (needStill.find((s) => s.n === 1) ?? needStill[0]) : (todo.find((s) => s.n === 1) ?? todo[0]);
+    const needStill = order(p.motion ? todo.filter((s) => !p.stills?.[String(s.n)]) : []);
+    const rest = order(todo);
+    const next = needStill.length ? (needStill.find((s) => s.n === 1 && !later.has(1)) ?? needStill[0]) : (rest.find((s) => s.n === 1 && !later.has(1)) ?? rest[0]);
     const state = await finish([]);
     const slide1 = p.made.find((s) => s.n === 1) ?? p.stills?.["1"]?.slide ?? base.get(1) ?? null;
-    return next ? { ...state, code: await codeSlide(userId, chatId, messages, p, next, c.total, slide1, who, needStill.length ? "still" : "motion") } : state;
+    if (!next) return state;
+    const code = await codeSlide(userId, chatId, messages, p, next, c.total, slide1, who, needStill.length ? "still" : "motion");
+    return { ...state, code: later.has(next.n) ? { ...code, light: true as const } : code };
   }
 
   // the reference of every slide: slide 1 (made now, or the one that stands)
@@ -330,7 +379,7 @@ export async function produce(userId: string, chatId: string, o: { retry?: numbe
 }
 
 /** What is made and what failed is put in the carousel and saved; the state the page shows is returned. */
-async function settle(o: { userId: string; chatId: string; chat: Chat; p: PendingProduce; messages: Chat["messages"]; at: number; base: Map<number, Slide> }, results: SlideResult[]): Promise<Produced> {
+async function settle(o: { userId: string; chatId: string; chat: Chat; p: PendingProduce; messages: Chat["messages"]; at: number; base: Map<number, Slide> }, results: SlideResult[], phase?: "pictures" | "approve"): Promise<Produced> {
   const { userId, chatId, p, messages, at, base } = o;
   let usd = 0;
   for (const r of results) {
@@ -348,6 +397,11 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
   }
 
   const items = new Map(base);
+  // the pictures painted first show in the slides' places until «حيدرا ماكس» designs them
+  for (const [k, fileId] of Object.entries(p.arts ?? {})) {
+    const s = p.slides.find((x) => x.n === Number(k));
+    if (s && !p.stills?.[k] && !p.made.some((m) => m.n === s.n)) items.set(s.n, { n: s.n, fileId, name: `picture-${k.padStart(2, "0")}`, text: s.text });
+  }
   // a two-stage motion carousel: the stills show while their motion is being made
   for (const st of Object.values(p.stills ?? {})) items.set(st.slide.n, st.slide);
   for (const s of p.made) items.set(s.n, s);
@@ -360,8 +414,10 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
     items: sorted,
     todo: left,
     failed: [...p.carry, ...p.failed],
-    running: left.length > 0,
+    running: left.length > 0 && phase !== "approve",
     total: p.mode === "all" ? p.slides.length : sorted.length,
+    ...(p.deferred?.length && left.length ? { deferred: p.deferred.filter((n) => left.includes(n)) } : {}),
+    ...(phase && left.length ? { phase } : {}),
     styleId: p.styleId,
     templateId: p.templateId,
     ...(p.maker === "code" ? { maker: "code" as const } : {}),
@@ -380,7 +436,7 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
   if (messages[at]) messages[at] = { ...messages[at], slides: block };
   await saveChat(userId, chatId, { messages, pending: left.length ? p : null, addUsd: usd });
 
-  return { chatId, aspect: p.aspect, slides: sorted, todo: left, failed: block.failed, running: left.length > 0, total: block.total, report, usd: Math.round(usd * 10000) / 10000 };
+  return { chatId, aspect: p.aspect, slides: sorted, todo: left, failed: block.failed, running: left.length > 0 && phase !== "approve", total: block.total, report, usd: Math.round(usd * 10000) / 10000, ...(phase && left.length ? { phase } : {}), ...(block.deferred?.length ? { deferred: block.deferred } : {}) };
 }
 
 // ───────── «Claude Code»: the slides drawn in code in the person's browser ─────────
@@ -419,19 +475,27 @@ const pictureFrom = (prompt: string) => `The full picture of this slide, with ca
 
 /** The brief of one slide for «حيدرا ماكس»: the slide's full prompt (its exact writing), the shape, slide 1 and the
  * person's pictures as references — and its painted picture, made now by GPT Image 2 (no writing) when it needs one. */
-async function codeSlide(userId: string, chatId: string, messages: Chat["messages"], p: PendingProduce, s: PendingProduce["slides"][number], total: number, slide1: Slide | null, who: DeskWho, stage: "still" | "motion" = "motion"): Promise<CodeSlide> {
-  let art = p.arts?.[String(s.n)] ?? null;
+/** What a slide's picture is painted from (GPT Image 2, no writing), or "" when the slide has none; and whether it is an element. */
+function pictureBrief(p: PendingProduce, s: PendingProduce["slides"][number]): { brief: string; element: boolean } {
   const car = p.carouselId ? findCarouselStyle(p.carouselId) : null;
-  const font = p.fontId ? findContentFont(p.fontId) : null;
-  const pal = p.paletteId ? findPalette(p.paletteId) : null;
   // the third way paints every slide; so does a realistic style with no pictures of the person's: realistic things are never drawn in code
   const hasOwn = (p.refs?.length ?? 0) > 0;
   // a motion carousel paints only by the way the person picked (cheapest first): «حيدرا ماكس» alone draws everything in code
   // (a realistic style with none of the person's pictures still gets its picture painted: realistic things are never drawn in code)
   const route = p.motion?.route === "code" && car?.photoIdea && !hasOwn ? "picture" : p.motion?.route;
   const brief = route === "code" ? "" : route ? (s.picture ?? pictureFrom(s.prompt)) : (s.picture ?? (p.mix || (car?.photoIdea && !hasOwn) ? pictureFrom(s.prompt) : ""));
-  const element = route === "elements";
-  if (!art && brief) {
+  return { brief, element: route === "elements" };
+}
+
+/** Paints slide `s`'s picture with GPT Image 2 (kept in p.arts, saved with the carousel); null when the slide has none. */
+async function paintArt(userId: string, chatId: string, messages: Chat["messages"], p: PendingProduce, s: PendingProduce["slides"][number], who: DeskWho): Promise<string | null> {
+  let art = p.arts?.[String(s.n)] ?? null;
+  if (art) return art;
+  const { brief, element } = pictureBrief(p, s);
+  if (!brief) return null;
+  const car = p.carouselId ? findCarouselStyle(p.carouselId) : null;
+  const pal = p.paletteId ? findPalette(p.paletteId) : null;
+  {
     // the person's own pictures guide the painting (a product, a logo's colours); it never carries any writing
     const { list } = await attachmentsOf(userId, p.refs ?? []);
     const refs = list.filter((a) => a.kind === "image").slice(0, 6).map((a, i) => ({ uploadId: a.id, name: `ref${i + 1}` }));
@@ -460,6 +524,15 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
       throw new UserError(e instanceof DeskError ? e.reason : "ما قدر جواد يرسم صورة الشريحة الحين؛ جرّب مرة ثانية.", 502);
     }
   }
+  return art;
+}
+
+async function codeSlide(userId: string, chatId: string, messages: Chat["messages"], p: PendingProduce, s: PendingProduce["slides"][number], total: number, slide1: Slide | null, who: DeskWho, stage: "still" | "motion" = "motion"): Promise<CodeSlide> {
+  const car = p.carouselId ? findCarouselStyle(p.carouselId) : null;
+  const font = p.fontId ? findContentFont(p.fontId) : null;
+  const pal = p.paletteId ? findPalette(p.paletteId) : null;
+  const { element } = pictureBrief(p, s);
+  const art = await paintArt(userId, chatId, messages, p, s, who);
   const links = await producedLinks(userId, chatId);
   const refs: string[] = [];
   if (slide1 && s.n !== 1) {
