@@ -201,3 +201,11 @@ describe("a failed slide tried again", () => {
     expect(produce).toContain("...(keptArts && slides.every((sl) => arts[String(sl.n)]) ? { picturesOk: true } : {}),");
   });
 });
+
+describe("«حوّله ريل»", () => {
+  it("reads the slides' videos fresh from storage (the player's cached copy is refused to a script)", () => {
+    const reel = readFileSync("src/components/jawad/content/slides-reel.ts", "utf8");
+    expect(reel).toContain("new UrlSource(s.video, { maxCacheSize: Infinity, requestInit: NO_CACHE })");
+    expect(reel).toContain("fetch(url, NO_CACHE)");
+  });
+});
