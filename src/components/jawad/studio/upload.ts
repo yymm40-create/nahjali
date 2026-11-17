@@ -16,7 +16,8 @@ const KIND_AR: Record<UploadKind, string> = { image: "صورة", video: "فيد�
 /** Reads what the file really is (first bytes) and its pixels / duration from the browser's own decoder. */
 export async function probeFile(file: File, expected?: RefKind): Promise<LocalProbe> {
   if (file.size > MAX_UPLOAD_BYTES) throw new Error("حجم الملف أكبر من ٢٠٠ ميجا.");
-  const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+  // the first megabyte: an M4A with a generic MPEG-4 brand is told from a video by its track handlers (lib/jawad/media sniff)
+  const head = new Uint8Array(await file.slice(0, 1_048_576).arrayBuffer());
   const s = sniff(head);
   if (!s || !UPLOAD_MIMES[s.mime]) throw new Error("نوع الملف غير مقبول (المقبول: PNG/JPG/WEBP، MP4/MOV، صوت بأي صيغة: MP3/WAV/M4A/AAC/OGG/OPUS/FLAC/AMR/AIFF/WebM).");
   if (expected && s.kind !== expected) throw new Error(`هذا الملف ${KIND_AR[s.kind]} وليس ${KIND_AR[expected]}.`);

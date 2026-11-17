@@ -14,6 +14,14 @@ export type AudioMime = "audio/mpeg" | "audio/wav" | "audio/mp4" | "audio/aac" |
 
 const ascii = (b: Uint8Array, at: number, len: number) => String.fromCharCode(...b.subarray(at, at + len));
 
+/** Whether an MPEG-4 file's bytes hold a track handler of this type ("hdlr" box: its handler type sits 12 bytes in). */
+function hasHandler(b: Uint8Array, type: "soun" | "vide"): boolean {
+  for (let i = 0; i + 16 <= b.length; i++) {
+    if (b[i] === 0x68 && b[i + 1] === 0x64 && b[i + 2] === 0x6c && b[i + 3] === 0x72 && ascii(b, i + 12, 4) === type) return true;
+  }
+  return false;
+}
+
 /** The real type of a file from its first bytes (16 are enough). */
 export function sniff(b: Uint8Array): Sniffed {
   if (b.length < 12) return null;
@@ -26,6 +34,9 @@ export function sniff(b: Uint8Array): Sniffed {
     if (brand === "qt  ") return { kind: "video", mime: "video/quicktime" };
     // audio-only MPEG-4 brands: an M4A sound (iPhone voice memos, iTunes, most phone recorders)
     if (/^(M4A |M4B |M4P |F4A |F4B )$/.test(brand)) return { kind: "audio", mime: "audio/mp4" };
+    // a generic brand (isom, mp42, dash…) on a sound only: YouTube's and many apps' M4A. Its tracks' handlers say so —
+    // a sound track and no picture track (read from the bytes given; the page reads the first megabyte)
+    if (hasHandler(b, "soun") && !hasHandler(b, "vide")) return { kind: "audio", mime: "audio/mp4" };
     return { kind: "video", mime: "video/mp4" };
   }
   // a PDF: the robots read it themselves (a lecture, a report, a form to follow)
