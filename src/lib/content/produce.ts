@@ -95,6 +95,8 @@ export interface CodeSlide {
   still?: { code: string; fonts: { head: string; body: string } };
   /** «✏️ عدّل الشريحة»: the person's words for a change to `program` — it is patched, not written again */
   change?: string;
+  /** the approved on-slide text: every word of it must be in the program (checked on the page, free) */
+  text?: string;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -661,6 +663,7 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
   const still = motion && !kept ? await stillProgram(p.stills?.[String(s.n)]?.program) : null;
   return {
     n: s.n,
+    text: s.text,
     prompt: soundNote ? `${body}\n\n${soundNote}` : body,
     ...(p.motion && stage === "still" ? { stage: "still" as const } : {}),
     ...(still ? { still } : {}),

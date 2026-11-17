@@ -590,6 +590,20 @@ const stopped = (o: DrawOptions) => {
  * a sheet of its frames and rewrites it below the bar, then the page renders the best one to MP4 with its sound (the
  * scene's own sound() and the library's effects at its cues). `png` is its last frame.
  */
+/** Arabic as compared: no diacritics or tatweel, one alef, ta marbuta and alef maqsura as written plainly. */
+const plainArabic = (t: string) => t.normalize("NFKC").replace(/[\u064B-\u065F\u0670\u0640]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه");
+
+/**
+ * The approved words a slide's program does not write (free, exact: the program holds every word it shows as text). A
+ * customer's slide showed «اثنين: علاقات بين القراء» for «ثانيًا: علاقات على أساس العلم» and dropped its sentence, and
+ * the picture check passed it (18 Nov 2026).
+ */
+export function missingWords(code: string, text: string): string[] {
+  const inCode = plainArabic(code);
+  const words = plainArabic(text).split(/[\s،,.:؛!؟?«»"()\-–]+/).filter((w) => /[\u0621-\u064A]{2,}/.test(w));
+  return [...new Set(words.filter((w) => !inCode.includes(w)))];
+}
+
 async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
   const { assets, call: callFull } = await prepare({ ...o, photos: (o.photos ?? []).slice(0, PHOTOS_PER_ROUND) });
   // a slide set aside once (its answer ran past the time) comes back last with lighter thinking; the page sets the slide
@@ -618,6 +632,17 @@ async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
     if (kept) o.onStep({ text: `♻️ برنامج الشريحة ${m.n} محفوظ — نكمّل من عنده بدون كتابة جديدة…` });
     w = kept ? { code: kept.code, problems: [], fonts: kept.fonts, size: kept.size, notes: "", coins: 0 } : await call<Wrote>({ action: "write" });
     coins += w.coins ?? 0;
+  }
+  // every approved word must be written: a program that leaves words out (or rewords them) gets ONE patch for exactly that
+  const expect = typeof o.extra?.expectText === "string" ? o.extra.expectText.trim() : "";
+  const missing = expect && w.code ? missingWords(w.code, expect) : [];
+  if (missing.length) {
+    o.onStep({ text: `✍️ نص الشريحة ${m.n} ناقص أو متغيّر — حيدرا ماكس يصلّحه بالنص المعتمد حرفيًا…` });
+    const f = await call<Wrote>({ action: "write", code: w.code, fixRound: 0, errors: `TEXT CHECK: the slide must show the APPROVED text exactly, word for word, every word, nothing reworded, nothing added, nothing left out:\n${expect}\nThese approved words are missing from the program: ${missing.join(" ، ")}. Put the exact approved text in (keep the design, the layout and the motion).` }).catch(() => null);
+    if (f?.code) {
+      coins += f.coins ?? 0;
+      w = { ...f, size: w.size };
+    }
   }
   let code = w.code;
   let problems = w.problems;
