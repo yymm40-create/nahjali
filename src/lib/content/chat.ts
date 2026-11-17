@@ -500,7 +500,38 @@ export async function say(userId: string, chatId: string | null, message: string
       // person's words over the same approved pictures (the owner, 17 Nov 2026: an edit in the chat wrote the slide from zero)
       const patch = !files.length ? await chatEditPatch(userId, chatId ?? "", block, slides, said).catch(() => null) : null;
       if (patch) pending = { ...pending, ...patch };
-      messages[fixAt] = { ...history[fixAt], slides: { ...block, todo: slides.map((x) => x.n), failed: pending.carry, running: true, report: undefined } };
+      else if (block.motion) {
+        // a slide that stands in the carousel as its approved picture (never animated yet) keeps that picture: it is not
+        // painted again unless he wrote a NEW picture for it (18 Nov 2026: slides asked again were repainted and approved again)
+        const arts: Record<string, string> = {};
+        for (const sl of slides) {
+          const it = block.items.find((x) => x.n === sl.n);
+          if (!it || !/^(picture|element)-/.test(it.name)) continue;
+          const before = String((await producedRow(userId, it.fileId).catch(() => null))?.meta.picture ?? "").trim();
+          if (!sl.picture || sl.picture.trim() === before) arts[String(sl.n)] = it.fileId;
+        }
+        if (Object.keys(arts).length) pending = { ...pending, arts: { ...(pending.arts ?? {}), ...arts } };
+      }
+      // the carousel still being made goes on with it: its slides not made yet are kept in this order, with their pictures,
+      // programs and sound times (a change asked half way replaced it, and the slides left were never made, 18 Nov 2026)
+      if (unfinished && unfinished.at === fixAt && left.length) {
+        const more = unfinished.slides.filter((x) => left.includes(x.n) && !slides.some((y) => y.n === x.n));
+        if (more.length) {
+          const pick = <T,>(o: Record<string, T> | undefined) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => more.some((x) => String(x.n) === k)));
+          pending = {
+            ...pending,
+            slides: [...pending.slides, ...more].sort((x, y) => x.n - y.n),
+            arts: { ...pick(unfinished.arts), ...(pending.arts ?? {}) },
+            programs: { ...pick(unfinished.programs), ...(pending.programs ?? {}) },
+            soundTimes: { ...pick(unfinished.soundTimes), ...(pending.soundTimes ?? {}) },
+            ...(unfinished.sound !== undefined && pending.sound === undefined ? { sound: unfinished.sound } : {}),
+          };
+        }
+      }
+      // every slide has its approved picture: no second approval
+      if (block.motion && pending.slides.every((x) => pending!.arts?.[String(x.n)])) pending.picturesOk = true;
+      pending.carry = block.failed.filter((f) => !pending!.slides.some((x) => x.n === f.n));
+      messages[fixAt] = { ...history[fixAt], slides: { ...block, todo: pending.slides.map((x) => x.n), failed: pending.carry, running: true, report: undefined } };
     } else if (slides.length && hold) {
       // nothing is made until they choose: the question goes out, and their answer brings the slides back
       // (the table he offered himself, with his recommendations, stands in for the plain one)
