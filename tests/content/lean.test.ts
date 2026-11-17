@@ -298,6 +298,31 @@ describe("slides drawn again with the person's reference", () => {
     const p = chat().pending as unknown as { refs?: string[]; mode: string; slides: { n: number }[] };
     expect(p.mode).toBe("fix");
     expect(p.slides.map((x) => x.n)).toEqual([3, 4]);
-    expect(p.refs).toEqual(["img-new", "img-old"]);
+    // the newest picture is THE reference: not mixed with the carousel's old one
+    expect(p.refs).toEqual(["img-new"]);
+  });
+
+  it("the picture sent in an earlier message (after the carousel) still wins over the old one; with none sent since, the old one stays", async () => {
+    const made = [1, 2, 3, 4].map((n) => ({ n, fileId: `f${n}`, name: `slide-0${n}`, text: `ن${n}` }));
+    const base = [
+      { role: "user", text: START, files: [{ id: "img-old", kind: "image", name: "old.jpg" }] },
+      { role: "assistant", text: "تم", slides: { aspect: "2:3", items: made, todo: [], failed: [], running: false, total: 4, maker: "code", motion: { styleId: "kinetic-word", route: "picture", seconds: 5 } } },
+    ];
+    const fix = { ...empty, on: true, mode: "fix", refs: [], slides: [3].map((n) => ({ n, text: `ن${n}`, prompt: `p${n}`, picture: `pic${n}` })) };
+    db.chat = { id: "chat-1", title: "t", record: "", usd: 0, spentHalalas: 0, updatedAt: "", pending: null, messages: [...base, { role: "user", text: "هذي صورتي", files: [{ id: "img-a", kind: "image", name: "a.jpg" }, { id: "img-b", kind: "image", name: "b.jpg" }] }, { role: "assistant", text: "وصلت" }] } as never;
+    // she points at one of them
+    answer({ produce: { ...fix, refs: ["img-b"] } });
+    await say("u", "chat-1", "استخدم الصورة الثانية وأعد الشريحة ٣", []);
+    expect((chat().pending as unknown as { refs: string[] }).refs).toEqual(["img-b"]);
+    // she does not: the latest message's pictures
+    db.chat = { id: "chat-1", title: "t", record: "", usd: 0, spentHalalas: 0, updatedAt: "", pending: null, messages: [...base, { role: "user", text: "هذي صورتي", files: [{ id: "img-a", kind: "image", name: "a.jpg" }] }, { role: "assistant", text: "وصلت" }] } as never;
+    answer({ produce: fix });
+    await say("u", "chat-1", "أعد الشريحة ٣", []);
+    expect((chat().pending as unknown as { refs: string[] }).refs).toEqual(["img-a"]);
+    // nothing new: the carousel's own
+    db.chat = { id: "chat-1", title: "t", record: "", usd: 0, spentHalalas: 0, updatedAt: "", pending: null, messages: base } as never;
+    answer({ produce: fix });
+    await say("u", "chat-1", "أعد الشريحة ٣", []);
+    expect((chat().pending as unknown as { refs: string[] }).refs).toEqual(["img-old"]);
   });
 });
