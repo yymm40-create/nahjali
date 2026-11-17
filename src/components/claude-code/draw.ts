@@ -437,9 +437,13 @@ async function drawOnce(o: DrawOptions): Promise<DrawResult> {
   const fonts = w.fonts;
   const [W, H] = w.size;
   const host = new SceneHost();
+  // a motion carousel's still (stage 1) gets ONE look, and the fix it asks for is drawn without a second look — faster
+  // (the owner, 17 Nov 2026: «سو الاسرع»)
+  const quick = o.extra?.stillFor === "motion";
+  const rounds = quick ? 2 : CODE_ROUNDS;
   try {
     let best: DrawResult | null = null;
-    for (let round = 1; round <= CODE_ROUNDS; round++) {
+    for (let round = 1; round <= rounds; round++) {
       let bm: ImageBitmap | null = null;
       for (let fix = 0; ; fix++) {
         if (o.signal?.aborted) throw Object.assign(new Error("⏹️ وقّفت الرسم."), { name: "AbortError" });
@@ -461,7 +465,12 @@ async function drawOnce(o: DrawOptions): Promise<DrawResult> {
       const png = await bitmapTo(bm, "image/png");
       const still = await bitmapTo(bm, "image/jpeg", 1280, 0.85);
       bm.close();
-      o.onStep({ text: `حيدرا ماكس يشوف الصورة ويقيّمها (جولة ${round} من ${CODE_ROUNDS})…`, preview: `data:image/jpeg;base64,${still}` });
+      // quick: the fix of the one look, drawn, is the result (no second look)
+      if (quick && round === 2) {
+        best = { ...best!, png, rounds: 2, program: { code, fonts, size: [W, H] } };
+        break;
+      }
+      o.onStep({ text: quick ? "حيدرا ماكس يشوف التصميم ويقيّمه (نظرة وحدة)…" : `حيدرا ماكس يشوف الصورة ويقيّمها (جولة ${round} من ${CODE_ROUNDS})…`, preview: `data:image/jpeg;base64,${still}` });
       const r = await call<Reviewed>({ action: "review", code, still, round });
       coins += r.coins ?? 0;
       best = { png, scores: r.review.scores, pass: r.review.pass, verdict: r.review.verdict, rounds: round, coins, program: { code, fonts, size: [W, H] } };
@@ -528,6 +537,11 @@ async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
       const png = await bitmapTo(last, "image/png");
       const still = await bitmapTo(last, "image/jpeg", 1280, 0.85);
       last.close();
+      // animating an approved still (stage 2): it runs and was checked frame by frame above — no review round (17 Nov 2026)
+      if (o.extra?.still) {
+        best = { result: { png, scores: {}, pass: true, verdict: "", rounds: 1, coins }, code };
+        break;
+      }
       // big enough cells for him to read the Arabic of every frame
       const sheet = await sheetAt(host, Array.from({ length: 12 }, (_, i) => Math.min((d * i) / 11, d - 1 / 30)), 4, 300);
       o.onStep({ text: `حيدرا ماكس يشوف فريمات الشريحة ${m.n} ويقيّمها (جولة ${round} من ${CODE_ROUNDS})…`, preview: `data:image/jpeg;base64,${still}` });

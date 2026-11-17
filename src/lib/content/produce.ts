@@ -289,7 +289,7 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
  * One call of the produce step: draws the next few slides, saves what exists, and says what is left. `retry` first
  * plans the drawing again of the given slides (or «failed»: all that failed) of the last carousel.
  */
-export async function produce(userId: string, chatId: string, o: { retry?: number[] | "failed"; owner?: boolean; email?: string | null; origin?: string; approvePictures?: boolean; redoPicture?: { n: number; note: string }; deferSlide?: number } = {}): Promise<Produced> {
+export async function produce(userId: string, chatId: string, o: { retry?: number[] | "failed"; owner?: boolean; email?: string | null; origin?: string; approvePictures?: boolean; redoPicture?: { n: number; note: string }; deferSlide?: number; exclude?: number[] } = {}): Promise<Produced> {
   let chat = await getChat(userId, chatId);
   if (!chat) throw new Error("chat not found");
   if (o.retry && (o.retry === "failed" || o.retry.length)) chat = await planRetry(userId, chat, o.retry);
@@ -347,10 +347,13 @@ export async function produce(userId: string, chatId: string, o: { retry?: numbe
     // a slide whose work ran past the time is set aside: the others go first, it comes back last with lighter thinking
     if (o.deferSlide && todo.some((s) => s.n === o.deferSlide) && !(p.deferred ?? []).includes(o.deferSlide)) p.deferred = [...(p.deferred ?? []), o.deferSlide];
     const later = new Set(p.deferred ?? []);
+    // the slides other workers of the page are drawing right now (up to three side by side) are not handed out again
+    const taken = new Set(o.exclude ?? []);
     const order = (list: typeof todo) => [...list.filter((s) => !later.has(s.n)), ...list.filter((s) => later.has(s.n))];
     // a motion carousel in two stages: every waiting slide's still first (slide 1 first), then each still is animated
-    const needStill = order(p.motion ? todo.filter((s) => !p.stills?.[String(s.n)]) : []);
-    const rest = order(todo);
+    const needStill = order(p.motion ? todo.filter((s) => !p.stills?.[String(s.n)] && !taken.has(s.n)) : []);
+    // a slide whose still is still being drawn is never animated before it
+    const rest = order(todo.filter((s) => !taken.has(s.n) && (!p.motion || !!p.stills?.[String(s.n)] || !todo.some((x) => taken.has(x.n) && !p.stills?.[String(x.n)]))));
     const next = needStill.length ? (needStill.find((s) => s.n === 1 && !later.has(1)) ?? needStill[0]) : (rest.find((s) => s.n === 1 && !later.has(1)) ?? rest[0]);
     const state = await finish([]);
     const slide1 = p.made.find((s) => s.n === 1) ?? p.stills?.["1"]?.slide ?? base.get(1) ?? null;
