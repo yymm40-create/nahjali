@@ -38,7 +38,8 @@ import { checkSlide, fixNote, showsRealWoman, WOMAN_PROBLEM, type SlideCheck } f
 /** GPT Image 2 for the slides: the standard sizes (a 1:1 slide is 1024×1024), high quality for readable Arabic. */
 export const IMAGE_MODEL = "gpt-image-2-2026-04-21";
 export const IMAGE_TIER = "std" as const;
-export const IMAGE_QUALITY = "high" as const;
+/** GPT Image 2 at its medium quality and standard size by default (the owner, 17 Nov 2026: «التلقائي الجودة المتوسطة والعادية») */
+export const IMAGE_QUALITY = "medium" as const;
 /** Slides asked of جواد at once in one call (after the first): his desk keeps three jobs going at most. */
 const CHUNK = 2;
 /** The server's limit is 300 s: a call never works past HARD (a try and its check included), and starts no new try after SOFT. */
@@ -88,6 +89,8 @@ export interface CodeSlide {
   stage?: "still";
   /** set aside once (it ran past the time): this time with lighter thinking */
   light?: true;
+  /** this slide's program kept before (it already ran): the page goes on from it without writing again */
+  program?: { code: string; fonts: { head: string; body: string }; size: [number, number] };
   /** stage 2: the approved still's program, which he animates (instead of writing the slide from zero) */
   still?: { code: string; fonts: { head: string; body: string } };
 }
@@ -351,9 +354,11 @@ export async function produce(userId: string, chatId: string, o: { retry?: numbe
     const taken = new Set(o.exclude ?? []);
     const order = (list: typeof todo) => [...list.filter((s) => !later.has(s.n)), ...list.filter((s) => later.has(s.n))];
     // a motion carousel in two stages: every waiting slide's still first (slide 1 first), then each still is animated
-    const needStill = order(p.motion ? todo.filter((s) => !p.stills?.[String(s.n)] && !taken.has(s.n)) : []);
+    // no separate still design: the approved picture IS the still, he writes each moving slide ONCE over it (the owner,
+    // 17 Nov 2026: «خلاص صورة مستوية ليش اكتب كودها؟»; stills kept from before still animate)
+    const needStill: typeof todo = [];
     // a slide whose still is still being drawn is never animated before it
-    const rest = order(todo.filter((s) => !taken.has(s.n) && (!p.motion || !!p.stills?.[String(s.n)] || !todo.some((x) => taken.has(x.n) && !p.stills?.[String(x.n)]))));
+    const rest = order(todo.filter((s) => !taken.has(s.n)));
     const next = needStill.length ? (needStill.find((s) => s.n === 1 && !later.has(1)) ?? needStill[0]) : (rest.find((s) => s.n === 1 && !later.has(1)) ?? rest[0]);
     const state = await finish([]);
     const slide1 = p.made.find((s) => s.n === 1) ?? p.stills?.["1"]?.slide ?? base.get(1) ?? null;
@@ -567,13 +572,16 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
     }
   }
   const body = artUrl ? `${prompt}\n\n${motion ? (element ? ELEMENT_NOTE : PICTURE_NOTE) : p.mix ? MIX_NOTE : ART_NOTE}` : prompt;
+  // a program kept before a refresh (it already ran): the page goes on from it
+  const kept = motion ? await keptProgram(p.programs?.[String(s.n)]) : null;
   // stage 2: the approved still he animates
-  const still = motion ? await stillProgram(p.stills?.[String(s.n)]?.program) : null;
+  const still = motion && !kept ? await stillProgram(p.stills?.[String(s.n)]?.program) : null;
   return {
     n: s.n,
     prompt: soundNote ? `${body}\n\n${soundNote}` : body,
     ...(p.motion && stage === "still" ? { stage: "still" as const } : {}),
     ...(still ? { still } : {}),
+    ...(kept ? { program: kept } : {}),
     aspect: p.aspect,
     refs: refs.slice(0, 4),
     photos: artUrl ? [artUrl] : [],
@@ -603,6 +611,36 @@ export async function codeSlideFailed(userId: string, chatId: string, b: { n?: u
 }
 
 const stillPath = (userId: string, chatId: string, pid: string, n: number) => `content-stills/${userId}/${chatId}/${pid}-${n}.json`;
+const programPath = (userId: string, chatId: string, pid: string, n: number) => `content-programs/${userId}/${chatId}/${pid}-${n}.json`;
+
+async function keptProgram(path: string | undefined): Promise<CodeSlide["program"] | null> {
+  if (!path) return null;
+  try {
+    const { data } = await storage.from(JAWAD_BUCKET).download(path);
+    if (!data) return null;
+    const j = JSON.parse(await data.text()) as { code?: unknown; fonts?: { head?: unknown; body?: unknown }; size?: unknown };
+    const size = Array.isArray(j.size) && j.size.length === 2 ? ([Number(j.size[0]), Number(j.size[1])] as [number, number]) : null;
+    if (typeof j.code !== "string" || !j.code.trim() || !size || !size[0] || !size[1]) return null;
+    return { code: j.code, fonts: { head: String(j.fonts?.head ?? ""), body: String(j.fonts?.body ?? "") }, size };
+  } catch {
+    return null;
+  }
+}
+
+/** A motion slide's program that runs, kept on the server (a refresh of the page goes on from it). */
+export async function saveSlideProgram(userId: string, chatId: string, b: { n?: unknown; code?: unknown; fonts?: unknown; size?: unknown }): Promise<{ ok: boolean }> {
+  const chat = await getChat(userId, chatId);
+  const p = chat?.pending;
+  const n = Number(b.n);
+  if (!chat || !p || p.maker !== "code" || !p.slides.some((s) => s.n === n) || typeof b.code !== "string" || !b.code.trim()) return { ok: false };
+  const path = programPath(userId, chatId, p.id, n);
+  const fonts = (b.fonts && typeof b.fonts === "object" ? b.fonts : {}) as { head?: unknown; body?: unknown };
+  const size = Array.isArray(b.size) ? b.size.slice(0, 2).map(Number) : [];
+  await storage.from(JAWAD_BUCKET).upload(path, Buffer.from(JSON.stringify({ code: b.code.slice(0, 160_000), fonts: { head: String(fonts.head ?? ""), body: String(fonts.body ?? "") }, size })), { contentType: "application/json", upsert: true });
+  p.programs = { ...(p.programs ?? {}), [String(n)]: path };
+  await saveChat(userId, chatId, { messages: chat.messages, pending: p });
+  return { ok: true };
+}
 
 /** A kept still program (stage 1 of a motion carousel), or null. */
 async function stillProgram(path: string | undefined): Promise<CodeSlide["still"] | null> {

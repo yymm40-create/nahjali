@@ -26,6 +26,9 @@ import { joinSlidesToReel } from "./slides-reel";
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean; video?: string; videoUrl?: string | null; videoDownload?: string | null }
 interface FailView { n: number; reason: string; detail?: string; text: string }
+/** «حيدرا ماكس» designs and moves the slides with «الرشيق» (the owner, 17 Nov 2026: «خله بنموذج الرشيق!!»). */
+const HAIDARA_MODEL = "claude-sonnet-5-5";
+
 /** Ways to spend less, shown to the person under the chat (the owner, 17 Nov 2026: «حطها كنصائح تطلع للعميل»). */
 const SAVING_TIPS = [
   "اختر نموذج «الرشيق» للخطوات البسيطة (تفريغ الكلام، تأكيد الخيارات، تعديل جملة)، وارجع لـ«الأصيل» للكتابة الإبداعية فقط.",
@@ -723,7 +726,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     if (looping.current.has(`p:${id}`)) return;
     looping.current.add(`p:${id}`);
     setBusy("producing");
-    type Step = { spent?: number; aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; phase?: "pictures" | "approve"; motion?: true; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number } }; sfx?: Record<string, string>; stage?: "still"; still?: { code: string; fonts: { head: string; body: string } }; light?: true }; deferred?: number[] };
+    type Step = { spent?: number; aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; phase?: "pictures" | "approve"; motion?: true; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number } }; sfx?: Record<string, string>; stage?: "still"; still?: { code: string; fonts: { head: string; body: string } }; light?: true; program?: { code: string; fonts: { head: string; body: string }; size: [number, number] } }; deferred?: number[] };
     const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, phase: r.phase, deferred: r.deferred, ...(r.motion && !old?.motion ? { motion: true } : {}), ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}), ...(r.code?.mix || old?.mix ? { mix: true } : {}), ...(r.code?.motion || old?.motion ? { motion: r.code?.motion ?? old?.motion } : {}) }));
     // up to three slides at the same time (the owner, 17 Nov 2026: «سو الاسرع… شكله ٣»): each worker asks for a slide nobody
     // is drawing, draws it here and sends it back. The calls to the produce step go one at a time (the carousel is saved by
@@ -760,11 +763,11 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       const stillStage = code.stage === "still";
       const lighter = code.light === true;
       stepOf(n, lighter ? "↩️ رجعنا لها بطريقة أخف وأسرع…" : stillStage ? "🖼️ المرحلة ١: تصميمها الثابت…" : code.still ? "🎬 المرحلة ٢: تحريك تصميمها الجاهز…" : "حيدرا ماكس يبدأ…");
-      const extra = { ...(stillStage ? { stillFor: "motion" } : code.still ? { still: code.still.code, stillFonts: code.still.fonts } : {}), ...(lighter ? { light: true } : {}) };
+      const extra = { ...(stillStage ? { stillFor: "motion" } : code.still ? { still: code.still.code, stillFonts: code.still.fonts } : {}), ...(lighter ? { light: true } : {}), ...(code.program ? { program: code.program } : {}) };
       // each slide on its own (16 Nov 2026): a slide that cannot be drawn is recorded as failed and the others go on;
       // stopped by the person, or no balance left: everything stops as before
       try {
-        const drawn = await drawWithCode({ prompt: code.prompt, aspect: code.aspect, style: code.style ?? "", references: refs, photos: code.photos ?? [], model: claudeId.current, from: "content", motion, extra, onStep: (st) => stepOf(n, st.text) });
+        const drawn = await drawWithCode({ prompt: code.prompt, aspect: code.aspect, style: code.style ?? "", references: refs, photos: code.photos ?? [], model: HAIDARA_MODEL, from: "content", motion, extra, onStep: (st) => stepOf(n, st.text), onProgram: (prog) => produceCall({ saveProgram: { n, ...prog } }) });
         let video: string | undefined;
         if (drawn.video) {
           stepOf(n, "⬆️ أرفع الفيديو…");
