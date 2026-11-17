@@ -47,10 +47,11 @@ export const MOTION_CAROUSEL_QUESTION: Question = { label: MOTION_CAROUSEL_LABEL
 export const ROUTE_LABEL = "طريقة صنع الحركة";
 export const ROUTE_QUESTION: Question = { label: ROUTE_LABEL, kind: "choice", options: MOTION_ROUTES.map((r) => r.label), multi: false };
 
-/** About what one slide's GPT Image 2 picture costs the person (halalas): its default price, high quality, a short prompt. */
+/** About what one slide's GPT Image 2 picture costs the person (halalas): its default price at the quality the slides are
+ * painted at (medium, standard size — IMAGE_QUALITY in produce.ts; the note said the high quality's price after the default went to medium), a short prompt. */
 export function slidePictureHalalas(): number {
   const def = generatorById(GPT_IMAGE_2_ID);
-  const per = def?.priceKeys.find((k) => k.key === "out:high:std")?.defaultCenti ?? 0;
+  const per = def?.priceKeys.find((k) => k.key === "out:medium:std")?.defaultCenti ?? 0;
   const kb = def?.priceKeys.find((k) => k.key === "prompt:1kb")?.defaultCenti ?? 0;
   return coinsOf(per + 3 * kb, "image");
 }
@@ -289,7 +290,8 @@ export function carouselHold(history: Turn[], slides = 6): CarouselHold | null {
     return { question: FONT_QUESTION, note: ready ? `⏸️ اختر الخط: هذا الستايل معه خط جاهز «${ready.name}»، أو اختر غيره من القائمة.` : "⏸️ اختر الخط من القائمة، أو خلني أختاره لك." };
   }
   // still or motion (asked of carousels made from the table; an older conversation stays a still carousel)
-  const kind = fromTable ? pickedKind(history) : "still";
+  // (the motion path is motion whatever way the style was picked: named in the person's own words too)
+  const kind = pathOf(history) === "motion-carousel" ? "motion" : fromTable ? pickedKind(history) : "still";
   if (!kind) return { question: KIND_QUESTION, note: "⏸️ الكاروسيل ثابت (صور) أو موشن كاروسيل (كل شريحة فيديو قصير يتحرك فيه الكلام بصوت خفيف)؟" };
   if (kind === "motion") {
     const motion = pickedMotionStyle(history);

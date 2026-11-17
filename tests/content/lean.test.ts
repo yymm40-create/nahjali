@@ -181,3 +181,10 @@ describe("the answers button", () => {
     expect(page).toContain('onSend={(t) => void send([q.trim(), t].filter(Boolean).join("\\n"))}');
   });
 });
+
+describe("the price note of the last step", () => {
+  it("is the price of the quality the slides are painted at", async () => {
+    const { IMAGE_QUALITY, IMAGE_TIER } = await import("@/lib/content/produce");
+    expect(readFileSync("src/lib/content/maker.ts", "utf8")).toContain(`k.key === "out:${IMAGE_QUALITY}:${IMAGE_TIER}")`);
+  });
+});
