@@ -765,3 +765,12 @@
 .ct-time-row input { width: 84px; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; font: inherit; text-align: center; }
 .ct-time .ct-warn { color: #e5484d; display: block; }
 .ct-time textarea { display: block; width: 100%; box-sizing: border-box; margin: 8px 0; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; font: inherit; resize: vertical; }
+.ct-rules { display: grid; gap: 6px; margin: 8px 0; }
+.ct-rule { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ct-rule > span { font-weight: 700; min-width: 88px; font-size: .9em; }
+.ct-chip { padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; font: inherit; font-size: .85em; cursor: pointer; }
+.ct-chip.on { background: #3b82f6; border-color: #3b82f6; color: #fff; }
+.ct-rule input[type="color"] { width: 32px; height: 28px; padding: 0; border: none; background: none; }
+.ct-rule select { padding: 4px 8px; border-radius: 8px; background: transparent; color: inherit; font: inherit; }
+.ct-all { display: block; margin: 6px 0; }
+.ct-all small { display: block; opacity: .75; }

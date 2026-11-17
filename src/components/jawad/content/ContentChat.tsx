@@ -445,6 +445,21 @@ function ReelButton({ items }: { items: SlideView[] }) {
 }
 
 /** The carousel of an answer: tiles in order, the drawing ones as moving placeholders, each made one with its check. */
+/** «✏️ عدّل الشريحة»: a slide's own rules as ready choices — each press adds one clear line to the change. */
+export const SLIDE_RULES: { label: string; opts: string[] }[] = [
+  { label: "حركة الدخول", opts: ["من اليمين", "من اليسار", "من تحت", "من فوق", "تكبير من الوسط", "ظهور ناعم", "كلمة كلمة", "بدون حركة دخول"] },
+  { label: "السرعة", opts: ["أبطأ", "أسرع", "هادئة وثابتة"] },
+  { label: "مكان الصورة", opts: ["فوق", "في الوسط", "تحت", "تملأ الشريحة", "يمين", "يسار"] },
+  { label: "مكان الكتابة", opts: ["فوق", "في الوسط", "تحت"] },
+  { label: "حجم الكتابة", opts: ["أكبر", "أصغر"] },
+];
+
+/** The line a ready choice adds to the change («حركة الدخول: من اليمين»), once. */
+export function addRule(said: string, label: string, value: string): string {
+  const lines = said.split("\n").filter((l) => l.trim() && !l.startsWith(`${label}:`));
+  return [...lines, `${label}: ${value}`].join("\n");
+}
+
 /** «0:12», «١٢», «1:05.5» or «12.5» → seconds; null when it is not a time. */
 export function parseClock(v: string): number | null {
   const t = v.trim().replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[٫,]/g, ".").replace(/[؛:]/g, ":");
@@ -457,7 +472,7 @@ export function parseClock(v: string): number | null {
   return Number.isFinite(all) ? all : null;
 }
 
-export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, onApprove, onRedoPicture, onSoundTime, onEditSlide, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; onApprove?: () => void; onRedoPicture?: (n: number, note: string) => void; onSoundTime?: (n: number, from: number, to: number) => void; onEditSlide?: (n: number, said: string) => void; step?: string | null }) {
+export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, onApprove, onRedoPicture, onSoundTime, onEditSlide, fonts, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; onApprove?: () => void; onRedoPicture?: (n: number, note: string) => void; onSoundTime?: (n: number, from: number, to: number) => void; onEditSlide?: (ns: number[], said: string) => void; fonts?: FontItem[]; step?: string | null }) {
   const ns = [...new Set([...s.items.map((i) => i.n), ...s.todo])].sort((a, b) => a - b);
   const done = s.items.filter((i) => !s.todo.includes(i.n)).length;
   // which picture is being asked again, and what should change in it (a field here: a browser popup does nothing in the
@@ -469,6 +484,10 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
   // «✏️ عدّل الشريحة»: a change to one made slide in the person's words (its program is patched, nothing repainted)
   const [editN, setEditN] = useState<number | null>(null);
   const [editSaid, setEditSaid] = useState("");
+  const [editAll, setEditAll] = useState(false);
+  const [ink, setInk] = useState("#ffffff");
+  const [ground, setGround] = useState("#111111");
+  const madeNs = s.items.filter((i) => i.videoUrl && !s.todo.includes(i.n)).map((i) => i.n);
   const [timeFrom, setTimeFrom] = useState("");
   const [timeTo, setTimeTo] = useState("");
   const tFrom = parseClock(timeFrom);
@@ -579,7 +598,7 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
                   <span className="tools">
                     {item.videoDownload ? <a href={item.videoDownload} download={`${item.name}.mp4`} title="حمّل الفيديو">⬇️</a> : item.download && <a href={item.download} download={`${item.name}.png`}>⬇️</a>}
                     <button type="button" disabled={busy} onClick={() => onRetry([n])} title="أعد رسم هذه الشريحة">🔁</button>
-                    {item.videoUrl && onEditSlide && <button type="button" disabled={busy} onClick={() => { setEditN(n); setEditSaid(""); setTimeN(null); }} title="عدّل هذه الشريحة بكلامك">✏️</button>}
+                    {item.videoUrl && onEditSlide && <button type="button" disabled={busy} onClick={() => { setEditN(n); setEditSaid(""); setEditAll(false); setTimeN(null); }} title="عدّل هذه الشريحة بكلامك">✏️</button>}
                     {item.videoUrl && onSoundTime && <button type="button" disabled={busy} onClick={() => { setTimeN(n); setTimeFrom(""); setTimeTo(""); setEditN(null); }} title="اختر وقت الصوت لهذه الشريحة">⏱️</button>}
                   </span>
                 </>
@@ -592,19 +611,52 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
         <div className="ct-redo ct-time">
           <b>✏️ تعديل الشريحة {editN}</b>
           <small> اكتب وش تبي يتغير فيها بالضبط (كلمة، لون، مكان الصورة، حركة الدخول، السرعة…). نعدّل برنامجها نفسه وكل شي ثاني يبقى مثل ما هو، بدون رسم صورة جديدة.</small>
-          <textarea rows={3} value={editSaid} onChange={(e) => setEditSaid(e.target.value)} placeholder="مثال: خل العنوان أكبر ولونه أزرق، والصورة تدخل من اليمين" />
+          <div className="ct-rules">
+            {SLIDE_RULES.map((g) => (
+              <div key={g.label} className="ct-rule">
+                <span>{g.label}</span>
+                {g.opts.map((o) => {
+                  const on = editSaid.split("\n").includes(`${g.label}: ${o}`);
+                  return <button key={o} type="button" className={`ct-chip ${on ? "on" : ""}`} onClick={() => setEditSaid((v) => addRule(v, g.label, o))}>{o}</button>;
+                })}
+              </div>
+            ))}
+            <div className="ct-rule">
+              <span>الألوان</span>
+              <input type="color" value={ink} onChange={(e) => setInk(e.target.value)} aria-label="لون الكتابة" />
+              <button type="button" className="ct-chip" onClick={() => setEditSaid((v) => addRule(v, "لون الكتابة", ink))}>لون الكتابة</button>
+              <input type="color" value={ground} onChange={(e) => setGround(e.target.value)} aria-label="لون الخلفية" />
+              <button type="button" className="ct-chip" onClick={() => setEditSaid((v) => addRule(v, "لون الخلفية", ground))}>لون الخلفية</button>
+            </div>
+            {fonts && fonts.length > 0 && (
+              <div className="ct-rule">
+                <span>الخط</span>
+                <select defaultValue="" onChange={(e) => { const f = fonts.find((x) => x.id === e.target.value); if (f) setEditSaid((v) => addRule(v, "الخط", `${f.name} (${f.id})`)); }}>
+                  <option value="" disabled>اختر خط</option>
+                  {fonts.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+          <textarea rows={3} value={editSaid} onChange={(e) => setEditSaid(e.target.value)} placeholder="اختر من فوق أو اكتب بكلامك، مثال: خل العنوان أكبر والصورة تدخل من اليمين" />
+          {madeNs.length > 1 && (
+            <label className="ct-all">
+              <input type="checkbox" checked={editAll} onChange={(e) => setEditAll(e.target.checked)} /> طبّق نفس التعديل على كل الشرائح ({madeNs.length})
+              {editAll && <small> كل شريحة تتعدّل لحالها، فالتكلفة تقريبًا {madeNs.length} أضعاف تعديل شريحة وحدة.</small>}
+            </label>
+          )}
           <button type="button" className="ct-mini" onClick={() => setEditN(null)}>إلغاء</button>
           <button
             type="button"
             className="ct-mini ct-go"
             disabled={busy || editSaid.trim().length < 2}
             onClick={() => {
-              onEditSlide(editN, editSaid.trim());
+              onEditSlide(editAll && madeNs.length > 1 ? madeNs : [editN], editSaid.trim());
               setEditN(null);
               setEditSaid("");
             }}
           >
-            عدّل الشريحة {editN}
+            {editAll && madeNs.length > 1 ? `عدّل كل الشرائح (${madeNs.length})` : `عدّل الشريحة ${editN}`}
           </button>
         </div>
       )}
@@ -1281,7 +1333,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                       onResume={() => chatId && void runProduce(chatId)}
                       onApprove={() => chatId && void runProduce(chatId, undefined, { approvePictures: true })}
                       onRedoPicture={(n, note) => chatId && void runProduce(chatId, undefined, { redoPicture: n, note })}
-                      onEditSlide={(n, said) => chatId && void runProduce(chatId, undefined, { editSlide: { n, said } })}
+                      onEditSlide={(ns, said) => chatId && void runProduce(chatId, undefined, { editSlide: { ns, said } })}
+                      fonts={gal?.fonts}
                       onSoundTime={(n, from, to) => chatId && void runProduce(chatId, undefined, { soundTime: { n, from, to } })}
                       step={codeStep}
                     />

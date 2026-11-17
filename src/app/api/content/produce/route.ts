@@ -24,8 +24,10 @@ export const POST = handle(async (req: Request) => {
   if (!chatId) throw new UserError("محادثة غير صحيحة.", 400);
   const retry = b.retry === "failed" ? ("failed" as const) : Array.isArray(b.retry) ? b.retry.map(Number).filter((n) => Number.isInteger(n) && n > 0 && n <= 40).slice(0, 40) : undefined;
   // «✏️ عدّل الشريحة»: the person's words for a change to one made slide (its program is patched, nothing repainted)
-  const es = b.editSlide && typeof b.editSlide === "object" ? (b.editSlide as { n?: unknown; said?: unknown }) : null;
-  const editSlide = es && Number.isInteger(Number(es.n)) && typeof es.said === "string" && es.said.trim() ? { n: Number(es.n), said: es.said.trim().slice(0, 1000) } : undefined;
+  // («طبّق على كل الشرائح»: the same words for several slides, each patched on its own)
+  const es = b.editSlide && typeof b.editSlide === "object" ? (b.editSlide as { n?: unknown; ns?: unknown; said?: unknown }) : null;
+  const editNs = es ? [...new Set((Array.isArray(es.ns) ? es.ns : [es.n]).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 20) : [];
+  const editSlide = es && editNs.length && typeof es.said === "string" && es.said.trim() ? { ns: editNs, said: es.said.trim().slice(0, 1000) } : undefined;
   // «⏱️ وقت الصوت»: the person types the time of a slide's sound («من ٠:١٢ إلى ٠:٢٠»)
   const st = b.soundTime && typeof b.soundTime === "object" ? (b.soundTime as { n?: unknown; from?: unknown; to?: unknown }) : null;
   const soundTime = st && Number.isInteger(Number(st.n)) && Number(st.from) >= 0 && Number(st.to) > Number(st.from) && Number(st.to) - Number(st.from) <= 60 ? { n: Number(st.n), from: Number(st.from), to: Number(st.to) } : undefined;
