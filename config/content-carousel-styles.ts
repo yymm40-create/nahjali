@@ -1335,15 +1335,22 @@ export function withoutColours(text: string): string {
     .trim();
 }
 
+/**
+ * The client's choices come first (the owner, 17 Nov 2026: «في أي تعارض تقدّم خيارات العميل، خصوصًا الأساسية»): told with
+ * every slide and picture made from a style the client changed in any way.
+ */
+export const CLIENT_FIRST = "THE CLIENT'S CHOICES COME FIRST: wherever the style's description and the client's own choices differ — the reference picture (the character's face, hair and clothes), the colours, the font, the size, anything they asked to add, remove or change — follow the client's choice and drop the style's. The style only fills in what the client did not decide.";
+
 /** The colour line that stands in for the style's own, when the person chose colours. */
 export const COLOURS_ARE_THE_CLIENTS = "COLOURS: the style's own colours are NOT used. Every colour — background, clothes, props, light, accents — comes ONLY from the CLIENT COLOURS given with this slide.";
 
-export function carouselStyleBlock(s: CarouselStyle, ownColours = false): string {
+export function carouselStyleBlock(s: CarouselStyle, ownColours = false, ownFont = false): string {
   const look = ownColours ? `${withoutColours(s.look)} ${COLOURS_ARE_THE_CLIENTS}` : s.look;
+  const type = ownFont ? "the CLIENT'S FONT given with this slide (the style's own type is not used); keep the style's sizes and weights" : s.type;
   return [
     `CAROUSEL STYLE "${s.id}" (verbatim; the whole carousel follows it so the slides read as one set; ${ownColours ? "its colours are replaced by the client's" : "its colours are fixed unless the client asked otherwise"}).`,
     `Look: ${look}`,
-    `Arabic type: ${s.type}`,
+    `Arabic type: ${type}`,
     `Cover slide: ${s.cover}`,
     `Inner slides: ${s.body}`,
     `Last slide: ${s.closing}`,
@@ -1352,8 +1359,9 @@ export function carouselStyleBlock(s: CarouselStyle, ownColours = false): string
 }
 
 /** What «حيدرا ماكس» is told about the chosen look (his «الستايل» field, at most 2000 characters). */
-export function carouselStyleForCode(s: CarouselStyle, ownColours = false): string {
+export function carouselStyleForCode(s: CarouselStyle, ownColours = false, ownFont = false): string {
   const look = ownColours ? `${withoutColours(s.look)} ${COLOURS_ARE_THE_CLIENTS}` : s.look;
   const code = ownColours ? withoutColours(s.code) : s.code;
-  return `${s.name}: ${look}\nType: ${s.type}\nHow to build it: ${code}\n${CAROUSEL_CODE_CRAFT}`;
+  const type = ownFont ? "the client's font (pinned above), at the style's sizes and weights" : s.type;
+  return `${s.name}: ${look}\nType: ${type}\nHow to build it: ${code}\n${CAROUSEL_CODE_CRAFT}`;
 }

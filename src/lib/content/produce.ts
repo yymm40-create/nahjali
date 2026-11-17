@@ -20,7 +20,7 @@ import { UserError } from "@/lib/api";
 import { unlimitedFor } from "@/lib/access";
 import { deskImage, deskReference, DeskError, type DeskOutput, type DeskReceipt, type DeskWho } from "./jawad";
 import { ARABIC_TEXT_RULES } from "@config/content-templates";
-import { carouselStyleBlock, carouselStyleForCode, COLOURS_ARE_THE_CLIENTS, findCarouselStyle, NO_REALISTIC_WOMEN, withoutColours } from "@config/content-carousel-styles";
+import { carouselStyleBlock, carouselStyleForCode, CLIENT_FIRST, COLOURS_ARE_THE_CLIENTS, findCarouselStyle, NO_REALISTIC_WOMEN, withoutColours } from "@config/content-carousel-styles";
 import { findContentFont, FONT_PIN, fontBlock } from "@config/content-fonts";
 import { findPalette, paletteBlock } from "@config/content-palettes";
 import { NO_TEXT_RULE } from "@config/designer";
@@ -129,7 +129,8 @@ export function slidePrompt(o: { n: number; total: number; prompt: string; style
         : `Slide ${o.n} of ${o.total} of one carousel. The reference picture is slide 1: match its design system EXACTLY — the same colours, typography, margins, layout grid, logo placement and decorative elements — so the carousel reads as one set. Only the content changes.`
       : `Slide ${o.n} of ${o.total} of a carousel (the first: it sets the design system every other slide will copy).`,
     o.userRefs ? `The client's own attached picture${o.userRefs > 1 ? "s are" : " is"} also given as reference${o.userRefs > 1 ? "s" : ""} (named ref1${o.userRefs > 1 ? "…" : ""}): use ${o.userRefs > 1 ? "them" : "it"} where the slide's brief asks (a logo, a photo, a product), exactly as ${o.userRefs > 1 ? "they are" : "it is"}, without redrawing or altering ${o.userRefs > 1 ? "them" : "it"}.` : "",
-    car ? carouselStyleBlock(car, !!pal) : "",
+    car ? carouselStyleBlock(car, !!pal, !!font) : "",
+    car && (pal || font || o.userRefs) ? CLIENT_FIRST : "",
     pal ? paletteBlock(pal) : "",
     font ? fontBlock(font) : "",
     style ? `ILLUSTRATION STYLE (verbatim; applies to every drawn character, object and scene — not to the lettering layout): ${style.text}` : "",
@@ -531,7 +532,7 @@ async function paintArt(userId: string, chatId: string, messages: Chat["messages
     const refs = list.filter((a) => a.kind === "image").slice(0, 6).map((a, i) => ({ uploadId: a.id, name: `ref${i + 1}` }));
     const style = p.styleId ? findStyle(p.styleId) : null;
     try {
-      const paint = (extra: string) => deskImage(who, { key: `c-${randomUUID().replace(/-/g, "")}`, kind: "image", prompt: [brief, element ? ELEMENT_RULE : "", pal ? paletteBlock(pal) : "", car ? `LOOK OF THE CAROUSEL (for the picture only): ${pal ? `${withoutColours(car.look)} ${COLOURS_ARE_THE_CLIENTS}` : car.look}` : "", style ? `ILLUSTRATION STYLE (verbatim): ${style.text}` : "", NO_REALISTIC_WOMEN, extra, NO_TEXT_RULE].filter(Boolean).join("\n\n"), aspect: p.aspect, resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
+      const paint = (extra: string) => deskImage(who, { key: `c-${randomUUID().replace(/-/g, "")}`, kind: "image", prompt: [brief, element ? ELEMENT_RULE : "", pal ? paletteBlock(pal) : "", car ? `LOOK OF THE CAROUSEL (for the picture only): ${pal ? `${withoutColours(car.look)} ${COLOURS_ARE_THE_CLIENTS}` : car.look}` : "", style ? `ILLUSTRATION STYLE (verbatim): ${style.text}` : "", car && (pal || refs.length) ? CLIENT_FIRST : "", NO_REALISTIC_WOMEN, extra, NO_TEXT_RULE].filter(Boolean).join("\n\n"), aspect: p.aspect, resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
       let r = await paint("");
       // a picture that came out with a realistic adult woman is painted once more; a second one stops the slide
       if ((await showsRealWoman(r.bytes)).woman) {
@@ -610,7 +611,7 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
     aspect: p.aspect,
     refs: refs.slice(0, 4),
     photos: artUrl ? [artUrl] : [],
-    ...(car || font || pal ? { style: [font ? `${FONT_PIN(font.id)} ${fontBlock(font)}` : "", pal ? paletteBlock(pal) : "", car ? carouselStyleForCode(car, !!pal) : ""].filter(Boolean).join("\n") } : {}),
+    ...(car || font || pal ? { style: [font ? `${FONT_PIN(font.id)} ${fontBlock(font)}` : "", pal ? paletteBlock(pal) : "", car ? carouselStyleForCode(car, !!pal, !!font) : "", car && (pal || font || mine.length) ? CLIENT_FIRST : ""].filter(Boolean).join("\n") } : {}),
     ...(p.mix ? { mix: true } : {}),
     ...(motion ? { motion } : {}),
   };
