@@ -1193,7 +1193,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                     </div>
                   )}
                   {i === lastAssistant && !busy && !loginHref && m.questions?.length ? (
-                    <Questions key={`q${i}-${msgs.length}`} questions={m.questions} gal={gal} styleId={styleBefore(msgs, i)} disabled={!!busy} onSend={(t) => void send(t)} onWrite={() => box.current?.focus()} />
+                    <Questions key={`q${i}-${msgs.length}`} questions={m.questions} gal={gal} styleId={styleBefore(msgs, i)} disabled={!!busy} onSend={(t) => void send([q.trim(), t].filter(Boolean).join("\n"))} onWrite={() => box.current?.focus()} />
                   ) : null}
                   {m.role === "assistant" && !m.error && !m.local && (
                     <div className="ct-actions"><button className="ct-mini" onClick={() => navigator.clipboard?.writeText(m.text).catch(() => null)}>انسخ</button></div>

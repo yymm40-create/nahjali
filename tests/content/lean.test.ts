@@ -174,3 +174,10 @@ describe("«حيدرا ماكس» writes a slide once", () => {
     expect(readFileSync("src/lib/content/produce.ts", "utf8")).toContain("(p.refs?.length ?? 0) > 0 ? await showsRealWoman(bytes)");
   });
 });
+
+describe("the answers button", () => {
+  it("sends what the person typed in the box with the pressed answers (it was dropped, and a paid answer went on the answers alone)", () => {
+    const page = readFileSync("src/components/jawad/content/ContentChat.tsx", "utf8");
+    expect(page).toContain('onSend={(t) => void send([q.trim(), t].filter(Boolean).join("\\n"))}');
+  });
+});
