@@ -13,6 +13,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { setChatSpent, userContentChats } from "@/lib/content/spent";
 import { getChat } from "@/lib/content/chats";
 import { planSlideFix, previewCodeSlide } from "@/lib/content/produce";
+import { producedLinks, producedRow } from "@/lib/content/files";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -110,6 +111,18 @@ export const POST = handle(async (req: Request) => {
         const { data } = await createAdminClient().from("content_chats").select("user_id").eq("id", id).maybeSingle();
         if (!data) throw new UserError("ما لقينا المحادثة.", 404);
         return NextResponse.json(await previewCodeSlide(String(data.user_id), id, Math.round(Number(b.n))));
+      }
+      // a made slide of a person's chat as the owner checks it: its record and links to its picture and video (1 hour)
+      case "slide_file": {
+        const { data } = await createAdminClient().from("content_chats").select("user_id").eq("id", id).maybeSingle();
+        if (!data) throw new UserError("ما لقينا المحادثة.", 404);
+        const uid = String(data.user_id);
+        const row = await producedRow(uid, String(b.fileId ?? ""));
+        if (!row) throw new UserError("ما لقينا الملف.", 404);
+        const links = await producedLinks(uid, id);
+        const video = typeof row.meta.video === "string" ? row.meta.video : null;
+        const meta = { ...row.meta, prompt: undefined };
+        return NextResponse.json({ name: row.name, meta, url: links.get(row.id) ?? null, video: video ? (links.get(video) ?? null) : null });
       }
       case "set_chat_spent": {
         const halalas = Math.round(Number(b.halalas));
