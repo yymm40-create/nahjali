@@ -193,3 +193,11 @@ describe("the price note of the last step", () => {
     expect(readFileSync("src/lib/content/maker.ts", "utf8")).toContain(`k.key === "out:${IMAGE_QUALITY}:${IMAGE_TIER}")`);
   });
 });
+
+describe("a failed slide tried again", () => {
+  it("keeps its painted, approved picture: no second painting and no second approval", () => {
+    const produce = readFileSync("src/lib/content/produce.ts", "utf8");
+    expect(produce).toContain('if (it && /^(picture|element)-/.test(it.name) && block.failed.some((f) => f.n === sl.n)) arts[String(sl.n)] = it.fileId;');
+    expect(produce).toContain("...(keptArts && slides.every((sl) => arts[String(sl.n)]) ? { picturesOk: true } : {}),");
+  });
+});

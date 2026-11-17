@@ -263,8 +263,20 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
       break;
     }
   }
+  // a slide that failed AFTER its picture was painted and approved (its program would not run) keeps that picture: it
+  // stands in the slide's place in the carousel («picture-…» / «element-…»). Trying the slide again painted a NEW picture
+  // (paid again, and not the one the person approved) and asked for the approval a second time
+  const arts: Record<string, string> = {};
+  for (const sl of slides) {
+    const it = block.items.find((x) => x.n === sl.n);
+    if (it && /^(picture|element)-/.test(it.name) && block.failed.some((f) => f.n === sl.n)) arts[String(sl.n)] = it.fileId;
+  }
+  const keptArts = Object.keys(arts).length > 0;
   const pending: PendingProduce = {
     ...(refs.length ? { refs } : {}),
+    ...(keptArts ? { arts } : {}),
+    // every slide tried again has its approved picture: no second approval
+    ...(keptArts && slides.every((sl) => arts[String(sl.n)]) ? { picturesOk: true } : {}),
     id: randomUUID(),
     aspect: block.aspect,
     slides,
