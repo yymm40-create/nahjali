@@ -66,6 +66,8 @@ export interface Produced {
   phase?: "pictures" | "approve";
   /** slides set aside after running past the time (they come back last) */
   deferred?: number[];
+  /** a motion carousel (the page shows its own progress words in every stage) */
+  motion?: true;
 }
 
 /** One slide «حيدرا ماكس» draws in the person's browser: its full brief (the exact writing in it), shape, references,
@@ -436,7 +438,7 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
   if (messages[at]) messages[at] = { ...messages[at], slides: block };
   await saveChat(userId, chatId, { messages, pending: left.length ? p : null, addUsd: usd });
 
-  return { chatId, aspect: p.aspect, slides: sorted, todo: left, failed: block.failed, running: left.length > 0 && phase !== "approve", total: block.total, report, usd: Math.round(usd * 10000) / 10000, ...(phase && left.length ? { phase } : {}), ...(block.deferred?.length ? { deferred: block.deferred } : {}) };
+  return { chatId, aspect: p.aspect, slides: sorted, todo: left, failed: block.failed, running: left.length > 0 && phase !== "approve", total: block.total, report, usd: Math.round(usd * 10000) / 10000, ...(phase && left.length ? { phase } : {}), ...(block.deferred?.length ? { deferred: block.deferred } : {}), ...(p.motion ? { motion: true } : {}) };
 }
 
 // ───────── «Claude Code»: the slides drawn in code in the person's browser ─────────
