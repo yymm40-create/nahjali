@@ -723,60 +723,113 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     if (looping.current.has(`p:${id}`)) return;
     looping.current.add(`p:${id}`);
     setBusy("producing");
-    let first = true;
     type Step = { spent?: number; aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; phase?: "pictures" | "approve"; motion?: true; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number } }; sfx?: Record<string, string>; stage?: "still"; still?: { code: string; fonts: { head: string; body: string } }; light?: true }; deferred?: number[] };
     const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, phase: r.phase, deferred: r.deferred, ...(r.motion && !old?.motion ? { motion: true } : {}), ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}), ...(r.code?.mix || old?.mix ? { mix: true } : {}), ...(r.code?.motion || old?.motion ? { motion: r.code?.motion ?? old?.motion } : {}) }));
-    try {
-      for (let guard = 0; guard < 80; guard++) {
-        let r = await postJson<Step>("/api/content/produce", { chatId: id, ...(first && retry ? { retry } : {}), ...(first && more ? more : {}) });
-        first = false;
-        show(r);
-        if (typeof r.spent === "number") setSpent(r.spent);
-        if (r.code) {
-          // «حيدرا ماكس»: the slide is drawn here in code (its painted picture placed in it), looked at and rewritten, then sent back
-          const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
-          if (r.code.photos?.length) setCodeStep(`🖼️ صورة الشريحة ${r.code.n} جاهزة من GPT Image 2 (بدون كتابة)`);
-          const motion = r.code.motion ? { n: r.code.n, ...r.code.motion, sfx: r.code.sfx } : null;
-          const n = r.code.n;
-          // a motion carousel in two stages: first every slide's still (sent back with its program), then each still animated
-          const stillStage = r.code.stage === "still";
-          if (stillStage) setCodeStep(`🖼️ المرحلة ١: أصمم الشريحة ${n} ثابتة (بعدها نحرّكها)…`);
-          else if (r.code.still) setCodeStep(`🎬 المرحلة ٢: حيدرا ماكس يحرّك تصميم الشريحة ${n} الجاهز…`);
-          const lighter = r.code.light === true;
-          if (lighter) setCodeStep(`↩️ رجعنا للشريحة ${n} اللي طوّلت — هالمرة بطريقة أخف وأسرع…`);
-          const extra = { ...(stillStage ? { stillFor: "motion" } : r.code.still ? { still: r.code.still.code, stillFonts: r.code.still.fonts } : {}), ...(lighter ? { light: true } : {}) };
-          // each slide on its own (the owner, 16 Nov 2026): a slide that cannot be drawn is recorded as failed and the next one
-          // starts; «أعد المحاولة» redraws it alone. Stopped by the person, or no balance left: everything stops as before.
-          let body: Record<string, unknown>;
-          try {
-            const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "content", motion, extra, onStep: (st) => setCodeStep(st.text) });
-            // a motion slide: its MP4 goes up as the person's upload, and the server records it with the slide
-            let video: string | undefined;
-            if (drawn.video) {
-              setCodeStep(`⬆️ أرفع فيديو الشريحة ${n}…`);
-              video = await putVideo(drawn.video, `slide-${String(n).padStart(2, "0")}.mp4`);
-            }
-            body = { n, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(video ? { video } : {}), ...(stillStage ? { stage: "still", program: drawn.program?.code ?? "", fonts: drawn.program?.fonts ?? null } : {}) };
-          } catch (e) {
-            const why = e instanceof Error ? e.message : "";
-            if ((e instanceof Error && e.name === "AbortError") || /رصيد|اشحن|الاتصال|متصفحك/.test(why)) throw e;
-            if (/تأخرت/.test(why) && !lighter) {
-              // each piece of work ends under 10 minutes (the owner, 17 Nov 2026): a slide that runs past it is set aside, the
-              // rest are made, and it comes back last with lighter thinking
-              setCodeStep(`⏭️ الشريحة ${n} طوّلت أكثر من ٩ دقايق — نكمّل باقي الشرائح ونرجع لها في الآخر بطريقة أخف`);
-              body = { deferSlide: n };
-            } else {
-              setCodeStep(`⚠️ الشريحة ${n} ما انرسمت — كمّلنا الباقي، وتقدر تعيدها لحالها بزر «أعد المحاولة»`);
-              body = { n, codeFailed: why || "ما انرسمت" };
-            }
-          }
-          setCodeStep(null);
-          r = await postJson<Step>("/api/content/produce", { chatId: id, ...body });
-          show(r);
-          if (typeof r.spent === "number") setSpent(r.spent);
+    // up to three slides at the same time (the owner, 17 Nov 2026: «سو الاسرع… شكله ٣»): each worker asks for a slide nobody
+    // is drawing, draws it here and sends it back. The calls to the produce step go one at a time (the carousel is saved by
+    // each), only the drawing itself runs side by side; the others start after slide 1 is done (it is the reference).
+    const PARALLEL = 3;
+    let chain: Promise<unknown> = Promise.resolve();
+    const produceCall = (body: Record<string, unknown>) => {
+      const run = chain.then(() => postJson<Step>("/api/content/produce", { chatId: id, ...body }));
+      chain = run.catch(() => undefined);
+      return run;
+    };
+    const busyNs = new Set<number>();
+    const steps = new Map<number, string>();
+    const showSteps = () => setCodeStep(steps.size ? [...steps.entries()].sort((a, b) => a[0] - b[0]).map(([k, t]) => `الشريحة ${k}: ${t}`).join(" · ") : null);
+    const stepOf = (n: number, t: string | null) => {
+      if (t) steps.set(n, t);
+      else steps.delete(n);
+      showSteps();
+    };
+    let stop = false;
+    let fatal: unknown = null;
+    let firstDone: () => void = () => undefined;
+    const slideOneDone = new Promise<void>((res) => (firstDone = res));
+    const take = (r: Step) => {
+      show(r);
+      if (typeof r.spent === "number") setSpent(r.spent);
+    };
+    /** Draws one slide here and returns what goes back to the produce step. */
+    const drawSlide = async (code: NonNullable<Step["code"]>): Promise<Record<string, unknown>> => {
+      const n = code.n;
+      const refs = (await Promise.all(code.refs.map(smallJpeg))).filter((x): x is string => !!x);
+      const motion = code.motion ? { n, ...code.motion, sfx: code.sfx } : null;
+      // a motion carousel in two stages: first every slide's still (sent back with its program), then each still animated
+      const stillStage = code.stage === "still";
+      const lighter = code.light === true;
+      stepOf(n, lighter ? "↩️ رجعنا لها بطريقة أخف وأسرع…" : stillStage ? "🖼️ المرحلة ١: تصميمها الثابت…" : code.still ? "🎬 المرحلة ٢: تحريك تصميمها الجاهز…" : "حيدرا ماكس يبدأ…");
+      const extra = { ...(stillStage ? { stillFor: "motion" } : code.still ? { still: code.still.code, stillFonts: code.still.fonts } : {}), ...(lighter ? { light: true } : {}) };
+      // each slide on its own (16 Nov 2026): a slide that cannot be drawn is recorded as failed and the others go on;
+      // stopped by the person, or no balance left: everything stops as before
+      try {
+        const drawn = await drawWithCode({ prompt: code.prompt, aspect: code.aspect, style: code.style ?? "", references: refs, photos: code.photos ?? [], model: claudeId.current, from: "content", motion, extra, onStep: (st) => stepOf(n, st.text) });
+        let video: string | undefined;
+        if (drawn.video) {
+          stepOf(n, "⬆️ أرفع الفيديو…");
+          video = await putVideo(drawn.video, `slide-${String(n).padStart(2, "0")}.mp4`);
         }
-        if (!r.running) break;
+        return { n, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(video ? { video } : {}), ...(stillStage ? { stage: "still", program: drawn.program?.code ?? "", fonts: drawn.program?.fonts ?? null } : {}) };
+      } catch (e) {
+        const why = e instanceof Error ? e.message : "";
+        if ((e instanceof Error && e.name === "AbortError") || /رصيد|اشحن|الاتصال|متصفحك/.test(why)) throw e;
+        // each piece of work ends under 10 minutes (17 Nov 2026): a slide that runs past it is set aside and comes back last
+        if (/تأخرت/.test(why) && !lighter) {
+          stepOf(n, "⏭️ طوّلت أكثر من ٩ دقايق — نكمّل الباقي ونرجع لها في الآخر بطريقة أخف");
+          return { deferSlide: n };
+        }
+        stepOf(n, "⚠️ ما انرسمت — تقدر تعيدها لحالها بزر «أعد المحاولة»");
+        return { n, codeFailed: why || "ما انرسمت" };
+      } finally {
+        stepOf(n, null);
       }
+    };
+    const worker = async (initial?: Step) => {
+      let cur: Step | undefined = initial;
+      for (let guard = 0; guard < 120 && !stop; guard++) {
+        if (!cur) cur = await produceCall({ exclude: [...busyNs] });
+        take(cur);
+        if (!cur.code || busyNs.has(cur.code.n)) {
+          if (!cur.running) stop = true;
+          // nothing free right now: while other slides are drawn this worker ends; alone (the pictures stage), it asks again
+          if (stop || busyNs.size > 0) return;
+          cur = undefined;
+          continue;
+        }
+        const n = cur.code.n;
+        busyNs.add(n);
+        let body: Record<string, unknown>;
+        try {
+          body = await drawSlide(cur.code);
+        } catch (e) {
+          fatal = e;
+          stop = true;
+          busyNs.delete(n);
+          return;
+        }
+        busyNs.delete(n);
+        cur = await produceCall(body);
+        take(cur);
+        if (n === 1 || body.deferSlide) firstDone();
+        if (!cur.running) {
+          stop = true;
+          return;
+        }
+        cur = undefined;
+      }
+    };
+    try {
+      const r0 = await produceCall({ ...(retry ? { retry } : {}), ...(more ? more : {}) });
+      take(r0);
+      const one = worker(r0);
+      // the others join once slide 1 is drawn (straight away when slide 1 is not the one being drawn first)
+      if (!r0.code || r0.code.n !== 1) firstDone();
+      void one.finally(() => firstDone());
+      const helpers = slideOneDone.then(() => (stop ? [] : Promise.all(Array.from({ length: PARALLEL - 1 }, () => worker()))));
+      await Promise.all([one, helpers]);
+      if (fatal) throw fatal;
+      setCodeStep(null);
     } catch (e) {
       setCodeStep(null);
       putSlides((old) => ({ ...(old ?? { aspect: "", items: [], failed: [], total: 0 }), todo: old?.todo ?? [], running: false } as SlidesView));
