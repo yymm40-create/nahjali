@@ -9,6 +9,7 @@ import { CONTENT_KINDS } from "@config/content";
 import { EXAMPLES_PER_KIND } from "@config/content-examples";
 import { TEMPLATE_EXAMPLES_PER } from "@config/content-template-examples";
 import { isAdmin } from "@config/site";
+import { setChatSpent, userContentChats } from "@/lib/content/spent";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -66,6 +67,14 @@ export const POST = handle(async (req: Request) => {
       case "test_delete":
         await deleteRun(id);
         return NextResponse.json({ ok: true });
+      // a person's conversations with what each shows, and the owner's correction of one conversation's shown cost
+      case "user_chats":
+        return NextResponse.json({ chats: await userContentChats(String(b.userId ?? "")) });
+      case "set_chat_spent": {
+        const halalas = Math.round(Number(b.halalas));
+        if (!Number.isFinite(halalas) || halalas < 0) throw new UserError("المبلغ غير صحيح.");
+        return NextResponse.json(await setChatSpent(id, halalas));
+      }
     }
   } catch (e) {
     const why = claudeTrouble(e);
