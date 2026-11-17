@@ -12,7 +12,7 @@ import { isAdmin } from "@config/site";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { setChatSpent, userContentChats } from "@/lib/content/spent";
 import { getChat } from "@/lib/content/chats";
-import { planSlideFix } from "@/lib/content/produce";
+import { planSlideFix, previewCodeSlide } from "@/lib/content/produce";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -104,6 +104,12 @@ export const POST = handle(async (req: Request) => {
         if (!(n > 0) || !(from >= 0) || !(to > from) || to - from > 60) throw new UserError("الشريحة أو الوقت غير صحيح.");
         const planned = await planSlideFix(String(data.user_id), chat, n, { from, to }, typeof b.said === "string" ? b.said : "");
         return NextResponse.json({ ok: true, pending: { slides: planned.pending?.slides.map((s) => s.n), soundTimes: planned.pending?.soundTimes, edits: planned.pending?.edits, programs: planned.pending?.programs, arts: Object.keys(planned.pending?.arts ?? {}), picturesOk: planned.pending?.picturesOk } });
+      }
+      // what a person's page will be handed for a waiting slide (checked before it runs)
+      case "slide_brief": {
+        const { data } = await createAdminClient().from("content_chats").select("user_id").eq("id", id).maybeSingle();
+        if (!data) throw new UserError("ما لقينا المحادثة.", 404);
+        return NextResponse.json(await previewCodeSlide(String(data.user_id), id, Math.round(Number(b.n))));
       }
       case "set_chat_spent": {
         const halalas = Math.round(Number(b.halalas));
