@@ -139,5 +139,11 @@ export async function slidePicture(userId: string, chatId: string, n: number, ba
   const k = String(n).padStart(2, "0");
   const { data } = await db().from("content_files").select("id,name").eq("user_id", userId).eq("chat_id", chatId).in("name", [`picture-${k}`, `element-${k}`]).eq("meta->>batch", batch).order("created_at", { ascending: false }).limit(4);
   const rows = (data ?? []) as { id: string; name: string }[];
-  return (rows.find((r) => r.name.startsWith("element-")) ?? rows[0])?.id ?? null;
+  const hit = (rows.find((r) => r.name.startsWith("element-")) ?? rows[0])?.id;
+  if (hit) return hit;
+  // a slide made again keeps the picture of an EARLIER batch (its own batch painted none): the newest picture of that
+  // slide in the chat. Without this, a slide made a second time painted a new picture (18 Nov 2026)
+  const { data: any } = await db().from("content_files").select("id,name").eq("user_id", userId).eq("chat_id", chatId).in("name", [`picture-${k}`, `element-${k}`]).order("created_at", { ascending: false }).limit(4);
+  const all = (any ?? []) as { id: string; name: string }[];
+  return (all.find((r) => r.name.startsWith("element-")) ?? all[0])?.id ?? null;
 }
