@@ -520,7 +520,13 @@ export async function say(userId: string, chatId: string | null, message: string
         if (Array.isArray(r) && r.length) { before = r.filter((x): x is string => typeof x === "string"); break; }
       }
       const fixRefs = refsWith(before, fixAt + 1);
-      pending = { id: randomUUID(), ...(fixRefs.length ? { refs: fixRefs } : {}), aspect: block.aspect, slides, at: fixAt, styleId: styleId || block.styleId, templateId: templateId || block.templateId, ...(block.carouselId ? { carouselId: block.carouselId } : {}), ...(block.fontId ? { fontId: block.fontId } : {}), ...(block.paletteId ? { paletteId: block.paletteId } : {}), mode: "fix", ...code, ...moving, made: [], failed: [], carry: block.failed.filter((f) => !slides.some((x) => x.n === f.n)) };
+      // colours or a font picked AFTER the carousel are the person's new choice for the slides made now («أبي أغيّر
+      // الألوان»): they win over the carousel's own (undefined: nothing picked since, the carousel's stand)
+      const pal = pickedPalette(history);
+      const newPalette = pal ? (pal.palette?.id ?? "") : undefined;
+      const fnt = pickedFont(history);
+      const newFont = fnt ? (fnt.font?.id ?? "") : undefined;
+      pending = { id: randomUUID(), ...(fixRefs.length ? { refs: fixRefs } : {}), aspect: block.aspect, slides, at: fixAt, styleId: styleId || block.styleId, templateId: templateId || block.templateId, ...(block.carouselId ? { carouselId: block.carouselId } : {}), ...(newFont !== undefined ? (newFont ? { fontId: newFont } : {}) : block.fontId ? { fontId: block.fontId } : {}), ...(newPalette !== undefined ? (newPalette ? { paletteId: newPalette } : {}) : block.paletteId ? { paletteId: block.paletteId } : {}), mode: "fix", ...code, ...moving, made: [], failed: [], carry: block.failed.filter((f) => !slides.some((x) => x.n === f.n)) };
       // a change to made motion slides asked here, with no new picture or attachment: their programs are patched by the
       // person's words over the same approved pictures (the owner, 17 Nov 2026: an edit in the chat wrote the slide from zero)
       const patch = !files.length ? await chatEditPatch(userId, chatId ?? "", block, slides, said).catch(() => null) : null;
