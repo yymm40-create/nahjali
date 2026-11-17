@@ -326,3 +326,22 @@ describe("slides drawn again with the person's reference", () => {
     expect((chat().pending as unknown as { refs: string[] }).refs).toEqual(["img-old"]);
   });
 });
+
+describe("the colours the person chose", () => {
+  it("replace the style's own: its colour codes and colour words leave the picture's and the slide's prompts (the red came back over her blue)", async () => {
+    const { findCarouselStyle, withoutColours, carouselStyleBlock, carouselStyleForCode } = await import("@config/content-carousel-styles");
+    const s = findCarouselStyle("modern-pixar")!;
+    const clean = withoutColours(s.look);
+    for (const x of ["#3A0D1A", "#7A1E33", "#FFC43D", "maroon", "burgundy"]) expect(clean).not.toContain(x);
+    // the rest of the look stays
+    for (const x of ["Pixar-like", "floating glossy 3D props", "The top 45% stays calm"]) expect(clean).toContain(x);
+    expect(carouselStyleBlock(s, true)).not.toContain("#7A1E33");
+    expect(carouselStyleForCode(s, true)).not.toContain("#7A1E33");
+    // without a palette, the style is told as it is
+    expect(carouselStyleBlock(s)).toContain("#7A1E33");
+    const produce = readFileSync("src/lib/content/produce.ts", "utf8");
+    expect(produce).toContain("withoutColours(car.look)} ${COLOURS_ARE_THE_CLIENTS}");
+    expect(produce).toContain("carouselStyleBlock(car, !!pal)");
+    expect(produce).toContain("carouselStyleForCode(car, !!pal)");
+  });
+});
