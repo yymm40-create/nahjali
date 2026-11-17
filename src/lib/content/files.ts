@@ -129,3 +129,15 @@ export async function deleteProduced(userId: string, fileId: string) {
   // a picture جواد made is his (and in «أعمالي»), and a slide's video is the person's upload: only the conversation's record goes
   if (!row.meta.outputId && !row.meta.uploadId) await storage.from(JAWAD_BUCKET).remove([row.path]).catch(() => null);
 }
+
+/**
+ * The picture GPT Image 2 painted for slide `n` of the batch `batch` (its cut-out element when it has one), or null: what a
+ * made motion slide was drawn over, so drawing that slide again keeps the approved picture.
+ */
+export async function slidePicture(userId: string, chatId: string, n: number, batch: string): Promise<string | null> {
+  if (!isUuid(chatId) || !batch) return null;
+  const k = String(n).padStart(2, "0");
+  const { data } = await db().from("content_files").select("id,name").eq("user_id", userId).eq("chat_id", chatId).in("name", [`picture-${k}`, `element-${k}`]).eq("meta->>batch", batch).order("created_at", { ascending: false }).limit(4);
+  const rows = (data ?? []) as { id: string; name: string }[];
+  return (rows.find((r) => r.name.startsWith("element-")) ?? rows[0])?.id ?? null;
+}
