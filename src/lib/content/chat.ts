@@ -22,7 +22,7 @@ import { findCarouselStyle } from "@config/content-carousel-styles";
 import { findContentFont } from "@config/content-fonts";
 import { findStyle } from "@config/film-styles";
 import { cleanHistory, getChat, readMedia, readQuestions, saveChat, type Attachment, type MediaItem, type MotionPlan, type PendingProduce, type Turn } from "./chats";
-import { attachmentsOf, deleteProduced, uploadLinks } from "./files";
+import { attachmentsOf, deleteProduced, producedRow, uploadLinks } from "./files";
 import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, needsCatalog, pathBlock, systemText, turnText } from "./persona";
 import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { readStoryboard } from "@/lib/editor/motion-build";
@@ -326,6 +326,14 @@ export async function say(userId: string, chatId: string | null, message: string
 
   // a carousel to make: kept with the conversation; the page asks for the produce step right after
   let pending: PendingProduce | null = null;
+  // the person's pictures for slides drawn again: the ones attached to THIS message first (a new reference: «this is my
+  // picture, draw slides 3 and 4 again with it»), then the ones he names, then the carousel's own. Slides drawn again
+  // used to go without any of them, so the character came out different from the reference (a customer, 17 Nov 2026)
+  const allImages = new Set(history.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
+  const nowImages = files.filter((f) => f.kind === "image").map((f) => f.id);
+  const namedImages = (Array.isArray(a.produce?.refs) ? a.produce.refs : []).filter((r) => allImages.has(r));
+  const refsWith = (old: string[] = []) => [...new Set([...nowImages, ...namedImages, ...old.filter((r) => allImages.has(r))])].slice(0, 6);
+
   // the pictures stage: the slides he named get their pictures drawn again (nothing else of the carousel changes)
   const redo = inPictures && a.produce?.on && Array.isArray(a.produce.slides) ? a.produce.slides.filter((x) => x && unfinished!.slides.some((y) => y.n === Number(x.n)) && !unfinished!.made.some((m) => m.n === Number(x.n))) : [];
   if (redo.length) {
@@ -343,6 +351,8 @@ export async function say(userId: string, chatId: string | null, message: string
       if (sl && typeof x.picture === "string" && x.picture.trim()) sl.picture = x.picture.trim().slice(0, 3000);
       p.failed = p.failed.filter((f) => f.n !== Number(x.n));
     }
+    const refs = refsWith(p.refs ?? []);
+    if (refs.length) p.refs = refs;
   }
   if (!redo.length && a.produce?.on && Array.isArray(a.produce.slides) && a.produce.slides.length) {
     const aspect: CarouselAspect = isCarouselAspect(a.produce.aspect) ? a.produce.aspect : "1:1";
@@ -371,7 +381,14 @@ export async function say(userId: string, chatId: string | null, message: string
     if (slides.length && fixAt >= 0) {
       // draw these slides again in the carousel that exists
       const block = history[fixAt].slides!;
-      pending = { id: randomUUID(), aspect: block.aspect, slides, at: fixAt, styleId: styleId || block.styleId, templateId: templateId || block.templateId, ...(block.carouselId ? { carouselId: block.carouselId } : {}), ...(block.fontId ? { fontId: block.fontId } : {}), ...(block.paletteId ? { paletteId: block.paletteId } : {}), mode: "fix", ...code, ...moving, made: [], failed: [], carry: block.failed.filter((f) => !slides.some((x) => x.n === f.n)) };
+      // the references the carousel was made with (kept on its slides), behind the new ones
+      let before: string[] = [];
+      for (const it of block.items) {
+        const r = (await producedRow(userId, it.fileId).catch(() => null))?.meta.refs;
+        if (Array.isArray(r) && r.length) { before = r.filter((x): x is string => typeof x === "string"); break; }
+      }
+      const fixRefs = refsWith(before);
+      pending = { id: randomUUID(), ...(fixRefs.length ? { refs: fixRefs } : {}), aspect: block.aspect, slides, at: fixAt, styleId: styleId || block.styleId, templateId: templateId || block.templateId, ...(block.carouselId ? { carouselId: block.carouselId } : {}), ...(block.fontId ? { fontId: block.fontId } : {}), ...(block.paletteId ? { paletteId: block.paletteId } : {}), mode: "fix", ...code, ...moving, made: [], failed: [], carry: block.failed.filter((f) => !slides.some((x) => x.n === f.n)) };
       messages[fixAt] = { ...history[fixAt], slides: { ...block, todo: slides.map((x) => x.n), failed: pending.carry, running: true, report: undefined } };
     } else if (slides.length && hold) {
       // nothing is made until they choose: the question goes out, and their answer brings the slides back
