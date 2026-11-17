@@ -44,7 +44,7 @@ let decodeLine: Promise<unknown> = Promise.resolve();
  * phone that failed with «Decoding failed» for a .mov (a customer, 17 Nov 2026). If that way can't read the file, the
  * whole file is decoded the old way, one slide at a time, three tries.
  */
-async function soundRange(url: string, from: number, to: number, RATE: number): Promise<Float32Array[]> {
+async function soundRange(url: string, from: number, to: number, RATE: number, rangeOnly = false): Promise<Float32Array[]> {
   const n = Math.max(1, Math.round((to - from) * RATE));
   try {
     const { ALL_FORMATS, AudioBufferSink, Input, UrlSource } = await import("mediabunny");
@@ -68,6 +68,7 @@ async function soundRange(url: string, from: number, to: number, RATE: number): 
       input.dispose?.();
     }
   } catch (first) {
+    if (rangeOnly) throw first;
     console.warn("slide sound: the range way failed, decoding the whole file", first);
   }
   const whole = async () => {
@@ -90,6 +91,41 @@ async function soundRange(url: string, from: number, to: number, RATE: number): 
   const run = decodeLine.then(whole, whole);
   decodeLine = run.catch(() => undefined);
   return run;
+}
+
+/**
+ * The quietest moment of the sound near `t` (within ±0.3 s, the nearer the better): a slide's sound is cut there, in a
+ * real silence between words, not in the middle of one (the planned cuts come from the words' times as heard, which can
+ * be off by a little — a customer's slide started on half a word, 17 Nov 2026). Only the range is read; when it can't
+ * be, the planned time stands. The same time always gives the same cut, so two slides that meet agree on it.
+ */
+export async function quietCut(url: string, t: number): Promise<number> {
+  const RATE = 16000;
+  const W = 0.3;
+  const a = Math.max(0, t - W);
+  const ch = await soundRange(url, a, t + W, RATE, true).catch(() => null);
+  if (!ch?.length || ch[0].length < RATE * 0.05) return t;
+  return quietestNear(ch, RATE, a, t, W);
+}
+
+/** The centre of the quietest 30 ms of `ch` (starting at second `a`), weighed by its distance from `t`. */
+export function quietestNear(ch: Float32Array[], RATE: number, a: number, t: number, W: number): number {
+  const n = ch[0].length;
+  const hop = Math.max(1, Math.round(RATE * 0.01));
+  const win = Math.max(1, Math.round(RATE * 0.03));
+  let best = t;
+  let bestScore = Infinity;
+  for (let i = 0; i + win <= n; i += hop) {
+    let e = 0;
+    for (const c of ch) for (let j = i; j < i + win; j++) e += (c[j] ?? 0) * (c[j] ?? 0);
+    const centre = a + (i + win / 2) / RATE;
+    const score = Math.sqrt(e / (win * ch.length)) * (1 + (0.5 * Math.abs(centre - t)) / W) + 1e-9 * Math.abs(centre - t);
+    if (score < bestScore) {
+      bestScore = score;
+      best = centre;
+    }
+  }
+  return Math.round(best * 1000) / 1000;
 }
 
 async function soundPart(url: string, from: number, to: number): Promise<Blob> {
@@ -644,12 +680,15 @@ async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
     const cues = readCues(info!.cues, info!.duration).flatMap((c) => (m.sfx?.[c.sfx] ? [{ url: m.sfx[c.sfx], t: c.t, vol: c.vol }] : []));
     // the person's own sound: this slide's part of it, and the slide lasts exactly as long as that part
     // a slide over the person's own sound never comes out silent: no sound, no slide (it is tried again)
-    const own = m.voice
-      ? await soundPart(m.voice.url, m.voice.from, m.voice.to).catch((e: unknown) => {
+    // its edges moved to the real silence next to them (the start of the sound and its planned end stay when there is none)
+    const cut = m.voice ? { from: m.voice.from > 0.05 ? await quietCut(m.voice.url, m.voice.from) : m.voice.from, to: await quietCut(m.voice.url, m.voice.to) } : null;
+    const part = cut && cut.to - cut.from >= 0.5 ? cut : m.voice;
+    const own = m.voice && part
+      ? await soundPart(m.voice.url, part.from, part.to).catch((e: unknown) => {
           throw new Error(`ما قدرت أجيب صوت الشريحة ${m.n} من ملفك (${e instanceof Error ? e.message : "خطأ"}). اضغط «أعد المحاولة».`);
         })
       : null;
-    const length = m.voice ? Math.max(0.5, m.voice.to - m.voice.from) : info!.duration;
+    const length = part ? Math.max(0.5, part.to - part.from) : info!.duration;
     const audio = synth || cues.length || own ? await mixSoundtrack({ duration: length, synth, cues, voice: own, music: null }) : null;
     const video = await renderVideo(host, { duration: length, fps: 30, blur: info!.blur, sub: info!.blur > 0 ? 3 : 1, audio }, (p) => o.onStep({ text: `🎞️ أطلّع فيديو الشريحة ${m.n}… ${Math.round(p * 100)}٪` }), o.signal);
     // checked before it is shown: its length, and the person's sound really in it (a silent slide reached the person, 17 Nov 2026)
