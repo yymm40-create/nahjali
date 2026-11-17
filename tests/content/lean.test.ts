@@ -236,3 +236,9 @@ describe("a slide over the person's own sound", () => {
     expect(produce).toContain("await slidePicture(userId, chat.id, n, batch)");
   });
 });
+
+describe("the slide's tools", () => {
+  it("the download link stands beside «🔁», not on top of it", () => {
+    expect(readFileSync("src/app/jawad-ai/content/content.css", "utf8")).toContain(".ct-slide .tools a { position: static; }");
+  });
+});
