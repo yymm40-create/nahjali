@@ -28,7 +28,7 @@ import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
 import { askedSlides, attachedPictures, CAROUSEL_QUESTION, carouselHold, pathOf, pickedCarousel, pureGatePick, siteStep, pickedFont, pickedKind, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "./maker";
-import { chatEditPatch, lastSlidesAt } from "./produce";
+import { chatEditPatch, lastSlidesAt, planSoundTime } from "./produce";
 import { listenToFiles, listenToLinks } from "@/lib/link-listen";
 import { billYoutube } from "./youtube";
 import { chatSound } from "./sound";
@@ -198,6 +198,44 @@ function toClaudeTurn(t: Turn, links: Map<string, string>): ClaudeTurn {
 }
 
 /** «كمّل» and its kin, alone: the person wants what stopped to go on, nothing new. */
+/** Digits as Western ones, and the Arabic decimal comma as a point. */
+const westDigits = (t: string) => t.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6f0)).replace(/٫/g, ".");
+
+/**
+ * «اعتمد الصور» written instead of pressed: the approval of the pictures in words (the owner, 18 Nov 2026: «واضح واحد
+ * يبي يحط اعتمد… إيش دخلك أنت إنه لازم يضغطها؟»). A short message that says approve / start the motion and asks for
+ * no change; a message that also asks for a change goes to «محمد باقر» as before.
+ */
+export function isApproveWords(t: string): boolean {
+  const s = t.trim().replace(/[.!؟?،,]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!s || s.length > 60) return false;
+  if (/(غي[ّ]?ر|عد[ّ]?ل|أعد|اعد|عيد|بدل|بدّل|شيل|لكن|ما ابي|ما أبي|ماابي)/.test(s) || /(^|\s)(لا|مو|مب|بس)(\s|$)/.test(s)) return false;
+  return /(^|\s)(ا|أ)?عتمد(ت|ها|هم|ي|وا)?(\s|$)|موافق|معتمد|^(تمام|اوكي|اوك|ok|okay)$|(ابد[أا]|إبد[أا]|ابدئي|ابدي|يلا|سو|سوي)\s*(سو\s*|سوي\s*)?(ال)?(موشن|تحريك|حركة|تصميم|الشرائح)/i.test(s);
+}
+
+/**
+ * A slide's sound time asked in words («دقائق الشريحة 3 من 00:29.29 الى 00:42.36»): the slide and the two times (in
+ * seconds), or null. Times are m:ss(.cc), h:mm:ss, or plain seconds between «من» and «إلى».
+ */
+export function readSoundAsk(t: string): { n: number; from: number; to: number } | null {
+  const s = westDigits(t);
+  const slide = [...s.matchAll(/(?:الشريحة|الشريحه|شريحة|شريحه|السلايدة|السلايده|سلايدة|سلايده|سلايد)\s*(?:رقم\s*)?(\d{1,2})/g)].map((m) => Number(m[1]));
+  if (new Set(slide).size !== 1) return null;
+  const clock = "(\\d{1,2}(?::\\d{1,2}){1,2}(?:[.,]\\d+)?|\\d+(?:[.,]\\d+)?)";
+  const m = new RegExp(`(?:من|from)\\s*${clock}\\s*(?:ث(?:انية)?\\s*)?(?:إلى|الى|إلين|لين|لين ما|حتى|to|-|–)\\s*${clock}`, "i").exec(s);
+  if (!m) return null;
+  const sec = (v: string) => {
+    const parts = v.replace(",", ".").split(":").map(Number);
+    if (parts.some((x) => !Number.isFinite(x))) return NaN;
+    if (parts.slice(1).some((x) => x >= 60)) return NaN;
+    return parts.reduce((a, x) => a * 60 + x, 0);
+  };
+  const from = sec(m[1]);
+  const to = sec(m[2]);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from < 0 || to <= from || to - from > 60) return null;
+  return { n: slide[0], from: Math.round(from * 100) / 100, to: Math.round(to * 100) / 100 };
+}
+
 export const isContinue = (t: string) => /^(يلا\s+)?(كمل|كمّل|كملي|كمّلي|اكمل|أكمل|تابع|استمر|كمل الرسم|كمّل الرسم|كمل التوليد|كمّل التوليد|continue|go on)[\s.!؟?]*$/i.test(t.trim());
 
 /** The pictures جواد made in this conversation (their file ids): references for the next picture of the same character. */
@@ -304,6 +342,13 @@ export async function say(userId: string, chatId: string | null, message: string
   // answer, no new plan (a new plan drew the characters again, different, and the person had to explain it all again)
   const unfinished = before?.pending && cut < 0 ? before.pending : null;
   const left = unfinished ? unfinished.slides.map((x) => x.n).filter((n) => !unfinished.made.some((m) => m.n === n) && !unfinished.failed.some((f) => f.n === n)) : [];
+  // the pictures approved in words: the same as the button, no reply from him needed (and nothing paid for one)
+  const waitsApproval = !!unfinished && unfinished.maker === "code" && !unfinished.picturesOk && Object.keys(unfinished.arts ?? {}).length > 0;
+  if (unfinished && waitsApproval && left.length && !files.length && (isApproveWords(said) || isContinue(said))) {
+    const reply: Turn = { role: "assistant", text: `تمام، اعتمدت الصور ✅ وبدأ حيدرا ماكس يصمّم ${unfinished.motion ? "ويحرّك " : ""}${left.length === 1 ? `الشريحة ${left[0]}` : `الشرائح (${left.join("، ")})`}. تظهر لك هنا وحدة وحدة، لا تقفل الصفحة.` };
+    const id = await saveChat(userId, chatId, { messages: [...history, reply], pending: { ...unfinished, picturesOk: true } });
+    return { chatId: id, text: reply.text, questions: null, usd: 0, pending: { total: unfinished.slides.length, mode: unfinished.mode, todo: left }, editor: null, media: null, spentHalalas: full?.spentHalalas ?? 0 };
+  }
   if (unfinished && left.length && !files.length && isContinue(said)) {
     const reply: Turn = { role: "assistant", text: `تمام، أكمل رسم ${left.length === 1 ? `الشريحة ${left[0]}` : `الشرائح الباقية (${left.join("، ")})`} من نفس المكان، بنفس التصميم والشخصيات اللي انرسمت.` };
     const id = await saveChat(userId, chatId, { messages: [...history, reply] });
@@ -315,8 +360,11 @@ export async function say(userId: string, chatId: string | null, message: string
   // he was told not to plan the carousel again and had no other way: the person asked, the page turned, and nothing was
   // drawn (a customer, 17 Nov 2026)
   const inPictures = !!unfinished && unfinished.maker === "code" && !unfinished.picturesOk && Object.keys(unfinished.arts ?? {}).length > 0;
-  const picturesNote = !inPictures ? "" : `[الكاروسيل في مرحلة اعتماد الصور (رُسمت صور الشرائح ${Object.keys(unfinished!.arts ?? {}).sort().join("، ")} وتنتظر اعتماد العميل بزر «اعتمد الصور»). إذا طلب العميل إعادة صورة أو تعديلها: ضع produce.on=true وmode="fix"، وفي "slides" تلك الشرائح فقط بأرقامها، ولكل واحدة "picture" = توجيه صورتها الجديدة كاملًا بالإنجليزية بعد التعديل الذي طلبه (بلا أي كتابة)، و"text" و"prompt" كما هي. الموقع يعيد رسم صورها فقط بنفس الكاروسيل، ثم تعود للاعتماد. وقل له في سطر إنك أعدت رسم صورة الشريحة كذا، وإن زر «🔄 أعد صورة» تحت الصور يسويها بعد.]`;
-  const r = await callClaudeJson<Answer>({ system, turnNote: [picturesNote || waitingNote, turnNote].filter(Boolean).join("\n\n"), turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email), systemExtra: extra, stableNote: stable.join("\n\n"), systemTtl: "1h", cacheTail: false });
+  const picturesNote = !inPictures ? "" : `[الكاروسيل في مرحلة اعتماد الصور (رُسمت صور الشرائح ${Object.keys(unfinished!.arts ?? {}).sort().join("، ")} وتنتظر اعتماد العميل بزر «اعتمد الصور» أو بكتابته «اعتمد»: الموقع يعتمدها بنفسه في الحالتين، فلا تقل له أبدًا إن كتابته لا تكفي. وإذا كان طلبه عن مكان الصورة أو الكتابة في الشريحة فقط (الصورة تحت، الكلام فوق، لا تقصها) وليس عن محتوى الصورة: اكتب الشريحة في "slides" بنفس "picture" حرفيًا كما هي، وضع المكان المطلوب في "prompt" — الموقع يبقي الصورة المعتمدة كما هي، وحيدرا ماكس يرتّبها بهذا المكان عند التصميم، فلا تُرسم من جديد). إذا طلب العميل إعادة صورة أو تعديلها: ضع produce.on=true وmode="fix"، وفي "slides" تلك الشرائح فقط بأرقامها، ولكل واحدة "picture" = توجيه صورتها الجديدة كاملًا بالإنجليزية بعد التعديل الذي طلبه (بلا أي كتابة)، و"text" و"prompt" كما هي. الموقع يعيد رسم صورها فقط بنفس الكاروسيل، ثم تعود للاعتماد. وقل له في سطر إنك أعدت رسم صورة الشريحة كذا، وإن زر «🔄 أعد صورة» تحت الصور يسويها بعد.]`;
+  // a slide's sound time written in the message: the site sets it itself (he had no way to, and said it was done)
+  const askedTime = readSoundAsk(said);
+  const timeNote = askedTime ? `[الموقع ثبّت بنفسه وقت صوت الشريحة ${askedTime.n}: من ${askedTime.from} إلى ${askedTime.to} ثانية من الملف، ويطبّقه عند صنع فيديوها. لا تكتب produce لأجل الوقت وحده، وقل للعميل في سطر إن الوقت انضبط كما كتبه.]` : "";
+  const r = await callClaudeJson<Answer>({ system, turnNote: [timeNote, picturesNote || waitingNote, turnNote].filter(Boolean).join("\n\n"), turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email), systemExtra: extra, stableNote: stable.join("\n\n"), systemTtl: "1h", cacheTail: false });
   const a = r.data;
   let usd = claudeCost(r.usage) + mem.usd + listened.usd + heardFiles.usd + yt.usd;
   const questions = readQuestions(a.questions);
@@ -353,6 +401,14 @@ export async function say(userId: string, chatId: string | null, message: string
     const p = unfinished!;
     for (const x of redo) {
       const k = String(Number(x.n));
+      const sl0 = p.slides.find((y) => y.n === Number(x.n));
+      // a change of PLACE only (the picture lower, the words on top…): the picture stays as approved, the slide's
+      // request carries the placement for «حيدرا ماكس» — painting it again changed nothing of where it sits (18 Nov 2026)
+      const samePicture = !!sl0 && (typeof x.picture !== "string" || !x.picture.trim() || x.picture.trim().slice(0, 3000) === (sl0.picture ?? "").trim());
+      if (samePicture && sl0 && p.arts?.[k]) {
+        if (typeof x.prompt === "string" && x.prompt.trim()) sl0.prompt = x.prompt.trim().slice(0, 4000);
+        continue;
+      }
       const old = p.arts?.[k];
       if (old) {
         const rest = { ...(p.arts ?? {}) };
@@ -494,9 +550,28 @@ export async function say(userId: string, chatId: string | null, message: string
 
   // a reply that orders no new carousel keeps the one still being drawn (and the page goes on drawing it)
   const keep = !pending && unfinished && left.length ? unfinished : null;
-  const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : cut >= 0 ? "" : undefined, pending: redo.length ? unfinished : keep ? undefined : pending, addUsd: usd });
+  // the sound time asked in words goes with the slide wherever it is: in the carousel being made now, or (a slide made
+  // already) its video is made again with that part — nothing repainted or written again
+  let timeKept = false;
+  let timeLater: { n: number; from: number; to: number } | null = null;
+  if (askedTime) {
+    const t = { [String(askedTime.n)]: { from: askedTime.from, to: askedTime.to } };
+    if (pending && pending.slides.some((x) => x.n === askedTime.n)) pending.soundTimes = { ...(pending.soundTimes ?? {}), ...t };
+    else if (unfinished && (redo.length || keep) && unfinished.slides.some((x) => x.n === askedTime.n)) {
+      unfinished.soundTimes = { ...(unfinished.soundTimes ?? {}), ...t };
+      timeKept = true;
+    } else if (!pending && !unfinished) timeLater = askedTime;
+  }
+  const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : cut >= 0 ? "" : undefined, pending: redo.length || timeKept ? unfinished : keep ? undefined : pending, addUsd: usd });
   usd = Math.round(usd * 10000) / 10000;
-  const goOn = pending ? { total: pending.slides.length, mode: pending.mode, todo: pending.slides.map((x) => x.n) } : keep ? { total: keep.slides.length, mode: "fix" as const, todo: left } : null;
+  let goOn = pending ? { total: pending.slides.length, mode: pending.mode, todo: pending.slides.map((x) => x.n) } : keep ? { total: keep.slides.length, mode: "fix" as const, todo: left } : null;
+  if (timeLater && full) {
+    const planned = await planSoundTime(userId, { ...full, id, messages }, timeLater).catch((e: unknown) => {
+      console.error("content sound time", e instanceof Error ? e.message : e);
+      return null;
+    });
+    if (planned?.pending) goOn = { total: planned.pending.slides.length, mode: "fix", todo: planned.pending.slides.map((x) => x.n) };
+  }
   return { chatId: id, text: reply.text, questions: reply.questions ?? null, usd, pending: goOn, editor, media, spentHalalas: full?.spentHalalas ?? 0 };
 }
 
