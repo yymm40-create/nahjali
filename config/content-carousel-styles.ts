@@ -1319,10 +1319,30 @@ export const CAROUSEL_CODE_CRAFT =
   "CAROUSEL CRAFT: this slide must stop a thumb on a phone: one idea readable in a second, type large enough to fill the width unless the style says small. NEVER imitate a photograph, a realistic person, food, a place, a realistic object or a 3D render by drawing it in code, because it looks cheap: anything realistic or 3D comes to you as photo1 (fit it to the frame and only grade or mask it). In code you draw what code does beautifully: type, flat colour, grids, charts, paper grain, frames, stickers, tags, arrows, bubbles. Never show a realistic adult woman.";
 
 /** The look of a style, as it goes into a slide's brief. */
-export function carouselStyleBlock(s: CarouselStyle): string {
+/**
+ * A style's text with its own colours taken out, for when the person chose their colours (a palette): the colour codes and
+ * the colour words. Sending the style's «deep wine-burgundy background (#3A0D1A…)» and then «the client's colours replace
+ * these» drew the style's red anyway — the explicit codes won (a customer chose blue, 17 Nov 2026). Pure.
+ */
+export function withoutColours(text: string): string {
+  return text
+    // a clause that names a colour by its code is about colour only: it goes (the rest of its sentence stays)
+    .replace(/[^.,;\n]*#[0-9a-fA-F]{3,8}\b[^.,;\n]*[,;.]?/g, "")
+    // colour words left inside other sentences
+    .replace(/\b(?:deep |dark |light |soft |warm |rich )?(?:wine-burgundy|burgundy|maroon|crimson|scarlet|wine|ruby|navy|teal|turquoise|purple|violet|magenta|pink|orange|red|green|blue|cream|beige|golden-yellow)\b(?=[ -](?:[a-z-]+ )?(?:hoodie|hoodies|background|backdrop|gradient|wall|walls|tone|tones|shirt|shirts|clothes|accents?|colou?rs?|light|glow|sky|room|frame|border|band|ribbon|paper|panel))/gi, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([.,;])/g, "$1")
+    .trim();
+}
+
+/** The colour line that stands in for the style's own, when the person chose colours. */
+export const COLOURS_ARE_THE_CLIENTS = "COLOURS: the style's own colours are NOT used. Every colour — background, clothes, props, light, accents — comes ONLY from the CLIENT COLOURS given with this slide.";
+
+export function carouselStyleBlock(s: CarouselStyle, ownColours = false): string {
+  const look = ownColours ? `${withoutColours(s.look)} ${COLOURS_ARE_THE_CLIENTS}` : s.look;
   return [
-    `CAROUSEL STYLE "${s.id}" (verbatim; the whole carousel follows it so the slides read as one set; its colours are fixed unless the client asked otherwise).`,
-    `Look: ${s.look}`,
+    `CAROUSEL STYLE "${s.id}" (verbatim; the whole carousel follows it so the slides read as one set; ${ownColours ? "its colours are replaced by the client's" : "its colours are fixed unless the client asked otherwise"}).`,
+    `Look: ${look}`,
     `Arabic type: ${s.type}`,
     `Cover slide: ${s.cover}`,
     `Inner slides: ${s.body}`,
@@ -1332,6 +1352,8 @@ export function carouselStyleBlock(s: CarouselStyle): string {
 }
 
 /** What «حيدرا ماكس» is told about the chosen look (his «الستايل» field, at most 2000 characters). */
-export function carouselStyleForCode(s: CarouselStyle): string {
-  return `${s.name}: ${s.look}\nType: ${s.type}\nHow to build it: ${s.code}\n${CAROUSEL_CODE_CRAFT}`;
+export function carouselStyleForCode(s: CarouselStyle, ownColours = false): string {
+  const look = ownColours ? `${withoutColours(s.look)} ${COLOURS_ARE_THE_CLIENTS}` : s.look;
+  const code = ownColours ? withoutColours(s.code) : s.code;
+  return `${s.name}: ${look}\nType: ${s.type}\nHow to build it: ${code}\n${CAROUSEL_CODE_CRAFT}`;
 }
