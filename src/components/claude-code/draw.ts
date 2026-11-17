@@ -162,7 +162,7 @@ export interface DrawMotion {
   /** the library's sound effects (id → link), for the scene's cues */
   sfx?: Record<string, string>;
   /** the person's own sound under this slide (its part, in seconds of the file): the slide lasts exactly that long */
-  voice?: { url: string; from: number; to: number } | null;
+  voice?: { url: string; from: number; to: number; exact?: boolean } | null;
 }
 
 /**
@@ -681,7 +681,7 @@ async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
     // the person's own sound: this slide's part of it, and the slide lasts exactly as long as that part
     // a slide over the person's own sound never comes out silent: no sound, no slide (it is tried again)
     // its edges moved to the real silence next to them (the start of the sound and its planned end stay when there is none)
-    const cut = m.voice ? { from: m.voice.from > 0.05 ? await quietCut(m.voice.url, m.voice.from) : m.voice.from, to: await quietCut(m.voice.url, m.voice.to) } : null;
+    const cut = m.voice && !m.voice.exact ? { from: m.voice.from > 0.05 ? await quietCut(m.voice.url, m.voice.from) : m.voice.from, to: await quietCut(m.voice.url, m.voice.to) } : null;
     const part = cut && cut.to - cut.from >= 0.5 ? cut : m.voice;
     const own = m.voice && part
       ? await soundPart(m.voice.url, part.from, part.to).catch((e: unknown) => {
