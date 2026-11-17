@@ -13,8 +13,10 @@ import { useClaudeModel } from "./claude-model";
  * usage is CLAUDE_MARGIN_PCT, said here.
  * Neutral colours (they follow the text colour) so it sits in any robot's page.
  */
-export default function ClaudeModelPicker({ className = "", disabled = false, menu = false, spent = 0 }: { className?: string; disabled?: boolean; /** a small name in a composer that opens a menu above it (Claude's way) */ menu?: boolean; /** what was really taken in THIS conversation so far (halalas); 0 before the first reply, shown instead of the estimate */ spent?: number }) {
-  const [picked, choose] = useClaudeModel();
+export default function ClaudeModelPicker({ className = "", disabled = false, menu = false, spent = 0, fallback }: { /** this section's own default model (shown as «الافتراضي هنا») while the person has chosen none */ fallback?: string; className?: string; disabled?: boolean; /** a small name in a composer that opens a menu above it (Claude's way) */ menu?: boolean; /** what was really taken in THIS conversation so far (halalas); 0 before the first reply, shown instead of the estimate */ spent?: number }) {
+  const [picked, choose] = useClaudeModel(fallback);
+  // where a section has its own default, the word «الافتراضي» sits on that model, not on the site's
+  const tagline = (m: { id: string; tagline: string }) => (fallback ? `${m.tagline.replace(" (الافتراضي)", "")}${m.id === fallback ? " (الافتراضي هنا)" : ""}` : m.tagline);
   const [open, setOpen] = useState(false);
   // a code («الأكواد») may cap the model and price everything at cost: the list stops at the ceiling, and a pick above it shows as the ceiling
   const perks = usePerks();
@@ -45,7 +47,7 @@ export default function ClaudeModelPicker({ className = "", disabled = false, me
                     {m.id === model.id ? " ✓" : ""}
                   </b>
                   <span style={{ display: "block", opacity: 0.7, fontSize: 12 }}>
-                    {m.tagline} · <Coined text={`≈ ${coinStr(reply(m))} للرد`} size={12} />
+                    {tagline(m)} · <Coined text={`≈ ${coinStr(reply(m))} للرد`} size={12} />
                   </span>
                 </button>
               ))}
@@ -93,7 +95,7 @@ export default function ClaudeModelPicker({ className = "", disabled = false, me
                 }}
               >
                 {m.name}
-                <span style={{ display: "block", opacity: 0.7, fontSize: 11 }}>{m.tagline}</span>
+                <span style={{ display: "block", opacity: 0.7, fontSize: 11 }}>{tagline(m)}</span>
               </button>
             ))}
           </div>

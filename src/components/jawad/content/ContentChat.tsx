@@ -15,6 +15,7 @@ import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
 import { answerLine, decisionsOf, pathLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, DELEGATE_LINE, FONT_AUTO_LINE, fontLine, fontStyleLine, moodLine, MOTION_CAROUSEL_HELP_LINE, motionCarouselLine, motionCarouselOwnLine, motionLine, PALETTE_LABEL, PALETTE_STYLE_LINE, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
 import { CONTENT_PATHS, findPath, type ContentPath } from "@config/content-paths";
+import { CONTENT_CLAUDE_MODEL } from "@config/claude-models";
 import CarouselTable, { type CarouselItem } from "./CarouselTable";
 import FontTable, { type FontItem } from "./FontTable";
 import MotionCarouselTable from "./MotionCarouselTable";
@@ -31,7 +32,7 @@ const HAIDARA_MODEL = "claude-sonnet-5-5";
 
 /** Ways to spend less, shown to the person under the chat (the owner, 17 Nov 2026: «حطها كنصائح تطلع للعميل»). */
 const SAVING_TIPS = [
-  "اختر نموذج «الرشيق» للخطوات البسيطة (تفريغ الكلام، تأكيد الخيارات، تعديل جملة)، وارجع لـ«الأصيل» للكتابة الإبداعية فقط.",
+  "«الرشيق» هو النموذج الافتراضي هنا ويكفي لأغلب الشغل. بدّل لـ«الأصيل» من زر 🧠 بس إذا تبي كتابة إبداعية أعمق: سعره الضعف.",
   "أزرار الموقع (الألوان، الخط، ستايل الحركة، طريقة الصنع) مجانية: اضغط الزر وبس وما ينحسب عليك شي. اللي له سعر هو الكتابة لمحمد باقر، فلا تكتب جنب الزر إلا إذا تبي تغيّر شي.",
   "اجمع طلباتك في رسالة وحدة (عدد الشرائح، الشخصية، الصوت، الخاتمة) بدل عدة رسائل.",
   "في الموشن كاروسيل: «حيدرا ماكس بالكود فقط» الأرخص بفرق كبير؛ اختر صور GPT Image 2 بس إذا تحتاج شخصية أو مشهد مرسوم.",
@@ -955,7 +956,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     }
   }
 
-  const [claude] = useClaudeModel();
+  const [claude] = useClaudeModel(CONTENT_CLAUDE_MODEL);
   useEffect(() => {
     claudeId.current = claude.id;
   }, [claude.id]);
@@ -1233,7 +1234,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                 </div>
               )}
               <div className="ct-compose-opts">
-                <ClaudeModelPicker className="ct-claude" disabled={!!busy} spent={spent} />
+                <ClaudeModelPicker className="ct-claude" disabled={!!busy} spent={spent} fallback={CONTENT_CLAUDE_MODEL} />
                 <button type="button" className={`ct-mini ct-verbose${verbose ? " on" : ""}`} aria-pressed={verbose} onClick={toggleVerbose} title="الافتراضي مختصر لتوفير رصيدك؛ المفصّلة فيها شرح وبدائل وأسئلة أعمق">
                   {verbose ? "📝 محادثة مفصّلة ✓" : "📝 خلّها مفصّلة"}
                 </button>
