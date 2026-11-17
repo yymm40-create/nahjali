@@ -242,3 +242,11 @@ describe("the slide's tools", () => {
     expect(readFileSync("src/app/jawad-ai/content/content.css", "utf8")).toContain(".ct-slide .tools a { position: static; }");
   });
 });
+
+describe("a slide made over its picture", () => {
+  it("never deletes the picture that stood in its place (a later redraw keeps it)", () => {
+    const produce = readFileSync("src/lib/content/produce.ts", "utf8");
+    expect(produce).toContain('const isArt = !!old && (/^(picture|element)-/.test(old.name) || Object.values(p.arts ?? {}).includes(old.fileId));');
+    expect(produce).toContain('if (old && p.mode === "fix" && !isArt) {');
+  });
+});
