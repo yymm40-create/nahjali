@@ -28,7 +28,7 @@ import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
 import { askedSlides, attachedPictures, CAROUSEL_QUESTION, carouselHold, pathOf, pickedCarousel, pureGatePick, siteStep, pickedFont, pickedKind, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "./maker";
-import { chatEditPatch, lastSlidesAt, planSoundTime } from "./produce";
+import { chatEditPatch, lastSlidesAt, planRetryWords, planSoundTime } from "./produce";
 import { listenToFiles, listenToLinks } from "@/lib/link-listen";
 import { billYoutube } from "./youtube";
 import { chatSound } from "./sound";
@@ -236,6 +236,19 @@ export function readSoundAsk(t: string): { n: number; from: number; to: number }
   return { n: slide[0], from: Math.round(from * 100) / 100, to: Math.round(to * 100) / 100 };
 }
 
+/**
+ * «أعد المحاولة» / «أعد محاولة الفاشلة» / «أعد الشريحة ٤» / «عيد رسم ٢ و٣» written: the retry buttons' job — the slides
+ * named (or, with none named, the failed ones). A message that also asks for a change goes to «محمد باقر».
+ */
+export function readRetryAsk(t: string): number[] | "failed" | null {
+  const s = westDigits(t).trim().replace(/[.!؟?]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!s || s.length > 60) return null;
+  const m = /^(?:يلا\s+)?(?:أعد|اعد|عيد|أعيد|اعيد|جرب|جرّب)(?:\s+(?:المحاولة|محاولة|رسم|توليد|تسوي|صنع))?(?:\s+(?:كل\s+)?(?:ال)?(?:فاشلة|فاشله|فاشلين|اللي فشلت|اللي خربت))?(?:\s+(?:ال)?(?:شريحة|شريحه|شرائح|سلايدة|سلايده|سلايدات|سلايد))?(?:\s+رقم)?((?:\s*(?:و|،|,)?\s*\d{1,2})*)\s*(?:مرة ثانية|مره ثانيه|من جديد)?$/.exec(s);
+  if (!m) return null;
+  const ns = [...(m[1] ?? "").matchAll(/\d{1,2}/g)].map((x) => Number(x[0])).filter((n) => n > 0);
+  return ns.length ? [...new Set(ns)] : "failed";
+}
+
 export const isContinue = (t: string) => /^(يلا\s+)?(كمل|كمّل|كملي|كمّلي|اكمل|أكمل|تابع|استمر|كمل الرسم|كمّل الرسم|كمل التوليد|كمّل التوليد|continue|go on)[\s.!؟?]*$/i.test(t.trim());
 
 /** The pictures جواد made in this conversation (their file ids): references for the next picture of the same character. */
@@ -348,6 +361,19 @@ export async function say(userId: string, chatId: string | null, message: string
     const reply: Turn = { role: "assistant", text: `تمام، اعتمدت الصور ✅ وبدأ حيدرا ماكس يصمّم ${unfinished.motion ? "ويحرّك " : ""}${left.length === 1 ? `الشريحة ${left[0]}` : `الشرائح (${left.join("، ")})`}. تظهر لك هنا وحدة وحدة، لا تقفل الصفحة.` };
     const id = await saveChat(userId, chatId, { messages: [...history, reply], pending: { ...unfinished, picturesOk: true } });
     return { chatId: id, text: reply.text, questions: null, usd: 0, pending: { total: unfinished.slides.length, mode: unfinished.mode, todo: left }, editor: null, media: null, spentHalalas: full?.spentHalalas ?? 0 };
+  }
+  // the retry buttons asked in words, on a carousel that is not being made now: the same as the press, no paid reply
+  const retryAsk = !files.length && !(unfinished && left.length) ? readRetryAsk(said) : null;
+  const lastBlock = retryAsk && full ? full.messages[lastSlidesAt(full)]?.slides : null;
+  if (retryAsk && full && lastBlock && (retryAsk !== "failed" || lastBlock.failed.length)) {
+    const ns = retryAsk === "failed" ? lastBlock.failed.map((f) => f.n) : retryAsk.filter((n) => lastBlock.items.some((x) => x.n === n) || lastBlock.failed.some((f) => f.n === n));
+    if (ns.length) {
+      const reply: Turn = { role: "assistant", text: `تمام، أعيد ${ns.length === 1 ? `الشريحة ${ns[0]}` : `الشرائح (${ns.join("، ")})`} الحين بنفس التصميم والصورة المعتمدة.` };
+      const id = await saveChat(userId, chatId, { messages: [...history, reply] });
+      const saved = await getChat(userId, id);
+      const planned = saved ? await planRetryWords(userId, saved, ns).catch(() => null) : null;
+      if (planned?.pending) return { chatId: id, text: reply.text, questions: null, usd: 0, pending: { total: planned.pending.slides.length, mode: "fix", todo: planned.pending.slides.map((x) => x.n) }, editor: null, media: null, spentHalalas: full.spentHalalas ?? 0 };
+    }
   }
   if (unfinished && left.length && !files.length && isContinue(said)) {
     const reply: Turn = { role: "assistant", text: `تمام، أكمل رسم ${left.length === 1 ? `الشريحة ${left[0]}` : `الشرائح الباقية (${left.join("، ")})`} من نفس المكان، بنفس التصميم والشخصيات اللي انرسمت.` };

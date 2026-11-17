@@ -267,6 +267,9 @@ export async function chatEditPatch(userId: string, chatId: string, block: Slide
 }
 
 /** A made slide's sound time asked in the chat («الشريحة ٣ من ٠:٢٩ إلى ٠:٤٢»): its video is made again with that part. */
+/** «أعد المحاولة» / «أعد الشريحة ٤» written: the same as the 🔁 / «أعد المحاولة» buttons. */
+export const planRetryWords = (userId: string, chat: Chat, ns: number[] | "failed") => planRetry(userId, chat, ns);
+
 export const planSoundTime = (userId: string, chat: Chat, t: { n: number; from: number; to: number }) => planRetry(userId, chat, [t.n], t);
 
 /** Starts drawing again the slides asked for (the failed ones, or any made one), in the carousel that exists. */
