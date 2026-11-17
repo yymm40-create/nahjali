@@ -35,27 +35,67 @@ export interface DrawResult {
 }
 
 /** A part of a sound file (from–to, in seconds) as a WAV blob, for one slide's mix. */
+/** One go at a time through the whole-file decode (three slides decoding a long video at once ran a phone out of memory). */
+let decodeLine: Promise<unknown> = Promise.resolve();
+
+/**
+ * `from`–`to` of a sound or a video's sound, as two channels at 48 kHz. First ONLY that part is read (range requests and
+ * the browser's own decoder, through mediabunny): a slide never downloads and decodes the person's whole video — on a
+ * phone that failed with «Decoding failed» for a .mov (a customer, 17 Nov 2026). If that way can't read the file, the
+ * whole file is decoded the old way, one slide at a time, three tries.
+ */
+async function soundRange(url: string, from: number, to: number, RATE: number): Promise<Float32Array[]> {
+  const n = Math.max(1, Math.round((to - from) * RATE));
+  try {
+    const { ALL_FORMATS, AudioBufferSink, Input, UrlSource } = await import("mediabunny");
+    const input = new Input({ source: new UrlSource(url, { requestInit: { cache: "no-store" } }), formats: ALL_FORMATS });
+    try {
+      const track = await input.getPrimaryAudioTrack();
+      if (!track) throw new Error("no audio track");
+      const ctx = new OfflineAudioContext(2, n, RATE);
+      let got = 0;
+      for await (const wb of new AudioBufferSink(track).buffers(from, to)) {
+        const node = ctx.createBufferSource();
+        node.buffer = wb.buffer;
+        node.connect(ctx.destination);
+        node.start(Math.max(0, wb.timestamp - from), Math.max(0, from - wb.timestamp));
+        got++;
+      }
+      if (!got) throw new Error("no sound in range");
+      const out = await ctx.startRendering();
+      return [0, 1].map((c) => out.getChannelData(Math.min(c, out.numberOfChannels - 1)));
+    } finally {
+      input.dispose?.();
+    }
+  } catch (first) {
+    console.warn("slide sound: the range way failed, decoding the whole file", first);
+  }
+  const whole = async () => {
+    let last: unknown = null;
+    for (let i = 0; i < 3; i++) {
+      try {
+        const r = await fetch(url, { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const all = await new OfflineAudioContext(2, 1, RATE).decodeAudioData(await r.arrayBuffer());
+        const a = Math.max(0, Math.round(from * RATE));
+        const m = Math.max(1, Math.min(all.length - a, n));
+        return [0, 1].map((c) => all.getChannelData(Math.min(c, all.numberOfChannels - 1)).slice(a, a + m));
+      } catch (e) {
+        last = e;
+        await new Promise((ok) => setTimeout(ok, 1500 * (i + 1)));
+      }
+    }
+    throw last instanceof Error ? last : new Error("no sound");
+  };
+  const run = decodeLine.then(whole, whole);
+  decodeLine = run.catch(() => undefined);
+  return run;
+}
+
 async function soundPart(url: string, from: number, to: number): Promise<Blob> {
   const RATE = 48000;
-  // read fresh from storage, never the browser's cached copy (the chat's own player cached the attached video without the
-  // cross-origin grant, and Chrome refuses that copy to a script: slide 1 came out silent, 17 Nov 2026), and tried again
-  // on a moment's refusal
-  let bytes: ArrayBuffer | null = null;
-  for (let i = 0; i < 3 && !bytes; i++) {
-    try {
-      const r = await fetch(url, { cache: "no-store" });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      bytes = await r.arrayBuffer();
-    } catch (e) {
-      if (i === 2) throw e;
-      await new Promise((ok) => setTimeout(ok, 1500 * (i + 1)));
-    }
-  }
-  if (!bytes) throw new Error("no sound");
-  const all = await new OfflineAudioContext(2, 1, RATE).decodeAudioData(bytes);
-  const a = Math.max(0, Math.round(from * RATE));
-  const n = Math.max(1, Math.min(all.length - a, Math.round((to - from) * RATE)));
-  const ch = [0, 1].map((c) => all.getChannelData(Math.min(c, all.numberOfChannels - 1)).subarray(a, a + n));
+  const ch = await soundRange(url, from, to, RATE);
+  const n = ch[0].length;
   const buf = new ArrayBuffer(44 + n * 4);
   const v = new DataView(buf);
   const str = (o: number, s: string) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));

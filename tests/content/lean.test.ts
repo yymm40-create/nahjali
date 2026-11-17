@@ -234,6 +234,9 @@ describe("a slide over the person's own sound", () => {
   it("is never silent: its part is read fresh and tried again, and a slide whose sound can't be read fails instead", () => {
     const draw = readFileSync("src/components/claude-code/draw.ts", "utf8");
     expect(draw).toContain('const r = await fetch(url, { cache: "no-store" });');
+    // only the slide's own part is read first (a phone could not decode a whole .mov per slide: «Decoding failed»)
+    expect(draw).toContain("new AudioBufferSink(track).buffers(from, to)");
+    expect(draw).toContain("const run = decodeLine.then(whole, whole);");
     expect(draw).toContain("ما قدرت أجيب صوت الشريحة");
     expect(draw).not.toContain("soundPart(m.voice.url, m.voice.from, m.voice.to).catch(() => null)");
   });
