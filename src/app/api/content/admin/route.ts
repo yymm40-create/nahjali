@@ -9,6 +9,7 @@ import { CONTENT_KINDS } from "@config/content";
 import { EXAMPLES_PER_KIND } from "@config/content-examples";
 import { TEMPLATE_EXAMPLES_PER } from "@config/content-template-examples";
 import { isAdmin } from "@config/site";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { setChatSpent, userContentChats } from "@/lib/content/spent";
 
 export const dynamic = "force-dynamic";
@@ -70,6 +71,25 @@ export const POST = handle(async (req: Request) => {
       // a person's conversations with what each shows, and the owner's correction of one conversation's shown cost
       case "user_chats":
         return NextResponse.json({ chats: await userContentChats(String(b.userId ?? "")) });
+      // a person's conversation as the owner needs it to help (the texts, the picks, the carousel's look and references; no file links)
+      case "chat_detail": {
+        const { data } = await createAdminClient().from("content_chats").select("id,user_id,messages,pending,record,updated_at").eq("id", id).maybeSingle();
+        if (!data) throw new UserError("ما لقينا المحادثة.", 404);
+        const msgs = (Array.isArray(data.messages) ? data.messages : []) as Record<string, unknown>[];
+        return NextResponse.json({
+          updatedAt: data.updated_at,
+          record: String(data.record ?? "").slice(0, 4000),
+          pending: data.pending,
+          messages: msgs.map((m, i) => ({
+            i,
+            role: m.role,
+            text: String(m.text ?? "").slice(0, 1500),
+            files: Array.isArray(m.files) ? (m.files as Record<string, unknown>[]).map((f) => `${f.kind}:${f.id}:${f.name}`) : undefined,
+            questions: Array.isArray(m.questions) ? (m.questions as Record<string, unknown>[]).map((q) => q.label) : undefined,
+            slides: m.slides ? (({ items, ...rest }) => ({ ...rest, items: Array.isArray(items) ? (items as Record<string, unknown>[]).map((x) => `${x.n}:${x.name}:${x.fileId}`) : [] }))(m.slides as Record<string, unknown>) : undefined,
+          })),
+        });
+      }
       case "set_chat_spent": {
         const halalas = Math.round(Number(b.halalas));
         if (!Number.isFinite(halalas) || halalas < 0) throw new UserError("المبلغ غير صحيح.");
