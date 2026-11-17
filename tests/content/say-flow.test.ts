@@ -35,6 +35,7 @@ vi.mock("@/lib/content/chats", async (orig) => {
 vi.mock("@/lib/content/files", () => ({
   attachmentsOf: vi.fn(async (_u: string, ids: unknown) => ({ list: (Array.isArray(ids) ? ids : []).map((id: string) => ({ id, kind: "video", name: `${id}.mp4`, durationMs: 4000 })), rows: [] })),
   uploadLinks: vi.fn(async () => new Map()),
+  producedRow: vi.fn(async () => null),
 }));
 vi.mock("@/lib/content/persona", async (orig) => ({ ...(await orig<typeof import("@/lib/content/persona")>()), getPersona: vi.fn(async () => ({ text: "PERSONA", edited: false })) }));
 vi.mock("@/lib/editor/server", () => ({

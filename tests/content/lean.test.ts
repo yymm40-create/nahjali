@@ -30,7 +30,13 @@ vi.mock("@/lib/content/chats", async (orig) => {
   };
 });
 const deleted = vi.hoisted(() => [] as string[]);
-vi.mock("@/lib/content/files", () => ({ attachmentsOf: vi.fn(async () => ({ list: [], rows: [] })), uploadLinks: vi.fn(async () => new Map()), deleteProduced: vi.fn(async (_u: string, id: string) => { deleted.push(id); }) }));
+vi.mock("@/lib/content/files", () => ({
+  // ids starting «img-» are the person's pictures
+  attachmentsOf: vi.fn(async (_u: string, ids: unknown) => ({ list: (Array.isArray(ids) ? ids : []).filter((id: string) => String(id).startsWith("img-")).map((id: string) => ({ id, kind: "image", name: `${id}.jpg` })), rows: [] })),
+  uploadLinks: vi.fn(async () => new Map()),
+  deleteProduced: vi.fn(async (_u: string, id: string) => { deleted.push(id); }),
+  producedRow: vi.fn(async (_u: string, id: string) => ({ id, path: "x", name: "slide-01", meta: { refs: ["img-old"] } })),
+}));
 vi.mock("@/lib/content/persona", async (orig) => ({ ...(await orig<typeof import("@/lib/content/persona")>()), getPersona: vi.fn(async () => ({ text: "PERSONA", edited: false })) }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: () => ({ upsert: async () => ({ error: null }), insert: async () => ({ error: null }), select: () => ({ in: () => ({ eq: () => ({ eq: async () => ({ data: [] }) }) }) }) }) }) }));
 
@@ -277,5 +283,21 @@ describe("«أعد صورة» on a phone", () => {
     const page = readFileSync("src/components/jawad/content/ContentChat.tsx", "utf8");
     expect(page).not.toContain("window.prompt(`وش تبي يتغير في صورة الشريحة");
     expect(page).toContain("ارسم صورة {redoN} من جديد");
+  });
+});
+
+describe("slides drawn again with the person's reference", () => {
+  it("a new picture attached with «أعد الشريحة ٣ و٤» goes with those slides, before the carousel's own reference (they went with none)", async () => {
+    const made = [1, 2, 3, 4].map((n) => ({ n, fileId: `f${n}`, name: `slide-0${n}`, text: `ن${n}` }));
+    db.chat = { id: "chat-1", title: "t", record: "", usd: 0, spentHalalas: 0, updatedAt: "", pending: null, messages: [
+      { role: "user", text: START, files: [{ id: "img-old", kind: "image", name: "old.jpg" }] },
+      { role: "assistant", text: "تم", slides: { aspect: "2:3", items: made, todo: [], failed: [], running: false, total: 4, maker: "code", motion: { styleId: "kinetic-word", route: "picture", seconds: 5 } } },
+    ] } as never;
+    answer({ produce: { ...empty, on: true, mode: "fix", refs: [], slides: [3, 4].map((n) => ({ n, text: `ن${n}`, prompt: `p${n}`, picture: `pic${n}` })) } });
+    await say("u", "chat-1", "هذي صورتي، أعد الشريحة ٣ و٤ بنفس الشخصية", ["img-new"]);
+    const p = chat().pending as unknown as { refs?: string[]; mode: string; slides: { n: number }[] };
+    expect(p.mode).toBe("fix");
+    expect(p.slides.map((x) => x.n)).toEqual([3, 4]);
+    expect(p.refs).toEqual(["img-new", "img-old"]);
   });
 });
