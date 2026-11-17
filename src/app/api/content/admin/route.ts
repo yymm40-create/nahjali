@@ -11,7 +11,8 @@ import { TEMPLATE_EXAMPLES_PER } from "@config/content-template-examples";
 import { isAdmin } from "@config/site";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { setChatSpent, userContentChats } from "@/lib/content/spent";
-import { getChat } from "@/lib/content/chats";
+import { getChat, saveChat } from "@/lib/content/chats";
+import { say } from "@/lib/content/chat";
 import { planSlideFix, previewCodeSlide } from "@/lib/content/produce";
 import { producedLinks, producedRow, uploadLinks } from "@/lib/content/files";
 
@@ -125,6 +126,20 @@ export const POST = handle(async (req: Request) => {
         // the person's own sound file the slide plays a part of, to compare with
         const upload = typeof b.uploadId === "string" ? ((await uploadLinks(uid, [b.uploadId])).get(b.uploadId) ?? null) : null;
         return NextResponse.json({ name: row.name, meta, url: links.get(row.id) ?? null, video: video ? (links.get(video) ?? null) : null, upload });
+      }
+      // the owner answers a person's LAST message again after a fix (at the site's cost: nothing is taken from their
+      // wallet): the replies after it are removed and the message is sent again, with its attachments
+      case "redo_last_turn": {
+        const { data } = await createAdminClient().from("content_chats").select("user_id").eq("id", id).maybeSingle();
+        const uid = data ? String(data.user_id) : "";
+        const chat = uid ? await getChat(uid, id) : null;
+        if (!chat) throw new UserError("ما لقينا المحادثة.", 404);
+        const u = chat.messages.map((m) => m.role).lastIndexOf("user");
+        if (u < 0) throw new UserError("ما فيه رسالة للعميل.");
+        const turn = chat.messages[u];
+        await saveChat(uid, id, { messages: chat.messages.slice(0, u) });
+        const r = await say(uid, id, turn.text, (turn.files ?? []).map((f) => f.id), null);
+        return NextResponse.json({ text: r.text.slice(0, 1500), pending: r.pending, questions: r.questions?.map((q) => q.label) ?? null });
       }
       case "set_chat_spent": {
         const halalas = Math.round(Number(b.halalas));
