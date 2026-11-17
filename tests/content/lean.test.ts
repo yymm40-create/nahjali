@@ -209,3 +209,16 @@ describe("«حوّله ريل»", () => {
     expect(reel).toContain("fetch(url, NO_CACHE)");
   });
 });
+
+describe("the content maker's own default model", () => {
+  it("is «الرشيق» while the person has chosen none, on the page, in the picker and on the server", async () => {
+    const { CONTENT_CLAUDE_MODEL, findClaudeModel } = await import("@config/claude-models");
+    expect(findClaudeModel(CONTENT_CLAUDE_MODEL)?.name).toBe("الرشيق");
+    const page = readFileSync("src/components/jawad/content/ContentChat.tsx", "utf8");
+    expect(page).toContain("useClaudeModel(CONTENT_CLAUDE_MODEL)");
+    expect(page).toContain("fallback={CONTENT_CLAUDE_MODEL}");
+    expect(readFileSync("src/app/api/content/chat/route.ts", "utf8")).toContain("findClaudeModel(b.model) ? b.model : CONTENT_CLAUDE_MODEL");
+    // a model the person picked stays theirs: the section's default only fills an empty choice
+    expect(readFileSync("src/components/robots/claude-model.ts", "utf8")).toContain('useSyncExternalStore(subscribe, read, () => "") || fallback');
+  });
+});
