@@ -237,6 +237,35 @@ async function store(c: { userId: string; chatId: string }, p: PendingProduce, s
 /** The index of the last answer that carries a carousel (where a fix or a retry goes). */
 export const lastSlidesAt = (chat: Pick<Chat, "messages">) => chat.messages.map((m) => !!m.slides).lastIndexOf(true);
 
+/**
+ * A change to made motion slides asked IN THE CHAT (to «محمد باقر»): when no slide's picture changes, each made slide
+ * keeps its approved picture and its program, and the person's words patch the program (the same way as «✏️ عدّل
+ * الشريحة») instead of the slide being written again from zero. Null when it can't be a patch (a new picture, a slide
+ * not made yet, no program kept): the old way, drawn again.
+ */
+export async function chatEditPatch(userId: string, chatId: string, block: SlidesBlock, slides: { n: number; text: string; picture?: string }[], said: string): Promise<Pick<PendingProduce, "arts" | "programs" | "edits" | "picturesOk"> | null> {
+  if (!block.motion || !said.trim() || !slides.length) return null;
+  const arts: Record<string, string> = {};
+  const programs: Record<string, string> = {};
+  const edits: Record<string, string> = {};
+  for (const s of slides) {
+    const item = block.items.find((x) => x.n === s.n);
+    if (!item || block.failed.some((f) => f.n === s.n)) return null;
+    const row = await producedRow(userId, item.fileId).catch(() => null);
+    const batch = typeof row?.meta.batch === "string" ? row.meta.batch : "";
+    const before = typeof row?.meta.picture === "string" ? row.meta.picture.trim() : "";
+    // a new picture asked for this slide: it is painted again (not a patch)
+    if (!batch || (s.picture && s.picture.trim() !== before)) return null;
+    const art = await slidePicture(userId, chatId, s.n, batch);
+    if (!art) return null;
+    arts[String(s.n)] = art;
+    programs[String(s.n)] = programPath(userId, chatId, batch, s.n);
+    const textChanged = s.text.trim() && s.text.trim() !== item.text.trim();
+    edits[String(s.n)] = `${said.trim().slice(0, 900)}${textChanged ? `\nThe slide's on-screen text is now exactly: ${s.text.trim()}` : ""}`;
+  }
+  return { arts, programs, edits, picturesOk: true };
+}
+
 /** Starts drawing again the slides asked for (the failed ones, or any made one), in the carousel that exists. */
 async function planRetry(userId: string, chat: Chat, ns: number[] | "failed", time?: { n: number; from: number; to: number }, change?: { ns: number[]; said: string }): Promise<Chat> {
   const at = lastSlidesAt(chat);
