@@ -249,7 +249,7 @@ async function aroundFace(bm: ImageBitmap, aspect: number, floor?: number, known
   return out;
 }
 
-type DrawOptions = { prompt: string; aspect: string; style: string; references: string[]; photos?: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" | "content"; edit?: DrawEdit | null; motion?: DrawMotion | null; template?: DrawTemplate | null; /** more for the server: a motion carousel's still stage, or the still to animate */ extra?: Record<string, unknown> };
+type DrawOptions = { /** a slide program kept so far is handed back (the content maker saves it: a refresh loses nothing) */ onProgram?: (p: { code: string; fonts: { head: string; body: string }; size: [number, number] }) => Promise<unknown>; prompt: string; aspect: string; style: string; references: string[]; photos?: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" | "content"; edit?: DrawEdit | null; motion?: DrawMotion | null; template?: DrawTemplate | null; /** more for the server: a motion carousel's still stage, or the still to animate */ extra?: Record<string, unknown> };
 
 /**
  * Draws the picture by program, with up to CODE_ROUNDS looks and rewrites. `photos` are the person's pictures to PUT IN
@@ -465,6 +465,11 @@ async function drawOnce(o: DrawOptions): Promise<DrawResult> {
       const png = await bitmapTo(bm, "image/png");
       const still = await bitmapTo(bm, "image/jpeg", 1280, 0.85);
       bm.close();
+      // the content maker: no review at all — drawn and shown to the person (the owner, 17 Nov 2026: «آي مراجعة احذفها»)
+      if (o.from === "content") {
+        best = { png, scores: {}, pass: true, verdict: "", rounds: 1, coins, program: { code, fonts, size: [W, H] } };
+        break;
+      }
       // quick: the fix of the one look, drawn, is the result (no second look)
       if (quick && round === 2) {
         best = { ...best!, png, rounds: 2, program: { code, fonts, size: [W, H] } };
@@ -502,7 +507,10 @@ async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
   const call = <T,>(body: Record<string, unknown>): Promise<T> => callFull<T>(light ? { ...body, light: true } : body);
   let coins = 0;
   o.onStep({ text: `🎬 حيدرا ماكس يكتب الشريحة ${m.n} مشهدًا متحركًا…` });
-  let w = await call<Wrote>({ action: "write" });
+  // a program kept before a refresh starts the slide again from there (no second writing)
+  const kept = o.extra?.program as { code: string; fonts: { head: string; body: string }; size: [number, number] } | undefined;
+  if (kept) o.onStep({ text: `♻️ برنامج الشريحة ${m.n} محفوظ — نكمّل من عنده بدون كتابة جديدة…` });
+  let w: Wrote = kept ? { code: kept.code, problems: [], fonts: kept.fonts, size: kept.size, notes: "", coins: 0 } : await call<Wrote>({ action: "write" });
   coins += w.coins ?? 0;
   let code = w.code;
   let problems = w.problems;
@@ -537,8 +545,10 @@ async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
       const png = await bitmapTo(last, "image/png");
       const still = await bitmapTo(last, "image/jpeg", 1280, 0.85);
       last.close();
-      // animating an approved still (stage 2): it runs and was checked frame by frame above — no review round (17 Nov 2026)
-      if (o.extra?.still) {
+      // no review round: the program runs and was checked frame by frame above; the content maker saves it, so a refresh
+      // goes straight to the video (the owner, 17 Nov 2026: «آي مراجعة احذفها… ليش لما نحدث يروح عالفاضي؟»)
+      if (o.extra?.still || o.from === "content") {
+        if (!kept || kept.code !== code) await o.onProgram?.({ code, fonts, size: [W, H] }).catch(() => undefined);
         best = { result: { png, scores: {}, pass: true, verdict: "", rounds: 1, coins }, code };
         break;
       }

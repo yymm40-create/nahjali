@@ -183,6 +183,8 @@ export interface PendingProduce {
    * «حيدرا ماكس» design and move the slides
    */
   picturesOk?: boolean;
+  /** a motion slide's program once it runs, by slide number (storage path): a refresh goes on from it, never writes again */
+  programs?: Record<string, string>;
   /** slides whose work ran past the time once: set aside, done after the others with lighter thinking (17 Nov 2026) */
   deferred?: number[];
   /** made in this production so far */
@@ -357,6 +359,7 @@ export function readPending(v: unknown): PendingProduce | null {
     ...(readMotion(p.motion) ? { motion: readMotion(p.motion)! } : {}),
     ...(p.sound === false ? { sound: false as const } : p.sound && typeof p.sound === "object" && typeof (p.sound as { uploadId?: unknown }).uploadId === "string" && Array.isArray((p.sound as { slices?: unknown }).slices) ? { sound: p.sound as NonNullable<Exclude<PendingProduce["sound"], false>> } : {}),
     ...(p.picturesOk === true ? { picturesOk: true } : {}),
+    ...(p.programs && typeof p.programs === "object" && !Array.isArray(p.programs) ? { programs: Object.fromEntries(Object.entries(p.programs as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> } : {}),
     ...(Array.isArray(p.deferred) ? { deferred: (p.deferred as unknown[]).map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 40) } : {}),
     ...(p.stills && typeof p.stills === "object" && !Array.isArray(p.stills) ? { stills: Object.fromEntries(Object.entries(p.stills as Record<string, unknown>).filter(([, v]) => !!v && typeof v === "object" && typeof (v as { program?: unknown }).program === "string" && typeof (v as { slide?: { fileId?: unknown } }).slide?.fileId === "string")) as NonNullable<PendingProduce["stills"]> } : {}),
     ...(p.arts && typeof p.arts === "object" && !Array.isArray(p.arts) ? { arts: Object.fromEntries(Object.entries(p.arts as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> } : {}),
