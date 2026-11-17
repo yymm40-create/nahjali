@@ -414,9 +414,26 @@ async function putVideo(blob: Blob, fileName: string): Promise<string> {
 }
 
 /** «🎬 حوّله ريل»: the carousel's slides joined in order into one 9:16 video (lib: ./slides-reel), downloaded. */
-function ReelButton({ items }: { items: SlideView[] }) {
+/** Words that ask for a page button's job (the owner, 18 Nov 2026: «كل زر يستخدم فالمحادثة عادي ينرسل كتابة»). */
+export function pageAction(t: string): "reel" | "download" | null {
+  const s = t.trim().replace(/[.!؟?،,]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!s || s.length > 50 || /(غي[ّ]?ر|عد[ّ]?ل|بدل|شيل|لكن)/.test(s)) return null;
+  if (/^(يلا\s+)?((حو[ّ]?ل|سو[ّ]?ي?|اجمع|طل[ّ]?ع)(ه|ها|هم)?|ابي|أبي|ابغى|ابغا)?\s*(لي\s*)?(ال)?ريل(\s*(منها|منهم|واحد|مقطع واحد))?$/.test(s)) return "reel";
+  if (/^(حم[ّ]?ل|ابي احمل|أبي أحمل|تحميل)\s*(لي\s*)?(كل\s*)?(ال)?(شرائح|سلايدات|صور|فيديوهات|الكل|كلها)$/.test(s) || /^(نز[ّ]?ل)\s*(لي\s*)?(كل\s*)?(ال)?(شرائح|سلايدات)\s*(عندي|على جهازي)?$/.test(s)) return "download";
+  return null;
+}
+
+function ReelButton({ items, go = 0 }: { items: SlideView[]; go?: number }) {
   const [p, setP] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // asked in words: the same as pressing it
+  const lastGo = useRef(go);
+  useEffect(() => {
+    if (go === lastGo.current) return;
+    lastGo.current = go;
+    if (p == null) void make();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [go]);
   async function make() {
     setErr(null);
     setP(0);
@@ -472,7 +489,7 @@ export function parseClock(v: string): number | null {
   return Number.isFinite(all) ? all : null;
 }
 
-export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, onApprove, onRedoPicture, onSoundTime, onEditSlide, fonts, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; onApprove?: () => void; onRedoPicture?: (n: number, note: string) => void; onSoundTime?: (n: number, from: number, to: number) => void; onEditSlide?: (ns: number[], said: string) => void; fonts?: FontItem[]; step?: string | null }) {
+export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, onApprove, onRedoPicture, onSoundTime, onEditSlide, fonts, reelGo, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; onApprove?: () => void; onRedoPicture?: (n: number, note: string) => void; onSoundTime?: (n: number, from: number, to: number) => void; onEditSlide?: (ns: number[], said: string) => void; fonts?: FontItem[]; reelGo?: number; step?: string | null }) {
   const ns = [...new Set([...s.items.map((i) => i.n), ...s.todo])].sort((a, b) => a - b);
   const done = s.items.filter((i) => !s.todo.includes(i.n)).length;
   // which picture is being asked again, and what should change in it (a field here: a browser popup does nothing in the
@@ -715,7 +732,7 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
       {!s.running && s.items.length > 0 && (
         <div className="ct-actions">
           <button className="ct-mini" type="button" onClick={onDownloadAll}>⬇️ حمّل كل الشرائح ({s.items.length})</button>
-          {s.items.length > 1 && <ReelButton items={s.items} />}
+          {s.items.length > 1 && <ReelButton items={s.items} go={reelGo} />}
         </div>
       )}
     </div>
@@ -813,6 +830,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const [pending, setPending] = useState<FileView[]>([]);
   const [uploading, setUploading] = useState(false);
   const [gal, setGal] = useState<Galleries | null>(null);
+  // «حوّله ريل» written: which carousel, and a count that starts its reel button
+  const [reelGo, setReelGo] = useState<{ at: number; n: number }>({ at: -1, n: 0 });
   /** the path opened before the conversation began (its mark goes with the first message) */
   const [pathId, setPathId] = useState<string | null>(null);
   const [pathMenu, setPathMenu] = useState(false);
@@ -1140,6 +1159,18 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   async function send(text = q) {
     const typed = text.trim();
     if ((!typed && !pending.length) || busy || uploading) return;
+    // a page button asked in words (the reel, downloading the slides): done here, like the press, with no paid reply
+    const act = !pending.length && editFrom == null ? pageAction(typed) : null;
+    const lastAt = act ? msgs.map((x, i) => (x.slides && !x.slides.running && x.slides.items.length ? i : -1)).filter((i) => i >= 0).at(-1) ?? -1 : -1;
+    if (act && lastAt >= 0) {
+      const items = msgs[lastAt].slides!.items;
+      setQ("");
+      const say = act === "reel" ? (items.length > 1 ? "تمام، أجمع الشرائح الحين في ريل واحد بصوتها 🎬 — يتحمّل عندك أول ما يخلص (تحت الشرائح تشوف النسبة)." : "الريل يحتاج شريحتين أو أكثر.") : `تمام، أحمّل لك الشرائح (${items.length}) ⬇️`;
+      setMsgs((m) => [...m, { role: "user", text: typed, local: true }, { role: "assistant", text: say, local: true }]);
+      if (act === "reel" && items.length > 1) setReelGo((v) => ({ at: lastAt, n: v.n + 1 }));
+      if (act === "download") downloadAll(items);
+      return;
+    }
     const files = [...pending];
     // the first message of a path carries its mark; an edited old message keeps the mark it had, and the talk goes on from there
     const editing = editFrom;
@@ -1335,6 +1366,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                       onRedoPicture={(n, note) => chatId && void runProduce(chatId, undefined, { redoPicture: n, note })}
                       onEditSlide={(ns, said) => chatId && void runProduce(chatId, undefined, { editSlide: { ns, said } })}
                       fonts={gal?.fonts}
+                      reelGo={reelGo.at === i ? reelGo.n : 0}
                       onSoundTime={(n, from, to) => chatId && void runProduce(chatId, undefined, { soundTime: { n, from, to } })}
                       step={codeStep}
                     />
