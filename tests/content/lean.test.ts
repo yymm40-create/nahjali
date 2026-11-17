@@ -330,6 +330,29 @@ describe("slides drawn again with the person's reference", () => {
   });
 });
 
+describe("a change asked while the carousel is still being made (إيمان, 18 Nov 2026)", () => {
+  it("keeps the slides not made yet, and every slide keeps its approved picture: nothing painted or approved again", async () => {
+    const items = [
+      { n: 1, fileId: "pic1", name: "picture-01", text: "ن1" },
+      { n: 2, fileId: "pic2", name: "picture-02", text: "ن2" },
+      { n: 3, fileId: "pic3", name: "picture-03", text: "ن3" },
+    ];
+    const unfinished = { id: "old", aspect: "9:16", at: 1, mode: "all", styleId: "", templateId: "", maker: "code", motion: { styleId: "kinetic-word", route: "picture", seconds: 5 }, picturesOk: true, arts: { "1": "pic1", "2": "pic2", "3": "pic3" }, slides: [1, 2, 3].map((n) => ({ n, text: `ن${n}`, prompt: `p${n}`, picture: `pic${n}` })), made: [], failed: [], carry: [] };
+    db.chat = { id: "chat-1", title: "t", record: "", usd: 0, spentHalalas: 0, updatedAt: "", pending: unfinished, messages: [
+      { role: "user", text: START },
+      { role: "assistant", text: "تم", slides: { aspect: "9:16", items, todo: [1, 2, 3], failed: [], running: true, total: 3, maker: "code", motion: { styleId: "kinetic-word", route: "picture", seconds: 5 } } },
+    ] } as never;
+    // he answers the change for slide 3 only, with an empty picture (the same one)
+    answer({ produce: { ...empty, on: true, mode: "fix", refs: [], slides: [{ n: 3, text: "ن3", prompt: "p3 changed", picture: "" }] } });
+    await say("u", "chat-1", "في الشريحة 3 خل الكتابة فوق", []);
+    const p = chat().pending as unknown as { slides: { n: number; prompt: string }[]; arts: Record<string, string>; picturesOk?: boolean };
+    expect(p.slides.map((x) => x.n)).toEqual([1, 2, 3]);
+    expect(p.slides.find((x) => x.n === 3)!.prompt).toBe("p3 changed");
+    expect(p.arts).toEqual({ "1": "pic1", "2": "pic2", "3": "pic3" });
+    expect(p.picturesOk).toBe(true);
+  });
+});
+
 describe("the colours the person chose", () => {
   it("replace the style's own: its colour codes and colour words leave the picture's and the slide's prompts (the red came back over her blue)", async () => {
     const { findCarouselStyle, withoutColours, carouselStyleBlock, carouselStyleForCode } = await import("@config/content-carousel-styles");
