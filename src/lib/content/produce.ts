@@ -549,10 +549,12 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
     const url = links.get(slide1.fileId);
     if (url) refs.push(url);
   }
-  const { list } = await attachmentsOf(userId, p.refs ?? []);
+  const artUrl = art ? (links.get(art) ?? null) : null;
+  // the person's own pictures guided the painting of this slide's picture (they are IN it already): a motion slide with
+  // its painted picture does not hand them to «حيدرا ماكس» a second time, to be read for nothing
+  const { list } = artUrl && p.motion ? { list: [] } : await attachmentsOf(userId, p.refs ?? []);
   const mine = [...(await uploadLinks(userId, list.filter((a) => a.kind === "image").map((a) => a.id))).values()];
   refs.push(...mine);
-  const artUrl = art ? (links.get(art) ?? null) : null;
   const prompt = slidePrompt({ n: s.n, total, prompt: s.prompt, styleId: p.styleId, carouselId: p.carouselId, fontId: p.fontId, paletteId: p.paletteId, withRef: refs.length > mine.length, userRefs: mine.length });
   const motion: CodeSlide["motion"] | null = p.motion && stage === "motion" ? { seconds: p.motion.seconds, style: motionStyleForCode(p.motion.styleId === "own" ? null : findMotionCarouselStyle(p.motion.styleId), p.motion.own ?? ""), first: s.n === 1, total } : null;
   // the person's own sound under the carousel: this slide's part of it (as long as its part, moving on its phrases)
@@ -689,8 +691,10 @@ export async function produceFromCode(userId: string, chatId: string, b: { n?: u
   const sharp = (await import("sharp")).default;
   const meta = await sharp(bytes).metadata().catch(() => null);
   if (meta?.format !== "png" || !meta.width || !meta.height) throw new UserError("صورة الشريحة مو صالحة.", 400);
-  // the rule holds for what was placed in the slide too (a person's attached picture)
-  const seen = await showsRealWoman(bytes);
+  // the rule holds for what was placed in the slide too (a person's attached picture). A slide with none of the person's
+  // pictures holds only what «حيدرا ماكس» drew in code and its painted picture, which was looked at when it was painted:
+  // looking at the same picture a second time bought nothing
+  const seen = (p.refs?.length ?? 0) > 0 ? await showsRealWoman(bytes) : { woman: false, usd: 0 };
   if (seen.woman) {
     const messages = [...chat.messages];
     const at = Math.min(p.at, messages.length - 1);

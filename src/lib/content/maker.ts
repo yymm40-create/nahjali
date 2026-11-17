@@ -58,7 +58,7 @@ export function slidePictureHalalas(): number {
 /** The note under the ways of making it: cheapest first, what each costs on top of «حيدرا ماكس»'s work (prices as «¤N»: the coin's logo). */
 export const routeNote = (slides: number) => {
   const one = slidePictureHalalas();
-  return `⏸️ آخر خطوة قبل التصنيع: اختر طريقة صنع الحركة (من الأرخص للأغلى):\n${MOTION_ROUTES.map((r, i) => `${i + 1}) ${r.label}: ${r.what}${r.id === "code" ? "" : ` الصورة تقريبًا ${coinStr(one)}، يعني نحو ${coinStr(one * slides)} لـ ${slides} شرائح.`}`).join("\n")}`;
+  return `⏸️ آخر خطوة قبل التصنيع: اختر طريقة صنع الحركة (من الأرخص للأغلى):\n${MOTION_ROUTES.map((r, i) => `${i + 1}) ${r.label}: ${r.what}${r.id === "code" ? "" : ` الصورة تقريبًا ${coinStr(one)}${slides > 0 ? `، يعني نحو ${coinStr(one * slides)} لـ ${slides} شرائح` : ""}.`}`).join("\n")}`;
 };
 
 /** The turns since the last carousel/** The turns since the last carousel: what the next carousel is decided by. */
@@ -299,4 +299,72 @@ export function carouselHold(history: Turn[], slides = 6): CarouselHold | null {
   }
   if (!pickedMaker(history)) return { question: MAKER_QUESTION, note: "⏸️ آخر خطوة قبل التصنيع: اختر من يصمم الشرائح، وبعدها أبدأ." };
   return null;
+}
+
+// ───────── the site's own steps, answered without a model call ─────────
+
+const GATE_KINDS: readonly Question["kind"][] = ["carousels", "palettes", "fonts", "motioncarousels"];
+const GATE_CHOICES: Record<string, readonly string[]> = {
+  [KIND_LABEL]: [KIND_STILL, KIND_MOTION],
+  [ROUTE_LABEL]: MOTION_ROUTES.map((r) => r.label),
+  [MAKER_LABEL]: [MAKER_CODE, MAKER_GPT, MAKER_MIX],
+  [PHOTOS_LABEL]: [PHOTOS_MINE, PHOTOS_MAKE],
+};
+
+/** One of the site's own steps (the tables, the colours, the font, still or motion, the way of making it, who makes it). */
+export const isGateQuestion = (q: Question) => GATE_KINDS.includes(q.kind) || (q.kind === "choice" && q.label in GATE_CHOICES);
+
+const GATE_MARK = /^• [^\n:]{2,40}: [^\n\[\]]{0,90}\[(كاروسيل|ألوان|خط|حركة):([a-z0-9-]+)\]$/;
+
+/** A line that is one press of the site's own buttons: a real pick in a table (not «ساعدني», not the person's own words), or one of the ready answers. */
+function gateLine(line: string): boolean {
+  const m = GATE_MARK.exec(line);
+  if (m) {
+    const [, kind, id] = m;
+    if (kind === "كاروسيل") return !!findCarouselStyle(id);
+    if (kind === "ألوان") return id === "style" || id === "none" || !!findPalette(id);
+    if (kind === "خط") return id === "style" || id === "auto" || !!findContentFont(id);
+    return !!findMotionCarouselStyle(id);
+  }
+  for (const [label, answers] of Object.entries(GATE_CHOICES)) if (answers.includes(line) || answers.some((a) => line === `• ${label}: ${a}`)) return true;
+  return false;
+}
+
+/**
+ * The message is ONLY presses of the site's own buttons (one or a batch), with no words of the person's beside them:
+ * the site can go on to its next step by itself, and «محمد باقر» is asked nothing (the owner, 17 Nov 2026: each press
+ * used to be a whole paid answer of his that re-wrote every slide only for the site to hold it and ask the next step).
+ */
+export function pureGatePick(text: string): boolean {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  return lines.length > 0 && lines.length <= 8 && lines.every(gateLine);
+}
+
+/** How many slides the person asked for, when they said (else 0): for the price note of the last step. */
+export function askedSlides(history: Turn[]): number {
+  const digits = (s: string) => Number(s.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))));
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].role !== "user") continue;
+    const m = /(?:كم شريحة[^:\n]*:\s*([0-9٠-٩]{1,2}))|(?:([0-9٠-٩]{1,2})\s*(?:شرائح|شريحة|صفحات|صفحة|سلايدات|سلايد))/.exec(history[i].text);
+    const n = m ? digits(m[1] ?? m[2]) : 0;
+    if (n >= 1 && n <= 20) return n;
+  }
+  return 0;
+}
+
+/**
+ * The site's next step, when this message only pressed the step before it: the question the site asks by itself
+ * (no model call), or null — the talk goes to «محمد باقر» (nothing is left to ask, or the message says more than a press).
+ * Only inside a carousel whose style is already picked from the table, and only right after an answer that showed one
+ * of the site's own steps.
+ */
+export function siteStep(history: Turn[]): CarouselHold | null {
+  const last = history.at(-1);
+  const prev = history.at(-2);
+  if (!last || last.role !== "user" || last.files?.length || prev?.role !== "assistant" || !prev.questions?.some(isGateQuestion)) return null;
+  if (!pureGatePick(last.text)) return null;
+  const path = pathOf(history);
+  if (path && path !== "carousel" && path !== "motion-carousel") return null;
+  if (!pickedCarousel(history)?.style) return null;
+  return carouselHold(history, askedSlides(history));
 }

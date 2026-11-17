@@ -103,7 +103,9 @@ const WOMAN_SCHEMA = { type: "object", additionalProperties: false, required: ["
 export async function showsRealWoman(png: Buffer): Promise<{ woman: boolean; usd: number }> {
   try {
     const jpeg = await sharp(png).resize({ width: 768, height: 768, fit: "inside", withoutEnlargement: true }).flatten({ background: "#ffffff" }).jpeg({ quality: 78 }).toBuffer();
-    const r = await withTimeout(callClaudeJson<{ realistic_adult_woman: boolean }>({ system: WOMAN_SYSTEM, turns: [{ role: "user", content: [{ type: "image64", data: jpeg.toString("base64"), mediaType: "image/jpeg" }] }], schema: WOMAN_SCHEMA, maxTokens: 200, effort: "low" }), 25_000);
+    // one yes/no look at a picture: the light model (it sees pictures) at ~1/40 of the price — it ran on the conversation's
+    // own model before, the dearest one, twice for every slide
+    const r = await withTimeout(withClaude(SLIDE_CHECK_MODEL, () => callClaudeJson<{ realistic_adult_woman: boolean }>({ system: WOMAN_SYSTEM, turns: [{ role: "user", content: [{ type: "image64", data: jpeg.toString("base64"), mediaType: "image/jpeg" }] }], schema: WOMAN_SCHEMA, maxTokens: 200, effort: "low", cacheTail: false })), 25_000);
     return { woman: r.data.realistic_adult_woman === true, usd: claudeCost(r.usage) };
   } catch (e) {
     console.error("woman check", e instanceof Error ? e.message : e);

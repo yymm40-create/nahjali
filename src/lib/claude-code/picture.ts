@@ -119,6 +119,8 @@ export function patchProgram(program: string, d: { code?: unknown; edits?: unkno
 }
 
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
+/** what a fix says when its patch could not be applied: the next fix of that program is asked for whole */
+const PATCH_FAILED = "the patch of the last fix could not be applied — return the COMPLETE program this time";
 
 /** A motion carousel's slide, as the page sends it: its seconds, its motion style, whether it is the cover, how many slides. */
 export function readMotionSlide(v: unknown): { seconds: number; style: string; first: boolean; total: number } | null {
@@ -185,6 +187,11 @@ export async function pictureWrite(user: RobotUser, b: Record<string, unknown>) 
   const previous = text(b.code, 140_000);
   const errors = text(b.errors, 4000);
   if (b.edit === true && previous && !errors && !motion) return pictureEdit(user, b, prompt, previous, [w, h], style);
+  // a moving slide whose program threw: the fix comes back as a PATCH (a few lines), not the whole program written a
+  // second time (the owner, 17 Nov 2026: «ليش تكتب البرنامج مرتين؟»); only a patch that could not be applied asks for it whole
+  const patchFix = !!motion && !!previous && !errors.includes(PATCH_FAILED);
+  // a slide of the content maker over its painted, approved picture: the look is decided; he sets the words and the motion
+  const overPicture = b.from === "content" && !!motion && Array.isArray(b.photos) && b.photos.length > 0;
   const parts: ClaudePart[] = [
     {
       type: "text",
@@ -196,13 +203,16 @@ THE REQUEST (the person's words — every word they want written appears EXACTLY
 FRAME: ${w}×${h} (${b.aspect ?? "1:1"}) · ${pin ? `THE FONT the person chose (catalogue id): ${pin} — set every Arabic word in it, and return it as both fonts` : `FONTS you may pick (catalogue ids): ${fontMenu()}`}
 ${style ? `THE LOOK the person chose («الستايل»), to follow in every shape, light and texture: ${style}` : "No look chosen: pick a bold, original one that fits the request (never the safe template look)."}
 ${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the scene page — fix exactly this):\n${errors || "(no error text)"}` : ""}
-Return the COMPLETE program and the two fonts it uses.`,
+${patchFix ? 'Answer with "edits" on THE PROGRAM (exact search/replace) that fix exactly what went wrong, and code = ""; the COMPLETE program in "code" (edits []) only when the fix rewrites most of it. Return the two fonts it uses.' : "Return the COMPLETE program and the two fonts it uses."}`,
     },
     ...photosParts(b.photos),
     ...refsParts(b.references),
   ];
-  const r = await ask<{ code: string; fonts: { head: string; body: string }; notes: string }>(user, b.model, motion ? (previous ? "حيدرا ماكس · تصليح الشريحة المتحركة" : "حيدرا ماكس · شريحة متحركة") : previous ? "حيدرا ماكس · تصليح الصورة" : "حيدرا ماكس · رسم الصورة", parts, WRITE_SCHEMA, 64_000, (motion || stillFor) && (b.light === true || !!still) ? "medium" : "high", motion ? MOTION_SYSTEM : SYSTEM, motion || stillFor ? MOTION_MS : PICTURE_MS);
-  const chk = checkScene(r.data.code);
+  const r = await ask<{ code: string; edits?: unknown; fonts: { head: string; body: string }; notes: string }>(user, b.model, motion ? (previous ? "حيدرا ماكس · تصليح الشريحة المتحركة" : "حيدرا ماكس · شريحة متحركة") : previous ? "حيدرا ماكس · تصليح الصورة" : "حيدرا ماكس · رسم الصورة", parts, patchFix ? EDIT_SCHEMA : WRITE_SCHEMA, 64_000, patchFix || overPicture || ((motion || stillFor) && (b.light === true || !!still)) ? "medium" : "high", motion ? MOTION_SYSTEM : SYSTEM, motion || stillFor ? MOTION_MS : PICTURE_MS);
+  const fixed = patchFix ? patchProgram(previous, r.data) : null;
+  // a patch that can't be applied: the program stays as it was, and the next fix asks for it whole
+  if (fixed && "patchFailed" in fixed) return { code: previous, problems: [`${PATCH_FAILED} (${fixed.patchFailed})`], fonts: pin ? { head: pin, body: pin } : { head: font(r.data.fonts?.head, LAB_FONTS[0]), body: font(r.data.fonts?.body, LAB_FONTS[0]) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, model: r.model };
+  const chk = checkScene(fixed ? fixed.code : r.data.code);
   // the animated still keeps the still's fonts
   const keep = still && LAB_FONTS.includes(String(stillFonts.head)) ? { head: String(stillFonts.head), body: font(stillFonts.body, String(stillFonts.head)) } : null;
   return { code: chk.code, problems: chk.problems, fonts: pin ? { head: pin, body: pin } : keep ? keep : { head: font(r.data.fonts?.head, LAB_FONTS[0]), body: font(r.data.fonts?.body, LAB_FONTS[0]) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, model: r.model };
