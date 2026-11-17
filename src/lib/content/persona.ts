@@ -45,7 +45,21 @@ export async function resetPersona() {
  * extra blocks (the catalogues, what the person chose, the closest examples) and the project's record.
  */
 export function systemText(persona: string, parts: string[] = [], record = "") {
-  return [persona, CONTENT_PLATFORM_RULES, CONTENT_TOOLS, PSYCH_TRICKS_RULES, HUSSEINI_MOURNING_FEED, ...parts, recordText(record)].filter(Boolean).join("\n\n");
+  return [persona, CONTENT_PLATFORM_RULES, CONTENT_TOOLS, PSYCH_TRICKS_RULES, HUSSEINI_MOURNING_FEED, CAROUSEL_GPT_CRAFT, ...parts, recordText(record)].filter(Boolean).join("\n\n");
+}
+
+/**
+ * Whether the long tables (styles, fonts, templates, cartoon styles: ~19k tokens) can still be needed: until the look of
+ * a carousel is picked (he recommends from them and names their ids), when he is left to choose the font, and whenever
+ * the message speaks of a style, a font or a template. A motion-graphics or reel path never uses them. Once the look is
+ * picked the site gives him the full details of the pick (chosenBlock), so the tables are read for nothing.
+ */
+export function needsCatalog(ids: Chosen, said: string): boolean {
+  if (/(?:^|[\s«"(،])(?:ال|بال|لل|وال)?(?:ستايل|ستايلات|خط|خطوط|قالب|قوالب|كرتوني|كرتون)(?:[\s»".،؟!):]|$)|style|font|template/i.test(said)) return true;
+  if (ids.path === "motion-graphics" || ids.path === "reel-graphics") return false;
+  const lookPicked = !!(ids.carousel && findCarouselStyle(ids.carousel)) || ids.carousel === "own" || (!!ids.template && ids.template !== "none");
+  const fontPicked = !!ids.font && ids.font !== "auto";
+  return !(lookPicked && fontPicked);
 }
 
 const recordText = (record: string) => (record ? `سجل المشروع الحالي (كما حفظته آخر مرة؛ حدّثه في "record" عند أي تغيير):\n${record}` : "");
@@ -61,7 +75,7 @@ export function catalogBlock(): string {
   const sty = FILM_STYLES.map((x) => `- ${x.id} — ${x.name} (${x.group} · ${x.school}) — ${x.feel}`).join("\n");
   const car = CAROUSEL_STYLES.map((s) => `- ${s.id} — ${s.n}) ${s.name} (${s.niche})${s.winner ? " ★الأقوى في مجاله" : ""}${s.photoIdea ? " [صور واقعية]" : ""}${s.font ? ` [خطه الجاهز: ${s.font}]` : ""} — ${s.description} يناسب: ${s.bestFor}.`).join("\n");
   const fonts = CONTENT_FONTS.map((f) => `- ${f.id} — ${f.name} (${f.group})${f.top ? " ★" : ""} — ${f.feel} يناسب: ${f.bestFor}.`).join("\n");
-  return `جدول ستايلات الكاروسيل (${CAROUSEL_STYLES.length} ستايلًا مصنفة حسب المجال، بصورتين لكل واحد: غلاف وشريحة؛ جدول kind="carousels"؛ هو طريقة اختيار شكل الكاروسيل):\n${car}\n\nقائمة الخطوط العربية (${CONTENT_FONTS.length} خطًا في ${FONT_GROUPS.length} أنواع؛ قائمة kind="fonts"؛ تُسأل بعد الستايل: الموقع يعرضها بنفسه، وإذا رشّحت خطوطًا فضع معرّفاتها في "options"):\n${fonts}\n\n${CAROUSEL_GPT_CRAFT}\n\nقوالب الكاروسيل التي يعرضها الموقع للعميل (معرض kind="templates"؛ يختار واحدًا أو لا يختار):\n${tpl}\n\nخريطة الستايلات (${FILM_STYLES.length} ستايلًا في ١٤ عائلة، كل واحد تحت شركته أو مدرسته) لرسوم الصور (معرض kind="styles"؛ يطبّق الموقع نص الستايل حرفيًا على الرسوم والشخصيات والمشاهد المرسومة فقط، لا على تخطيط الكتابة):\n${sty}`;
+  return `جدول ستايلات الكاروسيل (${CAROUSEL_STYLES.length} ستايلًا مصنفة حسب المجال، بصورتين لكل واحد: غلاف وشريحة؛ جدول kind="carousels"؛ هو طريقة اختيار شكل الكاروسيل):\n${car}\n\nقائمة الخطوط العربية (${CONTENT_FONTS.length} خطًا في ${FONT_GROUPS.length} أنواع؛ قائمة kind="fonts"؛ تُسأل بعد الستايل: الموقع يعرضها بنفسه، وإذا رشّحت خطوطًا فضع معرّفاتها في "options"):\n${fonts}\n\nقوالب الكاروسيل التي يعرضها الموقع للعميل (معرض kind="templates"؛ يختار واحدًا أو لا يختار):\n${tpl}\n\nخريطة الستايلات (${FILM_STYLES.length} ستايلًا في ١٤ عائلة، كل واحد تحت شركته أو مدرسته) لرسوم الصور (معرض kind="styles"؛ يطبّق الموقع نص الستايل حرفيًا على الرسوم والشخصيات والمشاهد المرسومة فقط، لا على تخطيط الكتابة):\n${sty}`;
 }
 
 /**

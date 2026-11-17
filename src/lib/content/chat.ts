@@ -23,11 +23,11 @@ import { findContentFont } from "@config/content-fonts";
 import { findStyle } from "@config/film-styles";
 import { cleanHistory, getChat, readMedia, readQuestions, saveChat, type Attachment, type MediaItem, type MotionPlan, type PendingProduce, type Turn } from "./chats";
 import { attachmentsOf, uploadLinks } from "./files";
-import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, pathBlock, systemText, turnText } from "./persona";
+import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, needsCatalog, pathBlock, systemText, turnText } from "./persona";
 import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
-import { attachedPictures, CAROUSEL_QUESTION, carouselHold, pickedCarousel, pickedFont, pickedKind, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "./maker";
+import { askedSlides, attachedPictures, CAROUSEL_QUESTION, carouselHold, pathOf, pickedCarousel, pureGatePick, siteStep, pickedFont, pickedKind, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "./maker";
 import { lastSlidesAt } from "./produce";
 import { listenToFiles, listenToLinks } from "@/lib/link-listen";
 import { billYoutube } from "./youtube";
@@ -214,6 +214,15 @@ export async function say(userId: string, chatId: string | null, message: string
   const cut = full && Number.isInteger(opts.from) && opts.from! >= 0 && opts.from! < full.messages.length && full.messages[opts.from!].role === "user" ? opts.from! : -1;
   const before = full && cut >= 0 ? { ...full, messages: full.messages.slice(0, cut), record: "", pending: null } : full;
   const history = cleanHistory([...(before?.messages ?? []), { role: "user", text: said || "(ملفات مرفقة)", files: files.length ? files : undefined }]);
+  // the site's own steps (colours, font, still or motion, motion style, the way of making it): a press that answers one
+  // while another still waits is answered by the site itself, at once and for nothing (the owner, 17 Nov 2026: each
+  // press was a whole paid answer of «محمد باقر» that re-wrote every slide only for the site to hold it)
+  const step = chatId && !before?.pending ? siteStep(history) : null;
+  if (step) {
+    const reply: Turn = { role: "assistant", text: step.note, questions: [step.question] };
+    const id = await saveChat(userId, chatId, { messages: [...history, reply], ...(cut >= 0 ? { record: "", pending: null } : {}) });
+    return { chatId: id, text: reply.text, questions: reply.questions!, usd: 0, pending: null, editor: null, media: null, spentHalalas: full?.spentHalalas ?? 0 };
+  }
   // a long conversation: his own handoff of everything before, then the latest turns (lib/robot-handoff)
   const mem = await remember({ key: `content:${chatId ?? ""}`, userId, robot: "محمد باقر (صانع المحتوى)", turns: history, window: CONTENT.historyTurns });
   const turns = mem.kept;
@@ -226,25 +235,34 @@ export async function say(userId: string, chatId: string | null, message: string
   // the system stays the SAME every message (persona, rules, the catalogue: cached once); what changes per message —
   // the nearest examples, the chosen blocks, the record — rides at the start of this turn (it re-wrote everything at
   // full price each message when it sat in the system)
-  const parts = [
+  const allSaid = history.filter((t) => t.role === "user").map((t) => t.text).join(" ");
+  // decided from the WHOLE talk (not this message alone), so a block that came in stays in and the cached start holds
+  const talk = `${stripMarks(allSaid)} ${before?.record ?? ""}`;
+  // what stays the same for the whole conversation (the path's steps, the motion guide, what was heard): read ONCE and
+  // then from the cache — it rode with every message at full price before (the owner, 17 Nov 2026: «أي خطوة فيها قراءة زيادة شلها»)
+  const stable = [
     // the motion skills, feelings and drawing tools: when the work is motion graphics
-    ...(ids.motion || ids.mood || ids.path === "motion-graphics" || ids.path === "reel-graphics" || /موشن|motion|انترو|إنترو|تايبوغرافي|إنفوجرافيك|انفوجرافيك/i.test(`${ask} ${before?.record ?? ""}`) ? [motionCatalogBlock()] : []),
+    ...(ids.motion || ids.mood || ids.path === "motion-graphics" || ids.path === "reel-graphics" || /موشن|motion|انترو|إنترو|تايبوغرافي|إنفوجرافيك|انفوجرافيك/i.test(talk) ? [motionCatalogBlock()] : []),
     // the motion carousel (Instagram's rules, when it helps, how each slide moves and sounds): when the talk is a carousel or motion
-    ...(ids.carousel || ids.path === "motion-carousel" || isMotionCarouselAsk(`${ask} ${before?.record ?? ""}`) ? [MOTION_CAROUSEL_GUIDE] : []),
+    ...(ids.carousel || ids.path === "motion-carousel" || isMotionCarouselAsk(talk) ? [MOTION_CAROUSEL_GUIDE] : []),
     // the talk's rules, how edits are read, and the steps of the path the person is on
     pathBlock(ids, !!opts.verbose),
+    // selling: the method (the four steps), when that is what the person wants
+    ...(isSalesAsk(talk) ? [SALES_METHOD] : []),
+    // the app «لأجل المهدي» (every feature, its audiences, its content rules and ready ideas), when the conversation is about it
+    ...(isMahdiAsk(`${allSaid} ${before?.record ?? ""}`) ? [MAHDI_BRIEF] : []),
+  ].filter(Boolean);
+  // what changes per message — the picks, the nearest examples, the record — rides at the start of this turn
+  const parts = [
     chosenBlock(ids),
     contentExamplesBrief(nearestContentExamples(ask, 3)),
-    // selling: the method (the four steps) and the closest worked sales examples, when that is what the person wants
-    ...(isSalesAsk(`${ask} ${before?.record ?? ""}`) ? [SALES_METHOD, salesExamplesBrief(nearestSalesExamples(ask, 3))] : []),
-    // the app «لأجل المهدي» (every feature, its audiences, its content rules and ready ideas), when the conversation is about it
-    ...(isMahdiAsk(`${history.filter((t) => t.role === "user").map((t) => t.text).join(" ")} ${before?.record ?? ""}`) ? [MAHDI_BRIEF] : []),
+    ...(isSalesAsk(talk) ? [salesExamplesBrief(nearestSalesExamples(ask, 3))] : []),
     !findCarouselStyle(ids.carousel ?? "") && (ids.template || /كاروسيل|شرائح|carousel/i.test(ask + (before?.record ?? ""))) ? templateExamplesBrief(nearestTemplateExamples(ask, ids.template && ids.template !== "none" ? ids.template : null, 2)) : "",
   ].filter(Boolean);
   // a YouTube / TikTok link in this message (or earlier in the talk): heard by ElevenLabs before he answers, so he
   // works from what is said in it (lib/link-listen)
   const listened = await listenToLinks(said, turns.filter((t) => t.role === "user").slice(0, -1).map((t) => t.text), { budgetMs: 120_000 });
-  if (listened.block) parts.unshift(listened.block);
+  if (listened.block) stable.unshift(listened.block);
   // a sound or a video attached (now or earlier in the talk): its sound heard and written the same way, by the file's id
   const av = (fs: Attachment[] | undefined) => (fs ?? []).filter((f) => f.kind === "audio" || f.kind === "video");
   // a YouTube video the page downloaded for this message: paid with this reply (once); its words come through the link
@@ -256,16 +274,32 @@ export async function say(userId: string, chatId: string | null, message: string
     turns.filter((t) => t.role === "user").slice(0, -1).flatMap((t) => av(t.files)).map((f) => ({ id: f.id, kind: f.kind as "audio" | "video", name: f.name })),
     { budgetMs: 120_000 },
   );
-  if (heardFiles.block) parts.unshift(heardFiles.block);
+  if (heardFiles.block) stable.unshift(heardFiles.block);
   // the conversation's sound goes INTO the motion (lib/content/sound): he is told how, so he plans for it
   const snd = await chatSound(userId, turns).catch(() => null);
   if (snd)
-    parts.unshift(
+    stable.unshift(
       `## صوت العميل يدخل الموشن\nالصوت «${snd.name}» (${Math.round(snd.seconds)} ث${snd.phrases.length ? "، فيه كلام" : "، موسيقى أو بدون كلام"}) هو صوت الموشن تلقائيًا:\n- موشن كاروسيل: الموقع يقسم الصوت على الشرائح بالترتيب بلا فراغ (كل شريحة طولها جزءها، والقطع عند نهاية جملة)، وكل شريحة تتحرك على جملها، وزر «حوّله ريل» يطلع الصوت متصل. ${snd.phrases.length ? "فخلّ الشرائح بنفس ترتيب الكلام، وكل شريحة عن الجزء اللي ينقال فيها، واختر عدد شرائح يناسب طول الكلام (تقريبًا شريحة لكل ٥–١٠ ثواني)." : "الموسيقى تنقسم على الشرائح بأطوالها."}\n- موشن جرافيكس: ينتقل مع الحزمة لمختبر الموشن ${snd.phrases.length ? "كصوت المشهد، والحركة تنبني على كلامه بأوقاته" : "كموسيقى المشهد"}.\nإذا قال العميل ما يبي صوته في الموشن، قل له يرسل رسالة بدون الملف ويقول «بدون صوتي».`,
     );
 
-  const system = systemText(persona.text, [catalogBlock()]);
-  const turnNote = turnText(parts, before?.record ?? "");
+  // the fixed system is the persona and the rules ONLY; the long tables (103 styles, 50 fonts, the templates, the 100
+  // cartoon styles) are read only while they can still be needed: once the look is picked, or in
+  // a path that never uses them, every message read ~20k tokens of tables for nothing
+  const system = systemText(persona.text);
+  // (the person's own words only: a pressed line «• الخط: …» names a pick, it does not ask about the fonts)
+  const ownWords = said.split("\n").filter((l) => !/\[[^\]:\s]+:[a-z0-9-]+\]\s*$/.test(l.trim())).join("\n");
+  const extra = needsCatalog(ids, ownWords) ? catalogBlock() : "";
+  // the look's steps the site asks by itself: he neither asks them nor writes slides before they are all answered
+  const carouselTalk = !!pickedCarousel(history)?.style && (!pathOf(history) || pathOf(history) === "carousel" || pathOf(history) === "motion-carousel");
+  const holdNow = carouselTalk && !before?.pending ? carouselHold(history, askedSlides(history)) : null;
+  const gateNote = !carouselTalk
+    ? ""
+    : holdNow
+      ? `[خطوات الشكل الباقية يسألها الموقع بنفسه بالأزرار (التالية: «${holdNow.question.label}»، ثم ما بعدها): لا تسأل عنها ولا تعلّق عليها، ولا تكتب أي شريحة قبل اكتمالها. إذا حان وقت التصنيع (النصوص معتمدة والعميل طلبه) فضع produce.on=true واترك "slides" فارغة []: الموقع يعرض السؤال الناقص بنفسه تحت ردّك، وبعد اكتمال الاختيارات تُكتب الشرائح مرة واحدة. أكمل في ردّك ما ليس من هذه الخطوات (النصوص، أسئلتك الأخرى).]`
+      : pureGatePick(said)
+        ? `[اكتملت خطوات الشكل كلها بأزرار الموقع (الستايل، الألوان، الخط، والحركة وطريقتها أو من يصمم). لا تسأل عن أي منها ولا تعدّدها. أكمل الخطوة التالية مباشرة: إن كانت نصوص الشرائح معتمدة وطلب العميل التصنيع فاكتب produce كاملًا الآن، وإلا فاعرض نصوص الشرائح لموافقة واحدة.]`
+        : "";
+  const turnNote = [gateNote, turnText(parts, before?.record ?? "")].filter(Boolean).join("\n\n");
   // a carousel that stopped half way (a wallet ran out, a closed page): «كمّل» goes on drawing it as it was — no new
   // answer, no new plan (a new plan drew the characters again, different, and the person had to explain it all again)
   const unfinished = before?.pending && cut < 0 ? before.pending : null;
@@ -276,7 +310,7 @@ export async function say(userId: string, chatId: string | null, message: string
     return { chatId: id, text: reply.text, questions: null, usd: 0, pending: { total: unfinished.slides.length, mode: "fix", todo: left }, editor: null, media: null, spentHalalas: full?.spentHalalas ?? 0 };
   }
   const waitingNote = !unfinished || !left.length ? "" : (`[كاروسيل ما خلص رسمه: الشرائح ${left.join("، ")} تنتظر بنفس التصميم والشخصيات اللي انرسمت، والموقع يكملها بنفسه بعد ردّك. لا تعيد تخطيط الكاروسيل ولا تغيّر شخصياته أو تصميمه أو نصوصه، ولا تطلب produce جديد، إلا إذا طلب العميل تغييرًا صريحًا.]`);
-  const r = await callClaudeJson<Answer>({ system, turnNote: waitingNote ? `${waitingNote}\n\n${turnNote}` : turnNote, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email) });
+  const r = await callClaudeJson<Answer>({ system, turnNote: waitingNote ? `${waitingNote}\n\n${turnNote}` : turnNote, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email), systemExtra: extra, stableNote: stable.join("\n\n"), systemTtl: "1h", cacheTail: false });
   const a = r.data;
   let usd = claudeCost(r.usage) + mem.usd + listened.usd + heardFiles.usd + yt.usd;
   const questions = readQuestions(a.questions);
@@ -337,6 +371,20 @@ export async function say(userId: string, chatId: string | null, message: string
       const refs = (named.length || pickedPhotos(history) !== "mine" ? named : attachedPictures(history).map((f) => f.id)).slice(0, 6);
       pending = { id: randomUUID(), aspect, slides, at, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...(refs.length ? { refs } : {}), mode: "all", ...code, ...moving, made: [], failed: [], carry: [] };
       reply.slides = { aspect, items: [], todo: slides.map((x) => x.n), failed: [], running: true, total: slides.length, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...code, ...moving };
+    }
+  }
+
+  // a step of the look still waits — the style is picked and the colours, the font, the motion or the way of making it
+  // is not, or he said it is time to make it and wrote no slides: the site shows that step under his answer, and the
+  // presses that follow cost nothing (siteStep)
+  const wroteSlides = Array.isArray(a.produce?.slides) && a.produce.slides.some((x) => x && typeof x.prompt === "string" && x.prompt.trim());
+  if (!pending && !reply.slides && a.produce?.mode !== "fix" && (holdNow || (a.produce?.on && !wroteSlides))) {
+    const hold = holdNow ?? carouselHold(history, askedSlides(history));
+    if (hold && !reply.questions?.some((q) => q.label === hold.question.label)) {
+      const own = (hold.question.kind === "carousels" || hold.question.kind === "fonts" || hold.question.kind === "motioncarousels") && questions?.some((q) => q.kind === hold.question.kind);
+      const theirs = (questions ?? []).filter((q) => q.label !== hold.question.label && !(hold.question.kind === "palettes" && q.kind === "palettes"));
+      reply.questions = own ? questions! : [...theirs, hold.question].slice(-6);
+      reply.text += `\n\n${hold.note}`;
     }
   }
 
