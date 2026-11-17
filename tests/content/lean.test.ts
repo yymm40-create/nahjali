@@ -166,6 +166,11 @@ describe("«حيدرا ماكس» writes a slide once", () => {
   const src = readFileSync("src/lib/claude-code/picture.ts", "utf8");
   it("a moving slide's fix is a patch, and a slide over its approved picture is written with medium thought", () => {
     expect(src).toContain("patchFix ? EDIT_SCHEMA : WRITE_SCHEMA");
+    // only the FIRST fix is a patch; a patch that can't be applied, or a program that still throws, is written whole —
+    // a patch never uses up the slide's tries
+    expect(src).toContain("const patchFix = !!motion && !!previous && b.fixRound === 0;");
+    expect(src).toContain("await pictureWrite(user, { ...b, fixRound: 1 })");
+    expect(readFileSync("src/components/claude-code/draw.ts", "utf8")).toContain('action: "write", code, fixRound: fix, errors');
     expect(src).toContain('patchFix || overPicture || ((motion || stillFor) && (b.light === true || !!still)) ? "medium" : "high"');
   });
   it("one look for a realistic woman per picture, by the light model", () => {
