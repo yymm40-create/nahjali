@@ -680,6 +680,33 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
  * carousel goes on to the next slide — each slide on its own (the owner, 16 Nov 2026: «خل يقسم الشغلة يشتغل كل سلايدة
  * بروحها»; one heavy cover slide used to stop the whole carousel). «أعد المحاولة» draws the failed ones again.
  */
+/**
+ * The owner checks what a person's page will be handed for a waiting slide before it runs (nothing is drawn or charged):
+ * is its program kept, the change, the sound part and its words.
+ */
+export async function previewCodeSlide(userId: string, chatId: string, n: number) {
+  const chat = await getChat(userId, chatId);
+  const p = chat?.pending;
+  if (!chat || !p || p.maker !== "code") throw new UserError("ما فيه كاروسيل ينتظر في هذي المحادثة.", 409);
+  const s = p.slides.find((x) => x.n === n);
+  if (!s) throw new UserError("هذي الشريحة مو بانتظار الصنع.", 409);
+  if (!p.arts?.[String(n)]) throw new UserError("الشريحة ما عندها صورة محفوظة: بتنرسم من جديد.", 409);
+  const at = Math.min(p.at, chat.messages.length - 1);
+  const base = new Map((chat.messages[at]?.slides?.items ?? []).map((x) => [x.n, x]));
+  const total = p.mode === "all" ? p.slides.length : Math.max(base.size, ...p.slides.map((x) => x.n));
+  const code = await codeSlide(userId, chatId, chat.messages, p, s, total, base.get(1) ?? null, { id: userId, email: null, owner: false, origin: "" });
+  return {
+    n,
+    programKept: !!code.program,
+    programChars: code.program?.code.length ?? 0,
+    change: code.change ?? null,
+    seconds: code.motion?.seconds ?? null,
+    voice: code.motion?.voice ? { from: code.motion.voice.from, to: code.motion.voice.to, exact: !!code.motion.voice.exact } : null,
+    picture: code.photos.length > 0,
+    sound: code.prompt.slice(code.prompt.indexOf("SOUND:")).slice(0, 1500),
+  };
+}
+
 export async function codeSlideFailed(userId: string, chatId: string, b: { n?: unknown; codeFailed?: unknown }): Promise<Produced> {
   const chat = await getChat(userId, chatId);
   if (!chat) throw new Error("chat not found");
