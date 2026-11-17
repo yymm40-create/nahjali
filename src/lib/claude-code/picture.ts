@@ -186,7 +186,7 @@ export async function pictureWrite(user: RobotUser, b: Record<string, unknown>):
   const pin = pinnedFont(style);
   const previous = text(b.code, 140_000);
   const errors = text(b.errors, 4000);
-  if (b.edit === true && previous && !errors && !motion) return pictureEdit(user, b, prompt, previous, [w, h], style);
+  if (b.edit === true && previous && !errors) return pictureEdit(user, b, prompt, previous, [w, h], style, motion ? { lines: motionLines(motion, b.n) } : null);
   // a moving slide whose program threw: the FIRST fix comes back as a PATCH (a few lines), not the whole program written a
   // second time (the owner, 17 Nov 2026: «ليش تكتب البرنامج مرتين؟»). A program that still throws after its patch is
   // written again whole (the page says which fix this is: fixRound), and so is one whose patch can't be applied — a
@@ -230,7 +230,7 @@ ${patchFix ? 'Answer with "edits" on THE PROGRAM (exact search/replace) that fix
  * in the program already, so no reference pictures go with it, and the photos only when they changed. `patchFailed`
  * when the patch can't be applied: the page then draws the picture from zero.
  */
-async function pictureEdit(user: RobotUser, b: Record<string, unknown>, prompt: string, previous: string, [w, h]: [number, number], style: string) {
+async function pictureEdit(user: RobotUser, b: Record<string, unknown>, prompt: string, previous: string, [w, h]: [number, number], style: string, motion: { lines: string } | null = null) {
   const f = (b.fonts ?? {}) as Record<string, unknown>;
   const fonts = { head: font(f.head, LAB_FONTS[0]), body: font(f.body, LAB_FONTS[0]) };
   const brief = text(b.brief, 16000);
@@ -240,7 +240,7 @@ async function pictureEdit(user: RobotUser, b: Record<string, unknown>, prompt: 
   const parts: ClaudePart[] = [
     {
       type: "text",
-      text: `CHANGE the picture's program below. It drew THE PREVIOUS BRIEF and the picture was accepted; now the person asks for a change and the design has THE NEW BRIEF. Change ONLY what the change needs (a word, a typo, a line, a colour, a size, a place, an element added or removed) and keep everything else exactly as it is: the layout, the type, the light, the finish.
+      text: `${motion ? `THIS IS A MOTION SLIDE (a moving scene): keep its motion, timing, sound cues and the way it runs exactly as they are unless the change is about them.\n${motion.lines}\n` : ""}CHANGE the picture's program below. It drew THE PREVIOUS BRIEF and the picture was accepted; now the person asks for a change and the design has THE NEW BRIEF. Change ONLY what the change needs (a word, a typo, a line, a colour, a size, a place, an element added or removed) and keep everything else exactly as it is: the layout, the type, the light, the finish.
 ${said ? `THE PERSON'S WORDS (the change they asked for): ${said}\n` : ""}THE NEW BRIEF (every word they want written appears EXACTLY as given, Arabic right to left): ${prompt}
 ${brief ? `THE PREVIOUS BRIEF (what the program draws now): ${brief}\n` : ""}FRAME: ${w}×${h} (${b.aspect ?? "1:1"}) · FONTS now: head ${fonts.head}, body ${fonts.body} · FONTS you may pick (catalogue ids): ${fontMenu()}
 ${style ? `THE LOOK the person chose: ${style}` : ""}
@@ -253,7 +253,7 @@ Answer with "edits" on THE PROGRAM (exact search/replace) and code = ""; the COM
     ...(changed ? photosParts(b.photos) : []),
   ];
   // medium thought: the change is named and the answer is a patch
-  const r = await ask<{ code: string; edits?: unknown; fonts: { head: string; body: string }; notes: string }>(user, b.model, "حيدرا ماكس · تعديل الصورة", parts, EDIT_SCHEMA, 64_000, "medium");
+  const r = await ask<{ code: string; edits?: unknown; fonts: { head: string; body: string }; notes: string }>(user, b.model, motion ? "حيدرا ماكس · تعديل الشريحة المتحركة" : "حيدرا ماكس · تعديل الصورة", parts, EDIT_SCHEMA, 64_000, "medium", motion ? MOTION_SYSTEM : SYSTEM, motion ? MOTION_MS : PICTURE_MS);
   const out = patchProgram(previous, r.data);
   const base = { fonts: { head: font(r.data.fonts?.head, fonts.head), body: font(r.data.fonts?.body, fonts.body) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, model: r.model };
   if ("patchFailed" in out) return { ...base, code: "", problems: [], patchFailed: out.patchFailed };

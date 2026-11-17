@@ -152,6 +152,8 @@ export interface PendingProduce {
   sound?: { uploadId: string; speech: boolean; slices: { from: number; to: number; lines: { text: string; from: number; to: number }[] }[] } | false;
   /** the times of the sound a slide plays, chosen by the person («من ٠:١٢ إلى ٠:٢٠»), by slide number: they win over the split */
   soundTimes?: Record<string, { from: number; to: number }>;
+  /** «✏️ عدّل الشريحة»: the change the person asked in words, by slide number — its kept program is patched, nothing repainted */
+  edits?: Record<string, string>;
   /** the message index the slides are attached to */
   at: number;
   styleId: string;
@@ -361,6 +363,7 @@ export function readPending(v: unknown): PendingProduce | null {
     ...(readMotion(p.motion) ? { motion: readMotion(p.motion)! } : {}),
     ...(p.sound === false ? { sound: false as const } : p.sound && typeof p.sound === "object" && typeof (p.sound as { uploadId?: unknown }).uploadId === "string" && Array.isArray((p.sound as { slices?: unknown }).slices) ? { sound: p.sound as NonNullable<Exclude<PendingProduce["sound"], false>> } : {}),
     ...(p.picturesOk === true ? { picturesOk: true } : {}),
+    ...(p.edits && typeof p.edits === "object" && !Array.isArray(p.edits) ? { edits: Object.fromEntries(Object.entries(p.edits as Record<string, unknown>).filter(([, v]) => typeof v === "string" && v.trim()).map(([k, v]) => [k, String(v).slice(0, 1000)])) } : {}),
     ...(p.soundTimes && typeof p.soundTimes === "object" && !Array.isArray(p.soundTimes) ? { soundTimes: Object.fromEntries(Object.entries(p.soundTimes as Record<string, { from?: unknown; to?: unknown }>).filter(([, v]) => v && Number.isFinite(Number(v.from)) && Number(v.to) > Number(v.from)).map(([k, v]) => [k, { from: Number(v.from), to: Number(v.to) }])) } : {}),
     ...(p.programs && typeof p.programs === "object" && !Array.isArray(p.programs) ? { programs: Object.fromEntries(Object.entries(p.programs as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> } : {}),
     ...(Array.isArray(p.deferred) ? { deferred: (p.deferred as unknown[]).map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 40) } : {}),

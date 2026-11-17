@@ -764,3 +764,4 @@
 .ct-time-row label { display: flex; align-items: center; gap: 6px; }
 .ct-time-row input { width: 84px; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; font: inherit; text-align: center; }
 .ct-time .ct-warn { color: #e5484d; display: block; }
+.ct-time textarea { display: block; width: 100%; box-sizing: border-box; margin: 8px 0; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; font: inherit; resize: vertical; }

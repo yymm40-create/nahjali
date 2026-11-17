@@ -457,7 +457,7 @@ export function parseClock(v: string): number | null {
   return Number.isFinite(all) ? all : null;
 }
 
-export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, onApprove, onRedoPicture, onSoundTime, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; onApprove?: () => void; onRedoPicture?: (n: number, note: string) => void; onSoundTime?: (n: number, from: number, to: number) => void; step?: string | null }) {
+export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, onApprove, onRedoPicture, onSoundTime, onEditSlide, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; onApprove?: () => void; onRedoPicture?: (n: number, note: string) => void; onSoundTime?: (n: number, from: number, to: number) => void; onEditSlide?: (n: number, said: string) => void; step?: string | null }) {
   const ns = [...new Set([...s.items.map((i) => i.n), ...s.todo])].sort((a, b) => a - b);
   const done = s.items.filter((i) => !s.todo.includes(i.n)).length;
   // which picture is being asked again, and what should change in it (a field here: a browser popup does nothing in the
@@ -466,6 +466,9 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
   const [redoNote, setRedoNote] = useState("");
   // «⏱️ وقت الصوت»: the person types which part of the sound a slide plays («من ٠:١٢ إلى ٠:٢٠»)
   const [timeN, setTimeN] = useState<number | null>(null);
+  // «✏️ عدّل الشريحة»: a change to one made slide in the person's words (its program is patched, nothing repainted)
+  const [editN, setEditN] = useState<number | null>(null);
+  const [editSaid, setEditSaid] = useState("");
   const [timeFrom, setTimeFrom] = useState("");
   const [timeTo, setTimeTo] = useState("");
   const tFrom = parseClock(timeFrom);
@@ -576,7 +579,8 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
                   <span className="tools">
                     {item.videoDownload ? <a href={item.videoDownload} download={`${item.name}.mp4`} title="حمّل الفيديو">⬇️</a> : item.download && <a href={item.download} download={`${item.name}.png`}>⬇️</a>}
                     <button type="button" disabled={busy} onClick={() => onRetry([n])} title="أعد رسم هذه الشريحة">🔁</button>
-                    {item.videoUrl && onSoundTime && <button type="button" disabled={busy} onClick={() => { setTimeN(n); setTimeFrom(""); setTimeTo(""); }} title="اختر وقت الصوت لهذه الشريحة">⏱️</button>}
+                    {item.videoUrl && onEditSlide && <button type="button" disabled={busy} onClick={() => { setEditN(n); setEditSaid(""); setTimeN(null); }} title="عدّل هذه الشريحة بكلامك">✏️</button>}
+                    {item.videoUrl && onSoundTime && <button type="button" disabled={busy} onClick={() => { setTimeN(n); setTimeFrom(""); setTimeTo(""); setEditN(null); }} title="اختر وقت الصوت لهذه الشريحة">⏱️</button>}
                   </span>
                 </>
               )}
@@ -584,6 +588,26 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
           );
         })}
       </div>
+      {editN !== null && onEditSlide && (
+        <div className="ct-redo ct-time">
+          <b>✏️ تعديل الشريحة {editN}</b>
+          <small> اكتب وش تبي يتغير فيها بالضبط (كلمة، لون، مكان الصورة، حركة الدخول، السرعة…). نعدّل برنامجها نفسه وكل شي ثاني يبقى مثل ما هو، بدون رسم صورة جديدة.</small>
+          <textarea rows={3} value={editSaid} onChange={(e) => setEditSaid(e.target.value)} placeholder="مثال: خل العنوان أكبر ولونه أزرق، والصورة تدخل من اليمين" />
+          <button type="button" className="ct-mini" onClick={() => setEditN(null)}>إلغاء</button>
+          <button
+            type="button"
+            className="ct-mini ct-go"
+            disabled={busy || editSaid.trim().length < 2}
+            onClick={() => {
+              onEditSlide(editN, editSaid.trim());
+              setEditN(null);
+              setEditSaid("");
+            }}
+          >
+            عدّل الشريحة {editN}
+          </button>
+        </div>
+      )}
       {timeN !== null && onSoundTime && (
         <div className="ct-redo ct-time">
           <b>⏱️ وقت الصوت للشريحة {timeN}</b>
@@ -800,7 +824,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     if (looping.current.has(`p:${id}`)) return;
     looping.current.add(`p:${id}`);
     setBusy("producing");
-    type Step = { spent?: number; aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; phase?: "pictures" | "approve"; motion?: true; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number } }; sfx?: Record<string, string>; stage?: "still"; still?: { code: string; fonts: { head: string; body: string } }; light?: true; program?: { code: string; fonts: { head: string; body: string }; size: [number, number] } }; deferred?: number[] };
+    type Step = { spent?: number; aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; phase?: "pictures" | "approve"; motion?: true; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number } }; sfx?: Record<string, string>; stage?: "still"; still?: { code: string; fonts: { head: string; body: string } }; light?: true; program?: { code: string; fonts: { head: string; body: string }; size: [number, number] }; change?: string }; deferred?: number[] };
     const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, phase: r.phase, deferred: r.deferred, ...(r.motion && !old?.motion ? { motion: true } : {}), ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}), ...(r.code?.mix || old?.mix ? { mix: true } : {}), ...(r.code?.motion || old?.motion ? { motion: r.code?.motion ?? old?.motion } : {}) }));
     // up to three slides at the same time (the owner, 17 Nov 2026: «سو الاسرع… شكله ٣»): each worker asks for a slide nobody
     // is drawing, draws it here and sends it back. The calls to the produce step go one at a time (the carousel is saved by
@@ -837,7 +861,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       const stillStage = code.stage === "still";
       const lighter = code.light === true;
       stepOf(n, lighter ? "↩️ رجعنا لها بطريقة أخف وأسرع…" : stillStage ? "🖼️ المرحلة ١: تصميمها الثابت…" : code.still ? "🎬 المرحلة ٢: تحريك تصميمها الجاهز…" : "حيدرا ماكس يبدأ…");
-      const extra = { ...(stillStage ? { stillFor: "motion" } : code.still ? { still: code.still.code, stillFonts: code.still.fonts } : {}), ...(lighter ? { light: true } : {}), ...(code.program ? { program: code.program } : {}) };
+      const extra = { ...(stillStage ? { stillFor: "motion" } : code.still ? { still: code.still.code, stillFonts: code.still.fonts } : {}), ...(lighter ? { light: true } : {}), ...(code.program ? { program: code.program } : {}), ...(code.program && code.change ? { change: code.change } : {}) };
       // each slide on its own (16 Nov 2026): a slide that cannot be drawn is recorded as failed and the others go on;
       // stopped by the person, or no balance left: everything stops as before
       try {
@@ -1257,6 +1281,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                       onResume={() => chatId && void runProduce(chatId)}
                       onApprove={() => chatId && void runProduce(chatId, undefined, { approvePictures: true })}
                       onRedoPicture={(n, note) => chatId && void runProduce(chatId, undefined, { redoPicture: n, note })}
+                      onEditSlide={(n, said) => chatId && void runProduce(chatId, undefined, { editSlide: { n, said } })}
                       onSoundTime={(n, from, to) => chatId && void runProduce(chatId, undefined, { soundTime: { n, from, to } })}
                       step={codeStep}
                     />
