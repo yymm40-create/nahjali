@@ -11,6 +11,8 @@ import { TEMPLATE_EXAMPLES_PER } from "@config/content-template-examples";
 import { isAdmin } from "@config/site";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { setChatSpent, userContentChats } from "@/lib/content/spent";
+import { getChat } from "@/lib/content/chats";
+import { planSlideFix } from "@/lib/content/produce";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -89,6 +91,19 @@ export const POST = handle(async (req: Request) => {
             slides: m.slides ? (({ items, ...rest }) => ({ ...rest, items: Array.isArray(items) ? (items as Record<string, unknown>[]).map((x) => `${x.n}:${x.name}:${x.fileId}`) : [] }))(m.slides as Record<string, unknown>) : undefined,
           })),
         });
+      }
+      // the owner sets a person's slide right for them: its sound time (and a change in words); their page makes the video
+      // the next time it is open (the slide keeps its picture and its program)
+      case "plan_slide_fix": {
+        const { data } = await createAdminClient().from("content_chats").select("user_id").eq("id", id).maybeSingle();
+        const chat = data ? await getChat(String(data.user_id), id) : null;
+        if (!data || !chat) throw new UserError("ما لقينا المحادثة.", 404);
+        const n = Math.round(Number(b.n));
+        const from = Number(b.from);
+        const to = Number(b.to);
+        if (!(n > 0) || !(from >= 0) || !(to > from) || to - from > 60) throw new UserError("الشريحة أو الوقت غير صحيح.");
+        const planned = await planSlideFix(String(data.user_id), chat, n, { from, to }, typeof b.said === "string" ? b.said : "");
+        return NextResponse.json({ ok: true, pending: { slides: planned.pending?.slides.map((s) => s.n), soundTimes: planned.pending?.soundTimes, edits: planned.pending?.edits, programs: planned.pending?.programs, arts: Object.keys(planned.pending?.arts ?? {}), picturesOk: planned.pending?.picturesOk } });
       }
       case "set_chat_spent": {
         const halalas = Math.round(Number(b.halalas));
