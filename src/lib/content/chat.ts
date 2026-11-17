@@ -332,7 +332,20 @@ export async function say(userId: string, chatId: string | null, message: string
   const allImages = new Set(history.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
   const nowImages = files.filter((f) => f.kind === "image").map((f) => f.id);
   const namedImages = (Array.isArray(a.produce?.refs) ? a.produce.refs : []).filter((r) => allImages.has(r));
-  const refsWith = (old: string[] = []) => [...new Set([...nowImages, ...namedImages, ...old.filter((r) => allImages.has(r))])].slice(0, 6);
+  // THE reference is the latest one the person gave (the owner, 17 Nov 2026: «أهم شي ياخذ آخر صورة انرسلت اللي حددها
+  // العميل كمرجع»): of the pictures sent after the carousel was made, the ones he names (what she pointed at), else the
+  // pictures of the latest message that had any. Only with none sent since does the carousel's own reference stay — never
+  // mixed with a newer one (an old face beside the new one pulled the drawing back to the old)
+  const refsWith = (old: string[] = [], since = 0) => {
+    const after = history.slice(Math.max(0, since)).filter((t) => t.role === "user");
+    const sentSince = new Set(after.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
+    const pointed = namedImages.filter((r) => sentSince.has(r));
+    const latestTurn = [...after].reverse().find((t) => (t.files ?? []).some((f) => f.kind === "image"));
+    const latest = (latestTurn?.files ?? []).filter((f) => f.kind === "image").map((f) => f.id);
+    const newest = pointed.length ? pointed : latest;
+    if (newest.length) return [...new Set(newest)].slice(0, 6);
+    return [...new Set([...nowImages, ...namedImages, ...old.filter((r) => allImages.has(r))])].slice(0, 6);
+  };
 
   // the pictures stage: the slides he named get their pictures drawn again (nothing else of the carousel changes)
   const redo = inPictures && a.produce?.on && Array.isArray(a.produce.slides) ? a.produce.slides.filter((x) => x && unfinished!.slides.some((y) => y.n === Number(x.n)) && !unfinished!.made.some((m) => m.n === Number(x.n))) : [];
@@ -351,7 +364,7 @@ export async function say(userId: string, chatId: string | null, message: string
       if (sl && typeof x.picture === "string" && x.picture.trim()) sl.picture = x.picture.trim().slice(0, 3000);
       p.failed = p.failed.filter((f) => f.n !== Number(x.n));
     }
-    const refs = refsWith(p.refs ?? []);
+    const refs = refsWith(p.refs ?? [], p.at + 1);
     if (refs.length) p.refs = refs;
   }
   if (!redo.length && a.produce?.on && Array.isArray(a.produce.slides) && a.produce.slides.length) {
@@ -387,7 +400,7 @@ export async function say(userId: string, chatId: string | null, message: string
         const r = (await producedRow(userId, it.fileId).catch(() => null))?.meta.refs;
         if (Array.isArray(r) && r.length) { before = r.filter((x): x is string => typeof x === "string"); break; }
       }
-      const fixRefs = refsWith(before);
+      const fixRefs = refsWith(before, fixAt + 1);
       pending = { id: randomUUID(), ...(fixRefs.length ? { refs: fixRefs } : {}), aspect: block.aspect, slides, at: fixAt, styleId: styleId || block.styleId, templateId: templateId || block.templateId, ...(block.carouselId ? { carouselId: block.carouselId } : {}), ...(block.fontId ? { fontId: block.fontId } : {}), ...(block.paletteId ? { paletteId: block.paletteId } : {}), mode: "fix", ...code, ...moving, made: [], failed: [], carry: block.failed.filter((f) => !slides.some((x) => x.n === f.n)) };
       messages[fixAt] = { ...history[fixAt], slides: { ...block, todo: slides.map((x) => x.n), failed: pending.carry, running: true, report: undefined } };
     } else if (slides.length && hold) {
