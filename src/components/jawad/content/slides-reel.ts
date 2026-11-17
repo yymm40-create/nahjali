@@ -21,13 +21,22 @@ const RATE = 48000;
 /** how long a still slide is shown */
 export const STILL_SECONDS = 3;
 
+/**
+ * The slides' videos are read fresh from storage, never from the browser's cache: the page's own player has already
+ * cached each video WITHOUT the cross-origin grant (a plain <video>), and Chrome then refuses to hand that cached copy
+ * to a script — «حوّله ريل» failed with «Failed to fetch» on every carousel whose slides had been played or shown
+ * (17 Nov 2026).
+ */
+const NO_CACHE: RequestInit = { cache: "no-store" };
+
 /** One slide's sound at the reel's rate, exactly `seconds` long (silence when it has none). */
 async function soundOf(url: string | null | undefined, seconds: number): Promise<AudioBuffer> {
   const length = Math.max(1, Math.round(seconds * RATE));
   const out = new AudioBuffer({ length, numberOfChannels: 2, sampleRate: RATE });
   if (!url) return out;
   try {
-    const bytes = await (await fetch(url)).arrayBuffer();
+    // (not from the browser's cache: see NO_CACHE)
+    const bytes = await (await fetch(url, NO_CACHE)).arrayBuffer();
     // an offline context decodes AND resamples to the reel's rate
     const heard = await new OfflineAudioContext(2, 1, RATE).decodeAudioData(bytes);
     for (let c = 0; c < 2; c++) out.copyToChannel(heard.getChannelData(Math.min(c, heard.numberOfChannels - 1)).subarray(0, length), c);
@@ -80,7 +89,7 @@ export async function joinSlidesToReel(slides: ReelSlide[], onProgress: (p: numb
   if (sound) output.addAudioTrack(sound);
   await output.start();
   // each slide's length first, for the progress
-  const inputs = list.map((s) => (s.video ? new Input({ source: new UrlSource(s.video, { maxCacheSize: Infinity }), formats: ALL_FORMATS }) : null));
+  const inputs = list.map((s) => (s.video ? new Input({ source: new UrlSource(s.video, { maxCacheSize: Infinity, requestInit: NO_CACHE }), formats: ALL_FORMATS }) : null));
   const lengths = await Promise.all(inputs.map((i) => (i ? i.computeDuration().catch(() => STILL_SECONDS) : Promise.resolve(STILL_SECONDS))));
   const total = lengths.reduce((a, b) => a + b, 0);
   let at = 0;
