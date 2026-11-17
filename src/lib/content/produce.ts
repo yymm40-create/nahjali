@@ -270,6 +270,10 @@ export async function chatEditPatch(userId: string, chatId: string, block: Slide
 /** «أعد المحاولة» / «أعد الشريحة ٤» written: the same as the 🔁 / «أعد المحاولة» buttons. */
 export const planRetryWords = (userId: string, chat: Chat, ns: number[] | "failed") => planRetry(userId, chat, ns);
 
+/** The owner helps a person: one made slide made again with a sound time (and a change in words), on the person's chat. */
+export const planSlideFix = (userId: string, chat: Chat, n: number, time: { from: number; to: number }, said: string) =>
+  planRetry(userId, chat, [n], { n, ...time }, said.trim() ? { ns: [n], said: said.trim().slice(0, 1000) } : undefined);
+
 export const planSoundTime = (userId: string, chat: Chat, t: { n: number; from: number; to: number }) => planRetry(userId, chat, [t.n], t);
 
 /** Starts drawing again the slides asked for (the failed ones, or any made one), in the carousel that exists. */
