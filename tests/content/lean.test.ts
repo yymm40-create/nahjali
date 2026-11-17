@@ -353,6 +353,51 @@ describe("a change asked while the carousel is still being made (إيمان, 18 
   });
 });
 
+describe("«كمّل الموشن لبقية السلايدات» on a carousel not finished", () => {
+  it("goes on with that carousel (its style and pictures) even when he answers it as a new one: no style table again", async () => {
+    const items = [1, 2, 3].map((n) => ({ n, fileId: `pic${n}`, name: `picture-0${n}`, text: `ن${n}` }));
+    db.chat = { id: "chat-1", title: "t", record: "", usd: 0, spentHalalas: 0, updatedAt: "", pending: null, messages: [
+      { role: "user", text: START },
+      { role: "assistant", text: "تم", slides: { aspect: "9:16", items, todo: [], failed: [], running: false, total: 3, maker: "code", carouselId: "modern-pixar", paletteId: "ch-f0e5cff7f6f2c8c6c64b6587", motion: { styleId: "kinetic-word", route: "picture", seconds: 5 } } },
+    ] } as never;
+    answer({ produce: { ...empty, on: true, mode: "all", refs: [], slides: [1, 2, 3].map((n) => ({ n, text: `ن${n}`, prompt: `p${n}`, picture: "" })) } });
+    const r = await say("u", "chat-1", "كمل الموشن لبقية السلايدات", []);
+    const p = chat().pending as unknown as { mode: string; carouselId?: string; paletteId?: string; slides: { n: number }[]; arts: Record<string, string>; picturesOk?: boolean; motion?: unknown };
+    expect(p.mode).toBe("fix");
+    expect(p.carouselId).toBe("modern-pixar");
+    expect(p.paletteId).toBe("ch-f0e5cff7f6f2c8c6c64b6587");
+    expect(p.motion).toBeTruthy();
+    expect(p.slides.map((x) => x.n)).toEqual([1, 2, 3]);
+    expect(p.arts).toEqual({ "1": "pic1", "2": "pic2", "3": "pic3" });
+    expect(p.picturesOk).toBe(true);
+    expect(r.text).not.toContain("اختر ستايل");
+  });
+});
+
+describe("the basic choices are never forgotten", () => {
+  const done = () => ({ id: "chat-1", title: "t", record: "", usd: 0, spentHalalas: 0, updatedAt: "", pending: null, messages: [
+    { role: "user", text: START },
+    { role: "assistant", text: "تم", slides: { aspect: "9:16", items: [1, 2].map((n) => ({ n, fileId: `s${n}`, name: `slide-0${n}`, text: `ن${n}`, video: `v${n}` })), todo: [], failed: [], running: false, total: 2, maker: "code", carouselId: "modern-pixar", paletteId: "ch-f0e5cff7f6f2c8c6c64b6587", fontId: "baloo-bhaijaan-2", motion: { styleId: "kinetic-word", route: "picture", seconds: 5 } } },
+  ] });
+  it("a new carousel in the same chat keeps the style, colours, font and motion: no table asked again", async () => {
+    db.chat = done() as never;
+    answer({ produce: { ...empty, on: true, mode: "all", refs: [], slides: [1, 2].map((n) => ({ n, text: `ج${n}`, prompt: `q${n}`, picture: `pic${n}` })) } });
+    const r = await say("u", "chat-1", "سو كاروسيل جديد عن الصلاة", []);
+    const p = chat().pending as unknown as { mode: string; carouselId?: string; paletteId?: string; fontId?: string; motion?: unknown };
+    expect(p.mode).toBe("all");
+    expect([p.carouselId, p.paletteId, p.fontId]).toEqual(["modern-pixar", "ch-f0e5cff7f6f2c8c6c64b6587", "baloo-bhaijaan-2"]);
+    expect(p.motion).toBeTruthy();
+    expect(r.text).not.toContain("اختر ستايل");
+  });
+  it("asked to change the style, the table is asked", async () => {
+    db.chat = done() as never;
+    answer({ produce: { ...empty, on: true, mode: "all", refs: [], slides: [1, 2].map((n) => ({ n, text: `ج${n}`, prompt: `q${n}`, picture: `pic${n}` })) } });
+    const r = await say("u", "chat-1", "ابي كاروسيل جديد بس غير الستايل", []);
+    expect(chat().pending).toBeNull();
+    expect(r.questions?.length).toBeGreaterThan(0);
+  });
+});
+
 describe("the colours the person chose", () => {
   it("replace the style's own: its colour codes and colour words leave the picture's and the slide's prompts (the red came back over her blue)", async () => {
     const { findCarouselStyle, withoutColours, carouselStyleBlock, carouselStyleForCode } = await import("@config/content-carousel-styles");
