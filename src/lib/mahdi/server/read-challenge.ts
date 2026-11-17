@@ -11,11 +11,14 @@ const notReady = (e: unknown) => ["42P01", "42883", "PGRST202", "PGRST205"].incl
 /** The latest challenge that has started or starts tomorrow at the latest (null before the SQL is run, or when none). */
 export async function currentReadChallenge(today: string): Promise<ReadChallenge | null> {
   const db = createAdminClient();
-  const { data, error } = await db.from("mahdi_read_challenges").select("id, title, starts_on, ends_on").lte("starts_on", today).order("starts_on", { ascending: false }).limit(1).maybeSingle();
-  if (error) {
-    if (notReady(error)) return null;
-    throw error;
+  // The one running or the next to start (so people can join the day before), else the last one (its winner)
+  const cols = "id, title, starts_on, ends_on";
+  const open = await db.from("mahdi_read_challenges").select(cols).gte("ends_on", today).order("starts_on", { ascending: true }).limit(1).maybeSingle();
+  if (open.error) {
+    if (notReady(open.error)) return null;
+    throw open.error;
   }
+  const data = open.data ?? (await db.from("mahdi_read_challenges").select(cols).lte("starts_on", today).order("starts_on", { ascending: false }).limit(1).maybeSingle()).data;
   return data ? { id: data.id, title: data.title, startsOn: data.starts_on, endsOn: data.ends_on } : null;
 }
 

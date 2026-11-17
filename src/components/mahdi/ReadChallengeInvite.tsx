@@ -75,7 +75,7 @@ export default function ReadChallengeInvite() {
     <Sheet open={open} onClose={later} title={R.inviteTitle}>
       <div className="space-y-4">
         <p className="text-4xl" aria-hidden="true">📖🏆</p>
-        <p className="text-lg font-semibold">{R.inviteLead(status.length ?? 7)}</p>
+        <p className="text-lg font-semibold">{R.inviteLead(status.length ?? 7, status.phase === "soon")}</p>
         <ul className="m-muted list-disc space-y-1 ps-5 text-sm">
           {R.rules.map((r) => (
             <li key={r}>{r}</li>
