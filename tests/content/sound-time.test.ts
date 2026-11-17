@@ -17,3 +17,20 @@ describe("«⏱️ وقت الصوت» typed times", () => {
     expect(parseClock("0:75")).toBeNull();
   });
 });
+
+import { addRule, SLIDE_RULES } from "@/components/jawad/content/ContentChat";
+
+describe("«✏️ عدّل الشريحة» ready choices", () => {
+  it("adds one line per rule and a second press of the same rule replaces it", () => {
+    let said = addRule("", "حركة الدخول", "من اليمين");
+    said = addRule(said, "السرعة", "أبطأ");
+    said = addRule(said, "حركة الدخول", "من تحت");
+    expect(said.split("\n")).toEqual(["السرعة: أبطأ", "حركة الدخول: من تحت"]);
+  });
+  it("keeps what the person wrote in words", () => {
+    expect(addRule("خل العنوان أزرق", "مكان الصورة", "فوق")).toBe("خل العنوان أزرق\nمكان الصورة: فوق");
+  });
+  it("offers the entrance, speed and places", () => {
+    expect(SLIDE_RULES.map((r) => r.label)).toEqual(expect.arrayContaining(["حركة الدخول", "السرعة", "مكان الصورة"]));
+  });
+});

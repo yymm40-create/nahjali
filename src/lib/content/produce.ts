@@ -238,7 +238,7 @@ async function store(c: { userId: string; chatId: string }, p: PendingProduce, s
 export const lastSlidesAt = (chat: Pick<Chat, "messages">) => chat.messages.map((m) => !!m.slides).lastIndexOf(true);
 
 /** Starts drawing again the slides asked for (the failed ones, or any made one), in the carousel that exists. */
-async function planRetry(userId: string, chat: Chat, ns: number[] | "failed", time?: { n: number; from: number; to: number }, change?: { n: number; said: string }): Promise<Chat> {
+async function planRetry(userId: string, chat: Chat, ns: number[] | "failed", time?: { n: number; from: number; to: number }, change?: { ns: number[]; said: string }): Promise<Chat> {
   const at = lastSlidesAt(chat);
   const block = chat.messages[at]?.slides;
   if (at < 0 || !block) throw new UserError("ما فيه كاروسيل في هذي المحادثة نعيد رسم شرائحه.", 409);
@@ -262,7 +262,7 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed", ti
     const batch = typeof row?.meta.batch === "string" ? row.meta.batch : "";
     const art = item && prompt && block.motion && batch ? await slidePicture(userId, chat.id, n, batch) : null;
     if (art) madeArts[String(n)] = art;
-    if (((time && time.n === n) || (change && change.n === n)) && item && batch) keptPrograms[String(n)] = programPath(userId, chat.id, batch, n);
+    if (((time && time.n === n) || (change && change.ns.includes(n))) && item && batch) keptPrograms[String(n)] = programPath(userId, chat.id, batch, n);
   }
   if (!slides.length) throw new UserError("ما لقينا شرائح نعيد رسمها.", 409);
   // the attached pictures the carousel was made with go again with the slides drawn again
@@ -285,7 +285,7 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed", ti
   const keptArts = Object.keys(arts).length > 0;
   const pending: PendingProduce = {
     ...(time ? { soundTimes: { [String(time.n)]: { from: time.from, to: time.to } } } : {}),
-    ...(change ? { edits: { [String(change.n)]: change.said } } : {}),
+    ...(change ? { edits: Object.fromEntries(change.ns.map((k) => [String(k), change.said])) } : {}),
     ...(Object.keys(keptPrograms).length ? { programs: keptPrograms } : {}),
     ...(refs.length ? { refs } : {}),
     ...(keptArts ? { arts } : {}),
@@ -318,10 +318,10 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed", ti
  * One call of the produce step: draws the next few slides, saves what exists, and says what is left. `retry` first
  * plans the drawing again of the given slides (or «failed»: all that failed) of the last carousel.
  */
-export async function produce(userId: string, chatId: string, o: { editSlide?: { n: number; said: string }; soundTime?: { n: number; from: number; to: number }; retry?: number[] | "failed"; owner?: boolean; email?: string | null; origin?: string; approvePictures?: boolean; redoPicture?: { n: number; note: string }; deferSlide?: number; exclude?: number[] } = {}): Promise<Produced> {
+export async function produce(userId: string, chatId: string, o: { editSlide?: { ns: number[]; said: string }; soundTime?: { n: number; from: number; to: number }; retry?: number[] | "failed"; owner?: boolean; email?: string | null; origin?: string; approvePictures?: boolean; redoPicture?: { n: number; note: string }; deferSlide?: number; exclude?: number[] } = {}): Promise<Produced> {
   let chat = await getChat(userId, chatId);
   if (!chat) throw new Error("chat not found");
-  if (o.editSlide) chat = await planRetry(userId, chat, [o.editSlide.n], undefined, o.editSlide);
+  if (o.editSlide) chat = await planRetry(userId, chat, o.editSlide.ns, undefined, o.editSlide);
   else if (o.soundTime) chat = await planRetry(userId, chat, [o.soundTime.n], o.soundTime);
   else if (o.retry && (o.retry === "failed" || o.retry.length)) chat = await planRetry(userId, chat, o.retry);
   const p = chat.pending;
