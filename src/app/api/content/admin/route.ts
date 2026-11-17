@@ -13,7 +13,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { setChatSpent, userContentChats } from "@/lib/content/spent";
 import { getChat } from "@/lib/content/chats";
 import { planSlideFix, previewCodeSlide } from "@/lib/content/produce";
-import { producedLinks, producedRow } from "@/lib/content/files";
+import { producedLinks, producedRow, uploadLinks } from "@/lib/content/files";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -89,7 +89,7 @@ export const POST = handle(async (req: Request) => {
             text: String(m.text ?? "").slice(0, 1500),
             files: Array.isArray(m.files) ? (m.files as Record<string, unknown>[]).map((f) => `${f.kind}:${f.id}:${f.name}`) : undefined,
             questions: Array.isArray(m.questions) ? (m.questions as Record<string, unknown>[]).map((q) => q.label) : undefined,
-            slides: m.slides ? (({ items, ...rest }) => ({ ...rest, items: Array.isArray(items) ? (items as Record<string, unknown>[]).map((x) => `${x.n}:${x.name}:${x.fileId}`) : [] }))(m.slides as Record<string, unknown>) : undefined,
+            slides: m.slides ? (({ items, ...rest }) => ({ ...rest, items: Array.isArray(items) ? (items as Record<string, unknown>[]).map((x) => `${x.n}:${x.name}:${x.fileId}${x.video ? `:video=${x.video}` : ""}`) : [] }))(m.slides as Record<string, unknown>) : undefined,
           })),
         });
       }
@@ -122,7 +122,9 @@ export const POST = handle(async (req: Request) => {
         const links = await producedLinks(uid, id);
         const video = typeof row.meta.video === "string" ? row.meta.video : null;
         const meta = { ...row.meta, prompt: undefined };
-        return NextResponse.json({ name: row.name, meta, url: links.get(row.id) ?? null, video: video ? (links.get(video) ?? null) : null });
+        // the person's own sound file the slide plays a part of, to compare with
+        const upload = typeof b.uploadId === "string" ? ((await uploadLinks(uid, [b.uploadId])).get(b.uploadId) ?? null) : null;
+        return NextResponse.json({ name: row.name, meta, url: links.get(row.id) ?? null, video: video ? (links.get(video) ?? null) : null, upload });
       }
       case "set_chat_spent": {
         const halalas = Math.round(Number(b.halalas));
