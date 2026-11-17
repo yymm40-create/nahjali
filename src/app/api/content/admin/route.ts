@@ -141,6 +141,35 @@ export const POST = handle(async (req: Request) => {
         const r = await say(uid, id, turn.text, (turn.files ?? []).map((f) => f.id), null);
         return NextResponse.json({ text: r.text.slice(0, 1500), pending: r.pending, questions: r.questions?.map((q) => q.label) ?? null });
       }
+      // the owner puts a person's chat back as it was: the messages after `keep` are removed, nothing waits to be made,
+      // and a slide of its carousel can be put back (a made slide that a later step replaced with its picture)
+      case "rewind_chat": {
+        const { data } = await createAdminClient().from("content_chats").select("user_id").eq("id", id).maybeSingle();
+        const uid = data ? String(data.user_id) : "";
+        const chat = uid ? await getChat(uid, id) : null;
+        if (!chat) throw new UserError("ما لقينا المحادثة.", 404);
+        const keep = Math.round(Number(b.keep));
+        if (!(keep > 0) || keep > chat.messages.length) throw new UserError("عدد الرسائل غير صحيح.");
+        const messages = chat.messages.slice(0, keep);
+        const at = messages.map((m) => !!m.slides).lastIndexOf(true);
+        const put = Array.isArray(b.slides) ? (b.slides as { n?: unknown; fileId?: unknown; video?: unknown }[]) : [];
+        if (at >= 0 && put.length) {
+          const block = messages[at].slides!;
+          const items = [...block.items];
+          for (const x of put) {
+            const n = Math.round(Number(x.n));
+            const row = await producedRow(uid, String(x.fileId ?? ""));
+            if (!row || !(n > 0)) throw new UserError(`ما لقينا ملف الشريحة ${String(x.n)}.`);
+            const slide = { n, fileId: row.id, name: row.name, text: String(row.meta.text ?? items.find((i) => i.n === n)?.text ?? ""), ...(typeof x.video === "string" && x.video ? { video: x.video } : {}) };
+            const k = items.findIndex((i) => i.n === n);
+            if (k >= 0) items[k] = slide;
+            else items.push(slide);
+          }
+          messages[at] = { ...messages[at], slides: { ...block, items: items.sort((x, y) => x.n - y.n), todo: [], running: false } };
+        }
+        await saveChat(uid, id, { messages, pending: null });
+        return NextResponse.json({ ok: true, messages: messages.length });
+      }
       case "set_chat_spent": {
         const halalas = Math.round(Number(b.halalas));
         if (!Number.isFinite(halalas) || halalas < 0) throw new UserError("المبلغ غير صحيح.");
