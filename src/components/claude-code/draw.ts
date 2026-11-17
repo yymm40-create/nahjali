@@ -36,7 +36,21 @@ export interface DrawResult {
 /** A part of a sound file (from–to, in seconds) as a WAV blob, for one slide's mix. */
 async function soundPart(url: string, from: number, to: number): Promise<Blob> {
   const RATE = 48000;
-  const bytes = await (await fetch(url)).arrayBuffer();
+  // read fresh from storage, never the browser's cached copy (the chat's own player cached the attached video without the
+  // cross-origin grant, and Chrome refuses that copy to a script: slide 1 came out silent, 17 Nov 2026), and tried again
+  // on a moment's refusal
+  let bytes: ArrayBuffer | null = null;
+  for (let i = 0; i < 3 && !bytes; i++) {
+    try {
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      bytes = await r.arrayBuffer();
+    } catch (e) {
+      if (i === 2) throw e;
+      await new Promise((ok) => setTimeout(ok, 1500 * (i + 1)));
+    }
+  }
+  if (!bytes) throw new Error("no sound");
   const all = await new OfflineAudioContext(2, 1, RATE).decodeAudioData(bytes);
   const a = Math.max(0, Math.round(from * RATE));
   const n = Math.max(1, Math.min(all.length - a, Math.round((to - from) * RATE)));
@@ -572,7 +586,12 @@ async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
     const synth = null;
     const cues = readCues(info!.cues, info!.duration).flatMap((c) => (m.sfx?.[c.sfx] ? [{ url: m.sfx[c.sfx], t: c.t, vol: c.vol }] : []));
     // the person's own sound: this slide's part of it, and the slide lasts exactly as long as that part
-    const own = m.voice ? await soundPart(m.voice.url, m.voice.from, m.voice.to).catch(() => null) : null;
+    // a slide over the person's own sound never comes out silent: no sound, no slide (it is tried again)
+    const own = m.voice
+      ? await soundPart(m.voice.url, m.voice.from, m.voice.to).catch((e: unknown) => {
+          throw new Error(`ما قدرت أجيب صوت الشريحة ${m.n} من ملفك (${e instanceof Error ? e.message : "خطأ"}). اضغط «أعد المحاولة».`);
+        })
+      : null;
     const length = m.voice ? Math.max(0.5, m.voice.to - m.voice.from) : info!.duration;
     const audio = synth || cues.length || own ? await mixSoundtrack({ duration: length, synth, cues, voice: own, music: null }) : null;
     const video = await renderVideo(host, { duration: length, fps: 30, blur: info!.blur, sub: info!.blur > 0 ? 3 : 1, audio }, (p) => o.onStep({ text: `🎞️ أطلّع فيديو الشريحة ${m.n}… ${Math.round(p * 100)}٪` }), o.signal);

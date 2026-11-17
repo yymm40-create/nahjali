@@ -222,3 +222,17 @@ describe("the content maker's own default model", () => {
     expect(readFileSync("src/components/robots/claude-model.ts", "utf8")).toContain('useSyncExternalStore(subscribe, read, () => "") || fallback');
   });
 });
+
+describe("a slide over the person's own sound", () => {
+  it("is never silent: its part is read fresh and tried again, and a slide whose sound can't be read fails instead", () => {
+    const draw = readFileSync("src/components/claude-code/draw.ts", "utf8");
+    expect(draw).toContain('const r = await fetch(url, { cache: "no-store" });');
+    expect(draw).toContain("ما قدرت أجيب صوت الشريحة");
+    expect(draw).not.toContain("soundPart(m.voice.url, m.voice.from, m.voice.to).catch(() => null)");
+  });
+  it("drawn again gets its own part of the sound (its place in the whole carousel) and keeps the picture it was drawn over", () => {
+    const produce = readFileSync("src/lib/content/produce.ts", "utf8");
+    expect(produce).toContain('const at = p.mode === "fix" ? s.n - 1 : p.slides.findIndex((x) => x.n === s.n);');
+    expect(produce).toContain("await slidePicture(userId, chat.id, n, batch)");
+  });
+});

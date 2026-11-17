@@ -32,7 +32,7 @@ import { getChat, saveChat, type Chat, type PendingProduce, type Slide, type Sli
 import { drawnPng } from "@/lib/jawad/server/uploads";
 import { storage } from "@/lib/storage";
 import { JAWAD_BUCKET } from "@/lib/jawad/server/runtime";
-import { addProduced, addProducedFromOutput, addProducedVideo, attachmentsOf, deleteProduced, producedBytes, producedLinks, producedRow, uploadLinks } from "./files";
+import { addProduced, addProducedFromOutput, addProducedVideo, attachmentsOf, deleteProduced, producedBytes, producedLinks, producedRow, slidePicture, uploadLinks } from "./files";
 import { checkSlide, fixNote, showsRealWoman, WOMAN_PROBLEM, type SlideCheck } from "./verify";
 
 /** GPT Image 2 for the slides: the standard sizes (a 1:1 slide is 1024×1024), high quality for readable Arabic. */
@@ -241,6 +241,7 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
   if (at < 0 || !block) throw new UserError("ما فيه كاروسيل في هذي المحادثة نعيد رسم شرائحه.", 409);
   const wanted = ns === "failed" ? block.failed.map((f) => f.n) : ns;
   const slides: PendingProduce["slides"] = [];
+  const madeArts: Record<string, string> = {};
   for (const n of [...new Set(wanted)].sort((a, b) => a - b)) {
     const f = block.failed.find((x) => x.n === n);
     if (f) {
@@ -252,6 +253,10 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
     const prompt = typeof row?.meta.prompt === "string" ? row.meta.prompt : "";
     const picture = typeof row?.meta.picture === "string" ? row.meta.picture : "";
     if (item && prompt) slides.push({ n, text: item.text, prompt, ...(picture ? { picture } : {}) });
+    // a made motion slide drawn again keeps the picture it was drawn over (approved already): only its motion is made again
+    const batch = typeof row?.meta.batch === "string" ? row.meta.batch : "";
+    const art = item && prompt && block.motion && batch ? await slidePicture(userId, chat.id, n, batch) : null;
+    if (art) madeArts[String(n)] = art;
   }
   if (!slides.length) throw new UserError("ما لقينا شرائح نعيد رسمها.", 409);
   // the attached pictures the carousel was made with go again with the slides drawn again
@@ -266,7 +271,7 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
   // a slide that failed AFTER its picture was painted and approved (its program would not run) keeps that picture: it
   // stands in the slide's place in the carousel («picture-…» / «element-…»). Trying the slide again painted a NEW picture
   // (paid again, and not the one the person approved) and asked for the approval a second time
-  const arts: Record<string, string> = {};
+  const arts: Record<string, string> = { ...madeArts };
   for (const sl of slides) {
     const it = block.items.find((x) => x.n === sl.n);
     if (it && /^(picture|element)-/.test(it.name) && block.failed.some((f) => f.n === sl.n)) arts[String(sl.n)] = it.fileId;
@@ -577,7 +582,10 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
       p.sound = snd ? { uploadId: snd.uploadId, speech: snd.phrases.length > 0, slices: splitSound(snd, total, p.motion!.seconds) } : false;
       await saveChat(userId, chatId, { messages, pending: p });
     }
-    const slice = p.sound ? p.sound.slices[Math.max(0, p.slides.findIndex((x) => x.n === s.n))] : null;
+    // the slide's own part of the sound: by its place in the WHOLE carousel (slides drawn again are only some of them:
+    // their place among those gave slide 3, drawn again alone, the first part of the sound)
+    const at = p.mode === "fix" ? s.n - 1 : p.slides.findIndex((x) => x.n === s.n);
+    const slice = p.sound ? (p.sound.slices[Math.max(0, Math.min(p.sound.slices.length - 1, at))] ?? null) : null;
     const link = slice && p.sound ? (await uploadLinks(userId, [p.sound.uploadId])).get(p.sound.uploadId) : null;
     if (slice && link && p.sound) {
       motion.seconds = Math.max(1, Math.round((slice.to - slice.from) * 100) / 100);
