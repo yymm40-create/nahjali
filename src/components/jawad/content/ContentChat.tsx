@@ -26,6 +26,17 @@ import { joinSlidesToReel } from "./slides-reel";
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean; video?: string; videoUrl?: string | null; videoDownload?: string | null }
 interface FailView { n: number; reason: string; detail?: string; text: string }
+/** Ways to spend less, shown to the person under the chat (the owner, 17 Nov 2026: «حطها كنصائح تطلع للعميل»). */
+const SAVING_TIPS = [
+  "اختر نموذج «الرشيق» للخطوات البسيطة (تفريغ الكلام، تأكيد الخيارات، تعديل جملة)، وارجع لـ«الأصيل» للكتابة الإبداعية فقط.",
+  "لما يطلع لك سؤال من الموقع بأزرار (الألوان، الخط، ستايل الحركة، طريقة الصنع) اضغط الزر مباشرة؛ ما يحتاج تكتب لمحمد باقر، وكل رسالة له لها سعر.",
+  "اجمع طلباتك في رسالة وحدة (عدد الشرائح، الشخصية، الصوت، الخاتمة) بدل عدة رسائل.",
+  "في الموشن كاروسيل: «حيدرا ماكس بالكود فقط» الأرخص بفرق كبير؛ اختر صور GPT Image 2 بس إذا تحتاج شخصية أو مشهد مرسوم.",
+  "قلّل عدد الشرائح: كل شريحة صورة وتصميم وحركة، و٥ شرائح غالبًا تكفي.",
+  "راجع صور المرحلة الأولى زين قبل «اعتمد»: إعادة صورة وحدة أرخص بكثير من إعادة شريحة متحركة كاملة.",
+  "إذا عندك صوت المقطع ارفعه ملف صوت (MP3/M4A) بدل فيديو طويل.",
+];
+
 interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code"; mix?: boolean; motion?: unknown; phase?: "pictures" | "approve"; deferred?: number[] }
 interface MediaView {
   id: string; kind: "image" | "video"; name: string; aspect: string; refs?: string[]; state: "todo" | "running" | "done" | "failed";
@@ -704,6 +715,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   // one drawing loop per conversation: opening it again (the address, then the list) must not start a second one,
   // or both draw the same slide and the second is refused («هذي الشريحة مو بانتظار الرسم», 5 Nov 2026)
   const looping = useRef(new Set<string>());
+  // «💡 وفّر رصيدك»: the ways to spend less, found on a real run (the owner, 17 Nov 2026)
+  const [tips, setTips] = useState(false);
 
   /** The produce step: the server draws a few slides a call; this asks again while it says `running`. */
   const runProduce = useCallback(async (id: string, retry?: number[] | "failed", more?: Record<string, unknown>) => {
@@ -1168,7 +1181,18 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                 <button type="button" className={`ct-mini ct-verbose${verbose ? " on" : ""}`} aria-pressed={verbose} onClick={toggleVerbose} title="الافتراضي مختصر لتوفير رصيدك؛ المفصّلة فيها شرح وبدائل وأسئلة أعمق">
                   {verbose ? "📝 محادثة مفصّلة ✓" : "📝 خلّها مفصّلة"}
                 </button>
+                <button type="button" className={`ct-mini${tips ? " on" : ""}`} aria-expanded={tips} onClick={() => setTips((v) => !v)}>💡 وفّر رصيدك</button>
               </div>
+              {tips && (
+                <div className="ct-tips" role="note">
+                  <b>💡 كيف توفّر رصيدك في صانع المحتوى</b>
+                  <ul>
+                    {SAVING_TIPS.map((t) => (
+                      <li key={t}>{t}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <div className="ct-compose-row">
                 <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.oga,.flac,.amr,.aif,.aiff,.webm,application/pdf" onChange={(e) => void attach(e.target.files)} />
                 <button type="button" className="ct-attach" aria-label="أرفق حتى 20 ملفًا" title="أرفق حتى 20 صورة أو فيديو أو صوت أو PDF" disabled={uploading || !!busy || pending.length >= JAWAD_ATTACHMENT_LIMIT} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
