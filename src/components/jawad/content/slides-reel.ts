@@ -29,37 +29,102 @@ export const STILL_SECONDS = 3;
  */
 const NO_CACHE: RequestInit = { cache: "no-store" };
 
-/** One slide's sound at the reel's rate, exactly `seconds` long (silence when it has none). */
-async function soundOf(url: string | null | undefined, seconds: number): Promise<AudioBuffer> {
+/**
+ * One slide's sound at the reel's rate, exactly `seconds` long (silence when it has none). `must`: the slide's video has
+ * a sound track, so a sound that can't be read stops the reel (it was joined silent before, 17 Nov 2026).
+ */
+async function soundOf(url: string | null | undefined, seconds: number, must = false, n = 0): Promise<AudioBuffer> {
   const length = Math.max(1, Math.round(seconds * RATE));
   const out = new AudioBuffer({ length, numberOfChannels: 2, sampleRate: RATE });
   if (!url) return out;
-  try {
-    // (not from the browser's cache: see NO_CACHE)
-    const bytes = await (await fetch(url, NO_CACHE)).arrayBuffer();
-    // an offline context decodes AND resamples to the reel's rate
-    const heard = await new OfflineAudioContext(2, 1, RATE).decodeAudioData(bytes);
-    for (let c = 0; c < 2; c++) out.copyToChannel(heard.getChannelData(Math.min(c, heard.numberOfChannels - 1)).subarray(0, length), c);
-  } catch {
-    // a slide without a sound track stays silent
+  for (let i = 0; i < 3; i++) {
+    try {
+      // (not from the browser's cache: see NO_CACHE)
+      const r = await fetch(url, NO_CACHE);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      // an offline context decodes AND resamples to the reel's rate
+      const heard = await new OfflineAudioContext(2, 1, RATE).decodeAudioData(await r.arrayBuffer());
+      for (let c = 0; c < 2; c++) out.copyToChannel(heard.getChannelData(Math.min(c, heard.numberOfChannels - 1)).subarray(0, length), c);
+      return out;
+    } catch (e) {
+      if (i < 2) await new Promise((ok) => setTimeout(ok, 1500 * (i + 1)));
+      else if (must) throw new Error(`ما قدرت أقرأ صوت الشريحة ${n} (${e instanceof Error ? e.message : "خطأ"}). جرّب «حوّله ريل» مرة ثانية.`);
+    }
   }
+  // a slide without a sound track stays silent
   return out;
 }
 
-/** Draws a frame (video canvas or picture) as the slide: full width, centred, over its own blurred copy. */
-function paint(ctx: CanvasRenderingContext2D, src: CanvasImageSource, sw: number, sh: number) {
-  ctx.fillStyle = "#0b0c0f";
-  ctx.fillRect(0, 0, W, H);
-  // the background: the same frame covering the reel, blurred and darkened (a plain dark fill where blur is missing)
-  const cover = Math.max(W / sw, H / sh);
-  ctx.save();
-  ctx.filter = "blur(48px) brightness(0.45)";
-  ctx.drawImage(src, (W - sw * cover) / 2, (H - sh * cover) / 2, sw * cover, sh * cover);
-  ctx.restore();
+type RGB = [number, number, number];
+/** A slide's two edge colours (its top and bottom strips, averaged), read once per slide so the background stays still. */
+export interface Edges { top: RGB; bottom: RGB }
+
+/** The average colour of the slide's top and bottom strips (6% each), from a small copy of the frame. */
+export function edgesOf(src: CanvasImageSource, sw: number, sh: number): Edges {
+  const w = 24;
+  const h = Math.max(8, Math.round((sh / sw) * w));
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  g.drawImage(src, 0, 0, w, h);
+  const strip = Math.max(1, Math.round(h * 0.06));
+  const avg = (y0: number): RGB => {
+    const d = g.getImageData(0, y0, w, strip).data;
+    const t: RGB = [0, 0, 0];
+    for (let k = 0; k < d.length; k += 4) for (let ch = 0; ch < 3; ch++) t[ch] += d[k + ch];
+    const n = d.length / 4;
+    return [t[0] / n, t[1] / n, t[2] / n];
+  };
+  return { top: avg(0), bottom: avg(h - strip) };
+}
+
+const rgb = (c: RGB, k = 1) => `rgb(${Math.round(c[0] * k)},${Math.round(c[1] * k)},${Math.round(c[2] * k)})`;
+
+/**
+ * Draws a frame (video canvas or picture) as the slide: full width, centred. The reel's empty bands above and below are
+ * filled in code with a SIMPLE background that continues the slide: its own edge colour, deepening softly toward the
+ * frame's edge, and the slide's edges melt into it (the owner, 17 Nov 2026: «يحاول يعبي المنطقة الفاضية في مقاس الريل
+ * بالكود بشي بسيط، خلفية بسيطة» — the blurred, darkened copy read as black bands).
+ */
+function paint(ctx: CanvasRenderingContext2D, src: CanvasImageSource, sw: number, sh: number, edges: Edges) {
   const fit = Math.min(W / sw, H / sh);
   const dw = sw * fit;
   const dh = sh * fit;
-  ctx.drawImage(src, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  const x = (W - dw) / 2;
+  const y = (H - dh) / 2;
+  // the bands: the edge colour at the slide, a little deeper at the frame's edge
+  const top = ctx.createLinearGradient(0, 0, 0, y + 2);
+  top.addColorStop(0, rgb(edges.top, 0.55));
+  top.addColorStop(1, rgb(edges.top));
+  ctx.fillStyle = top;
+  ctx.fillRect(0, 0, W, y + 2);
+  const bottom = ctx.createLinearGradient(0, y + dh - 2, 0, H);
+  bottom.addColorStop(0, rgb(edges.bottom));
+  bottom.addColorStop(1, rgb(edges.bottom, 0.55));
+  ctx.fillStyle = bottom;
+  ctx.fillRect(0, y + dh - 2, W, H - (y + dh) + 2);
+  // a soft light behind the slide, so the bands are not flat
+  const glow = ctx.createRadialGradient(W / 2, H / 2, dh * 0.2, W / 2, H / 2, H * 0.62);
+  glow.addColorStop(0, "rgba(255,255,255,0.06)");
+  glow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(src, x, y, dw, dh);
+  // the slide's top and bottom edges fade into the bands (no hard line where the slide ends)
+  const fade = Math.min(48, dh * 0.04);
+  if (y > 1) {
+    const ft = ctx.createLinearGradient(0, y, 0, y + fade);
+    ft.addColorStop(0, rgb(edges.top));
+    ft.addColorStop(1, `rgba(${Math.round(edges.top[0])},${Math.round(edges.top[1])},${Math.round(edges.top[2])},0)`);
+    ctx.fillStyle = ft;
+    ctx.fillRect(x, y, dw, fade);
+    const fb = ctx.createLinearGradient(0, y + dh - fade, 0, y + dh);
+    fb.addColorStop(0, `rgba(${Math.round(edges.bottom[0])},${Math.round(edges.bottom[1])},${Math.round(edges.bottom[2])},0)`);
+    fb.addColorStop(1, rgb(edges.bottom));
+    ctx.fillStyle = fb;
+    ctx.fillRect(x, y + dh - fade, dw, fade);
+  }
 }
 
 async function loadImage(url: string): Promise<HTMLImageElement> {
@@ -99,6 +164,8 @@ export async function joinSlidesToReel(slides: ReelSlide[], onProgress: (p: numb
       const s = list[k];
       const seconds = lengths[k];
       const frames = Math.max(1, Math.round(seconds * FPS));
+      // read from the slide's first frame and kept for the whole slide
+      let edges: Edges | undefined;
       const input = inputs[k];
       const track = input ? await input.getPrimaryVideoTrack() : null;
       if (track) {
@@ -107,7 +174,10 @@ export async function joinSlidesToReel(slides: ReelSlide[], onProgress: (p: numb
         let i = 0;
         for await (const f of sink.canvasesAtTimestamps(times)) {
           if (signal?.aborted) throw new DOMException("cancelled", "AbortError");
-          if (f) paint(ctx, f.canvas as CanvasImageSource, f.canvas.width, f.canvas.height);
+          if (f) {
+            edges ??= edgesOf(f.canvas as CanvasImageSource, f.canvas.width, f.canvas.height);
+            paint(ctx, f.canvas as CanvasImageSource, f.canvas.width, f.canvas.height, edges);
+          }
           await source.add(frame / FPS, 1 / FPS);
           frame++;
           i++;
@@ -117,12 +187,14 @@ export async function joinSlidesToReel(slides: ReelSlide[], onProgress: (p: numb
         const img = s.image ? await loadImage(s.image) : null;
         for (let i = 0; i < frames; i++) {
           if (signal?.aborted) throw new DOMException("cancelled", "AbortError");
-          if (img) paint(ctx, img, img.naturalWidth, img.naturalHeight);
+          if (img) paint(ctx, img, img.naturalWidth, img.naturalHeight, (edges ??= edgesOf(img, img.naturalWidth, img.naturalHeight)));
           await source.add(frame / FPS, 1 / FPS);
           frame++;
         }
       }
-      if (sound) await sound.add(await soundOf(s.video, frames / FPS));
+      // a slide whose video carries sound must bring it into the reel
+      const hasSound = input ? !!(await input.getPrimaryAudioTrack().catch(() => null)) : false;
+      if (sound) await sound.add(await soundOf(s.video, frames / FPS, hasSound, k + 1));
       at += seconds;
       onProgress(Math.min(0.99, at / total));
     }

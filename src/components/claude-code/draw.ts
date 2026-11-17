@@ -4,6 +4,7 @@
 
 import { postJson } from "@/lib/fetch";
 import { CODE_FIXES, CODE_ROUNDS } from "@/lib/claude-code/skill";
+import { checkSlideVideo } from "./check-video";
 import { SceneHost, SceneError, sceneFont, type SceneInfo } from "@/components/jawad/editor/scene-host";
 import { canExport, probe, renderVideo, sheetAt } from "@/components/jawad/editor/scene-render";
 import { mixSoundtrack } from "@/components/jawad/editor/lab-sound";
@@ -595,6 +596,9 @@ async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
     const length = m.voice ? Math.max(0.5, m.voice.to - m.voice.from) : info!.duration;
     const audio = synth || cues.length || own ? await mixSoundtrack({ duration: length, synth, cues, voice: own, music: null }) : null;
     const video = await renderVideo(host, { duration: length, fps: 30, blur: info!.blur, sub: info!.blur > 0 ? 3 : 1, audio }, (p) => o.onStep({ text: `🎞️ أطلّع فيديو الشريحة ${m.n}… ${Math.round(p * 100)}٪` }), o.signal);
+    // checked before it is shown: its length, and the person's sound really in it (a silent slide reached the person, 17 Nov 2026)
+    o.onStep({ text: `🔎 أتأكد من فيديو الشريحة ${m.n} (الطول والصوت)…` });
+    await checkSlideVideo(video, { n: m.n, wantSeconds: length, wantSound: !!m.voice });
     return { ...best!.result, coins, video };
   } finally {
     host.destroy();
