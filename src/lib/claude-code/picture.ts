@@ -119,8 +119,6 @@ export function patchProgram(program: string, d: { code?: unknown; edits?: unkno
 }
 
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
-/** what a fix says when its patch could not be applied: the next fix of that program is asked for whole */
-const PATCH_FAILED = "the patch of the last fix could not be applied — return the COMPLETE program this time";
 
 /** A motion carousel's slide, as the page sends it: its seconds, its motion style, whether it is the cover, how many slides. */
 export function readMotionSlide(v: unknown): { seconds: number; style: string; first: boolean; total: number } | null {
@@ -171,7 +169,9 @@ function refsParts(raw: unknown): ClaudePart[] {
 }
 
 /** WRITE (or FIX after the scene page threw, or — with b.edit — CHANGE as a patch) the picture's program. */
-export async function pictureWrite(user: RobotUser, b: Record<string, unknown>) {
+type Asked = Awaited<ReturnType<typeof ask<unknown>>>;
+interface Written { code: string; problems: string[]; fonts: { head: string; body: string }; notes: string; size: number[]; coins: Asked["coins"]; model: Asked["model"]; patchFailed?: string }
+export async function pictureWrite(user: RobotUser, b: Record<string, unknown>): Promise<Written> {
   const prompt = text(b.prompt, 16000);
   if (prompt.length < 2) throw new UserError("اكتب وش تبي في الصورة.", 400);
   const motion = readMotionSlide(b.motion);
@@ -187,9 +187,11 @@ export async function pictureWrite(user: RobotUser, b: Record<string, unknown>) 
   const previous = text(b.code, 140_000);
   const errors = text(b.errors, 4000);
   if (b.edit === true && previous && !errors && !motion) return pictureEdit(user, b, prompt, previous, [w, h], style);
-  // a moving slide whose program threw: the fix comes back as a PATCH (a few lines), not the whole program written a
-  // second time (the owner, 17 Nov 2026: «ليش تكتب البرنامج مرتين؟»); only a patch that could not be applied asks for it whole
-  const patchFix = !!motion && !!previous && !errors.includes(PATCH_FAILED);
+  // a moving slide whose program threw: the FIRST fix comes back as a PATCH (a few lines), not the whole program written a
+  // second time (the owner, 17 Nov 2026: «ليش تكتب البرنامج مرتين؟»). A program that still throws after its patch is
+  // written again whole (the page says which fix this is: fixRound), and so is one whose patch can't be applied — a
+  // patch never uses up the slide's tries (17 Nov 2026: a cover slide failed after two patches)
+  const patchFix = !!motion && !!previous && b.fixRound === 0;
   // a slide of the content maker over its painted, approved picture: the look is decided; he sets the words and the motion
   const overPicture = b.from === "content" && !!motion && Array.isArray(b.photos) && b.photos.length > 0;
   const parts: ClaudePart[] = [
@@ -210,8 +212,12 @@ ${patchFix ? 'Answer with "edits" on THE PROGRAM (exact search/replace) that fix
   ];
   const r = await ask<{ code: string; edits?: unknown; fonts: { head: string; body: string }; notes: string }>(user, b.model, motion ? (previous ? "حيدرا ماكس · تصليح الشريحة المتحركة" : "حيدرا ماكس · شريحة متحركة") : previous ? "حيدرا ماكس · تصليح الصورة" : "حيدرا ماكس · رسم الصورة", parts, patchFix ? EDIT_SCHEMA : WRITE_SCHEMA, 64_000, patchFix || overPicture || ((motion || stillFor) && (b.light === true || !!still)) ? "medium" : "high", motion ? MOTION_SYSTEM : SYSTEM, motion || stillFor ? MOTION_MS : PICTURE_MS);
   const fixed = patchFix ? patchProgram(previous, r.data) : null;
-  // a patch that can't be applied: the program stays as it was, and the next fix asks for it whole
-  if (fixed && "patchFailed" in fixed) return { code: previous, problems: [`${PATCH_FAILED} (${fixed.patchFailed})`], fonts: pin ? { head: pin, body: pin } : { head: font(r.data.fonts?.head, LAB_FONTS[0]), body: font(r.data.fonts?.body, LAB_FONTS[0]) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, model: r.model };
+  // a patch that can't be applied: the program is written again whole, in this same call
+  if (fixed && "patchFailed" in fixed) {
+    console.warn("claude code picture: a fix's patch could not be applied, writing the program whole", fixed.patchFailed);
+    const whole = await pictureWrite(user, { ...b, fixRound: 1 });
+    return { ...whole, coins: (r.coins ?? 0) + (whole.coins ?? 0) };
+  }
   const chk = checkScene(fixed ? fixed.code : r.data.code);
   // the animated still keeps the still's fonts
   const keep = still && LAB_FONTS.includes(String(stillFonts.head)) ? { head: String(stillFonts.head), body: font(stillFonts.body, String(stillFonts.head)) } : null;

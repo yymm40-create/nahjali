@@ -534,7 +534,8 @@ async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
         } catch (e) {
           if (!(e instanceof SceneError) || fix >= CODE_FIXES) throw e instanceof SceneError ? new Error(`برنامج الشريحة ما اشتغل بعد ${fix + 1} محاولات: ${e.message}`) : e;
           o.onStep({ text: "البرنامج طلع فيه خطأ — حيدرا ماكس يصلّحه…" });
-          w = await call<Wrote>({ action: "write", code, errors: `${e.where}${e.t != null ? ` at t=${e.t.toFixed(2)}s` : ""}: ${e.message}\n${e.stack2}` });
+          // (the first fix is a patch; a program that still throws after it is written again whole)
+          w = await call<Wrote>({ action: "write", code, fixRound: fix, errors: `${e.where}${e.t != null ? ` at t=${e.t.toFixed(2)}s` : ""}: ${e.message}\n${e.stack2}` });
           coins += w.coins ?? 0;
           code = w.code;
           problems = w.problems;
