@@ -26,7 +26,9 @@ const PER_DAY = 5;
 const BASE_USD = 0.05;
 const PER_10MB_USD = 0.006;
 
-export const youtubeEnabled = () => !!process.env.APIFY_TOKEN;
+/** The Apify key: APIFY_TOKEN, or «apify» as the owner named it in Vercel (17 Nov 2026). */
+const apifyToken = () => (process.env.APIFY_TOKEN || process.env.apify || process.env.APIFY || "").trim();
+export const youtubeEnabled = () => !!apifyToken();
 
 type Part = "video" | "audio";
 interface Run {
@@ -72,7 +74,7 @@ async function writeJson(path: string, v: unknown) {
 async function apify<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   const r = await fetch(`${API}${path}`, {
     method: init?.method ?? "GET",
-    headers: { authorization: `Bearer ${process.env.APIFY_TOKEN}`, ...(init?.body ? { "content-type": "application/json" } : {}) },
+    headers: { authorization: `Bearer ${apifyToken()}`, ...(init?.body ? { "content-type": "application/json" } : {}) },
     body: init?.body ? JSON.stringify(init.body) : undefined,
     signal: AbortSignal.timeout(30_000),
   });
@@ -127,7 +129,7 @@ async function fileOf(run: Run): Promise<{ bytes?: Uint8Array; row?: Row; why?: 
   if (!row?.downloadUrl) return { row, why: row?.error ? String(row.error).slice(0, 160) : "ما انحمّل" };
   const link = new URL(row.downloadUrl);
   // the token goes only to Apify's own address
-  const headers = link.hostname === "api.apify.com" ? { authorization: `Bearer ${process.env.APIFY_TOKEN}` } : undefined;
+  const headers = link.hostname === "api.apify.com" ? { authorization: `Bearer ${apifyToken()}` } : undefined;
   const r = await fetch(link, { headers, signal: AbortSignal.timeout(180_000) });
   if (!r.ok) return { row, why: `تحميل الملف ${r.status}` };
   return { bytes: new Uint8Array(await r.arrayBuffer()), row };
