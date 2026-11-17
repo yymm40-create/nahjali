@@ -341,7 +341,22 @@ describe("the colours the person chose", () => {
     expect(carouselStyleBlock(s)).toContain("#7A1E33");
     const produce = readFileSync("src/lib/content/produce.ts", "utf8");
     expect(produce).toContain("withoutColours(car.look)} ${COLOURS_ARE_THE_CLIENTS}");
-    expect(produce).toContain("carouselStyleBlock(car, !!pal)");
-    expect(produce).toContain("carouselStyleForCode(car, !!pal)");
+    expect(produce).toContain("carouselStyleBlock(car, !!pal, !!font)");
+    expect(produce).toContain("carouselStyleForCode(car, !!pal, !!font)");
+  });
+});
+
+describe("the client's choices come first", () => {
+  it("wherever the style and the client differ: the style's font gives way to theirs, and every prompt says so", async () => {
+    const { findCarouselStyle, carouselStyleBlock, carouselStyleForCode, CLIENT_FIRST } = await import("@config/content-carousel-styles");
+    const s = findCarouselStyle("modern-pixar")!;
+    expect(carouselStyleBlock(s, false, true)).toContain("the CLIENT'S FONT");
+    expect(carouselStyleBlock(s, false, true)).not.toContain(s.type);
+    expect(carouselStyleForCode(s, false, true)).not.toContain(s.type);
+    const produce = readFileSync("src/lib/content/produce.ts", "utf8");
+    expect(produce.match(/CLIENT_FIRST : ""/g)?.length).toBe(3);
+    expect(CLIENT_FIRST).toContain("reference picture");
+    const { chosenBlock, chosenIds } = await import("@/lib/content/persona");
+    expect(chosenBlock(chosenIds([`${STYLE}\n${FONT}`]))).toContain("خيارات العميل مقدَّمة دائمًا");
   });
 });
