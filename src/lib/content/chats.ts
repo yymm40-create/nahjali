@@ -150,6 +150,8 @@ export interface PendingProduce {
   arts?: Record<string, string>;
   /** a motion carousel over the person's own sound (lib/content/sound): the sound and each slide's part of it, worked out once */
   sound?: { uploadId: string; speech: boolean; slices: { from: number; to: number; lines: { text: string; from: number; to: number }[] }[] } | false;
+  /** the times of the sound a slide plays, chosen by the person («من ٠:١٢ إلى ٠:٢٠»), by slide number: they win over the split */
+  soundTimes?: Record<string, { from: number; to: number }>;
   /** the message index the slides are attached to */
   at: number;
   styleId: string;
@@ -359,6 +361,7 @@ export function readPending(v: unknown): PendingProduce | null {
     ...(readMotion(p.motion) ? { motion: readMotion(p.motion)! } : {}),
     ...(p.sound === false ? { sound: false as const } : p.sound && typeof p.sound === "object" && typeof (p.sound as { uploadId?: unknown }).uploadId === "string" && Array.isArray((p.sound as { slices?: unknown }).slices) ? { sound: p.sound as NonNullable<Exclude<PendingProduce["sound"], false>> } : {}),
     ...(p.picturesOk === true ? { picturesOk: true } : {}),
+    ...(p.soundTimes && typeof p.soundTimes === "object" && !Array.isArray(p.soundTimes) ? { soundTimes: Object.fromEntries(Object.entries(p.soundTimes as Record<string, { from?: unknown; to?: unknown }>).filter(([, v]) => v && Number.isFinite(Number(v.from)) && Number(v.to) > Number(v.from)).map(([k, v]) => [k, { from: Number(v.from), to: Number(v.to) }])) } : {}),
     ...(p.programs && typeof p.programs === "object" && !Array.isArray(p.programs) ? { programs: Object.fromEntries(Object.entries(p.programs as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> } : {}),
     ...(Array.isArray(p.deferred) ? { deferred: (p.deferred as unknown[]).map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 40) } : {}),
     ...(p.stills && typeof p.stills === "object" && !Array.isArray(p.stills) ? { stills: Object.fromEntries(Object.entries(p.stills as Record<string, unknown>).filter(([, v]) => !!v && typeof v === "object" && typeof (v as { program?: unknown }).program === "string" && typeof (v as { slide?: { fileId?: unknown } }).slide?.fileId === "string")) as NonNullable<PendingProduce["stills"]> } : {}),

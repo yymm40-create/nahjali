@@ -236,13 +236,15 @@ async function store(c: { userId: string; chatId: string }, p: PendingProduce, s
 export const lastSlidesAt = (chat: Pick<Chat, "messages">) => chat.messages.map((m) => !!m.slides).lastIndexOf(true);
 
 /** Starts drawing again the slides asked for (the failed ones, or any made one), in the carousel that exists. */
-async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): Promise<Chat> {
+async function planRetry(userId: string, chat: Chat, ns: number[] | "failed", time?: { n: number; from: number; to: number }): Promise<Chat> {
   const at = lastSlidesAt(chat);
   const block = chat.messages[at]?.slides;
   if (at < 0 || !block) throw new UserError("ما فيه كاروسيل في هذي المحادثة نعيد رسم شرائحه.", 409);
   const wanted = ns === "failed" ? block.failed.map((f) => f.n) : ns;
   const slides: PendingProduce["slides"] = [];
   const madeArts: Record<string, string> = {};
+  // a slide made again only for its sound's time keeps its program: the video is made again, nothing is written
+  const keptPrograms: Record<string, string> = {};
   for (const n of [...new Set(wanted)].sort((a, b) => a - b)) {
     const f = block.failed.find((x) => x.n === n);
     if (f) {
@@ -258,6 +260,7 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
     const batch = typeof row?.meta.batch === "string" ? row.meta.batch : "";
     const art = item && prompt && block.motion && batch ? await slidePicture(userId, chat.id, n, batch) : null;
     if (art) madeArts[String(n)] = art;
+    if (time && time.n === n && item && batch) keptPrograms[String(n)] = programPath(userId, chat.id, batch, n);
   }
   if (!slides.length) throw new UserError("ما لقينا شرائح نعيد رسمها.", 409);
   // the attached pictures the carousel was made with go again with the slides drawn again
@@ -279,6 +282,8 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
   }
   const keptArts = Object.keys(arts).length > 0;
   const pending: PendingProduce = {
+    ...(time ? { soundTimes: { [String(time.n)]: { from: time.from, to: time.to } } } : {}),
+    ...(Object.keys(keptPrograms).length ? { programs: keptPrograms } : {}),
     ...(refs.length ? { refs } : {}),
     ...(keptArts ? { arts } : {}),
     // every slide tried again has its approved picture: no second approval
@@ -310,10 +315,11 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
  * One call of the produce step: draws the next few slides, saves what exists, and says what is left. `retry` first
  * plans the drawing again of the given slides (or «failed»: all that failed) of the last carousel.
  */
-export async function produce(userId: string, chatId: string, o: { retry?: number[] | "failed"; owner?: boolean; email?: string | null; origin?: string; approvePictures?: boolean; redoPicture?: { n: number; note: string }; deferSlide?: number; exclude?: number[] } = {}): Promise<Produced> {
+export async function produce(userId: string, chatId: string, o: { soundTime?: { n: number; from: number; to: number }; retry?: number[] | "failed"; owner?: boolean; email?: string | null; origin?: string; approvePictures?: boolean; redoPicture?: { n: number; note: string }; deferSlide?: number; exclude?: number[] } = {}): Promise<Produced> {
   let chat = await getChat(userId, chatId);
   if (!chat) throw new Error("chat not found");
-  if (o.retry && (o.retry === "failed" || o.retry.length)) chat = await planRetry(userId, chat, o.retry);
+  if (o.soundTime) chat = await planRetry(userId, chat, [o.soundTime.n], o.soundTime);
+  else if (o.retry && (o.retry === "failed" || o.retry.length)) chat = await planRetry(userId, chat, o.retry);
   const p = chat.pending;
   if (!p) throw new UserError("ما فيه كاروسيل ينتظر الإنتاج في هذي المحادثة.", 409);
 
@@ -589,7 +595,12 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
     // the slide's own part of the sound: by its place in the WHOLE carousel (slides drawn again are only some of them:
     // their place among those gave slide 3, drawn again alone, the first part of the sound)
     const at = p.mode === "fix" ? s.n - 1 : p.slides.findIndex((x) => x.n === s.n);
-    const slice = p.sound ? (p.sound.slices[Math.max(0, Math.min(p.sound.slices.length - 1, at))] ?? null) : null;
+    // the time the person chose for this slide wins over the split (its phrases are the ones said in it)
+    const chosen = p.soundTimes?.[String(s.n)];
+    const all = chosen ? await chatSound(userId, messages).catch(() => null) : null;
+    const slice = chosen && p.sound
+      ? { from: chosen.from, to: chosen.to, lines: (all?.phrases ?? []).filter((x) => x.to > chosen.from && x.from < chosen.to).map((x) => ({ text: x.text, from: Math.max(0, x.from - chosen.from), to: Math.min(chosen.to, x.to) - chosen.from })) }
+      : p.sound ? (p.sound.slices[Math.max(0, Math.min(p.sound.slices.length - 1, at))] ?? null) : null;
     const link = slice && p.sound ? (await uploadLinks(userId, [p.sound.uploadId])).get(p.sound.uploadId) : null;
     if (slice && link && p.sound) {
       motion.seconds = Math.max(1, Math.round((slice.to - slice.from) * 100) / 100);
