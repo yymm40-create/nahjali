@@ -564,9 +564,25 @@ async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
   o.onStep({ text: `🎬 حيدرا ماكس يكتب الشريحة ${m.n} مشهدًا متحركًا…` });
   // a program kept before a refresh starts the slide again from there (no second writing)
   const kept = o.extra?.program as { code: string; fonts: { head: string; body: string }; size: [number, number] } | undefined;
-  if (kept) o.onStep({ text: `♻️ برنامج الشريحة ${m.n} محفوظ — نكمّل من عنده بدون كتابة جديدة…` });
-  let w: Wrote = kept ? { code: kept.code, problems: [], fonts: kept.fonts, size: kept.size, notes: "", coins: 0 } : await call<Wrote>({ action: "write" });
-  coins += w.coins ?? 0;
+  // «✏️ عدّل الشريحة»: the person's words patch the kept program (a few lines, nothing repainted or written again)
+  const change = kept && typeof o.extra?.change === "string" ? o.extra.change.trim() : "";
+  let w: Wrote;
+  if (kept && change) {
+    o.onStep({ text: `✏️ حيدرا ماكس يعدّل برنامج الشريحة ${m.n} نفسه بكلامك (بدون رسم من جديد)…` });
+    const e = await call<Wrote>({ action: "write", edit: true, code: kept.code, fonts: kept.fonts, brief: o.prompt, said: change, photosChanged: false });
+    coins += e.coins ?? 0;
+    if (e.code && !e.patchFailed) w = { ...e, size: kept.size };
+    else {
+      // the patch did not take: the slide is written again over its same picture, with the change in its request
+      o.onStep({ text: `التعديل ما ركب على البرنامج — حيدرا ماكس يكتب الشريحة ${m.n} من جديد مع تعديلك…` });
+      w = await call<Wrote>({ action: "write", prompt: `${o.prompt}\n\nTHE CHANGE THE PERSON ASKED FOR THIS SLIDE (apply it exactly): ${change}` });
+      coins += w.coins ?? 0;
+    }
+  } else {
+    if (kept) o.onStep({ text: `♻️ برنامج الشريحة ${m.n} محفوظ — نكمّل من عنده بدون كتابة جديدة…` });
+    w = kept ? { code: kept.code, problems: [], fonts: kept.fonts, size: kept.size, notes: "", coins: 0 } : await call<Wrote>({ action: "write" });
+    coins += w.coins ?? 0;
+  }
   let code = w.code;
   let problems = w.problems;
   const fonts = w.fonts;
