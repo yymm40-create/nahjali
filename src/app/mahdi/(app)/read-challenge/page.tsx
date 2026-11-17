@@ -76,7 +76,7 @@ export default function ReadChallengePage() {
       <header className="space-y-2">
         <h1 className="m-display text-3xl">📖 {data.challenge.title}</h1>
         <p className="m-chip w-fit">
-          {data.phase === "soon" ? R.soon : over ? R.overChip : R.dayOf(data.day ?? 1, data.length ?? 7, data.left ?? 0)}
+          {data.phase === "soon" ? R.soon(new Date(`${data.challenge.startsOn}T12:00:00Z`).toLocaleDateString("ar", { day: "numeric", month: "long", timeZone: "UTC" })) : over ? R.overChip : R.dayOf(data.day ?? 1, data.length ?? 7, data.left ?? 0)}
         </p>
         <p className="m-note">{R.howWins}</p>
       </header>

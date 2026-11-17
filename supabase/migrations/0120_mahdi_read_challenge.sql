@@ -1,4 +1,4 @@
--- «لأجل المهدي» · «تحدي القراءة» (the owner, 17 November 2026): 7 days exactly, whoever reads the most pages wins.
+-- «لأجل المهدي» · «تحدي القراءة» (the owner, 17 November 2026; starts 18 November): 7 days exactly, whoever reads the most pages wins.
 -- What counts is what people already record, from the challenge's first day (late joiners keep their earlier days):
 --   · pages of reading sessions in «القارئ العلوي» (in-app PDF reading included), and
 --   · the day's value of any habit measured in pages («صفحة / صفحات») — except the habit linked to the reading goals,
@@ -31,9 +31,9 @@ alter table public.mahdi_read_challenge_members enable row level security;
 revoke all on public.mahdi_read_challenges from anon, authenticated;
 revoke all on public.mahdi_read_challenge_members from anon, authenticated;
 
--- The first challenge: 17 → 23 November 2026 (7 days), each person's own local dates
+-- The first challenge: 18 → 24 November 2026 (7 days), each person's own local dates
 insert into public.mahdi_read_challenges (id, title, starts_on, ends_on)
-values ('7e5d0a11-0c1a-4d2e-9b7a-17112026a001', 'تحدي القراءة', '2026-11-17', '2026-11-23')
+values ('7e5d0a11-0c1a-4d2e-9b7a-17112026a001', 'تحدي القراءة', '2026-11-18', '2026-11-24')
 on conflict (id) do nothing;
 
 create or replace function public.mahdi_read_challenge_pages(p_challenge uuid)
