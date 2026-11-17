@@ -413,9 +413,12 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
     usd += r.usd;
     if (r.made) {
       p.made.push(r.made);
-      // the slide it replaced goes away (the new one is already stored)
+      // the slide it replaced goes away (the new one is already stored) — but never the picture it was drawn over, which
+      // stood in its place while it was made: that picture is what drawing the slide again keeps (it was deleted, so a
+      // redraw found no picture and painted a new one, 17 Nov 2026)
       const old = base.get(r.made.n);
-      if (old && p.mode === "fix") {
+      const isArt = !!old && (/^(picture|element)-/.test(old.name) || Object.values(p.arts ?? {}).includes(old.fileId));
+      if (old && p.mode === "fix" && !isArt) {
         await deleteProduced(userId, old.fileId);
         if (old.video) await deleteProduced(userId, old.video);
       }
