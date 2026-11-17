@@ -398,6 +398,25 @@ describe("the basic choices are never forgotten", () => {
   });
 });
 
+describe("colours picked after the carousel", () => {
+  it("are used for the slides made now (not the carousel's old ones)", async () => {
+    const items = [1, 2].map((n) => ({ n, fileId: `pic${n}`, name: `picture-0${n}`, text: `ن${n}` }));
+    db.chat = { id: "chat-1", title: "t", record: "", usd: 0, spentHalalas: 0, updatedAt: "", pending: null, messages: [
+      { role: "user", text: START },
+      { role: "assistant", text: "تم", slides: { aspect: "9:16", items, todo: [], failed: [], running: false, total: 2, maker: "code", carouselId: "modern-pixar", paletteId: "ch-f0e5cff7f6f2c8c6c64b6587", motion: { styleId: "kinetic-word", route: "picture", seconds: 5 } } },
+      { role: "user", text: "أبي أغيّر الألوان" },
+      { role: "assistant", text: "اختر" },
+    ] } as never;
+    const { paletteLine } = await import("@/lib/content/marks");
+    const { CONTENT_PALETTES } = await import("@config/content-palettes");
+    const other = CONTENT_PALETTES.find((x) => x.id !== "ch-f0e5cff7f6f2c8c6c64b6587")!;
+    const msg = paletteLine({ id: other.id, name: other.name });
+    answer({ produce: { ...empty, on: true, mode: "fix", refs: [], slides: [1, 2].map((n) => ({ n, text: `ن${n}`, prompt: `p${n}`, picture: "" })) } });
+    await say("u", "chat-1", msg, []);
+    expect((chat().pending as unknown as { paletteId?: string }).paletteId).toBe(other.id);
+  });
+});
+
 describe("the colours the person chose", () => {
   it("replace the style's own: its colour codes and colour words leave the picture's and the slide's prompts (the red came back over her blue)", async () => {
     const { findCarouselStyle, withoutColours, carouselStyleBlock, carouselStyleForCode } = await import("@config/content-carousel-styles");
