@@ -362,7 +362,14 @@ export async function say(userId: string, chatId: string | null, message: string
       : pureGatePick(said)
         ? `[اكتملت خطوات الشكل كلها بأزرار الموقع (الستايل، الألوان، الخط، والحركة وطريقتها أو من يصمم). لا تسأل عن أي منها ولا تعدّدها. أكمل الخطوة التالية مباشرة: إن كانت نصوص الشرائح معتمدة وطلب العميل التصنيع فاكتب produce كاملًا الآن، وإلا فاعرض نصوص الشرائح لموافقة واحدة.]`
         : "";
-  const turnNote = [gateNote, turnText(parts, before?.record ?? "")].filter(Boolean).join("\n\n");
+  // the basic choices of the carousel made in this chat: he keeps them for any slides or carousel that follow, and never
+  // asks for them again unless the person asks to change one (the owner, 18 Nov 2026: «ماينسى هالخيارات الاساسية»)
+  const lookAt = before ? lastSlidesAt(before) : -1;
+  const look = lookAt >= 0 ? before!.messages[lookAt].slides : null;
+  const lookNote = look?.carouselId
+    ? `[خيارات العميل الأساسية في هذه المحادثة (ثابتة): ستايل الكاروسيل ${look.carouselId}${look.paletteId ? `، الألوان ${look.paletteId}` : "، ألوان الستايل"}${look.fontId ? `، الخط ${look.fontId}` : ""}${look.motion ? `، موشن كاروسيل بحركة ${look.motion.styleId}` : "، كاروسيل ثابت"}، المقاس ${look.aspect}. أي شرائح أو كاروسيل بعده في هذه المحادثة بنفسها: لا تسأل عنها ولا تعرض جداولها، إلا إذا طلب العميل تغيير واحد منها صراحةً. وإكمال شرائح هذا الكاروسيل أو تعديلها mode="fix".]`
+    : "";
+  const turnNote = [lookNote, gateNote, turnText(parts, before?.record ?? "")].filter(Boolean).join("\n\n");
   // a carousel that stopped half way (a wallet ran out, a closed page): «كمّل» goes on drawing it as it was — no new
   // answer, no new plan (a new plan drew the characters again, different, and the person had to explain it all again)
   const unfinished = before?.pending && cut < 0 ? before.pending : null;
@@ -470,10 +477,28 @@ export async function say(userId: string, chatId: string | null, message: string
       .sort((x, y) => x.n - y.n);
     const templateId = a.produce.template_id && findTemplate(a.produce.template_id) ? a.produce.template_id : "";
     const styleId = a.produce.style_id && findStyle(a.produce.style_id) ? a.produce.style_id : "";
-    const fixAt = a.produce.mode === "fix" ? lastSlidesAt({ messages: history }) : -1;
+    // slides asked for a carousel that is not finished (pictures not animated yet, slides that failed) are THAT carousel
+    // going on — its style, colours, font and motion — even when he called it a new one: «كمّل الموشن لبقية السلايدات»
+    // came back as a new carousel, the style table was asked again and nothing was made (إيمان, 18 Nov 2026)
+    const lastAt = lastSlidesAt({ messages: history });
+    const lastBlock = lastAt >= 0 ? history[lastAt].slides : null;
+    const notFinished = !!lastBlock && (lastBlock.failed.length > 0 || lastBlock.todo.length > 0 || lastBlock.items.some((x) => /^(picture|element)-/.test(x.name)) || lastBlock.items.length < lastBlock.total);
+    // (a new carousel is a new look picked since — a style, a maker, still or motion — or asked for in words)
+    const picksIn = (h: Turn[]) => !!(pickedCarousel(h) || pickedMaker(h) || pickedKind(h) || pickedMotionStyle(h));
+    // («كمّل الموشن لبقية…» names the motion: it is the carousel going on, not a pick of still or motion)
+    const now = history[history.length - 1];
+    const freshPick = history.slice(lastAt + 1, -1).some((t) => t.role === "user" && picksIn([t])) || (!!now && picksIn([now]) && !/(كم[ّ]?ل|بقي[ةه]|باقي|الباقي|خل[ّ]?ص)/.test(said)) || /(ستايل|الستايل|شكل|ألوان|الوان|خط)\s*(جديد|ثاني|آخر|اخر|مختلف)|غي[ّ]?ر\s*(ال)?(ستايل|شكل|ألوان|الوان|خط)/.test(said);
+    const newCarousel = /(كاروسيل|كاروسل|سلايدات|شرائح)\s*(جديد|جديدة|ثاني|ثانية|آخر|اخر|أخرى|اخرى)|موضوع\s*(جديد|ثاني|آخر|اخر)/.test(said);
+    const goesOn = a.produce.mode !== "fix" && !freshPick && !newCarousel && notFinished && slides.length > 0 && slides.length <= lastBlock!.total && slides.every((x) => x.n >= 1 && x.n <= lastBlock!.total);
+    const fixAt = a.produce.mode === "fix" || goesOn ? lastAt : -1;
     // who makes the slides is the person's pick, asked as the last step before a new carousel (the owner's order: «حيدرا ماكس» in code, GPT Image 2 painting each whole slide,
     // or GPT Image 2's pictures with «حيدرا ماكس»'s writing; no default): the server decides from the answer they pressed, not from what the model says. A fix goes back to the way the carousel was made
-    const fixed = fixAt >= 0 ? history[fixAt].slides : null;
+    const fixed0 = fixAt >= 0 ? history[fixAt].slides : null;
+    // a NEW carousel in a chat that made one: the basic choices are never forgotten — the last carousel's style, colours,
+    // font, motion and maker stand unless a new one is picked or asked for (the owner, 18 Nov 2026: «حله جذريا… انه
+    // ماينسى هالخيارات الاساسية»): no table asked again
+    const reuse = !fixed0 && !freshPick && lastBlock && lastBlock.carouselId ? lastBlock : null;
+    const fixed = fixed0 ?? reuse;
     const picked = fixed ? (fixed.maker === "code" ? (fixed.mix ? "mix" : "code") : "gpt") : pickedMaker(history);
     // a motion carousel: every slide is «حيدرا ماكس»'s moving scene (its style and way of making as pressed; a fix keeps the carousel's own)
     const motionPick = fixed ? null : pickedKind(history) === "motion" ? pickedMotionStyle(history) : null;
@@ -542,17 +567,18 @@ export async function say(userId: string, chatId: string | null, message: string
       reply.text += `\n\n${hold.note}`;
     } else if (slides.length) {
       const pick = pickedCarousel(history);
-      const carouselId = pick?.style?.id ?? "";
+      const carouselId = pick?.style?.id ?? reuse?.carouselId ?? "";
       // the font they picked; "auto" leaves it to the answer's own choice of a font of the list
       const font = pickedFont(history);
-      const fontId = font?.font?.id ?? (a.produce.font_id && findContentFont(a.produce.font_id) ? a.produce.font_id : "");
+      const fontId = font?.font?.id ?? reuse?.fontId ?? (a.produce.font_id && findContentFont(a.produce.font_id) ? a.produce.font_id : "");
       // the palette that replaces the style's colours (none picked, or "style": the style's own)
-      const paletteId = pickedPalette(history)?.palette?.id ?? "";
+      const paletteId = pickedPalette(history)?.palette?.id ?? reuse?.paletteId ?? "";
       const mine = new Set(history.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
       const named = (Array.isArray(a.produce.refs) ? a.produce.refs : []).filter((r) => mine.has(r));
       // they chose to add their own pictures: those go with the slides even if the answer forgot to name them
       const refs = (named.length || pickedPhotos(history) !== "mine" ? named : attachedPictures(history).map((f) => f.id)).slice(0, 6);
       pending = { id: randomUUID(), aspect, slides, at, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...(refs.length ? { refs } : {}), mode: "all", ...code, ...moving, made: [], failed: [], carry: [] };
+      if (reuse) reply.text += `\n\n🎨 بنفس ستايلك وألوانك وخطك${reuse.motion ? " وحركتك" : ""} من الكاروسيل السابق. تبي تغيّر شي منها؟ قل لي «غيّر الستايل» أو «غيّر الألوان».`;
       reply.slides = { aspect, items: [], todo: slides.map((x) => x.n), failed: [], running: true, total: slides.length, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...code, ...moving };
     }
   }
