@@ -24,3 +24,10 @@ describe("a slide's sound time written in the chat", () => {
     expect(readSoundAsk("الشريحة 2 من 0:30 إلى 0:20")).toBeNull();
   });
 });
+
+describe("a slide named in words", () => {
+  it("reads «الشريحة الثالثة» with the time", () => {
+    expect(readSoundAsk("ابغى وقت الشريحة الثالثة من 00:29.29 الى 00:42.36")).toEqual({ n: 3, from: 29.29, to: 42.36 });
+    expect(readSoundAsk("عدل الوقت في الشريحة 3من 00:29.29 الى 00:42.36 \nوالكلام يبدا من بداية الشريحة")).toEqual({ n: 3, from: 29.29, to: 42.36 });
+  });
+});

@@ -84,7 +84,7 @@ export interface CodeSlide {
   /** GPT Image 2's picture is the whole slide: he only writes on it */
   mix?: boolean;
   /** a motion carousel's slide: he writes it as a moving scene of `seconds`, and the page renders it to MP4 */
-  motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number } };
+  motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number; exact?: boolean } };
   /** stage 1 of a motion carousel: draw this slide as a STILL (the final frame of its motion), at the motion size */
   stage?: "still";
   /** set aside once (it ran past the time): this time with lighter thinking */
@@ -645,7 +645,8 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
     const link = slice && p.sound ? (await uploadLinks(userId, [p.sound.uploadId])).get(p.sound.uploadId) : null;
     if (slice && link && p.sound) {
       motion.seconds = Math.max(1, Math.round((slice.to - slice.from) * 100) / 100);
-      motion.voice = { url: link, from: slice.from, to: slice.to };
+      // a time the person typed is kept exactly (the planned split is moved to the nearest silence on the page)
+      motion.voice = { url: link, from: slice.from, to: slice.to, ...(chosen ? { exact: true } : {}) };
       soundNote = sliceNote(slice, p.sound.speech);
     }
   }

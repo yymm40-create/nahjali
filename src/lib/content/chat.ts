@@ -39,9 +39,14 @@ const db = () => createAdminClient();
 export const ANSWER_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "questions", "record", "produce", "generate", "handoff"],
+  required: ["reply", "questions", "record", "produce", "generate", "handoff", "sound_times"],
   properties: {
     reply: { type: "string", description: "ردّك للعميل بالعربية الفصحى (ماركداون خفيف)." },
+    sound_times: {
+      type: "array",
+      description: "وقت صوت شريحة طلبه العميل (من أي ثانية إلى أي ثانية في ملفه الصوتي/الفيديو): لكل شريحة رقمها وبداية ونهاية الجزء بالثواني من بداية الملف (00:29.29 = 29.29). الموقع يطبّقه بنفسه على الشريحة (في الكاروسيل الجاري، أو يعيد فيديو الشريحة الجاهزة بهذا الجزء بدون رسم). فارغة إذا لم يطلب وقتًا. لا تقل للعميل إنك سجّلته إلا إذا وضعته هنا.",
+      items: { type: "object", additionalProperties: false, required: ["n", "from", "to"], properties: { n: { type: "integer" }, from: { type: "number" }, to: { type: "number" } } },
+    },
     questions: {
       type: "array",
       description: "الأسئلة القابلة للضغط (حتى ٦). فارغة إذا لم يكن في ردّك سؤال أو قرار أو خطوة تالية.",
@@ -140,6 +145,7 @@ interface Answer {
   produce: { on: boolean; mode: string; maker?: string; aspect: string; carousel_id?: string; font_id?: string; template_id: string; style_id: string; refs?: string[]; slides: { n: number; text: string; prompt: string; picture?: string }[] };
   generate?: { on: boolean; items: { kind: string; name: string; prompt: string; aspect: string; quality: string; resolution: string; seconds: number; with_sound: boolean; refs: string[] }[] };
   handoff: { on: boolean; title: string; shape: string; package: string; storyboard?: string };
+  sound_times?: { n: number; from: number; to: number }[];
 }
 
 export interface Reply {
@@ -217,9 +223,15 @@ export function isApproveWords(t: string): boolean {
  * A slide's sound time asked in words («دقائق الشريحة 3 من 00:29.29 الى 00:42.36»): the slide and the two times (in
  * seconds), or null. Times are m:ss(.cc), h:mm:ss, or plain seconds between «من» and «إلى».
  */
+const ORDINALS = ["او", "ثاني", "ثالث", "رابع", "خامس", "سادس", "سابع", "ثامن", "تاسع", "عاشر"];
+
 export function readSoundAsk(t: string): { n: number; from: number; to: number } | null {
   const s = westDigits(t);
-  const slide = [...s.matchAll(/(?:الشريحة|الشريحه|شريحة|شريحه|السلايدة|السلايده|سلايدة|سلايده|سلايد)\s*(?:رقم\s*)?(\d{1,2})/g)].map((m) => Number(m[1]));
+  const slide = [
+    ...[...s.matchAll(/(?:الشريحة|الشريحه|شريحة|شريحه|السلايدة|السلايده|سلايدة|سلايده|سلايد)\s*(?:رقم\s*)?(\d{1,2})/g)].map((m) => Number(m[1])),
+    // «الشريحة الثالثة» / «لشريحة الثالثة»: the slide named by its order in words
+    ...[...s.matchAll(/(?:شريحة|شريحه|سلايدة|سلايده|سلايد)\s*(?:ال)?(أولى|اولى|اول|أول|ثانية|ثانيه|ثاني|ثالثة|ثالثه|ثالث|رابعة|رابعه|رابع|خامسة|خامسه|خامس|سادسة|سادسه|سادس|سابعة|سابعه|سابع|ثامنة|ثامنه|ثامن|تاسعة|تاسعه|تاسع|عاشرة|عاشره|عاشر)/g)].map((m) => ORDINALS.findIndex((o) => m[1].startsWith(o)) + 1),
+  ].filter((n) => n > 0);
   if (new Set(slide).size !== 1) return null;
   const clock = "(\\d{1,2}(?::\\d{1,2}){1,2}(?:[.,]\\d+)?|\\d+(?:[.,]\\d+)?)";
   const m = new RegExp(`(?:من|from)\\s*${clock}\\s*(?:ث(?:انية)?\\s*)?(?:إلى|الى|إلين|لين|لين ما|حتى|to|-|–)\\s*${clock}`, "i").exec(s);
@@ -580,13 +592,17 @@ export async function say(userId: string, chatId: string | null, message: string
   // already) its video is made again with that part — nothing repainted or written again
   let timeKept = false;
   let timeLater: { n: number; from: number; to: number } | null = null;
-  if (askedTime) {
-    const t = { [String(askedTime.n)]: { from: askedTime.from, to: askedTime.to } };
-    if (pending && pending.slides.some((x) => x.n === askedTime.n)) pending.soundTimes = { ...(pending.soundTimes ?? {}), ...t };
-    else if (unfinished && (redo.length || keep) && unfinished.slides.some((x) => x.n === askedTime.n)) {
+  // the time read from the message, else the times he understood from it (a slide named in words, the slide spoken of before)
+  const theirTimes = (Array.isArray(a.sound_times) ? a.sound_times : [])
+    .map((x) => ({ n: Math.round(Number(x?.n)), from: Math.round(Number(x?.from) * 100) / 100, to: Math.round(Number(x?.to) * 100) / 100 }))
+    .filter((x) => x.n > 0 && x.from >= 0 && x.to > x.from && x.to - x.from <= 60);
+  for (const tm of askedTime ? [askedTime] : theirTimes.slice(0, 10)) {
+    const t = { [String(tm.n)]: { from: tm.from, to: tm.to } };
+    if (pending && pending.slides.some((x) => x.n === tm.n)) pending.soundTimes = { ...(pending.soundTimes ?? {}), ...t };
+    else if (unfinished && (redo.length || keep) && unfinished.slides.some((x) => x.n === tm.n)) {
       unfinished.soundTimes = { ...(unfinished.soundTimes ?? {}), ...t };
       timeKept = true;
-    } else if (!pending && !unfinished) timeLater = askedTime;
+    } else if (!pending && !unfinished && !timeLater) timeLater = tm;
   }
   const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : cut >= 0 ? "" : undefined, pending: redo.length || timeKept ? unfinished : keep ? undefined : pending, addUsd: usd });
   usd = Math.round(usd * 10000) / 10000;
