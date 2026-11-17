@@ -22,7 +22,7 @@ import { findCarouselStyle } from "@config/content-carousel-styles";
 import { findContentFont } from "@config/content-fonts";
 import { findStyle } from "@config/film-styles";
 import { cleanHistory, getChat, readMedia, readQuestions, saveChat, type Attachment, type MediaItem, type MotionPlan, type PendingProduce, type Turn } from "./chats";
-import { attachmentsOf, uploadLinks } from "./files";
+import { attachmentsOf, deleteProduced, uploadLinks } from "./files";
 import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, needsCatalog, pathBlock, systemText, turnText } from "./persona";
 import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { readStoryboard } from "@/lib/editor/motion-build";
@@ -310,7 +310,13 @@ export async function say(userId: string, chatId: string | null, message: string
     return { chatId: id, text: reply.text, questions: null, usd: 0, pending: { total: unfinished.slides.length, mode: "fix", todo: left }, editor: null, media: null, spentHalalas: full?.spentHalalas ?? 0 };
   }
   const waitingNote = !unfinished || !left.length ? "" : (`[كاروسيل ما خلص رسمه: الشرائح ${left.join("، ")} تنتظر بنفس التصميم والشخصيات اللي انرسمت، والموقع يكملها بنفسه بعد ردّك. لا تعيد تخطيط الكاروسيل ولا تغيّر شخصياته أو تصميمه أو نصوصه، ولا تطلب produce جديد، إلا إذا طلب العميل تغييرًا صريحًا.]`);
-  const r = await callClaudeJson<Answer>({ system, turnNote: waitingNote ? `${waitingNote}\n\n${turnNote}` : turnNote, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email), systemExtra: extra, stableNote: stable.join("\n\n"), systemTtl: "1h", cacheTail: false });
+  // the pictures of a motion carousel wait for approval: asked in words to draw a picture again («أعد صورة ٣»، «غيّر
+  // الصورة الثانية…»), he names those slides and the site draws only their pictures again, in the same carousel. Before,
+  // he was told not to plan the carousel again and had no other way: the person asked, the page turned, and nothing was
+  // drawn (a customer, 17 Nov 2026)
+  const inPictures = !!unfinished && unfinished.maker === "code" && !unfinished.picturesOk && Object.keys(unfinished.arts ?? {}).length > 0;
+  const picturesNote = !inPictures ? "" : `[الكاروسيل في مرحلة اعتماد الصور (رُسمت صور الشرائح ${Object.keys(unfinished!.arts ?? {}).sort().join("، ")} وتنتظر اعتماد العميل بزر «اعتمد الصور»). إذا طلب العميل إعادة صورة أو تعديلها: ضع produce.on=true وmode="fix"، وفي "slides" تلك الشرائح فقط بأرقامها، ولكل واحدة "picture" = توجيه صورتها الجديدة كاملًا بالإنجليزية بعد التعديل الذي طلبه (بلا أي كتابة)، و"text" و"prompt" كما هي. الموقع يعيد رسم صورها فقط بنفس الكاروسيل، ثم تعود للاعتماد. وقل له في سطر إنك أعدت رسم صورة الشريحة كذا، وإن زر «🔄 أعد صورة» تحت الصور يسويها بعد.]`;
+  const r = await callClaudeJson<Answer>({ system, turnNote: [picturesNote || waitingNote, turnNote].filter(Boolean).join("\n\n"), turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email), systemExtra: extra, stableNote: stable.join("\n\n"), systemTtl: "1h", cacheTail: false });
   const a = r.data;
   let usd = claudeCost(r.usage) + mem.usd + listened.usd + heardFiles.usd + yt.usd;
   const questions = readQuestions(a.questions);
@@ -320,7 +326,25 @@ export async function say(userId: string, chatId: string | null, message: string
 
   // a carousel to make: kept with the conversation; the page asks for the produce step right after
   let pending: PendingProduce | null = null;
-  if (a.produce?.on && Array.isArray(a.produce.slides) && a.produce.slides.length) {
+  // the pictures stage: the slides he named get their pictures drawn again (nothing else of the carousel changes)
+  const redo = inPictures && a.produce?.on && Array.isArray(a.produce.slides) ? a.produce.slides.filter((x) => x && unfinished!.slides.some((y) => y.n === Number(x.n)) && !unfinished!.made.some((m) => m.n === Number(x.n))) : [];
+  if (redo.length) {
+    const p = unfinished!;
+    for (const x of redo) {
+      const k = String(Number(x.n));
+      const old = p.arts?.[k];
+      if (old) {
+        const rest = { ...(p.arts ?? {}) };
+        delete rest[k];
+        p.arts = rest;
+        await deleteProduced(userId, old).catch(() => undefined);
+      }
+      const sl = p.slides.find((y) => y.n === Number(x.n));
+      if (sl && typeof x.picture === "string" && x.picture.trim()) sl.picture = x.picture.trim().slice(0, 3000);
+      p.failed = p.failed.filter((f) => f.n !== Number(x.n));
+    }
+  }
+  if (!redo.length && a.produce?.on && Array.isArray(a.produce.slides) && a.produce.slides.length) {
     const aspect: CarouselAspect = isCarouselAspect(a.produce.aspect) ? a.produce.aspect : "1:1";
     const slides = a.produce.slides
       .filter((s) => s && typeof s.prompt === "string" && s.prompt.trim())
@@ -436,7 +460,7 @@ export async function say(userId: string, chatId: string | null, message: string
 
   // a reply that orders no new carousel keeps the one still being drawn (and the page goes on drawing it)
   const keep = !pending && unfinished && left.length ? unfinished : null;
-  const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : cut >= 0 ? "" : undefined, pending: keep ? undefined : pending, addUsd: usd });
+  const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : cut >= 0 ? "" : undefined, pending: redo.length ? unfinished : keep ? undefined : pending, addUsd: usd });
   usd = Math.round(usd * 10000) / 10000;
   const goOn = pending ? { total: pending.slides.length, mode: pending.mode, todo: pending.slides.map((x) => x.n) } : keep ? { total: keep.slides.length, mode: "fix" as const, todo: left } : null;
   return { chatId: id, text: reply.text, questions: reply.questions ?? null, usd, pending: goOn, editor, media, spentHalalas: full?.spentHalalas ?? 0 };

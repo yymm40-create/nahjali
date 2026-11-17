@@ -448,6 +448,10 @@ function ReelButton({ items }: { items: SlideView[] }) {
 export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, onApprove, onRedoPicture, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; onApprove?: () => void; onRedoPicture?: (n: number, note: string) => void; step?: string | null }) {
   const ns = [...new Set([...s.items.map((i) => i.n), ...s.todo])].sort((a, b) => a - b);
   const done = s.items.filter((i) => !s.todo.includes(i.n)).length;
+  // which picture is being asked again, and what should change in it (a field here: a browser popup does nothing in the
+  // phone apps' own browsers — Instagram, WhatsApp — so «أعد صورة» did nothing there, 17 Nov 2026)
+  const [redoN, setRedoN] = useState<number | null>(null);
+  const [redoNote, setRedoNote] = useState("");
   const aspect = s.aspect.replace(":", " / ") || "1 / 1";
   return (
     <div className="ct-slidebox">
@@ -500,13 +504,38 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
                   className="ct-mini"
                   disabled={busy}
                   onClick={() => {
-                    const note = window.prompt(`وش تبي يتغير في صورة الشريحة ${i.n}؟ (اتركه فاضي لصورة جديدة بنفس الوصف)`, "");
-                    if (note !== null) onRedoPicture(i.n, note);
+                    setRedoN(redoN === i.n ? null : i.n);
+                    setRedoNote("");
                   }}
+                  aria-expanded={redoN === i.n}
                 >
                   🔄 أعد صورة {i.n}
                 </button>
               ))}
+            </div>
+          )}
+          {onRedoPicture && redoN !== null && (
+            <div className="ct-actions" style={{ alignItems: "stretch" }}>
+              <input
+                className="ct-input"
+                style={{ flex: 1, minWidth: 0, minHeight: 40 }}
+                value={redoNote}
+                onChange={(e) => setRedoNote(e.target.value)}
+                placeholder={`وش يتغير في صورة الشريحة ${redoN}؟ (اتركه فاضي لصورة جديدة بنفس الوصف)`}
+                aria-label={`وش يتغير في صورة الشريحة ${redoN}`}
+              />
+              <button
+                type="button"
+                className="ct-mini ct-go"
+                disabled={busy}
+                onClick={() => {
+                  onRedoPicture(redoN, redoNote.trim());
+                  setRedoN(null);
+                  setRedoNote("");
+                }}
+              >
+                ارسم صورة {redoN} من جديد
+              </button>
             </div>
           )}
           <button type="button" className="ct-mini ct-go" disabled={busy} onClick={onApprove}>✅ اعتمد الصور وابدأ التصميم</button>
