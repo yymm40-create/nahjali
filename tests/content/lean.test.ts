@@ -29,7 +29,8 @@ vi.mock("@/lib/content/chats", async (orig) => {
     }),
   };
 });
-vi.mock("@/lib/content/files", () => ({ attachmentsOf: vi.fn(async () => ({ list: [], rows: [] })), uploadLinks: vi.fn(async () => new Map()) }));
+const deleted = vi.hoisted(() => [] as string[]);
+vi.mock("@/lib/content/files", () => ({ attachmentsOf: vi.fn(async () => ({ list: [], rows: [] })), uploadLinks: vi.fn(async () => new Map()), deleteProduced: vi.fn(async (_u: string, id: string) => { deleted.push(id); }) }));
 vi.mock("@/lib/content/persona", async (orig) => ({ ...(await orig<typeof import("@/lib/content/persona")>()), getPersona: vi.fn(async () => ({ text: "PERSONA", edited: false })) }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: () => ({ upsert: async () => ({ error: null }), insert: async () => ({ error: null }), select: () => ({ in: () => ({ eq: () => ({ eq: async () => ({ data: [] }) }) }) }) }) }) }));
 
@@ -248,5 +249,33 @@ describe("a slide made over its picture", () => {
     const produce = readFileSync("src/lib/content/produce.ts", "utf8");
     expect(produce).toContain('const isArt = !!old && (/^(picture|element)-/.test(old.name) || Object.values(p.arts ?? {}).includes(old.fileId));');
     expect(produce).toContain('if (old && p.mode === "fix" && !isArt) {');
+  });
+});
+
+describe("the pictures stage, asked in words", () => {
+  it("«غيّر الصورة الثانية» draws only that picture again, in the same carousel (it only turned before)", async () => {
+    const slides = [1, 2, 3].map((n) => ({ n, text: `ن${n}`, prompt: `p${n}`, picture: `pic${n}` }));
+    const pending = { id: "pp", aspect: "2:3", slides, at: 1, styleId: "", templateId: "", mode: "all", maker: "code", motion: { styleId: "kinetic-word", route: "picture", seconds: 5 }, made: [], failed: [], carry: [], arts: { "1": "a1", "2": "a2", "3": "a3" } };
+    db.chat = { id: "chat-1", title: "t", record: "", usd: 0, spentHalalas: 0, updatedAt: "", pending, messages: [{ role: "user", text: START }, { role: "assistant", text: "بدأ التصنيع", slides: { aspect: "2:3", items: [], todo: [1, 2, 3], failed: [], running: true, phase: "approve" } }] } as never;
+    answer({ reply: "أعدت رسم صورة الشريحة ٢", produce: { ...empty, on: true, mode: "fix", slides: [{ n: 2, text: "ن2", prompt: "p2", picture: "a boy in a white t-shirt" }] } });
+    deleted.length = 0;
+    const r = await say("u", "chat-1", "غيّر الصورة الثانية: خله بتيشيرت أبيض", []);
+    // he is told how to do it
+    expect(claude.calls.at(-1)!.turnNote).toContain("مرحلة اعتماد الصور");
+    // only picture 2 goes; the carousel stays the same and the page draws the missing picture
+    expect(deleted).toEqual(["a2"]);
+    const p = chat().pending as unknown as typeof pending;
+    expect(p.id).toBe("pp");
+    expect(Object.keys(p.arts)).toEqual(["1", "3"]);
+    expect(p.slides.find((x) => x.n === 2)!.picture).toBe("a boy in a white t-shirt");
+    expect(r.pending).toMatchObject({ todo: [1, 2, 3] });
+  });
+});
+
+describe("«أعد صورة» on a phone", () => {
+  it("asks what to change in a field on the page, not a browser popup (the phone apps' browsers drop those)", () => {
+    const page = readFileSync("src/components/jawad/content/ContentChat.tsx", "utf8");
+    expect(page).not.toContain("window.prompt(`وش تبي يتغير في صورة الشريحة");
+    expect(page).toContain("ارسم صورة {redoN} من جديد");
   });
 });
