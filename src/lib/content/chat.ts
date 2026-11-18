@@ -6,7 +6,7 @@
 
 import { remember, withNote } from "@/lib/robot-handoff";
 import { isSalesAsk, nearestSalesExamples, SALES_METHOD, salesExamplesBrief } from "@config/content-sales";
-import { isMotionCarouselAsk, MOTION_CAROUSEL_GUIDE, slideSeconds } from "@config/content-motion-carousel";
+import { findMotionCarouselStyle, isMotionCarouselAsk, MOTION_CAROUSEL_GUIDE, slideSeconds } from "@config/content-motion-carousel";
 import { isMahdiAsk, MAHDI_BRIEF } from "@config/mahdi/app-knowledge";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -22,7 +22,7 @@ import { findCarouselStyle } from "@config/content-carousel-styles";
 import { findContentFont } from "@config/content-fonts";
 import { findStyle } from "@config/film-styles";
 import { cleanHistory, getChat, readMedia, readQuestions, saveChat, type Attachment, type MediaItem, type MotionPlan, type PendingProduce, type Turn } from "./chats";
-import { attachmentsOf, deleteProduced, producedRow, uploadLinks } from "./files";
+import { attachmentsOf, deleteProduced, pictureFromUpload, producedRow, uploadLinks } from "./files";
 import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, needsCatalog, pathBlock, systemText, turnText } from "./persona";
 import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { readStoryboard } from "@/lib/editor/motion-build";
@@ -39,9 +39,13 @@ const db = () => createAdminClient();
 export const ANSWER_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "questions", "record", "produce", "generate", "handoff", "sound_times"],
+  required: ["reply", "questions", "record", "produce", "generate", "handoff", "sound_times", "motion_style"],
   properties: {
     reply: { type: "string", description: "ردّك للعميل بالعربية الفصحى (ماركداون خفيف)." },
+    motion_style: {
+      type: "string",
+      description: "معرّف ستايل حركة الموشن كاروسيل (من قائمة ستايلات الحركة) إذا طلب العميل تغيير حركة الكاروسيل كله، أو إذا لم يختر حركة وتركها لك فاختر الأنسب للموضوع؛ وإلا فارغ. تغيير حركة شريحة واحدة فقط يُكتب في تعديل تلك الشريحة (mode=fix) لا هنا.",
+    },
     sound_times: {
       type: "array",
       description: "وقت صوت شريحة طلبه العميل (من أي ثانية إلى أي ثانية في ملفه الصوتي/الفيديو): لكل شريحة رقمها وبداية ونهاية الجزء بالثواني من بداية الملف (00:29.29 = 29.29). الموقع يطبّقه بنفسه على الشريحة (في الكاروسيل الجاري، أو يعيد فيديو الشريحة الجاهزة بهذا الجزء بدون رسم). فارغة إذا لم يطلب وقتًا. لا تقل للعميل إنك سجّلته إلا إذا وضعته هنا.",
@@ -83,9 +87,10 @@ export const ANSWER_SCHEMA = {
           items: {
             type: "object",
             additionalProperties: false,
-            required: ["n", "text", "prompt", "picture"],
+            required: ["n", "text", "prompt", "picture", "own_picture"],
             properties: {
               n: { type: "integer", description: "رقم الشريحة من 1" },
+              own_picture: { type: "string", description: "معرّف (id) صورة من صور العميل المرفقة تكون صورة هذه الشريحة كما هي (بدل أن يرسمها GPT Image 2)، فقط إذا طلب العميل أن تكون صوره هو صور الشرائح؛ بترتيبها كما حدده العميل (إذا لم يكن الترتيب واضحًا فاسأله أولًا). وإلا فارغ. الافتراضي: نحن نرسم الصور." },
               text: { type: "string", description: "النص المعتمد الظاهر على الشريحة كما هو" },
               prompt: { type: "string", description: "توجيه الشريحة بالإنجليزية: مع maker=code أو mix لـ «حيدرا ماكس»، ومع maker=gpt لـ GPT Image 2 (يرسمها كاملة بكتابتها): ما يخص هذه الشريحة (مع ستايل من الجدول يضيف الموقع وصفه؛ وبدونه نظام التصميم كاملًا)، والنص العربي حرفيًا بين علامتي اقتباس مزدوجتين" },
               picture: { type: "string", description: "في الموشن كاروسيل: مع طريقة «حيدرا ماكس + صورة» توجيه صورة الشريحة كاملة، ومع «عناصر مفرّغة» توجيه عنصر واحد منفرد واضح على خلفية سادة، ومع «بالكود فقط» فارغ؛ وفي الكاروسيل الثابت: مع maker=mix إلزامي لكل شريحة، ومع maker=code إذا احتاجت الشريحة صورة (شخص، منتج، مشهد، رسمة) ما يرسمها الكود زين: توجيهها بالإنجليزية لـ GPT Image 2 بدون أي كتابة فيها أبدًا وبنفس ستايل الكاروسيل؛ وإلا فارغ؛ ومع maker=gpt فارغ دائمًا" },
@@ -142,10 +147,11 @@ interface Answer {
   reply: string;
   questions: unknown;
   record: string;
-  produce: { on: boolean; mode: string; maker?: string; aspect: string; carousel_id?: string; font_id?: string; template_id: string; style_id: string; refs?: string[]; slides: { n: number; text: string; prompt: string; picture?: string }[] };
+  produce: { on: boolean; mode: string; maker?: string; aspect: string; carousel_id?: string; font_id?: string; template_id: string; style_id: string; refs?: string[]; slides: { n: number; text: string; prompt: string; picture?: string; own_picture?: string }[] };
   generate?: { on: boolean; items: { kind: string; name: string; prompt: string; aspect: string; quality: string; resolution: string; seconds: number; with_sound: boolean; refs: string[] }[] };
   handoff: { on: boolean; title: string; shape: string; package: string; storyboard?: string };
   sound_times?: { n: number; from: number; to: number }[];
+  motion_style?: string;
 }
 
 export interface Reply {
@@ -367,7 +373,7 @@ export async function say(userId: string, chatId: string | null, message: string
   const lookAt = before ? lastSlidesAt(before) : -1;
   const look = lookAt >= 0 ? before!.messages[lookAt].slides : null;
   const lookNote = look?.carouselId
-    ? `[خيارات العميل الأساسية في هذه المحادثة (ثابتة): ستايل الكاروسيل ${look.carouselId}${look.paletteId ? `، الألوان ${look.paletteId}` : "، ألوان الستايل"}${look.fontId ? `، الخط ${look.fontId}` : ""}${look.motion ? `، موشن كاروسيل بحركة ${look.motion.styleId}` : "، كاروسيل ثابت"}، المقاس ${look.aspect}. أي شرائح أو كاروسيل بعده في هذه المحادثة بنفسها: لا تسأل عنها ولا تعرض جداولها، إلا إذا طلب العميل تغيير واحد منها صراحةً. وإكمال شرائح هذا الكاروسيل أو تعديلها mode="fix".]`
+    ? `[خيارات العميل الأساسية في هذه المحادثة (ثابتة): ستايل الكاروسيل ${look.carouselId}${look.paletteId ? `، الألوان ${look.paletteId}` : "، ألوان الستايل"}${look.fontId ? `، الخط ${look.fontId}` : ""}${look.motion ? `، موشن كاروسيل بحركة ${look.motion.styleId}` : "، كاروسيل ثابت"}، المقاس ${look.aspect}. أي شرائح أو كاروسيل بعده في هذه المحادثة بنفسها: لا تسأل عنها ولا تعرض جداولها، إلا إذا طلب العميل تغيير واحد منها صراحةً (حركة الكاروسيل كله: ضع motion_style؛ حركة شريحة وحدة: تعديل تلك الشريحة). وإكمال شرائح هذا الكاروسيل أو تعديلها mode="fix". أي طلب يكتبه العميل يُنفَّذ كما كتبه، والأزرار مساعدة فقط: لا تقل له أبدًا إن عليه الضغط على زر.]`
     : "";
   const turnNote = [lookNote, gateNote, turnText(parts, before?.record ?? "")].filter(Boolean).join("\n\n");
   // a carousel that stopped half way (a wallet ran out, a closed page): «كمّل» goes on drawing it as it was — no new
@@ -473,7 +479,7 @@ export async function say(userId: string, chatId: string | null, message: string
     const slides = a.produce.slides
       .filter((s) => s && typeof s.prompt === "string" && s.prompt.trim())
       .slice(0, CONTENT.maxSlides)
-      .map((s, i) => ({ n: Number(s.n) || i + 1, text: String(s.text ?? "").replace(/\s*<br\s*\/?>\s*/gi, "\n").slice(0, 2000), prompt: s.prompt.trim().slice(0, 4000), ...(typeof s.picture === "string" && s.picture.trim() ? { picture: s.picture.trim().slice(0, 3000) } : {}) }))
+      .map((s, i) => ({ ...(typeof s.own_picture === "string" && s.own_picture.trim() ? { own: s.own_picture.trim() } : {}), n: Number(s.n) || i + 1, text: String(s.text ?? "").replace(/\s*<br\s*\/?>\s*/gi, "\n").slice(0, 2000), prompt: s.prompt.trim().slice(0, 4000), ...(typeof s.picture === "string" && s.picture.trim() ? { picture: s.picture.trim().slice(0, 3000) } : {}) }))
       .sort((x, y) => x.n - y.n);
     const templateId = a.produce.template_id && findTemplate(a.produce.template_id) ? a.produce.template_id : "";
     const styleId = a.produce.style_id && findStyle(a.produce.style_id) ? a.produce.style_id : "";
@@ -503,13 +509,35 @@ export async function say(userId: string, chatId: string | null, message: string
     // a motion carousel: every slide is «حيدرا ماكس»'s moving scene (its style and way of making as pressed; a fix keeps the carousel's own)
     const motionPick = fixed ? null : pickedKind(history) === "motion" ? pickedMotionStyle(history) : null;
     const route = fixed ? null : pickedRoute(history);
+    // the person's own pictures as the slides' pictures (only when they asked: by default we paint them), in their order
+    const myImages = new Set(history.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
+    const ownOf = new Map(slides.flatMap((x) => (x.own && myImages.has(x.own) ? [[x.n, x.own] as const] : [])));
+    const allOwn = slides.length > 0 && slides.every((x) => ownOf.has(x.n));
+    // his pictures become the slides' pictures (no painting): with all of them there, nothing waits for an approval
+    const ownArts = async (p: PendingProduce) => {
+      if (!chatId || !ownOf.size || p.maker !== "code") return;
+      const arts = { ...(p.arts ?? {}) };
+      for (const [n, up] of ownOf) {
+        if (!p.slides.some((x) => x.n === n)) continue;
+        const id = await pictureFromUpload(userId, chatId, up, n, p.id).catch(() => null);
+        if (id) arts[String(n)] = id;
+      }
+      p.arts = arts;
+      if (p.slides.every((x) => arts[String(x.n)])) p.picturesOk = true;
+    };
+    // the motion asked in words for the whole carousel, or the one he chose when the person left it to him
+    const wordMotion = typeof a.motion_style === "string" && a.motion_style.trim() ? findMotionCarouselStyle(a.motion_style.trim()) : null;
+    const wantsMotion = pickedKind(history) === "motion" || pathOf(history) === "motion-carousel" || isMotionCarouselAsk(said) || !!wordMotion;
     const motion: MotionPlan | null =
-      fixed?.motion ? fixed.motion
+      fixed?.motion ? (wordMotion ? { ...fixed.motion, styleId: wordMotion.id, seconds: slideSeconds(wordMotion) } : fixed.motion)
       : motionPick && motionPick.id !== "help" && route ? { styleId: motionPick.id, ...(motionPick.own ? { own: motionPick.own } : {}), route, seconds: slideSeconds(motionPick.style) }
+      // his own pictures, or a motion he did not pick (left to us): the fitting one, over the pictures, nothing asked
+      : (allOwn || wordMotion) && wantsMotion ? { styleId: (wordMotion ?? motionPick?.style ?? findMotionCarouselStyle("kinetic-word"))!.id, route: allOwn ? "picture" : (route ?? "picture"), seconds: slideSeconds(wordMotion ?? motionPick?.style ?? findMotionCarouselStyle("kinetic-word")) }
       : null;
     const code = motion || picked === "code" ? { maker: "code" as const } : picked === "mix" ? { maker: "code" as const, mix: true } : {};
     const moving = motion ? { motion } : {};
-    const hold = fixed ? null : carouselHold(history, slides.length);
+    // his own pictures: the steps he skipped are not asked (the style, the colours, the font are the picked ones or his)
+    const hold = fixed || (allOwn && motion) ? null : carouselHold(history, slides.length);
     if (slides.length && fixAt >= 0) {
       // draw these slides again in the carousel that exists
       const block = history[fixAt].slides!;
@@ -562,6 +590,7 @@ export async function say(userId: string, chatId: string | null, message: string
       // every slide has its approved picture: no second approval
       if (block.motion && pending.slides.every((x) => pending!.arts?.[String(x.n)])) pending.picturesOk = true;
       pending.carry = block.failed.filter((f) => !pending!.slides.some((x) => x.n === f.n));
+      await ownArts(pending);
       messages[fixAt] = { ...history[fixAt], slides: { ...block, todo: pending.slides.map((x) => x.n), failed: pending.carry, running: true, report: undefined } };
     } else if (slides.length && hold) {
       // nothing is made until they choose: the question goes out, and their answer brings the slides back
@@ -573,7 +602,7 @@ export async function say(userId: string, chatId: string | null, message: string
       reply.text += `\n\n${hold.note}`;
     } else if (slides.length) {
       const pick = pickedCarousel(history);
-      const carouselId = pick?.style?.id ?? reuse?.carouselId ?? "";
+      const carouselId = pick?.style?.id ?? reuse?.carouselId ?? (a.produce.carousel_id && findCarouselStyle(a.produce.carousel_id) ? a.produce.carousel_id : "");
       // the font they picked; "auto" leaves it to the answer's own choice of a font of the list
       const font = pickedFont(history);
       const fontId = font?.font?.id ?? reuse?.fontId ?? (a.produce.font_id && findContentFont(a.produce.font_id) ? a.produce.font_id : "");
@@ -584,6 +613,7 @@ export async function say(userId: string, chatId: string | null, message: string
       // they chose to add their own pictures: those go with the slides even if the answer forgot to name them
       const refs = (named.length || pickedPhotos(history) !== "mine" ? named : attachedPictures(history).map((f) => f.id)).slice(0, 6);
       pending = { id: randomUUID(), aspect, slides, at, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...(refs.length ? { refs } : {}), mode: "all", ...code, ...moving, made: [], failed: [], carry: [] };
+      await ownArts(pending);
       if (reuse) reply.text += `\n\n🎨 بنفس ستايلك وألوانك وخطك${reuse.motion ? " وحركتك" : ""} من الكاروسيل السابق. تبي تغيّر شي منها؟ قل لي «غيّر الستايل» أو «غيّر الألوان».`;
       reply.slides = { aspect, items: [], todo: slides.map((x) => x.n), failed: [], running: true, total: slides.length, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...code, ...moving };
     }

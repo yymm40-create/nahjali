@@ -36,6 +36,7 @@ vi.mock("@/lib/content/files", () => ({
   uploadLinks: vi.fn(async () => new Map()),
   deleteProduced: vi.fn(async (_u: string, id: string) => { deleted.push(id); }),
   producedRow: vi.fn(async (_u: string, id: string) => ({ id, path: "x", name: "slide-01", meta: { refs: ["img-old"] } })),
+  pictureFromUpload: vi.fn(async (_u: string, _c: string, up: string, n: number) => `own-${n}-${up.slice(0, 4)}`),
 }));
 vi.mock("@/lib/content/persona", async (orig) => ({ ...(await orig<typeof import("@/lib/content/persona")>()), getPersona: vi.fn(async () => ({ text: "PERSONA", edited: false })) }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: () => ({ upsert: async () => ({ error: null }), insert: async () => ({ error: null }), select: () => ({ in: () => ({ eq: () => ({ eq: async () => ({ data: [] }) }) }) }) }) }) }));
@@ -414,6 +415,36 @@ describe("colours picked after the carousel", () => {
     answer({ produce: { ...empty, on: true, mode: "fix", refs: [], slides: [1, 2].map((n) => ({ n, text: `ن${n}`, prompt: `p${n}`, picture: "" })) } });
     await say("u", "chat-1", msg, []);
     expect((chat().pending as unknown as { paletteId?: string }).paletteId).toBe(other.id);
+  });
+});
+
+describe("everything by words: his own pictures, the motion", () => {
+  it("his own pictures become the slides' pictures: nothing painted, nothing to approve, the motion picked for him when he left it", async () => {
+    db.chat = { id: "chat-1", title: "t", record: "", usd: 0, spentHalalas: 0, updatedAt: "", pending: null, messages: [
+      { role: "user", text: START, files: [{ id: "11111111-1111-4111-8111-111111111111", kind: "image", name: "a.jpg" }, { id: "22222222-2222-4222-8222-222222222222", kind: "image", name: "b.jpg" }] },
+      { role: "assistant", text: "هذي النصوص، تعتمدها؟" },
+    ] } as never;
+    answer({ motion_style: "kinetic-word", produce: { ...empty, on: true, mode: "all", carousel_id: "modern-pixar", refs: [], slides: [1, 2].map((n) => ({ n, text: `ن${n}`, prompt: `p${n}`, picture: "", own_picture: n === 1 ? "11111111-1111-4111-8111-111111111111" : "22222222-2222-4222-8222-222222222222" })) } });
+    const r = await say("u", "chat-1", "اعتمد، واستخدم صوري بنفس الترتيب", []);
+    const p = chat().pending as unknown as { motion?: { styleId: string; route: string }; slides: { n: number }[] } | null;
+    expect(p?.motion).toEqual(expect.objectContaining({ styleId: "kinetic-word", route: "picture" }));
+    expect(p?.slides.map((x) => x.n)).toEqual([1, 2]);
+    expect((p as unknown as { arts: Record<string, string> }).arts).toEqual({ "1": "own-1-1111", "2": "own-2-2222" });
+    expect((p as unknown as { picturesOk?: boolean }).picturesOk).toBe(true);
+    expect(r.text).not.toContain("اختر ستايل");
+  });
+});
+
+describe("the motion changed in words", () => {
+  it("«غيّر الحركة» changes the carousel's motion style for the slides made again", async () => {
+    const items = [1, 2].map((n) => ({ n, fileId: `pic${n}`, name: `picture-0${n}`, text: `ن${n}` }));
+    db.chat = { id: "chat-1", title: "t", record: "", usd: 0, spentHalalas: 0, updatedAt: "", pending: null, messages: [
+      { role: "user", text: START },
+      { role: "assistant", text: "تم", slides: { aspect: "9:16", items, todo: [], failed: [], running: false, total: 2, maker: "code", carouselId: "modern-pixar", motion: { styleId: "kinetic-word", route: "picture", seconds: 5 } } },
+    ] } as never;
+    answer({ motion_style: "calm-reveal", produce: { ...empty, on: true, mode: "fix", refs: [], slides: [1, 2].map((n) => ({ n, text: `ن${n}`, prompt: `p${n}`, picture: "", own_picture: "" })) } });
+    await say("u", "chat-1", "غيّر الحركة لكل الشرائح للدخول الهادئ", []);
+    expect((chat().pending as unknown as { motion: { styleId: string } }).motion.styleId).toBe("calm-reveal");
   });
 });
 
