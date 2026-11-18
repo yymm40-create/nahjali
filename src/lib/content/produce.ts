@@ -269,6 +269,12 @@ export async function chatEditPatch(userId: string, chatId: string, block: Slide
 }
 
 /** A made slide's sound time asked in the chat («الشريحة ٣ من ٠:٢٩ إلى ٠:٤٢»): its video is made again with that part. */
+/** What is said between two times of the chat's sound (its heard phrases that fall in them), or "". */
+export async function wordsBetween(userId: string, messages: Chat["messages"], from: number, to: number): Promise<string> {
+  const snd = await chatSound(userId, messages).catch(() => null);
+  return (snd?.phrases ?? []).filter((x) => x.to > from + 0.05 && x.from < to - 0.05).map((x) => x.text.trim()).filter(Boolean).join(" ").slice(0, 1500);
+}
+
 /** «أعد المحاولة» / «أعد الشريحة ٤» written: the same as the 🔁 / «أعد المحاولة» buttons. */
 export const planRetryWords = (userId: string, chat: Chat, ns: number[] | "failed") => planRetry(userId, chat, ns);
 
@@ -359,11 +365,23 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed", ti
  * One call of the produce step: draws the next few slides, saves what exists, and says what is left. `retry` first
  * plans the drawing again of the given slides (or «failed»: all that failed) of the last carousel.
  */
-export async function produce(userId: string, chatId: string, o: { editSlide?: { ns: number[]; said: string }; soundTime?: { n: number; from: number; to: number }; retry?: number[] | "failed"; owner?: boolean; email?: string | null; origin?: string; approvePictures?: boolean; redoPicture?: { n: number; note: string }; deferSlide?: number; exclude?: number[] } = {}): Promise<Produced> {
+export async function produce(userId: string, chatId: string, o: { editSlide?: { ns: number[]; said: string }; soundTime?: { n: number; from: number; to: number; retext?: boolean }; retry?: number[] | "failed"; owner?: boolean; email?: string | null; origin?: string; approvePictures?: boolean; redoPicture?: { n: number; note: string }; deferSlide?: number; exclude?: number[] } = {}): Promise<Produced> {
   let chat = await getChat(userId, chatId);
   if (!chat) throw new Error("chat not found");
   if (o.editSlide) chat = await planRetry(userId, chat, o.editSlide.ns, undefined, o.editSlide);
-  else if (o.soundTime) chat = await planRetry(userId, chat, [o.soundTime.n], o.soundTime);
+  else if (o.soundTime) {
+    // the time changed and the person chose to change the text too: the words said in the new time become the slide's text
+    // (its program is patched to them, nothing repainted); kept as it was otherwise (the owner, 18 Nov 2026)
+    const words = o.soundTime.retext ? await wordsBetween(userId, chat.messages, o.soundTime.from, o.soundTime.to) : "";
+    chat = await planRetry(userId, chat, [o.soundTime.n], o.soundTime, words ? { ns: [o.soundTime.n], said: `The slide's sound time changed, and the person asked that its on-slide text become the words said in the new time. Replace the slide's text with exactly this (split into a headline and lines as the design needs, every word kept): «${words}». Keep the design, picture, colours, font and motion.` } : undefined);
+    if (words && chat.pending) {
+      const sl = chat.pending.slides.find((x) => x.n === o.soundTime!.n);
+      if (sl) {
+        sl.text = words;
+        await saveChat(userId, chat.id, { messages: chat.messages, pending: chat.pending });
+      }
+    }
+  }
   else if (o.retry && (o.retry === "failed" || o.retry.length)) chat = await planRetry(userId, chat, o.retry);
   const p = chat.pending;
   if (!p) throw new UserError("ما فيه كاروسيل ينتظر الإنتاج في هذي المحادثة.", 409);

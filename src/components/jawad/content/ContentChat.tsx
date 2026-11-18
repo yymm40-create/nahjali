@@ -489,7 +489,7 @@ export function parseClock(v: string): number | null {
   return Number.isFinite(all) ? all : null;
 }
 
-export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, onApprove, onRedoPicture, onSoundTime, onEditSlide, fonts, reelGo, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; onApprove?: () => void; onRedoPicture?: (n: number, note: string) => void; onSoundTime?: (n: number, from: number, to: number) => void; onEditSlide?: (ns: number[], said: string) => void; fonts?: FontItem[]; reelGo?: number; step?: string | null }) {
+export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, onApprove, onRedoPicture, onSoundTime, onEditSlide, fonts, reelGo, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; onApprove?: () => void; onRedoPicture?: (n: number, note: string) => void; onSoundTime?: (n: number, from: number, to: number, retext: boolean) => void; onEditSlide?: (ns: number[], said: string) => void; fonts?: FontItem[]; reelGo?: number; step?: string | null }) {
   const ns = [...new Set([...s.items.map((i) => i.n), ...s.todo])].sort((a, b) => a - b);
   const done = s.items.filter((i) => !s.todo.includes(i.n)).length;
   // which picture is being asked again, and what should change in it (a field here: a browser popup does nothing in the
@@ -507,6 +507,8 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
   const madeNs = s.items.filter((i) => i.videoUrl && !s.todo.includes(i.n)).map((i) => i.n);
   const [timeFrom, setTimeFrom] = useState("");
   const [timeTo, setTimeTo] = useState("");
+  // the words of the new time usually differ: the person chooses whether the slide's text follows them
+  const [retext, setRetext] = useState(false);
   const tFrom = parseClock(timeFrom);
   const tTo = parseClock(timeTo);
   const timeOk = tFrom !== null && tTo !== null && tTo > tFrom && tTo - tFrom <= 60;
@@ -616,7 +618,7 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
                     {item.videoDownload ? <a href={item.videoDownload} download={`${item.name}.mp4`} title="حمّل الفيديو">⬇️</a> : item.download && <a href={item.download} download={`${item.name}.png`}>⬇️</a>}
                     <button type="button" disabled={busy} onClick={() => onRetry([n])} title="أعد رسم هذه الشريحة">🔁</button>
                     {item.videoUrl && onEditSlide && <button type="button" disabled={busy} onClick={() => { setEditN(n); setEditSaid(""); setEditAll(false); setTimeN(null); }} title="عدّل هذه الشريحة بكلامك">✏️</button>}
-                    {item.videoUrl && onSoundTime && <button type="button" disabled={busy} onClick={() => { setTimeN(n); setTimeFrom(""); setTimeTo(""); setEditN(null); }} title="اختر وقت الصوت لهذه الشريحة">⏱️</button>}
+                    {item.videoUrl && onSoundTime && <button type="button" disabled={busy} onClick={() => { setTimeN(n); setTimeFrom(""); setTimeTo(""); setRetext(false); setEditN(null); }} title="اختر وقت الصوت لهذه الشريحة">⏱️</button>}
                   </span>
                 </>
               )}
@@ -685,6 +687,11 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
             <label>من <input inputMode="decimal" dir="ltr" placeholder="0:12" value={timeFrom} onChange={(e) => setTimeFrom(e.target.value)} /></label>
             <label>إلى <input inputMode="decimal" dir="ltr" placeholder="0:20" value={timeTo} onChange={(e) => setTimeTo(e.target.value)} /></label>
           </div>
+          <div className="ct-retext">
+            <span>نص الشريحة:</span>
+            <label><input type="radio" name="retext" checked={!retext} onChange={() => setRetext(false)} /> خلّه مثل ما هو</label>
+            <label><input type="radio" name="retext" checked={retext} onChange={() => setRetext(true)} /> غيّره للكلام اللي في الوقت الجديد</label>
+          </div>
           {(timeFrom || timeTo) && !timeOk && <small className="ct-warn"> {tFrom !== null && tTo !== null && tTo - tFrom > 60 ? "أطول وقت للشريحة ٦٠ ثانية." : "اكتب وقتين صحيحين، والثاني بعد الأول."}</small>}
           <button type="button" className="ct-mini" onClick={() => setTimeN(null)}>إلغاء</button>
           <button
@@ -693,7 +700,7 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
             disabled={busy || !timeOk}
             onClick={() => {
               if (!timeOk || tFrom === null || tTo === null) return;
-              onSoundTime(timeN, tFrom, tTo);
+              onSoundTime(timeN, tFrom, tTo, retext);
               setTimeN(null);
             }}
           >
@@ -1367,7 +1374,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                       onEditSlide={(ns, said) => chatId && void runProduce(chatId, undefined, { editSlide: { ns, said } })}
                       fonts={gal?.fonts}
                       reelGo={reelGo.at === i ? reelGo.n : 0}
-                      onSoundTime={(n, from, to) => chatId && void runProduce(chatId, undefined, { soundTime: { n, from, to } })}
+                      onSoundTime={(n, from, to, retext) => chatId && void runProduce(chatId, undefined, { soundTime: { n, from, to, ...(retext ? { retext: true } : {}) } })}
                       step={codeStep}
                     />
                   )}

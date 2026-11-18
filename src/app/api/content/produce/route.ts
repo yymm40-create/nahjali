@@ -29,8 +29,8 @@ export const POST = handle(async (req: Request) => {
   const editNs = es ? [...new Set((Array.isArray(es.ns) ? es.ns : [es.n]).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 20) : [];
   const editSlide = es && editNs.length && typeof es.said === "string" && es.said.trim() ? { ns: editNs, said: es.said.trim().slice(0, 1000) } : undefined;
   // «⏱️ وقت الصوت»: the person types the time of a slide's sound («من ٠:١٢ إلى ٠:٢٠»)
-  const st = b.soundTime && typeof b.soundTime === "object" ? (b.soundTime as { n?: unknown; from?: unknown; to?: unknown }) : null;
-  const soundTime = st && Number.isInteger(Number(st.n)) && Number(st.from) >= 0 && Number(st.to) > Number(st.from) && Number(st.to) - Number(st.from) <= 60 ? { n: Number(st.n), from: Number(st.from), to: Number(st.to) } : undefined;
+  const st = b.soundTime && typeof b.soundTime === "object" ? (b.soundTime as { n?: unknown; from?: unknown; to?: unknown; retext?: unknown }) : null;
+  const soundTime = st && Number.isInteger(Number(st.n)) && Number(st.from) >= 0 && Number(st.to) > Number(st.from) && Number(st.to) - Number(st.from) <= 60 ? { n: Number(st.n), from: Number(st.from), to: Number(st.to), ...(st.retext === true ? { retext: true } : {}) } : undefined;
   try {
     // a motion slide's program that runs, kept (a refresh of the page goes on from it)
     if (b.saveProgram && typeof b.saveProgram === "object") return NextResponse.json(await saveSlideProgram(user.id, chatId, b.saveProgram));
