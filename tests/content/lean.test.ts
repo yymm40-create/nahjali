@@ -448,6 +448,20 @@ describe("the motion changed in words", () => {
   });
 });
 
+describe("the slide map's seconds", () => {
+  it("the times he writes for each slide are the ones the slides play (not the automatic split)", async () => {
+    db.chat = { id: "chat-1", title: "t", record: "", usd: 0, spentHalalas: 0, updatedAt: "", pending: null, messages: [
+      { role: "user", text: START },
+      { role: "assistant", text: "تم", slides: { aspect: "9:16", items: [1, 2].map((n) => ({ n, fileId: `s${n}`, name: `slide-0${n}`, text: `ن${n}`, video: `v${n}` })), todo: [], failed: [], running: false, total: 2, maker: "code", carouselId: "modern-pixar", motion: { styleId: "kinetic-word", route: "picture", seconds: 5 } } },
+      { role: "assistant", text: "الخريطة" },
+    ] } as never;
+    answer({ motion_style: "kinetic-word", sound_times: [{ n: 1, from: 0, to: 6.5 }, { n: 2, from: 9.2, to: 18.4 }], produce: { ...empty, on: true, mode: "all", carousel_id: "modern-pixar", refs: [], slides: [1, 2].map((n) => ({ n, text: `ن${n}`, prompt: `p${n}`, picture: `pic${n}`, own_picture: "" })) } });
+    await say("u", "chat-1", "اعتمد", []);
+    const p = chat().pending as unknown as { soundTimes?: Record<string, { from: number; to: number }> } | null;
+    expect(p?.soundTimes).toEqual({ "1": { from: 0, to: 6.5 }, "2": { from: 9.2, to: 18.4 } });
+  });
+});
+
 describe("the colours the person chose", () => {
   it("replace the style's own: its colour codes and colour words leave the picture's and the slide's prompts (the red came back over her blue)", async () => {
     const { findCarouselStyle, withoutColours, carouselStyleBlock, carouselStyleForCode } = await import("@config/content-carousel-styles");

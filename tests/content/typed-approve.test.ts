@@ -31,3 +31,11 @@ describe("a slide named in words", () => {
     expect(readSoundAsk("عدل الوقت في الشريحة 3من 00:29.29 الى 00:42.36 \nوالكلام يبدا من بداية الشريحة")).toEqual({ n: 3, from: 29.29, to: 42.36 });
   });
 });
+
+import { timedPhrases } from "@/lib/content/chat";
+
+describe("the slide map reads the heard words with their times", () => {
+  it("writes each phrase with its seconds from the start of the file", () => {
+    expect(timedPhrases([{ text: "اثنين:", from: 29.29, to: 29.8 }, { text: "العلاقات التي تتكون", from: 30.2, to: 34 }])).toBe("[0:29.29–0:29.80] «اثنين:»\n[0:30.20–0:34.00] «العلاقات التي تتكون»");
+  });
+});
