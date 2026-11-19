@@ -7,6 +7,7 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { storage } from "@/lib/storage";
 import { MASTER_STYLE_ONLY } from "@config/film-prompts/sheet-maker";
+import { CHARACTER_LOOK_RULE, hasCharacterLayout, withCharacterLayout } from "@config/film-prompts/character-sheet";
 import { callClaudeJson, claudeCost } from "./anthropic";
 import { generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
 import { refundSeries, reserveSeries, settleSeries } from "./series-pay";
@@ -113,8 +114,8 @@ const PROMPT_SCHEMA = { type: "object", additionalProperties: false, required: [
 const PROMPT_RULES: Record<CastKind, string> = {
   style:
     "a VISUAL STYLE MASTER for the whole series: one wide key-art frame of a typical place of the story, plus a strip of its colour palette swatches and a small note-free study of its rendering technique (lines, shading, texture, lighting). Style only: NO main characters, no faces, no readable text.",
-  character:
-    "a CHARACTER REFERENCE SHEET on a plain light background: the same character in full body front, three-quarter, side and back views, plus 3–4 facial expressions and close-ups of key costume details and props. Exact consistent proportions, face, hair, costume and colours in every view. No text labels.",
+  // the layout (three views on grey, one face only) is fixed in config/film-prompts/character-sheet.ts
+  character: CHARACTER_LOOK_RULE,
   place:
     "an ENVIRONMENT REFERENCE SHEET: one wide establishing view of the place plus 2–3 other angles (a closer view, a reverse angle, a detail of key props and materials), same time of day and lighting in all. No people unless the description needs them in the background. No text labels.",
 };
@@ -123,7 +124,7 @@ const PROMPT_RULES: Record<CastKind, string> = {
 async function writePrompt(series: FilmSeries, row: CastEntry) {
   const r = await callClaudeJson<{ prompt: string }>({
     system:
-      "You write image prompts for OpenAI GPT Image 2 for an Arabic animated series. Write ONE detailed English prompt (180–320 words) for the requested sheet, faithful to the Arabic description and to the series' world and look. Describe concrete visual facts (shapes, colours, materials, clothing, age, build, era) — never names of real artists, studios or copyrighted characters. Return only the prompt.",
+      "You write image prompts for OpenAI GPT Image 2 for an Arabic animated series. Write ONE detailed English prompt (180–320 words; 100–220 for a character's look) for the requested sheet, faithful to the Arabic description and to the series' world and look. Describe concrete visual facts (shapes, colours, materials, clothing, age, build, era) — never names of real artists, studios or copyrighted characters. Return only the prompt.",
     turns: [
       {
         role: "user",
@@ -143,7 +144,8 @@ async function writePrompt(series: FilmSeries, row: CastEntry) {
     maxTokens: 2000,
     effort: "low",
   });
-  return { prompt: r.data.prompt.trim().slice(0, 12000), usd: claudeCost(r.usage) };
+  const text = r.data.prompt.trim().slice(0, 10000);
+  return { prompt: row.kind === "character" ? withCharacterLayout(text) : text, usd: claudeCost(r.usage) };
 }
 
 /**
@@ -162,7 +164,8 @@ export async function generateCast(series: FilmSeries, who: { id: string; email?
     let usd = 0;
     try {
       let prompt = row.prompt;
-      if (!prompt) {
+      // a character drawn before the three-view layout gets its prompt written again
+      if (!prompt || (row.kind === "character" && !hasCharacterLayout(prompt))) {
         const w = await writePrompt(series, row);
         prompt = w.prompt;
         usd += w.usd;
