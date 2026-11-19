@@ -89,10 +89,12 @@ const thumbs = new Map<string, Promise<string | null>>();
 export function thumbnail(id: string, kind: AssetKind, url: string | null): Promise<string | null> {
   if (!url || kind === "audio") return Promise.resolve(null);
   if (kind === "image") return Promise.resolve(url);
-  let p = thumbs.get(id);
+  // (by file and link: a file of the computer found again at its new place gets a new picture)
+  const key = `${id}|${url}`;
+  let p = thumbs.get(key);
   if (!p) {
     p = videoThumb(url);
-    thumbs.set(id, p);
+    thumbs.set(key, p);
   }
   return p;
 }

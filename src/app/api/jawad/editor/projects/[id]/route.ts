@@ -20,6 +20,7 @@ import { deleteLabChat, getLabChat, listLabChats, renameLabChat, saveLabChat } f
 import { codeEditReview, codeEditWrite, codeGradeReview, codeGradeWrite } from "@/lib/editor/claude-code";
 import {
   addLocalAsset,
+  relinkLocalAsset,
   assetViewsById,
   stillOpen,
   confirmAsset,
@@ -78,7 +79,7 @@ export const PUT = handle(async (req: Request, ctx: Ctx) => {
 
 const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "lab_chat", "lab_search", "lab_cover_write", "lab_cover_review", "lab_picture", "upscale", "transcribe", "align", "translate_captions", "shorts", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
 
-/** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history, snapshot, rules. */
+/** `{ action, … }`: upload (sign/confirm), add_local / relink_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history, snapshot, rules. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
   const { user, owner } = await requireEditorApiUser();
   const p = await requireEditorProject((await ctx.params).id, user.id);
@@ -101,6 +102,9 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await completeUpload(p, b));
     case "add_local":
       return NextResponse.json({ asset: await addLocalAsset(p, b) });
+    // a file of the computer found again at its new place (its folder was moved)
+    case "relink_local":
+      return NextResponse.json({ asset: await relinkLocalAsset(p, b) });
     case "confirm_upload":
       return NextResponse.json({ asset: await confirmAsset(p, b) });
     case "delete_asset":
