@@ -9,6 +9,7 @@ import { duration, flushPending, loadTimer, pendingCount, type TimerState } from
 import BookCover from "@/components/mahdi/BookCover";
 import Icon from "@/components/mahdi/Icon";
 import ReadChallengeLink from "@/components/mahdi/ReadChallengeLink";
+import SheikhLink from "@/components/mahdi/SheikhLink";
 import { FeedbackCard } from "@/components/mahdi/Feedback";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { useReading } from "@/components/mahdi/useReading";
@@ -155,6 +156,7 @@ export default function ReadingPage() {
         )}
       </section>
 
+      <SheikhLink />
       <Link href="/mahdi/reading/guide" className="m-card flex items-center gap-4 p-4">
         <span className="m-soft grid size-12 shrink-0 place-items-center rounded-2xl">
           <Icon name="search" className="m-gold" />
