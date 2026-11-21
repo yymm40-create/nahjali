@@ -21,6 +21,46 @@ as $$
 $$;
 
 -- Every line that could count for every member of a challenge, with whether it counts and why not.
+-- Built here so a database without «إخوة الولاية» group programs (SQL 0083) or «التحديات الموحدة» (SQL 0008) still works:
+-- their part is left out until their tables exist (run this file again after them).
+do $do$
+declare
+  has_groups boolean := to_regclass('public.mahdi_group_habit_logs') is not null and to_regclass('public.mahdi_group_habits') is not null;
+  has_chal boolean := to_regclass('public.mahdi_challenge_logs') is not null and to_regclass('public.mahdi_challenges') is not null;
+  ctes text := '';
+  tail text := '';
+begin
+  if has_groups then
+    ctes := ctes || $grp$,
+grp as (
+  select l.user_id, l.log_date as day, 'group_habit'::text as source, l.habit_id as ref_id, gh.name, l.value as pages,
+         null::jsonb as ranges, true as counted, null::text as why, l.updated_at as at
+  from mahdi_group_habit_logs l
+  join mahdi_group_habits gh on gh.id = l.habit_id and gh.group_id = l.group_id
+  cross join c
+  join lateral (
+    select e->>'unit' as unit from jsonb_array_elements(gh.versions) e
+    where (e->>'effectiveFrom') <= l.log_date::text
+    order by e->>'effectiveFrom' desc limit 1
+  ) v on true
+  where l.user_id in (select user_id from m) and l.log_date between c.starts_on and c.ends_on and l.value > 0
+    and mahdi_is_page_unit(v.unit)
+)$grp$;
+    tail := tail || ' union all select * from grp';
+  end if;
+  if has_chal then
+    ctes := ctes || $chal$,
+chal as (
+  select l.user_id, l.log_date, 'challenge'::text, l.challenge_id, ch.title, l.value, null::jsonb, true, null::text, l.updated_at
+  from mahdi_challenge_logs l
+  join mahdi_challenges ch on ch.id = l.challenge_id
+  cross join c
+  where l.user_id in (select user_id from m) and l.log_date between c.starts_on and c.ends_on and l.value > 0
+    and mahdi_is_page_unit(ch.unit)
+)$chal$;
+    tail := tail || ' union all select * from chal';
+  end if;
+  execute $fn$
 create or replace function public.mahdi_read_challenge_rows(p_challenge uuid)
 returns table (user_id uuid, day date, source text, ref_id uuid, title text, pages numeric, ranges jsonb, counted boolean, why text, at timestamptz)
 language sql
@@ -78,36 +118,14 @@ own_rows as (
          greatest(0, o.value - coalesce(sd.pages, 0)), null::jsonb, true, null::text, o.updated_at
   from own o left join session_day sd on sd.user_id = o.user_id and sd.day = o.day
   where o.goal_linked and o.habit_metric = 'pages' and o.value - coalesce(sd.pages, 0) > 0
-),
--- «إخوة الولاية»: my group programs' habits measured in pages
-grp as (
-  select l.user_id, l.log_date as day, 'group_habit'::text as source, l.habit_id as ref_id, gh.name, l.value as pages,
-         null::jsonb as ranges, true as counted, null::text as why, l.updated_at as at
-  from mahdi_group_habit_logs l
-  join mahdi_group_habits gh on gh.id = l.habit_id and gh.group_id = l.group_id
-  cross join c
-  join lateral (
-    select e->>'unit' as unit from jsonb_array_elements(gh.versions) e
-    where (e->>'effectiveFrom') <= l.log_date::text
-    order by e->>'effectiveFrom' desc limit 1
-  ) v on true
-  where l.user_id in (select user_id from m) and l.log_date between c.starts_on and c.ends_on and l.value > 0
-    and mahdi_is_page_unit(v.unit)
-),
--- «التحديات الموحدة» measured in pages
-chal as (
-  select l.user_id, l.log_date, 'challenge'::text, l.challenge_id, ch.title, l.value, null::jsonb, true, null::text, l.updated_at
-  from mahdi_challenge_logs l
-  join mahdi_challenges ch on ch.id = l.challenge_id
-  cross join c
-  where l.user_id in (select user_id from m) and l.log_date between c.starts_on and c.ends_on and l.value > 0
-    and mahdi_is_page_unit(ch.unit)
 )
+$fn$ || ctes || $fn2$
 select * from sessions
-union all select * from own_rows
-union all select * from grp
-union all select * from chal;
-$$;
+union all select * from own_rows$fn2$ || tail || $fn3$;
+$$;$fn3$;
+end
+$do$;
+
 revoke all on function public.mahdi_read_challenge_rows(uuid) from public, anon, authenticated;
 grant execute on function public.mahdi_read_challenge_rows(uuid) to service_role;
 
