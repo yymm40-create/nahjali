@@ -22,6 +22,8 @@ export interface ReadingSession {
   /** Distinct pages (or narrations, for a book of narrations) in this session. */
   pages: number;
   note: string;
+  /** Pages read BEFORE (added with a book already begun): only the book's page map, never a day, a goal or a challenge. */
+  earlier?: boolean;
 }
 
 export type ReadingMetric = "minutes" | "pages" | "narrations";
@@ -145,7 +147,7 @@ const ZERO: ReadingTotals = { seconds: 0, pages: 0, narrations: 0, sessions: 0 }
 
 /** Totals of the sessions between two days (inclusive). */
 export function readingTotals(sessions: readonly ReadingSession[], from: ISODate, to: ISODate): ReadingTotals {
-  return sessions.filter((s) => s.date >= from && s.date <= to).reduce(add, ZERO);
+  return sessions.filter((s) => !s.earlier && s.date >= from && s.date <= to).reduce(add, ZERO);
 }
 
 export interface ReadingSummary {
@@ -159,7 +161,7 @@ export interface ReadingSummary {
 }
 
 export function readingSummary(sessions: readonly ReadingSession[], today: ISODate, weekStart: number): ReadingSummary {
-  const days = new Set(sessions.filter((s) => s.seconds > 0 || s.pages > 0).map((s) => s.date));
+  const days = new Set(sessions.filter((s) => !s.earlier && (s.seconds > 0 || s.pages > 0)).map((s) => s.date));
   let streak = 0;
   let d = days.has(today) ? today : addDays(today, -1);
   while (days.has(d)) {

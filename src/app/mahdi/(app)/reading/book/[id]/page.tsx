@@ -27,6 +27,8 @@ export default function BookPage() {
   const entry = reading.library.find((e) => e.book.id === id);
   const [busy, setBusy] = useState(false);
   const [pagesText, setPagesText] = useState("");
+  // pages read today, or before (a book already begun): those only fill the map, never today, a goal or a challenge
+  const [earlier, setEarlier] = useState(false);
   const [pagesError, setPagesError] = useState("");
   const [removing, setRemoving] = useState(false);
   const [reporting, setReporting] = useState(false);
@@ -89,10 +91,11 @@ export default function BookPage() {
     setBusy(true);
     setPagesError("");
     try {
-      const fresh = await sendSession(userId, { bookId: book.id, date: today, seconds: 0, ranges, note: "" });
+      const fresh = await sendSession(userId, { bookId: book.id, date: today, seconds: 0, ranges, note: "", ...(earlier ? { earlier: true } : {}) });
       if (fresh) apply(fresh);
       toast(fresh ? U.saved : t.reading.savedOffline);
       setPagesText("");
+      setEarlier(false);
     } catch (err) {
       setPagesError((err as Error).message);
     }
@@ -194,6 +197,16 @@ export default function BookPage() {
           <input className="m-field m-num" dir="ltr" value={pagesText} onChange={(e) => setPagesText(e.target.value)} placeholder="1-12, 30" />
           <span className="m-hint mt-1 block">{U.addHint}</span>
         </label>
+        {/* today's reading, or what was read before (a book already begun) */}
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={U.whenLabel}>
+          <button type="button" role="radio" aria-checked={!earlier} className="m-option min-h-10 px-3 text-sm font-semibold" onClick={() => setEarlier(false)}>
+            {U.whenToday}
+          </button>
+          <button type="button" role="radio" aria-checked={earlier} className="m-option min-h-10 px-3 text-sm font-semibold" onClick={() => setEarlier(true)}>
+            {U.whenEarlier}
+          </button>
+        </div>
+        {earlier && <p className="m-hint">{U.earlierHint}</p>}
         {pagesError && <p className="m-error" role="alert">{pagesError}</p>}
         <button className="m-btn m-btn-ghost w-full" disabled={busy || !pagesText.trim()}>{U.addSave}</button>
       </form>

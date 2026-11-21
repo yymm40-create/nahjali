@@ -7,6 +7,7 @@ import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import type { ReadChallenge, ReadPhase } from "@/lib/mahdi/read-challenge";
 import Avatar from "@/components/mahdi/Avatar";
 import Icon from "@/components/mahdi/Icon";
+import ReadChallengeDetail from "@/components/mahdi/ReadChallengeDetail";
 
 const R = t.readChallenge;
 const MEDALS = ["🥇", "🥈", "🥉"];
@@ -18,6 +19,8 @@ interface Row {
   pages: number;
   days: number;
   mine: boolean;
+  /** only for the owner: whose breakdown to open */
+  id?: string;
 }
 interface Data {
   challenge: ReadChallenge | null;
@@ -28,6 +31,7 @@ interface Data {
   joined?: boolean;
   total?: number;
   board?: Row[];
+  owner?: boolean;
 }
 
 /** «تحدي القراءة»: my place, the top three and the whole list (everyone who joined). */
@@ -36,6 +40,8 @@ export default function ReadChallengePage() {
   const [error, setError] = useState("");
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
+  // whose breakdown is open: "me", or (the owner) a member's id
+  const [detail, setDetail] = useState<{ who: string; name: string } | null>(null);
 
   const load = useCallback(() => {
     return mahdiFetch<Data>("/api/mahdi/read-challenge?board=1")
@@ -139,10 +145,17 @@ export default function ReadChallengePage() {
             {board.map((r, i) => (
               <li
                 key={`${r.rank}-${i}`}
-                className="flex items-center gap-3 px-4 py-3"
                 style={r.mine ? { background: "color-mix(in srgb, var(--m-gold) 16%, transparent)" } : undefined}
                 aria-current={r.mine ? "true" : undefined}
               >
+                {/* my own line (or anyone's, for the owner) opens what my pages are made of */}
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-start disabled:cursor-default"
+                  disabled={!r.mine && !r.id}
+                  onClick={() => setDetail({ who: r.mine ? "me" : r.id!, name: r.displayName })}
+                  aria-label={r.mine || r.id ? R.detail.open(r.displayName) : undefined}
+                >
                 <span className="m-num w-9 shrink-0 text-center text-lg font-bold">{r.pages > 0 && r.rank <= 3 ? MEDALS[r.rank - 1] : fmtNum(r.rank)}</span>
                 <Avatar profile={{ displayName: r.displayName, avatarUrl: r.avatarUrl }} size={36} />
                 <span className="min-w-0 flex-1 truncate font-semibold" dir="auto">
@@ -152,11 +165,15 @@ export default function ReadChallengePage() {
                 <span className="m-num shrink-0 text-end">
                   <b>{fmtNum(r.pages)}</b> <span className="m-muted text-sm">{R.pageWord}</span>
                 </span>
+                {(r.mine || r.id) && <Icon name="chevronLeft" size={16} className="m-muted shrink-0" />}
+                </button>
               </li>
             ))}
           </ol>
         )}
+        {board.some((r) => r.mine) && <p className="text-xs m-muted">{R.detail.tapHint}</p>}
       </section>
+      {detail && <ReadChallengeDetail who={detail.who} name={detail.name} onClose={() => setDetail(null)} onChanged={() => void load()} />}
     </div>
   );
 }

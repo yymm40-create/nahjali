@@ -1,7 +1,7 @@
 // SERVER ONLY. «تحدي القراءة»: the current challenge, joining (with consent) and the list everyone sees.
 // The tables are closed to clients; everything goes through here with the service role.
 import { createAdminClient } from "@/lib/supabase/admin";
-import { rankReaders, type RankedReadEntry, type ReadChallenge, type ReadEntry } from "../read-challenge";
+import { rankReaders, type RankedReadEntry, type ReadChallenge, type ReadDetailRow, type ReadEntry } from "../read-challenge";
 import { check } from "./api";
 import { peopleInfo } from "./groups";
 
@@ -48,4 +48,36 @@ export async function readChallengeBoard(challengeId: string): Promise<RankedRea
   const ranked = rankReaders(entries);
   boardCache.set(challengeId, { at: Date.now(), entries: ranked });
   return ranked;
+}
+
+/** Every line of one member's count, the newest first (null before SQL 0121). */
+export async function readChallengeDetail(challengeId: string, userId: string): Promise<ReadDetailRow[] | null> {
+  const { data, error } = await createAdminClient().rpc("mahdi_read_challenge_detail", { p_challenge: challengeId, p_user: userId });
+  if (error) {
+    if (notReady(error)) return null;
+    throw error;
+  }
+  return ((data ?? []) as { day: string; source: ReadDetailRow["source"]; ref_id: string; title: string; pages: number | string; ranges: unknown; counted: boolean; why: ReadDetailRow["why"] }[]).map((r) => ({
+    day: r.day,
+    source: r.source,
+    refId: r.ref_id,
+    title: r.title,
+    pages: Number(r.pages),
+    ranges: Array.isArray(r.ranges) ? (r.ranges as [number, number][]) : null,
+    counted: r.counted,
+    why: r.why,
+  }));
+}
+
+/**
+ * The owner marks a member's reading session as read BEFORE (or back): it leaves the challenge, the person's days and
+ * goals, and stays in the book's page map. Only a session of someone in this challenge.
+ */
+export async function setSessionEarlier(challengeId: string, sessionId: string, earlier: boolean) {
+  const db = createAdminClient();
+  const { data: s } = await db.from("mahdi_reading_sessions").select("user_id").eq("id", sessionId).maybeSingle();
+  if (!s || !(await isReadMember(challengeId, s.user_id))) return false;
+  check(await db.from("mahdi_reading_sessions").update({ earlier }).eq("id", sessionId));
+  boardCache.delete(challengeId);
+  return true;
 }
