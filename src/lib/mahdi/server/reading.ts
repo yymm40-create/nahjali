@@ -53,6 +53,7 @@ interface SessionRow {
   ranges: unknown;
   pages_count: number;
   note: string;
+  earlier?: boolean;
 }
 
 export const sessionFromRow = (r: SessionRow, unit: BookUnit = "page"): ReadingSession => ({
@@ -64,15 +65,27 @@ export const sessionFromRow = (r: SessionRow, unit: BookUnit = "page"): ReadingS
   ranges: mergeRanges(Array.isArray(r.ranges) ? (r.ranges as PageRange[]) : []),
   pages: r.pages_count,
   note: r.note,
+  ...(r.earlier ? { earlier: true } : {}),
 });
+
+const SESSION_COLS = "id, book_id, log_date, seconds, ranges, pages_count, note";
+/** My sessions, with «earlier» (SQL 0121) when the column is there. */
+async function loadSessions(supabase: SupabaseClient): Promise<SessionRow[]> {
+  const read = (cols: string) =>
+    selectAll<SessionRow>((a, b) => supabase.from("mahdi_reading_sessions").select(cols).order("log_date").order("created_at").range(a, b) as unknown as PromiseLike<{ data: SessionRow[] | null; error: unknown }>);
+  try {
+    return await read(`${SESSION_COLS}, earlier`);
+  } catch (e) {
+    if (["42703", "PGRST204"].includes((e as { code?: string })?.code ?? "")) return read(SESSION_COLS);
+    throw e;
+  }
+}
 
 /** Everything the reading screens need for the signed-in user. */
 export async function loadReading(supabase: SupabaseClient, me: string): Promise<ReadingData> {
   const [lib, sessions, goals] = await Promise.all([
     supabase.from("mahdi_user_books").select(`state, added_at, finished_at, book:mahdi_books (${BOOK_COLUMNS})`).order("added_at"),
-    selectAll<SessionRow>((a, b) =>
-      supabase.from("mahdi_reading_sessions").select("id, book_id, log_date, seconds, ranges, pages_count, note").order("log_date").order("created_at").range(a, b),
-    ),
+    loadSessions(supabase),
     supabase.from("mahdi_reading_goals").select("*").maybeSingle(),
   ]);
   const g = goals.data;

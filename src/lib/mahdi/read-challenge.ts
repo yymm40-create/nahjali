@@ -45,3 +45,19 @@ export function rankReaders(entries: ReadEntry[]): RankedReadEntry[] {
     return { ...e, rank };
   });
 }
+
+/** One line of a member's count (the breakdown). */
+export interface ReadDetailRow {
+  day: string;
+  /** book: a session of «القارئ العلوي» · habit: a habit in pages · goal_habit: typed by hand into the reading-goal habit
+   *  · group_habit: a «إخوة الولاية» program habit · challenge: a «التحديات الموحدة» challenge */
+  source: "book" | "habit" | "goal_habit" | "group_habit" | "challenge";
+  /** the session (for «book»), the habit or the challenge */
+  refId: string;
+  title: string;
+  pages: number;
+  ranges: [number, number][] | null;
+  counted: boolean;
+  /** why it doesn't count: «earlier» (read before) or «narration» (a book of narrations) */
+  why: "earlier" | "narration" | null;
+}
