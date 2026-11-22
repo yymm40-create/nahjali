@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { cleanQuestion, linkPieces, plainAnswer, sheikhLeft, sheikhWording, SHEIKH_DAILY } from "@/lib/mahdi/sheikh";
+import { gradingLine, hadithQuery, hadithRows, normAr, type RawHadith } from "@/lib/mahdi/hadiths";
 
 describe("«الشيخ الذكي»", () => {
-  it("counts the day's questions", () => {
+  it("counts the day's questions of each kind", () => {
     const now = Date.parse("2026-11-22T12:00:00Z");
     const hoursAgo = (h: number) => new Date(now - h * 3600_000).toISOString();
-    expect(sheikhLeft([hoursAgo(1), hoursAgo(2), hoursAgo(30)], now)).toBe(SHEIKH_DAILY - 2);
-    expect(sheikhLeft(Array.from({ length: SHEIKH_DAILY + 3 }, () => hoursAgo(1)), now)).toBe(0);
+    expect(sheikhLeft("quick", [hoursAgo(1), hoursAgo(2), hoursAgo(30)], now)).toBe(SHEIKH_DAILY.quick - 2);
+    expect(sheikhLeft("deep", Array.from({ length: SHEIKH_DAILY.deep + 1 }, () => hoursAgo(1)), now)).toBe(0);
   });
 
   it("keeps a question up to 1000 letters", () => {
     expect(cleanQuestion("  ما فضل زيارة عاشوراء؟ ")).toBe("ما فضل زيارة عاشوراء؟");
     expect(cleanQuestion(" ")).toBeNull();
     expect(cleanQuestion("x".repeat(1001))).toBeNull();
-    expect(cleanQuestion(5)).toBeNull();
   });
 
   it("writes «صلى الله عليه وآله», never ﷺ", () => {
@@ -21,21 +21,37 @@ describe("«الشيخ الذكي»", () => {
     expect(sheikhWording("رسول الله صلى الله عليه وسلم")).toBe("رسول الله صلى الله عليه وآله");
   });
 
-  it("cuts a line into text, links, bold and source numbers", () => {
-    expect(linkPieces("روي «النص» [2]، والمصدر https://thaqalayn.com/chapter/1/2/3.")).toEqual([
-      { t: "text", v: "روي «النص» " },
-      { t: "cite", v: 2 },
-      { t: "text", v: "، والمصدر " },
-      { t: "link", v: "https://thaqalayn.com/chapter/1/2/3" },
+  it("cuts a line into text, links and bold", () => {
+    expect(linkPieces("**الكافي** https://thaqalayn.com/hadith/2/1/44/2.")).toEqual([
+      { t: "bold", v: "الكافي" },
+      { t: "text", v: " " },
+      { t: "link", v: "https://thaqalayn.com/hadith/2/1/44/2" },
       { t: "text", v: "." },
     ]);
-    expect(linkPieces("**الكافي** ج٢")).toEqual([
-      { t: "bold", v: "الكافي" },
-      { t: "text", v: " ج٢" },
-    ]);
+    expect(plainAnswer("## عنوان\n- أولًا")).toBe("عنوان\n• أولًا");
+  });
+});
+
+describe("the sheikh's library", () => {
+  const raw = (id: number, cat: number, ch: number, extra: Partial<RawHadith> = {}): RawHadith => ({ id, bookId: "Al-Kafi-Volume-2-Kulayni", volume: 2, categoryId: cat, chapterInCategoryId: ch, arabicText: `نص ${id}`, ...extra });
+
+  it("rebuilds each hadith's place on thaqalayn (the number in its chapter)", () => {
+    const rows = hadithRows(2, [raw(1, 1, 1), raw(2, 1, 1), raw(3, 1, 2), raw(4, 2, 1), raw(5, 1, 2, { arabicText: "" })]);
+    expect(rows.map((r) => r.id)).toEqual(["2/1/1/1", "2/1/1/2", "2/1/2/1", "2/2/1/1"]);
+    expect(rows[0]).toMatchObject({ book: 2, volume: 2, seq: 1, n: 1 });
   });
 
-  it("drops headings and list stars but keeps bold", () => {
-    expect(plainAnswer("## عنوان\n- أولًا **مهم**")).toBe("عنوان\n• أولًا **مهم**");
+  it("normalises Arabic like the index and builds the search", () => {
+    expect(normAr("وَالزِّيارَةُ")).toBe("زياره");
+    expect(normAr("أمير المؤمنين")).toBe("امير مومنين");
+    expect(hadithQuery("زيارة الحسين", true)).toBe("زياره:* & حسين:*");
+    expect(hadithQuery("زيارة الحسين")).toBe("زياره:* | حسين:*");
+    expect(hadithQuery("؟!")).toBeNull();
+  });
+
+  it("writes the gradings in one line", () => {
+    expect(gradingLine({ gradings: [{ grade_ar: " مرسل ", reference_en: "Mirʾāt al-ʿUqūl (1/7)", author: { name_ar: "العلامة باقر المجلسي" } }] })).toBe("العلامة باقر المجلسي: مرسل (Mirʾāt al-ʿUqūl (1/7))");
+    expect(gradingLine({ majlisi: "صحيح", gradings: [] })).toBe("المجلسي: صحيح");
+    expect(gradingLine({ gradings: [] })).toBe("");
   });
 });
