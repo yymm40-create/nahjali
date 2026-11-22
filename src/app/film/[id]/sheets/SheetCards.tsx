@@ -136,7 +136,7 @@ function SheetCard({ projectId, id, title, prompts, images, busy, send, onEdit, 
           <img src={test.url} alt="صورة الاختبار" className="h-10 w-14 shrink-0 rounded-md object-cover" />
           <span className="text-xs font-extrabold leading-5">
             📎 أرفق صورة الاختبار مرجع للستايل
-            <span className="block font-bold text-muted">{useTest ? "بتنرسل مع الصور اللي تولّدها الحين" : "ما بتنرسل"}</span>
+            <span className="block font-bold text-muted">{useTest ? "بتنرسل مع الصور اللي تولّدها الحين، وتكون هي الحاكمة في الألوان والشكل. تعديلاتك فوقها." : "ما بتنرسل"}</span>
           </span>
         </label>
       )}

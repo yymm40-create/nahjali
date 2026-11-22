@@ -387,10 +387,19 @@ export const MASTER_STYLE_ONLY = `Reference note: the LAST attached image is the
  * «صورة الاختبار مرجع» (src/lib/film/style-test-ref.ts): the style test picture the person liked, attached to the master's
  * drawing. The master shows only basic shapes, so nothing of the frame's story may come into it.
  */
-export const TEST_STYLE_FOR_MASTER = `Reference note: the attached image is the approved STYLE TEST frame — the look the client chose. Match its visual style as closely as possible: rendering, line quality, shading, color palette, lighting, materials and texture. Use it ONLY for style: do not draw its characters, faces, costumes, props, places or composition. This master shows only what the prompt above asks for.`;
+export const TEST_STYLE_FOR_MASTER = `Reference note — STYLE AUTHORITY: the attached image is the approved STYLE TEST frame, the look the client chose. It is the ONLY authority on how this image looks: the colors and the whole color palette, saturation and contrast, the shapes and their stylization, proportions, rendering and shading, line quality, lighting, materials and texture. Wherever any words of this prompt describe the look differently, ignore those words and follow the image — except the CLIENT'S CHANGES at the end of this prompt, which come before everything. Use it ONLY for the look: do not draw its characters, faces, costumes, props, places or composition. This master shows only what the prompt above asks for.`;
 
 /** The same picture attached to a sheet's drawing: just before the master, which stays the LAST image. */
-export const TEST_STYLE_FOR_SHEET = `Reference note: the SECOND-TO-LAST attached image is the approved STYLE TEST frame — the look the client chose. Use it, together with the master, ONLY for visual style (rendering, line quality, shading, palette, lighting, texture), and keep this sheet as close to that look as possible. Do not copy any character, face, costume, prop, place or composition from it: this sheet's subject comes only from this prompt and its own references.`;
+export const TEST_STYLE_FOR_SHEET = `Reference note — STYLE AUTHORITY: the SECOND-TO-LAST attached image is the approved STYLE TEST frame, the look the client chose. It is the ONLY authority on how this sheet looks: the colors and the whole color palette, saturation and contrast, the shapes and their stylization, proportions, rendering and shading, line quality, lighting, materials and texture. Wherever this prompt's words, the master (the LAST image) or any other reference differ from it in any of these, ignore them and follow the test frame — except the CLIENT'S CHANGES at the end of this prompt, which come before everything. The prompt and the subject's own references decide only WHAT is drawn: who or what the subject is, its identity and distinguishing features, its clothing and props, and the sheet's layout and views. Do not copy any character, face, costume, prop, place or composition from the test frame.`;
+
+/** Heads the person's own edits of this sheet, written last: they come before the test frame and everything else. */
+export const CLIENT_CHANGES_HEAD = "CLIENT'S CHANGES — the client's own requests for this image, in their words (Arabic), oldest first. They come BEFORE everything else, the STYLE TEST frame included: apply every one exactly, and where two disagree the later one wins.";
+
+/** Put where the written style was, when the test frame governs the look (src/lib/film/style-test-ref.ts). */
+export const TEST_STYLE_LOCK = "VISUAL STYLE: exactly the look of the attached STYLE TEST frame — its colors, shapes, proportions, rendering, lighting and texture (see the reference note below; it replaces any written style description).";
+
+/** The master's note when the test frame governs the look: the master is then a SECONDARY style reference. */
+export const MASTER_STYLE_SECONDARY = `Reference note: the LAST attached image is the master style sheet (STY-00), a SECONDARY style reference: where it differs from the STYLE TEST frame in colors, shapes, proportions, rendering, lighting or texture, follow the test frame. Do not copy any character, face, costume, prop or location design from it.`;
 
 /** Reply format enforced through Claude's structured outputs. */
 export const SHEET_MAKER_SCHEMA = {
