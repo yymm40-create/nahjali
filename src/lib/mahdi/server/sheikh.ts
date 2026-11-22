@@ -11,6 +11,7 @@ import { bookName, gradingLine, HADITH_BOOKS, hadithUrl, type HadithRow } from "
 import { SHEIKH_MEMORY, sheikhWording, type SheikhMode, type SheikhMsg, type SheikhSource } from "../sheikh";
 import { chapterHadiths, readHadiths, searchHadiths, type HadithHit } from "./hadiths";
 import { check, UserError } from "./api";
+import type { SheikhLogRow } from "../sheikh-log";
 
 /** The model: the lightest and cheapest. Its tools (the library) cost nothing. */
 const MODEL = "claude-haiku-5-5";
@@ -284,4 +285,20 @@ export async function askSheikh(userId: string, mode: SheikhMode, question: stri
   }
   const s = check(await db().insert({ user_id: userId, role: "sheikh", mode, body: a.body.slice(0, 30000), sources: a.sources, usd: Number(a.usd.toFixed(6)) }).select("*").single()) as SheikhRow;
   return [q, s];
+}
+
+/** Every question and answer people sent the sheikh (the newest `limit` messages, read 1000 at a time), for the owner's
+ *  log; null before the SQL. */
+export async function allSheikhRows(limit = 6000): Promise<SheikhLogRow[] | null> {
+  const out: SheikhLogRow[] = [];
+  for (let from = 0; from < limit; from += 1000) {
+    const r = await db().select("user_id, role, mode, body, sources, usd, report, created_at").order("created_at", { ascending: false }).range(from, from + 999);
+    if (r.error) {
+      if (notReady(r.error)) return null;
+      throw r.error;
+    }
+    out.push(...((r.data ?? []) as SheikhLogRow[]));
+    if ((r.data ?? []).length < 1000) break;
+  }
+  return out;
 }
