@@ -8,6 +8,8 @@ import { fmtNum, fmtPct, t } from "@/lib/mahdi/i18n";
 import { duration, flushPending, loadTimer, pendingCount, type TimerState } from "@/lib/mahdi/client/reading";
 import BookCover from "@/components/mahdi/BookCover";
 import Icon from "@/components/mahdi/Icon";
+import ReadChallengeLink from "@/components/mahdi/ReadChallengeLink";
+import SheikhLink from "@/components/mahdi/SheikhLink";
 import { FeedbackCard } from "@/components/mahdi/Feedback";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { useReading } from "@/components/mahdi/useReading";
@@ -48,6 +50,7 @@ export default function ReadingPage() {
         <h1 className="m-display text-3xl">{t.reading.title}</h1>
         <p className="m-muted">{t.reading.tagline}</p>
       </header>
+      <ReadChallengeLink />
 
       {timerBook && (
         <Link href={`/mahdi/reading/session?book=${timerBook.book.id}`} className="m-note flex items-center gap-3 font-semibold">
@@ -153,6 +156,7 @@ export default function ReadingPage() {
         )}
       </section>
 
+      <SheikhLink />
       <Link href="/mahdi/reading/guide" className="m-card flex items-center gap-4 p-4">
         <span className="m-soft grid size-12 shrink-0 place-items-center rounded-2xl">
           <Icon name="search" className="m-gold" />

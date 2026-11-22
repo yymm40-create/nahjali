@@ -8,6 +8,7 @@ import { addChatSpent } from "@/lib/chat-spend";
 import { contentSpent } from "@/lib/content/spent";
 import { CONTENT } from "@config/content";
 import { isAdmin } from "@config/site";
+import { CONTENT_CLAUDE_MODEL, findClaudeModel } from "@config/claude-models";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -24,7 +25,7 @@ export const POST = handle(async (req: Request) => {
   if (message.length > CONTENT.messageMax) throw new UserError(`الرسالة أطول من ${CONTENT.messageMax} حرف.`);
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   try {
-    const r = await robotTurn(user, b.model, "محادثة محمد باقر", () => say(user.id, chatId, message, attachments, user.email, { verbose: b.verbose === true, from: typeof b.from === "number" ? b.from : undefined }), { said: message, reply: (r) => r.text });
+    const r = await robotTurn(user, findClaudeModel(b.model) ? b.model : CONTENT_CLAUDE_MODEL, "محادثة محمد باقر", () => say(user.id, chatId, message, attachments, user.email, { verbose: b.verbose === true, from: typeof b.from === "number" ? b.from : undefined }), { said: message, reply: (r) => r.text });
     // exactly what this conversation has taken from the wallet now, this reply's real charge included (never an estimate)
     const replies = await addChatSpent("content_chats", "id", r.chatId, r.spentHalalas, r.worth);
     // the whole conversation: the replies, GPT Image 2's pictures, «حيدرا ماكس»'s code — before this was counted too

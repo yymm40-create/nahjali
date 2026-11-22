@@ -262,6 +262,10 @@ export interface LibraryEntry {
   state: LibraryState;
   addedAt: string;
   finishedAt: string | null;
+  /** the book's own habit (SQL 0125), filled by its sessions; null = none */
+  habitId?: string | null;
+  /** pages (or narrations) a day for this book */
+  dailyTarget?: number | null;
 }
 
 export interface ReadingData {

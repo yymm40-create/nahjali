@@ -9,6 +9,12 @@ import { CONTENT_KINDS } from "@config/content";
 import { EXAMPLES_PER_KIND } from "@config/content-examples";
 import { TEMPLATE_EXAMPLES_PER } from "@config/content-template-examples";
 import { isAdmin } from "@config/site";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { setChatSpent, userContentChats } from "@/lib/content/spent";
+import { getChat, saveChat } from "@/lib/content/chats";
+import { say } from "@/lib/content/chat";
+import { planSlideFix, previewCodeSlide } from "@/lib/content/produce";
+import { producedLinks, producedRow, uploadLinks } from "@/lib/content/files";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -66,6 +72,109 @@ export const POST = handle(async (req: Request) => {
       case "test_delete":
         await deleteRun(id);
         return NextResponse.json({ ok: true });
+      // a person's conversations with what each shows, and the owner's correction of one conversation's shown cost
+      case "user_chats":
+        return NextResponse.json({ chats: await userContentChats(String(b.userId ?? "")) });
+      // a person's conversation as the owner needs it to help (the texts, the picks, the carousel's look and references; no file links)
+      case "chat_detail": {
+        const { data } = await createAdminClient().from("content_chats").select("id,user_id,messages,pending,record,updated_at").eq("id", id).maybeSingle();
+        if (!data) throw new UserError("ما لقينا المحادثة.", 404);
+        const msgs = (Array.isArray(data.messages) ? data.messages : []) as Record<string, unknown>[];
+        return NextResponse.json({
+          updatedAt: data.updated_at,
+          record: String(data.record ?? "").slice(0, 4000),
+          pending: data.pending,
+          messages: msgs.map((m, i) => ({
+            i,
+            role: m.role,
+            text: String(m.text ?? "").slice(0, 1500),
+            files: Array.isArray(m.files) ? (m.files as Record<string, unknown>[]).map((f) => `${f.kind}:${f.id}:${f.name}`) : undefined,
+            questions: Array.isArray(m.questions) ? (m.questions as Record<string, unknown>[]).map((q) => q.label) : undefined,
+            slides: m.slides ? (({ items, ...rest }) => ({ ...rest, items: Array.isArray(items) ? (items as Record<string, unknown>[]).map((x) => `${x.n}:${x.name}:${x.fileId}${x.video ? `:video=${x.video}` : ""}`) : [] }))(m.slides as Record<string, unknown>) : undefined,
+          })),
+        });
+      }
+      // the owner sets a person's slide right for them: its sound time (and a change in words); their page makes the video
+      // the next time it is open (the slide keeps its picture and its program)
+      case "plan_slide_fix": {
+        const { data } = await createAdminClient().from("content_chats").select("user_id").eq("id", id).maybeSingle();
+        const chat = data ? await getChat(String(data.user_id), id) : null;
+        if (!data || !chat) throw new UserError("ما لقينا المحادثة.", 404);
+        const n = Math.round(Number(b.n));
+        const from = Number(b.from);
+        const to = Number(b.to);
+        if (!(n > 0) || !(from >= 0) || !(to > from) || to - from > 60) throw new UserError("الشريحة أو الوقت غير صحيح.");
+        const planned = await planSlideFix(String(data.user_id), chat, n, { from, to }, typeof b.said === "string" ? b.said : "");
+        return NextResponse.json({ ok: true, pending: { slides: planned.pending?.slides.map((s) => s.n), soundTimes: planned.pending?.soundTimes, edits: planned.pending?.edits, programs: planned.pending?.programs, arts: Object.keys(planned.pending?.arts ?? {}), picturesOk: planned.pending?.picturesOk } });
+      }
+      // what a person's page will be handed for a waiting slide (checked before it runs)
+      case "slide_brief": {
+        const { data } = await createAdminClient().from("content_chats").select("user_id").eq("id", id).maybeSingle();
+        if (!data) throw new UserError("ما لقينا المحادثة.", 404);
+        return NextResponse.json(await previewCodeSlide(String(data.user_id), id, Math.round(Number(b.n))));
+      }
+      // a made slide of a person's chat as the owner checks it: its record and links to its picture and video (1 hour)
+      case "slide_file": {
+        const { data } = await createAdminClient().from("content_chats").select("user_id").eq("id", id).maybeSingle();
+        if (!data) throw new UserError("ما لقينا المحادثة.", 404);
+        const uid = String(data.user_id);
+        const row = await producedRow(uid, String(b.fileId ?? ""));
+        if (!row) throw new UserError("ما لقينا الملف.", 404);
+        const links = await producedLinks(uid, id);
+        const video = typeof row.meta.video === "string" ? row.meta.video : null;
+        const meta = { ...row.meta, prompt: undefined };
+        // the person's own sound file the slide plays a part of, to compare with
+        const upload = typeof b.uploadId === "string" ? ((await uploadLinks(uid, [b.uploadId])).get(b.uploadId) ?? null) : null;
+        return NextResponse.json({ name: row.name, meta, url: links.get(row.id) ?? null, video: video ? (links.get(video) ?? null) : null, upload });
+      }
+      // the owner answers a person's LAST message again after a fix (at the site's cost: nothing is taken from their
+      // wallet): the replies after it are removed and the message is sent again, with its attachments
+      case "redo_last_turn": {
+        const { data } = await createAdminClient().from("content_chats").select("user_id").eq("id", id).maybeSingle();
+        const uid = data ? String(data.user_id) : "";
+        const chat = uid ? await getChat(uid, id) : null;
+        if (!chat) throw new UserError("ما لقينا المحادثة.", 404);
+        const u = chat.messages.map((m) => m.role).lastIndexOf("user");
+        if (u < 0) throw new UserError("ما فيه رسالة للعميل.");
+        const turn = chat.messages[u];
+        await saveChat(uid, id, { messages: chat.messages.slice(0, u) });
+        const r = await say(uid, id, turn.text, (turn.files ?? []).map((f) => f.id), null);
+        return NextResponse.json({ text: r.text.slice(0, 1500), pending: r.pending, questions: r.questions?.map((q) => q.label) ?? null });
+      }
+      // the owner puts a person's chat back as it was: the messages after `keep` are removed, nothing waits to be made,
+      // and a slide of its carousel can be put back (a made slide that a later step replaced with its picture)
+      case "rewind_chat": {
+        const { data } = await createAdminClient().from("content_chats").select("user_id").eq("id", id).maybeSingle();
+        const uid = data ? String(data.user_id) : "";
+        const chat = uid ? await getChat(uid, id) : null;
+        if (!chat) throw new UserError("ما لقينا المحادثة.", 404);
+        const keep = Math.round(Number(b.keep));
+        if (!(keep > 0) || keep > chat.messages.length) throw new UserError("عدد الرسائل غير صحيح.");
+        const messages = chat.messages.slice(0, keep);
+        const at = messages.map((m) => !!m.slides).lastIndexOf(true);
+        const put = Array.isArray(b.slides) ? (b.slides as { n?: unknown; fileId?: unknown; video?: unknown }[]) : [];
+        if (at >= 0 && put.length) {
+          const block = messages[at].slides!;
+          const items = [...block.items];
+          for (const x of put) {
+            const n = Math.round(Number(x.n));
+            const row = await producedRow(uid, String(x.fileId ?? ""));
+            if (!row || !(n > 0)) throw new UserError(`ما لقينا ملف الشريحة ${String(x.n)}.`);
+            const slide = { n, fileId: row.id, name: row.name, text: String(row.meta.text ?? items.find((i) => i.n === n)?.text ?? ""), ...(typeof x.video === "string" && x.video ? { video: x.video } : {}) };
+            const k = items.findIndex((i) => i.n === n);
+            if (k >= 0) items[k] = slide;
+            else items.push(slide);
+          }
+          messages[at] = { ...messages[at], slides: { ...block, items: items.sort((x, y) => x.n - y.n), todo: [], running: false } };
+        }
+        await saveChat(uid, id, { messages, pending: null });
+        return NextResponse.json({ ok: true, messages: messages.length });
+      }
+      case "set_chat_spent": {
+        const halalas = Math.round(Number(b.halalas));
+        if (!Number.isFinite(halalas) || halalas < 0) throw new UserError("المبلغ غير صحيح.");
+        return NextResponse.json(await setChatSpent(id, halalas));
+      }
     }
   } catch (e) {
     const why = claudeTrouble(e);

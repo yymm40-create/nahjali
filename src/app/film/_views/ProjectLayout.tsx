@@ -17,6 +17,8 @@ import Riyal from "@/components/Riyal";
 import FilmBackButton from "../FilmBackButton";
 import ProjectAccessBar, { type AccessBar } from "@/components/film/ProjectAccessBar";
 import { accessOfProject } from "@/lib/film/admin-access";
+import { projectJourney } from "@/lib/film/journey";
+import { JourneyBar, JourneyProvider } from "../JourneyPicker";
 
 /**
  * Every page of a film project lives inside the scene's one shell («المشهد»: the steps' rail, the meter, the library,
@@ -29,6 +31,9 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
   const project = await requireProject(id, user.id);
   const bar = await accessBar(project.id, project.user_id, user.id);
   const access = bar ? <ProjectAccessBar bar={bar} /> : null;
+  // «اختر رحلتك»: the mind that writes this film's texts, shown on every page of it (its owner may change it)
+  const journey = await projectJourney(project.id).catch(() => null);
+  const journeyBar = <JourneyBar projectId={id} journey={journey} canChange={project.user_id === user.id} />;
   const { count } = await createAdminClient()
     .from("film_versions")
     .select("id", { count: "exact", head: true })
@@ -41,7 +46,8 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
     return (
       <FilmStage projectId={id} title={project.title} kind={project.kind === "film" ? "film" : "scene"} stage={project.stage} videosOpen={Boolean(count)} cost={creditsByService(cost.byService)} progress={progress} impacts={impacts}>
         {access}
-        {children}
+        {journeyBar}
+        <JourneyProvider journey={journey}>{children}</JourneyProvider>
         {/* سجاد: the consultant, who knows this film */}
         <SajjadPanel kind="film" id={id} />
       </FilmStage>
@@ -90,7 +96,8 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
         <ContinuityAlerts seriesId={project.series_id} sceneId={id} sceneKind="film" canAct alerts={alerts.map((a) => ({ ...a }))} />
       )}
       {access}
-      {children}
+      {journeyBar}
+      <JourneyProvider journey={journey}>{children}</JourneyProvider>
       {/* سجاد: the consultant, who knows this film (and its series) */}
       <SajjadPanel kind="film" id={id} />
     </div>

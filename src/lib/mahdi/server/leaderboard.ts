@@ -193,9 +193,14 @@ export async function readingTotalsFor(userIds: string[], tzOf: Map<string, stri
   const out = new Map<string, { seconds: number; pages: number; narrations: number }>();
   const earliest = addDays(todayIn("Etc/GMT+12", now), -32);
   for (const part of chunks(userIds)) {
-    const rows = await selectAll<{ user_id: string; book_id: string; log_date: string; seconds: number; pages_count: number }>((a, b) =>
-      db.from("mahdi_reading_sessions").select("user_id, book_id, log_date, seconds, pages_count").in("user_id", part).gte("log_date", earliest).order("id").range(a, b),
-    );
+    type Row = { user_id: string; book_id: string; log_date: string; seconds: number; pages_count: number; earlier?: boolean };
+    const read = (cols: string) =>
+      selectAll<Row>((a, b) => db.from("mahdi_reading_sessions").select(cols).in("user_id", part).gte("log_date", earliest).order("id").range(a, b) as unknown as PromiseLike<{ data: Row[] | null; error: unknown }>);
+    // pages read before (SQL 0121) are not this period's reading
+    const rows = (await read("user_id, book_id, log_date, seconds, pages_count, earlier").catch((e) => {
+      if (["42703", "PGRST204"].includes((e as { code?: string })?.code ?? "")) return read("user_id, book_id, log_date, seconds, pages_count");
+      throw e;
+    })).filter((r) => !r.earlier);
     // Books counted by narrations add to narrations, the others to pages
     const narrationBooks = new Set<string>();
     for (const ids of chunks([...new Set(rows.map((r) => r.book_id))])) {

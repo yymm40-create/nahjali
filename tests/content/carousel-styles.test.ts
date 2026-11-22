@@ -10,7 +10,7 @@ import { CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, FONT_AUTO_LINE, font
 import { answerLine } from "@/lib/content/marks";
 import { attachedPictures, carouselHold, CAROUSEL_LABEL, FONT_LABEL, KIND_LABEL, KIND_STILL, MAKER_CODE, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE, pickedCarousel, pickedFont, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "@/lib/content/maker";
 import { slidePrompt } from "@/lib/content/produce";
-import { catalogBlock, chosenBlock, chosenIds } from "@/lib/content/persona";
+import { catalogBlock, chosenBlock, chosenIds, systemText } from "@/lib/content/persona";
 
 // The table of 104 carousel styles, picked from instead of being asked about colours and margins: the owner's order.
 describe("the 104 carousel styles", () => {
@@ -94,7 +94,8 @@ describe("what محمد باقر knows", () => {
     const c = catalogBlock();
     for (const s of CAROUSEL_STYLES) expect(c).toContain(`- ${s.id} — ${s.n}) ${s.name} (${s.niche})`);
     expect(c).toContain("[صور واقعية]");
-    expect(c).toContain(CAROUSEL_GPT_CRAFT);
+    // how to write a brief is a rule he always reads (the table is read only while a look can still be picked)
+    expect(systemText("p")).toContain(CAROUSEL_GPT_CRAFT);
     for (const lesson of ["huge bold text", "لا بين «»", "«٠١»", "interface labels blurred"]) expect(CAROUSEL_GPT_CRAFT).toContain(lesson);
   });
 

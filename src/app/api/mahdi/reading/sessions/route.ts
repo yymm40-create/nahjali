@@ -3,13 +3,14 @@ import { countPages, isISODate, mergeRanges, todayIn, addDays } from "@/lib/mahd
 import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { loadReading } from "@/lib/mahdi/server/reading";
-import { applyToHabit } from "@/lib/mahdi/server/reading-write";
+import { addToHabit, applyToHabit, bookHabitOf } from "@/lib/mahdi/server/reading-write";
 import { cleanText } from "@/lib/mahdi/server/validate";
 
 /**
  * Saves a reading session: `{ bookId, startedAt?, seconds, ranges: [[from, to], …], note?, date? }`.
  * With the timer, `startedAt` gives the day (in my time zone) and limits the seconds; a manual entry gives `date`.
- * The linked habit (reading goals) is filled at the same time.
+ * The linked habit (reading goals) is filled at the same time. `earlier: true` (manual pages only): pages read BEFORE,
+ * e.g. on adding a book already begun — they fill the book's map only, never a day, a goal, a habit or «تحدي القراءة».
  */
 export const POST = mahdiRoute(async (req: Request) => {
   const { supabase, user, profile } = await requireProfile(req);
@@ -38,26 +39,27 @@ export const POST = mahdiRoute(async (req: Request) => {
     date = body.date;
   }
 
+  const earlier = body.earlier === true && !startedAt;
+  if (earlier) seconds = 0;
+
   const raw = Array.isArray(body.ranges) ? body.ranges.slice(0, 60) : [];
   const ranges = mergeRanges(raw.map((r) => (Array.isArray(r) ? r.map(Number) : [])), pagesInBook);
   const pages = countPages(ranges);
   if (pages === 0 && seconds < 30) throw new UserError(t.reading.sessionTooShort, 400);
 
-  check(
-    await supabase.from("mahdi_reading_sessions").insert({
-      user_id: user.id,
-      book_id: bookId,
-      log_date: date,
-      started_at: startedAt,
-      seconds,
-      ranges,
-      pages_count: pages,
-      note: cleanText(body.note, 500),
-    }),
-  );
+  const row: Record<string, unknown> = { user_id: user.id, book_id: bookId, log_date: date, started_at: startedAt, seconds, ranges, pages_count: pages, note: cleanText(body.note, 500) };
+  const { error } = await supabase.from("mahdi_reading_sessions").insert(earlier ? { ...row, earlier: true } : row);
+  // Before SQL 0121 «earlier» can't be kept apart: refuse rather than count it as today's reading
+  if (error && earlier && ["42703", "PGRST204"].includes(error.code ?? "")) throw new UserError(t.reading.u.page.earlierNotReady, 503);
+  check({ data: null, error });
 
   const reading = await loadReading(supabase, profile.userId);
-  await applyToHabit(supabase, reading.goals, date, seconds, pages, book!.unit === "narration" ? "narration" : "page", 1).catch((e) => console.error("[mahdi reading habit]", e));
+  if (!earlier) {
+    await applyToHabit(supabase, reading.goals, date, seconds, pages, book!.unit === "narration" ? "narration" : "page", 1).catch((e) => console.error("[mahdi reading habit]", e));
+    // the book's own habit: its pages (or narrations) of the day — unless it is the reading-goal habit, filled just above
+    const bookHabit = await bookHabitOf(supabase, bookId);
+    if (bookHabit && bookHabit !== reading.goals.habitId) await addToHabit(supabase, bookHabit, date, pages, 1).catch((e) => console.error("[mahdi book habit]", e));
+  }
   return NextResponse.json({ reading });
 });
 

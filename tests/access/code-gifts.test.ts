@@ -96,9 +96,17 @@ describe("at cost: what the tool costs us, with Claude's input and output counte
 
 describe("the Claude ceiling reaches every robot", () => {
   it("the shared robot turn, the editor's Claude and the film maker's routes all serve the capped model", () => {
-    for (const f of ["src/lib/claude-run.ts", "src/lib/editor/pricing.ts", "src/app/api/film/projects/[id]/sheets/route.ts", "src/app/api/film/projects/[id]/script/route.ts", "src/app/api/film/projects/[id]/director/route.ts", "src/app/api/film/sajjad/route.ts"]) {
+    for (const f of ["src/lib/claude-run.ts", "src/lib/editor/pricing.ts", "src/app/api/film/sajjad/route.ts"]) {
       expect(read(f), f).toContain("claudeFor(");
     }
+    // a film project's routes go through its journey («اختر رحلتك»), which caps both ways: the person's own pick with
+    // claudeFor, and every mind of a journey with the same ceiling
+    for (const f of ["src/app/api/film/projects/[id]/sheets/route.ts", "src/app/api/film/projects/[id]/script/route.ts", "src/app/api/film/projects/[id]/director/route.ts", "src/app/api/film/projects/[id]/voices/route.ts"]) {
+      expect(read(f), f).toContain("withProjectClaude(project, user.email");
+    }
+    const journey = read("src/lib/film/journey.ts");
+    expect(journey).toContain("claudeFor(email, picked)");
+    expect(journey).toContain("withFilmJourney(journey, (await perksOf(email)).claudeModel, fn)");
   });
 });
 

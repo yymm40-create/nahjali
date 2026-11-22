@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, claudeTrouble } from "./anthropic";
+import { forTask } from "./claude-model";
 import { seriesContext } from "./sajjad";
 import { episodesOf, scenesOf, type FilmSeries } from "./series";
 import { seriesPaid } from "./series-pay";
@@ -129,7 +130,7 @@ export async function watchScene(series: FilmSeries, sceneId: string, who: { id:
   let alerts: ContinuityAlert[];
   try {
     alerts = (await seriesPaid(series, who, ESTIMATE_USD, "سجاد يراقب الاستمرارية", async () => {
-      const r = await callClaudeJson<{ alerts: { severity: "high" | "medium" | "low"; title: string; text: string; fix: string }[] }>({ system: SYSTEM, turns: [{ role: "user", content: prompt }], schema: SCHEMA, maxTokens: 8000, effort: "medium" });
+      const r = await forTask("watch", () => callClaudeJson<{ alerts: { severity: "high" | "medium" | "low"; title: string; text: string; fix: string }[] }>({ system: SYSTEM, turns: [{ role: "user", content: prompt }], schema: SCHEMA, maxTokens: 8000, effort: "medium" }));
       const now = new Date().toISOString();
       return { value: r.data.alerts.slice(0, LIMITS.perScene).map((a) => ({ id: randomUUID(), sceneId: scene.id, where, severity: a.severity, title: a.title.trim().slice(0, 120), text: a.text.trim().slice(0, 1200), fix: a.fix.trim().slice(0, 1200), status: "open" as const, at: now })), usd: claudeCost(r.usage) };
     })).value;

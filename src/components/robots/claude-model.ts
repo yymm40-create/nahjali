@@ -3,15 +3,16 @@
 // The Claude model the person picked, kept on this device and shared by every robot's chat (one choice, same everywhere).
 
 import { useCallback, useSyncExternalStore } from "react";
-import { CLAUDE_MODEL_KEY, DEFAULT_CLAUDE_MODEL, claudeModelOf, type ClaudeModel } from "@config/claude-models";
+import { CLAUDE_MODEL_KEY, DEFAULT_CLAUDE_MODEL, claudeModelOf, findClaudeModel, type ClaudeModel } from "@config/claude-models";
 
 const EVENT = "jw-claude-model";
 
+/** The model the person chose on this device, or "" when they never chose one. */
 function read(): string {
   try {
-    return claudeModelOf(localStorage.getItem(CLAUDE_MODEL_KEY)).id;
+    return findClaudeModel(localStorage.getItem(CLAUDE_MODEL_KEY))?.id ?? "";
   } catch {
-    return DEFAULT_CLAUDE_MODEL;
+    return "";
   }
 }
 
@@ -24,9 +25,13 @@ const subscribe = (cb: () => void) => {
   };
 };
 
-/** [the chosen model, choose]. The server shows the default until the page is on the device. */
-export function useClaudeModel(): [ClaudeModel, (id: string) => void] {
-  const id = useSyncExternalStore(subscribe, read, () => DEFAULT_CLAUDE_MODEL);
+/**
+ * [the chosen model, choose]. `fallback`: the model of a section that has its own default (the content maker: «الرشيق»)
+ * while the person has chosen none — a choice they made stays theirs everywhere. The server shows the default until the
+ * page is on the device.
+ */
+export function useClaudeModel(fallback: string = DEFAULT_CLAUDE_MODEL): [ClaudeModel, (id: string) => void] {
+  const id = useSyncExternalStore(subscribe, read, () => "") || fallback;
   const choose = useCallback((next: string) => {
     try {
       localStorage.setItem(CLAUDE_MODEL_KEY, claudeModelOf(next).id);

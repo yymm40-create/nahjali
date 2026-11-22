@@ -15,6 +15,7 @@ import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
 import { answerLine, decisionsOf, pathLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, DELEGATE_LINE, FONT_AUTO_LINE, fontLine, fontStyleLine, moodLine, MOTION_CAROUSEL_HELP_LINE, motionCarouselLine, motionCarouselOwnLine, motionLine, PALETTE_LABEL, PALETTE_STYLE_LINE, paletteLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
 import { CONTENT_PATHS, findPath, type ContentPath } from "@config/content-paths";
+import { CONTENT_CLAUDE_MODEL } from "@config/claude-models";
 import CarouselTable, { type CarouselItem } from "./CarouselTable";
 import FontTable, { type FontItem } from "./FontTable";
 import MotionCarouselTable from "./MotionCarouselTable";
@@ -26,7 +27,21 @@ import { joinSlidesToReel } from "./slides-reel";
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean; video?: string; videoUrl?: string | null; videoDownload?: string | null }
 interface FailView { n: number; reason: string; detail?: string; text: string }
-interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code"; mix?: boolean; motion?: unknown }
+/** «حيدرا ماكس» designs and moves the slides with «الرشيق» (the owner, 17 Nov 2026: «خله بنموذج الرشيق!!»). */
+const HAIDARA_MODEL = "claude-sonnet-5-5";
+
+/** Ways to spend less, shown to the person under the chat (the owner, 17 Nov 2026: «حطها كنصائح تطلع للعميل»). */
+const SAVING_TIPS = [
+  "«الرشيق» هو النموذج الافتراضي هنا ويكفي لأغلب الشغل. بدّل لـ«الأصيل» من زر 🧠 بس إذا تبي كتابة إبداعية أعمق: سعره الضعف.",
+  "أزرار الموقع (الألوان، الخط، ستايل الحركة، طريقة الصنع) مجانية: اضغط الزر وبس وما ينحسب عليك شي. اللي له سعر هو الكتابة لمحمد باقر، فلا تكتب جنب الزر إلا إذا تبي تغيّر شي.",
+  "اجمع طلباتك في رسالة وحدة (عدد الشرائح، الشخصية، الصوت، الخاتمة) بدل عدة رسائل.",
+  "في الموشن كاروسيل: «حيدرا ماكس بالكود فقط» الأرخص بفرق كبير؛ اختر صور GPT Image 2 بس إذا تحتاج شخصية أو مشهد مرسوم.",
+  "قلّل عدد الشرائح: كل شريحة صورة وتصميم وحركة، و٥ شرائح غالبًا تكفي.",
+  "راجع صور المرحلة الأولى زين قبل «اعتمد»: إعادة صورة وحدة أرخص بكثير من إعادة شريحة متحركة كاملة.",
+  "إذا عندك صوت المقطع ارفعه ملف صوت (MP3/M4A) بدل فيديو طويل.",
+];
+
+interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code"; mix?: boolean; motion?: unknown; phase?: "pictures" | "approve"; deferred?: number[] }
 interface MediaView {
   id: string; kind: "image" | "video"; name: string; aspect: string; refs?: string[]; state: "todo" | "running" | "done" | "failed";
   url?: string | null; download?: string | null; error?: string; detail?: string; transient?: boolean; tries?: number;
@@ -399,9 +414,26 @@ async function putVideo(blob: Blob, fileName: string): Promise<string> {
 }
 
 /** «🎬 حوّله ريل»: the carousel's slides joined in order into one 9:16 video (lib: ./slides-reel), downloaded. */
-function ReelButton({ items }: { items: SlideView[] }) {
+/** Words that ask for a page button's job (the owner, 18 Nov 2026: «كل زر يستخدم فالمحادثة عادي ينرسل كتابة»). */
+export function pageAction(t: string): "reel" | "download" | null {
+  const s = t.trim().replace(/[.!؟?،,]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!s || s.length > 50 || /(غي[ّ]?ر|عد[ّ]?ل|بدل|شيل|لكن)/.test(s)) return null;
+  if (/^(يلا\s+)?((حو[ّ]?ل|سو[ّ]?ي?|اجمع|طل[ّ]?ع)(ه|ها|هم)?|ابي|أبي|ابغى|ابغا)?\s*(لي\s*)?(ال)?ريل(\s*(منها|منهم|واحد|مقطع واحد))?$/.test(s)) return "reel";
+  if (/^(حم[ّ]?ل|ابي احمل|أبي أحمل|تحميل)\s*(لي\s*)?(كل\s*)?(ال)?(شرائح|سلايدات|صور|فيديوهات|الكل|كلها)$/.test(s) || /^(نز[ّ]?ل)\s*(لي\s*)?(كل\s*)?(ال)?(شرائح|سلايدات)\s*(عندي|على جهازي)?$/.test(s)) return "download";
+  return null;
+}
+
+function ReelButton({ items, go = 0 }: { items: SlideView[]; go?: number }) {
   const [p, setP] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // asked in words: the same as pressing it
+  const lastGo = useRef(go);
+  useEffect(() => {
+    if (go === lastGo.current) return;
+    lastGo.current = go;
+    if (p == null) void make();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [go]);
   async function make() {
     setErr(null);
     setP(0);
@@ -430,9 +462,56 @@ function ReelButton({ items }: { items: SlideView[] }) {
 }
 
 /** The carousel of an answer: tiles in order, the drawing ones as moving placeholders, each made one with its check. */
-export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; step?: string | null }) {
+/** «✏️ عدّل الشريحة»: a slide's own rules as ready choices — each press adds one clear line to the change. */
+export const SLIDE_RULES: { label: string; opts: string[] }[] = [
+  { label: "حركة الدخول", opts: ["من اليمين", "من اليسار", "من تحت", "من فوق", "تكبير من الوسط", "ظهور ناعم", "كلمة كلمة", "بدون حركة دخول"] },
+  { label: "السرعة", opts: ["أبطأ", "أسرع", "هادئة وثابتة"] },
+  { label: "مكان الصورة", opts: ["فوق", "في الوسط", "تحت", "تملأ الشريحة", "يمين", "يسار"] },
+  { label: "مكان الكتابة", opts: ["فوق", "في الوسط", "تحت"] },
+  { label: "حجم الكتابة", opts: ["أكبر", "أصغر"] },
+];
+
+/** The line a ready choice adds to the change («حركة الدخول: من اليمين»), once. */
+export function addRule(said: string, label: string, value: string): string {
+  const lines = said.split("\n").filter((l) => l.trim() && !l.startsWith(`${label}:`));
+  return [...lines, `${label}: ${value}`].join("\n");
+}
+
+/** «0:12», «١٢», «1:05.5» or «12.5» → seconds; null when it is not a time. */
+export function parseClock(v: string): number | null {
+  const t = v.trim().replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[٫,]/g, ".").replace(/[؛:]/g, ":");
+  if (!t) return null;
+  const m = /^(?:(\d{1,2}):)?(\d{1,2}(?:\.\d+)?)$/.exec(t);
+  if (!m) return null;
+  const sec = Number(m[2]);
+  if (m[1] !== undefined && sec >= 60) return null;
+  const all = Number(m[1] ?? 0) * 60 + sec;
+  return Number.isFinite(all) ? all : null;
+}
+
+export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, onApprove, onRedoPicture, onSoundTime, onEditSlide, fonts, reelGo, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; onApprove?: () => void; onRedoPicture?: (n: number, note: string) => void; onSoundTime?: (n: number, from: number, to: number, retext: boolean) => void; onEditSlide?: (ns: number[], said: string) => void; fonts?: FontItem[]; reelGo?: number; step?: string | null }) {
   const ns = [...new Set([...s.items.map((i) => i.n), ...s.todo])].sort((a, b) => a - b);
   const done = s.items.filter((i) => !s.todo.includes(i.n)).length;
+  // which picture is being asked again, and what should change in it (a field here: a browser popup does nothing in the
+  // phone apps' own browsers — Instagram, WhatsApp — so «أعد صورة» did nothing there, 17 Nov 2026)
+  const [redoN, setRedoN] = useState<number | null>(null);
+  const [redoNote, setRedoNote] = useState("");
+  // «⏱️ وقت الصوت»: the person types which part of the sound a slide plays («من ٠:١٢ إلى ٠:٢٠»)
+  const [timeN, setTimeN] = useState<number | null>(null);
+  // «✏️ عدّل الشريحة»: a change to one made slide in the person's words (its program is patched, nothing repainted)
+  const [editN, setEditN] = useState<number | null>(null);
+  const [editSaid, setEditSaid] = useState("");
+  const [editAll, setEditAll] = useState(false);
+  const [ink, setInk] = useState("#ffffff");
+  const [ground, setGround] = useState("#111111");
+  const madeNs = s.items.filter((i) => i.videoUrl && !s.todo.includes(i.n)).map((i) => i.n);
+  const [timeFrom, setTimeFrom] = useState("");
+  const [timeTo, setTimeTo] = useState("");
+  // the words of the new time usually differ: the person chooses whether the slide's text follows them
+  const [retext, setRetext] = useState(false);
+  const tFrom = parseClock(timeFrom);
+  const tTo = parseClock(timeTo);
+  const timeOk = tFrom !== null && tTo !== null && tTo > tFrom && tTo - tFrom <= 60;
   const aspect = s.aspect.replace(":", " / ") || "1 / 1";
   return (
     <div className="ct-slidebox">
@@ -440,10 +519,15 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, st
         <div className="ct-progress" role="status" aria-live="polite">
           <span className="ct-spin" aria-hidden />
           <div>
-            {s.motion ? (
+            {s.phase === "pictures" ? (
+              <>
+                <b>🖼️ المرحلة ١: GPT Image 2 يرسم صور الشرائح… ({s.items.length} من {s.total})</b>
+                <small>نرسم صور كل الشرائح أول (بدون كتابة). لما تخلص تشوفها هنا وتعتمدها أو تعيد أي صورة، وبعدها يبدأ حيدرا ماكس بالتصميم{s.motion ? " والحركة" : ""}. لا تقفل الصفحة.</small>
+              </>
+            ) : s.motion ? (
               <>
                 <b>🎬 حيدرا ماكس يصنع الموشن كاروسيل… ({done} من {s.total})</b>
-                <small>{step ? `${step} — ` : ""}يكتب كل شريحة مشهدًا متحركًا، ويشوف فريماتها ويصلّحها، ثم تطلع هنا فيديو MP4 بصوته (دقايق للشريحة). لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
+                <small>{step ? `${step} — ` : ""}يكتب كل شريحة مشهدًا متحركًا فوق صورتها المعتمدة مرة وحدة، ثم تطلع هنا فيديو MP4 بصوته (دقايق للشريحة، ثلاث شرائح مع بعض). لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
               </>
             ) : s.maker === "code" && s.mix ? (
               <>
@@ -461,8 +545,60 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, st
                 <small>محمد باقر سلّم الطلب لجواد، وكل شريحة يولّدها جواد ثم يفحص باقر كتابتها العربية، وتأخذ نحو دقيقة. لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
               </>
             )}
+            {!!s.motion && s.phase !== "pictures" && <small className="ct-steps">الترتيب: ١) صور الشرائح واعتمادك لها ← ٢) كتابة وتحريك كل شريحة فوق صورتها. كل خطوة تخلص في أقل من ١٠ دقايق؛ الشريحة اللي تطوّل نأجلها ونكمّل الباقي، ونرجع لها في الآخر.</small>}
+            {!!s.deferred?.length && <small className="ct-steps">⏭️ مؤجّلة للآخر: الشريحة {s.deferred.join("، ")} (طوّلت، بنرجع لها بطريقة أخف).</small>}
             <span className="bar"><i style={{ width: `${s.total ? Math.round((done / s.total) * 100) : 0}%` }} /></span>
           </div>
+        </div>
+      )}
+      {s.phase === "approve" && !s.running && onApprove && (
+        <div className="ct-failed ct-approve">
+          <b>🖼️ صور الشرائح جاهزة — راجعها قبل التصميم{s.motion ? " والحركة" : ""}</b>
+          <small> إذا صورة ما عجبتك أعدها (واكتب وش يتغير فيها). إذا كلها تمام اعتمدها، ويبدأ حيدرا ماكس يصمم كل شريحة{s.motion ? " ثم يحرّكها" : ""}.</small>
+          {onRedoPicture && (
+            <div className="ct-actions">
+              {s.items.map((i) => (
+                <button
+                  key={i.n}
+                  type="button"
+                  className="ct-mini"
+                  disabled={busy}
+                  onClick={() => {
+                    setRedoN(redoN === i.n ? null : i.n);
+                    setRedoNote("");
+                  }}
+                  aria-expanded={redoN === i.n}
+                >
+                  🔄 أعد صورة {i.n}
+                </button>
+              ))}
+            </div>
+          )}
+          {onRedoPicture && redoN !== null && (
+            <div className="ct-actions" style={{ alignItems: "stretch" }}>
+              <input
+                className="ct-input"
+                style={{ flex: 1, minWidth: 0, minHeight: 40 }}
+                value={redoNote}
+                onChange={(e) => setRedoNote(e.target.value)}
+                placeholder={`وش يتغير في صورة الشريحة ${redoN}؟ (اتركه فاضي لصورة جديدة بنفس الوصف)`}
+                aria-label={`وش يتغير في صورة الشريحة ${redoN}`}
+              />
+              <button
+                type="button"
+                className="ct-mini ct-go"
+                disabled={busy}
+                onClick={() => {
+                  onRedoPicture(redoN, redoNote.trim());
+                  setRedoN(null);
+                  setRedoNote("");
+                }}
+              >
+                ارسم صورة {redoN} من جديد
+              </button>
+            </div>
+          )}
+          <button type="button" className="ct-mini ct-go" disabled={busy} onClick={onApprove}>✅ اعتمد الصور وابدأ التصميم</button>
         </div>
       )}
       <div className="ct-slides">
@@ -481,6 +617,8 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, st
                   <span className="tools">
                     {item.videoDownload ? <a href={item.videoDownload} download={`${item.name}.mp4`} title="حمّل الفيديو">⬇️</a> : item.download && <a href={item.download} download={`${item.name}.png`}>⬇️</a>}
                     <button type="button" disabled={busy} onClick={() => onRetry([n])} title="أعد رسم هذه الشريحة">🔁</button>
+                    {item.videoUrl && onEditSlide && <button type="button" disabled={busy} onClick={() => { setEditN(n); setEditSaid(""); setEditAll(false); setTimeN(null); }} title="عدّل هذه الشريحة بكلامك">✏️</button>}
+                    {item.videoUrl && onSoundTime && <button type="button" disabled={busy} onClick={() => { setTimeN(n); setTimeFrom(""); setTimeTo(""); setRetext(false); setEditN(null); }} title="اختر وقت الصوت لهذه الشريحة">⏱️</button>}
                   </span>
                 </>
               )}
@@ -488,6 +626,88 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, st
           );
         })}
       </div>
+      {editN !== null && onEditSlide && (
+        <div className="ct-redo ct-time">
+          <b>✏️ تعديل الشريحة {editN}</b>
+          <small> اكتب وش تبي يتغير فيها بالضبط (كلمة، لون، مكان الصورة، حركة الدخول، السرعة…). نعدّل برنامجها نفسه وكل شي ثاني يبقى مثل ما هو، بدون رسم صورة جديدة.</small>
+          <div className="ct-rules">
+            {SLIDE_RULES.map((g) => (
+              <div key={g.label} className="ct-rule">
+                <span>{g.label}</span>
+                {g.opts.map((o) => {
+                  const on = editSaid.split("\n").includes(`${g.label}: ${o}`);
+                  return <button key={o} type="button" className={`ct-chip ${on ? "on" : ""}`} onClick={() => setEditSaid((v) => addRule(v, g.label, o))}>{o}</button>;
+                })}
+              </div>
+            ))}
+            <div className="ct-rule">
+              <span>الألوان</span>
+              <input type="color" value={ink} onChange={(e) => setInk(e.target.value)} aria-label="لون الكتابة" />
+              <button type="button" className="ct-chip" onClick={() => setEditSaid((v) => addRule(v, "لون الكتابة", ink))}>لون الكتابة</button>
+              <input type="color" value={ground} onChange={(e) => setGround(e.target.value)} aria-label="لون الخلفية" />
+              <button type="button" className="ct-chip" onClick={() => setEditSaid((v) => addRule(v, "لون الخلفية", ground))}>لون الخلفية</button>
+            </div>
+            {fonts && fonts.length > 0 && (
+              <div className="ct-rule">
+                <span>الخط</span>
+                <select defaultValue="" onChange={(e) => { const f = fonts.find((x) => x.id === e.target.value); if (f) setEditSaid((v) => addRule(v, "الخط", `${f.name} (${f.id})`)); }}>
+                  <option value="" disabled>اختر خط</option>
+                  {fonts.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+          <textarea rows={3} value={editSaid} onChange={(e) => setEditSaid(e.target.value)} placeholder="اختر من فوق أو اكتب بكلامك، مثال: خل العنوان أكبر والصورة تدخل من اليمين" />
+          {madeNs.length > 1 && (
+            <label className="ct-all">
+              <input type="checkbox" checked={editAll} onChange={(e) => setEditAll(e.target.checked)} /> طبّق نفس التعديل على كل الشرائح ({madeNs.length})
+              {editAll && <small> كل شريحة تتعدّل لحالها، فالتكلفة تقريبًا {madeNs.length} أضعاف تعديل شريحة وحدة.</small>}
+            </label>
+          )}
+          <button type="button" className="ct-mini" onClick={() => setEditN(null)}>إلغاء</button>
+          <button
+            type="button"
+            className="ct-mini ct-go"
+            disabled={busy || editSaid.trim().length < 2}
+            onClick={() => {
+              onEditSlide(editAll && madeNs.length > 1 ? madeNs : [editN], editSaid.trim());
+              setEditN(null);
+              setEditSaid("");
+            }}
+          >
+            {editAll && madeNs.length > 1 ? `عدّل كل الشرائح (${madeNs.length})` : `عدّل الشريحة ${editN}`}
+          </button>
+        </div>
+      )}
+      {timeN !== null && onSoundTime && (
+        <div className="ct-redo ct-time">
+          <b>⏱️ وقت الصوت للشريحة {timeN}</b>
+          <small> اكتب من أي ثانية إلى أي ثانية في مقطعك تبي الشريحة تقوله (مثل ٠:١٢ أو ١٢). نعيد الفيديو بنفس التصميم، بدون رسم من جديد.</small>
+          <div className="ct-time-row">
+            <label>من <input inputMode="decimal" dir="ltr" placeholder="0:12" value={timeFrom} onChange={(e) => setTimeFrom(e.target.value)} /></label>
+            <label>إلى <input inputMode="decimal" dir="ltr" placeholder="0:20" value={timeTo} onChange={(e) => setTimeTo(e.target.value)} /></label>
+          </div>
+          <div className="ct-retext">
+            <span>نص الشريحة:</span>
+            <label><input type="radio" name="retext" checked={!retext} onChange={() => setRetext(false)} /> خلّه مثل ما هو</label>
+            <label><input type="radio" name="retext" checked={retext} onChange={() => setRetext(true)} /> غيّره للكلام اللي في الوقت الجديد</label>
+          </div>
+          {(timeFrom || timeTo) && !timeOk && <small className="ct-warn"> {tFrom !== null && tTo !== null && tTo - tFrom > 60 ? "أطول وقت للشريحة ٦٠ ثانية." : "اكتب وقتين صحيحين، والثاني بعد الأول."}</small>}
+          <button type="button" className="ct-mini" onClick={() => setTimeN(null)}>إلغاء</button>
+          <button
+            type="button"
+            className="ct-mini ct-go"
+            disabled={busy || !timeOk}
+            onClick={() => {
+              if (!timeOk || tFrom === null || tTo === null) return;
+              onSoundTime(timeN, tFrom, tTo, retext);
+              setTimeN(null);
+            }}
+          >
+            ثبّت الوقت وأعد الفيديو
+          </button>
+        </div>
+      )}
       {s.items.some((i) => i.flag) && (
         <ul className="ct-flags">
           {s.items.filter((i) => i.flag).map((i) => <li key={i.n}>⚠️ الشريحة {i.n}: {i.flag}</li>)}
@@ -508,7 +728,7 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, st
           {s.failed.length > 1 && <button type="button" className="ct-mini" disabled={busy} onClick={() => onRetry("failed")}>أعد محاولة كل الفاشلة</button>}
         </div>
       )}
-      {!s.running && s.todo.length > 0 && onResume && (
+      {!s.running && s.todo.length > 0 && s.phase !== "approve" && onResume && (
         <div className="ct-failed">
           <b>⏸️ وقف الرسم عند {s.todo.length === 1 ? `الشريحة ${s.todo[0]}` : `${s.todo.length} شرائح باقية (${s.todo.join("، ")})`}.</b>
           <small> نكمّلها بنفس التصميم والشخصيات اللي انرسمت، بدون ما تشرح من جديد.</small>
@@ -519,7 +739,7 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, st
       {!s.running && s.items.length > 0 && (
         <div className="ct-actions">
           <button className="ct-mini" type="button" onClick={onDownloadAll}>⬇️ حمّل كل الشرائح ({s.items.length})</button>
-          {s.items.length > 1 && <ReelButton items={s.items} />}
+          {s.items.length > 1 && <ReelButton items={s.items} go={reelGo} />}
         </div>
       )}
     </div>
@@ -617,6 +837,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const [pending, setPending] = useState<FileView[]>([]);
   const [uploading, setUploading] = useState(false);
   const [gal, setGal] = useState<Galleries | null>(null);
+  // «حوّله ريل» written: which carousel, and a count that starts its reel button
+  const [reelGo, setReelGo] = useState<{ at: number; n: number }>({ at: -1, n: 0 });
   /** the path opened before the conversation began (its mark goes with the first message) */
   const [pathId, setPathId] = useState<string | null>(null);
   const [pathMenu, setPathMenu] = useState(false);
@@ -672,40 +894,121 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   // one drawing loop per conversation: opening it again (the address, then the list) must not start a second one,
   // or both draw the same slide and the second is refused («هذي الشريحة مو بانتظار الرسم», 5 Nov 2026)
   const looping = useRef(new Set<string>());
+  // «💡 وفّر رصيدك»: the ways to spend less, found on a real run (the owner, 17 Nov 2026)
+  const [tips, setTips] = useState(false);
 
   /** The produce step: the server draws a few slides a call; this asks again while it says `running`. */
-  const runProduce = useCallback(async (id: string, retry?: number[] | "failed") => {
+  const runProduce = useCallback(async (id: string, retry?: number[] | "failed", more?: Record<string, unknown>) => {
     if (looping.current.has(`p:${id}`)) return;
     looping.current.add(`p:${id}`);
     setBusy("producing");
-    let first = true;
-    type Step = { spent?: number; aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number } }; sfx?: Record<string, string> } };
-    const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}), ...(r.code?.mix || old?.mix ? { mix: true } : {}), ...(r.code?.motion || old?.motion ? { motion: r.code?.motion ?? old?.motion } : {}) }));
-    try {
-      for (let guard = 0; guard < 80; guard++) {
-        let r = await postJson<Step>("/api/content/produce", { chatId: id, ...(first && retry ? { retry } : {}) });
-        first = false;
-        show(r);
-        if (typeof r.spent === "number") setSpent(r.spent);
-        if (r.code) {
-          // «حيدرا ماكس»: the slide is drawn here in code (its painted picture placed in it), looked at and rewritten, then sent back
-          const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
-          if (r.code.photos?.length) setCodeStep(`🖼️ صورة الشريحة ${r.code.n} جاهزة من GPT Image 2 (بدون كتابة)`);
-          const motion = r.code.motion ? { n: r.code.n, ...r.code.motion, sfx: r.code.sfx } : null;
-          const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: r.code.style ?? "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "content", motion, onStep: (st) => setCodeStep(st.text) });
-          // a motion slide: its MP4 goes up as the person's upload, and the server records it with the slide
-          let video: string | undefined;
-          if (drawn.video) {
-            setCodeStep(`⬆️ أرفع فيديو الشريحة ${r.code.n}…`);
-            video = await putVideo(drawn.video, `slide-${String(r.code.n).padStart(2, "0")}.mp4`);
-          }
-          setCodeStep(null);
-          r = await postJson<Step>("/api/content/produce", { chatId: id, n: r.code.n, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(video ? { video } : {}) });
-          show(r);
-          if (typeof r.spent === "number") setSpent(r.spent);
+    type Step = { spent?: number; aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; phase?: "pictures" | "approve"; motion?: true; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number; exact?: boolean } }; sfx?: Record<string, string>; stage?: "still"; still?: { code: string; fonts: { head: string; body: string } }; light?: true; program?: { code: string; fonts: { head: string; body: string }; size: [number, number] }; change?: string; text?: string }; deferred?: number[] };
+    const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, phase: r.phase, deferred: r.deferred, ...(r.motion && !old?.motion ? { motion: true } : {}), ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}), ...(r.code?.mix || old?.mix ? { mix: true } : {}), ...(r.code?.motion || old?.motion ? { motion: r.code?.motion ?? old?.motion } : {}) }));
+    // up to three slides at the same time (the owner, 17 Nov 2026: «سو الاسرع… شكله ٣»): each worker asks for a slide nobody
+    // is drawing, draws it here and sends it back. The calls to the produce step go one at a time (the carousel is saved by
+    // each), only the drawing itself runs side by side; the others start after slide 1 is done (it is the reference).
+    const PARALLEL = 3;
+    let chain: Promise<unknown> = Promise.resolve();
+    const produceCall = (body: Record<string, unknown>) => {
+      const run = chain.then(() => postJson<Step>("/api/content/produce", { chatId: id, ...body }));
+      chain = run.catch(() => undefined);
+      return run;
+    };
+    const busyNs = new Set<number>();
+    const steps = new Map<number, string>();
+    const showSteps = () => setCodeStep(steps.size ? [...steps.entries()].sort((a, b) => a[0] - b[0]).map(([k, t]) => `الشريحة ${k}: ${t}`).join(" · ") : null);
+    const stepOf = (n: number, t: string | null) => {
+      if (t) steps.set(n, t);
+      else steps.delete(n);
+      showSteps();
+    };
+    let stop = false;
+    let fatal: unknown = null;
+    let firstDone: () => void = () => undefined;
+    const slideOneDone = new Promise<void>((res) => (firstDone = res));
+    const take = (r: Step) => {
+      show(r);
+      if (typeof r.spent === "number") setSpent(r.spent);
+    };
+    /** Draws one slide here and returns what goes back to the produce step. */
+    const drawSlide = async (code: NonNullable<Step["code"]>): Promise<Record<string, unknown>> => {
+      const n = code.n;
+      const refs = (await Promise.all(code.refs.map(smallJpeg))).filter((x): x is string => !!x);
+      const motion = code.motion ? { n, ...code.motion, sfx: code.sfx } : null;
+      // a motion carousel in two stages: first every slide's still (sent back with its program), then each still animated
+      const stillStage = code.stage === "still";
+      const lighter = code.light === true;
+      stepOf(n, lighter ? "↩️ رجعنا لها بطريقة أخف وأسرع…" : stillStage ? "🖼️ المرحلة ١: تصميمها الثابت…" : code.still ? "🎬 المرحلة ٢: تحريك تصميمها الجاهز…" : "حيدرا ماكس يبدأ…");
+      const extra = { ...(stillStage ? { stillFor: "motion" } : code.still ? { still: code.still.code, stillFonts: code.still.fonts } : {}), ...(lighter ? { light: true } : {}), ...(code.program ? { program: code.program } : {}), ...(code.program && code.change ? { change: code.change } : {}), ...(code.text && code.motion ? { expectText: code.text } : {}) };
+      // each slide on its own (16 Nov 2026): a slide that cannot be drawn is recorded as failed and the others go on;
+      // stopped by the person, or no balance left: everything stops as before
+      try {
+        const drawn = await drawWithCode({ prompt: code.prompt, aspect: code.aspect, style: code.style ?? "", references: refs, photos: code.photos ?? [], model: HAIDARA_MODEL, from: "content", motion, extra, onStep: (st) => stepOf(n, st.text), onProgram: (prog) => produceCall({ saveProgram: { n, ...prog } }) });
+        let video: string | undefined;
+        if (drawn.video) {
+          stepOf(n, "⬆️ أرفع الفيديو…");
+          video = await putVideo(drawn.video, `slide-${String(n).padStart(2, "0")}.mp4`);
         }
-        if (!r.running) break;
+        return { n, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(video ? { video } : {}), ...(stillStage ? { stage: "still", program: drawn.program?.code ?? "", fonts: drawn.program?.fonts ?? null } : {}) };
+      } catch (e) {
+        const why = e instanceof Error ? e.message : "";
+        if ((e instanceof Error && e.name === "AbortError") || /رصيد|اشحن|الاتصال|متصفحك/.test(why)) throw e;
+        // each piece of work ends under 10 minutes (17 Nov 2026): a slide that runs past it is set aside and comes back last
+        if (/تأخرت/.test(why) && !lighter) {
+          stepOf(n, "⏭️ طوّلت أكثر من ٩ دقايق — نكمّل الباقي ونرجع لها في الآخر بطريقة أخف");
+          return { deferSlide: n };
+        }
+        stepOf(n, "⚠️ ما انرسمت — تقدر تعيدها لحالها بزر «أعد المحاولة»");
+        return { n, codeFailed: why || "ما انرسمت" };
+      } finally {
+        stepOf(n, null);
       }
+    };
+    const worker = async (initial?: Step) => {
+      let cur: Step | undefined = initial;
+      for (let guard = 0; guard < 120 && !stop; guard++) {
+        if (!cur) cur = await produceCall({ exclude: [...busyNs] });
+        take(cur);
+        if (!cur.code || busyNs.has(cur.code.n)) {
+          if (!cur.running) stop = true;
+          // nothing free right now: while other slides are drawn this worker ends; alone (the pictures stage), it asks again
+          if (stop || busyNs.size > 0) return;
+          cur = undefined;
+          continue;
+        }
+        const n = cur.code.n;
+        busyNs.add(n);
+        let body: Record<string, unknown>;
+        try {
+          body = await drawSlide(cur.code);
+        } catch (e) {
+          fatal = e;
+          stop = true;
+          busyNs.delete(n);
+          return;
+        }
+        busyNs.delete(n);
+        cur = await produceCall(body);
+        take(cur);
+        if (n === 1 || body.deferSlide) firstDone();
+        if (!cur.running) {
+          stop = true;
+          return;
+        }
+        cur = undefined;
+      }
+    };
+    try {
+      const r0 = await produceCall({ ...(retry ? { retry } : {}), ...(more ? more : {}) });
+      take(r0);
+      const one = worker(r0);
+      // the others join once slide 1 is drawn (straight away when slide 1 is not the one being drawn first)
+      if (!r0.code || r0.code.n !== 1) firstDone();
+      void one.finally(() => firstDone());
+      const helpers = slideOneDone.then(() => (stop ? [] : Promise.all(Array.from({ length: PARALLEL - 1 }, () => worker()))));
+      await Promise.all([one, helpers]);
+      if (fatal) throw fatal;
+      setCodeStep(null);
     } catch (e) {
       setCodeStep(null);
       putSlides((old) => ({ ...(old ?? { aspect: "", items: [], failed: [], total: 0 }), todo: old?.todo ?? [], running: false } as SlidesView));
@@ -828,7 +1131,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     }
   }
 
-  const [claude] = useClaudeModel();
+  const [claude] = useClaudeModel(CONTENT_CLAUDE_MODEL);
   useEffect(() => {
     claudeId.current = claude.id;
   }, [claude.id]);
@@ -863,6 +1166,18 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   async function send(text = q) {
     const typed = text.trim();
     if ((!typed && !pending.length) || busy || uploading) return;
+    // a page button asked in words (the reel, downloading the slides): done here, like the press, with no paid reply
+    const act = !pending.length && editFrom == null ? pageAction(typed) : null;
+    const lastAt = act ? msgs.map((x, i) => (x.slides && !x.slides.running && x.slides.items.length ? i : -1)).filter((i) => i >= 0).at(-1) ?? -1 : -1;
+    if (act && lastAt >= 0) {
+      const items = msgs[lastAt].slides!.items;
+      setQ("");
+      const say = act === "reel" ? (items.length > 1 ? "تمام، أجمع الشرائح الحين في ريل واحد بصوتها 🎬 — يتحمّل عندك أول ما يخلص (تحت الشرائح تشوف النسبة)." : "الريل يحتاج شريحتين أو أكثر.") : `تمام، أحمّل لك الشرائح (${items.length}) ⬇️`;
+      setMsgs((m) => [...m, { role: "user", text: typed, local: true }, { role: "assistant", text: say, local: true }]);
+      if (act === "reel" && items.length > 1) setReelGo((v) => ({ at: lastAt, n: v.n + 1 }));
+      if (act === "download") downloadAll(items);
+      return;
+    }
     const files = [...pending];
     // the first message of a path carries its mark; an edited old message keeps the mark it had, and the talk goes on from there
     const editing = editFrom;
@@ -1054,6 +1369,12 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                       onRetry={(ns) => chatId && void runProduce(chatId, ns)}
                       onDownloadAll={() => downloadAll(m.slides!.items)}
                       onResume={() => chatId && void runProduce(chatId)}
+                      onApprove={() => chatId && void runProduce(chatId, undefined, { approvePictures: true })}
+                      onRedoPicture={(n, note) => chatId && void runProduce(chatId, undefined, { redoPicture: n, note })}
+                      onEditSlide={(ns, said) => chatId && void runProduce(chatId, undefined, { editSlide: { ns, said } })}
+                      fonts={gal?.fonts}
+                      reelGo={reelGo.at === i ? reelGo.n : 0}
+                      onSoundTime={(n, from, to, retext) => chatId && void runProduce(chatId, undefined, { soundTime: { n, from, to, ...(retext ? { retext: true } : {}) } })}
                       step={codeStep}
                     />
                   )}
@@ -1064,7 +1385,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                     </div>
                   )}
                   {i === lastAssistant && !busy && !loginHref && m.questions?.length ? (
-                    <Questions key={`q${i}-${msgs.length}`} questions={m.questions} gal={gal} styleId={styleBefore(msgs, i)} disabled={!!busy} onSend={(t) => void send(t)} onWrite={() => box.current?.focus()} />
+                    <Questions key={`q${i}-${msgs.length}`} questions={m.questions} gal={gal} styleId={styleBefore(msgs, i)} disabled={!!busy} onSend={(t) => void send([q.trim(), t].filter(Boolean).join("\n"))} onWrite={() => box.current?.focus()} />
                   ) : null}
                   {m.role === "assistant" && !m.error && !m.local && (
                     <div className="ct-actions"><button className="ct-mini" onClick={() => navigator.clipboard?.writeText(m.text).catch(() => null)}>انسخ</button></div>
@@ -1104,11 +1425,22 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                 </div>
               )}
               <div className="ct-compose-opts">
-                <ClaudeModelPicker className="ct-claude" disabled={!!busy} spent={spent} />
+                <ClaudeModelPicker className="ct-claude" disabled={!!busy} spent={spent} fallback={CONTENT_CLAUDE_MODEL} />
                 <button type="button" className={`ct-mini ct-verbose${verbose ? " on" : ""}`} aria-pressed={verbose} onClick={toggleVerbose} title="الافتراضي مختصر لتوفير رصيدك؛ المفصّلة فيها شرح وبدائل وأسئلة أعمق">
                   {verbose ? "📝 محادثة مفصّلة ✓" : "📝 خلّها مفصّلة"}
                 </button>
+                <button type="button" className={`ct-mini${tips ? " on" : ""}`} aria-expanded={tips} onClick={() => setTips((v) => !v)}>💡 وفّر رصيدك</button>
               </div>
+              {tips && (
+                <div className="ct-tips" role="note">
+                  <b>💡 كيف توفّر رصيدك في صانع المحتوى</b>
+                  <ul>
+                    {SAVING_TIPS.map((t) => (
+                      <li key={t}>{t}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <div className="ct-compose-row">
                 <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.oga,.flac,.amr,.aif,.aiff,.webm,application/pdf" onChange={(e) => void attach(e.target.files)} />
                 <button type="button" className="ct-attach" aria-label="أرفق حتى 20 ملفًا" title="أرفق حتى 20 صورة أو فيديو أو صوت أو PDF" disabled={uploading || !!busy || pending.length >= JAWAD_ATTACHMENT_LIMIT} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>

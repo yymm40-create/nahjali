@@ -4,6 +4,7 @@
 
 import { postJson } from "@/lib/fetch";
 import { CODE_FIXES, CODE_ROUNDS } from "@/lib/claude-code/skill";
+import { checkSlideVideo } from "./check-video";
 import { SceneHost, SceneError, sceneFont, type SceneInfo } from "@/components/jawad/editor/scene-host";
 import { canExport, probe, renderVideo, sheetAt } from "@/components/jawad/editor/scene-render";
 import { mixSoundtrack } from "@/components/jawad/editor/lab-sound";
@@ -34,13 +35,103 @@ export interface DrawResult {
 }
 
 /** A part of a sound file (from–to, in seconds) as a WAV blob, for one slide's mix. */
+/** One go at a time through the whole-file decode (three slides decoding a long video at once ran a phone out of memory). */
+let decodeLine: Promise<unknown> = Promise.resolve();
+
+/**
+ * `from`–`to` of a sound or a video's sound, as two channels at 48 kHz. First ONLY that part is read (range requests and
+ * the browser's own decoder, through mediabunny): a slide never downloads and decodes the person's whole video — on a
+ * phone that failed with «Decoding failed» for a .mov (a customer, 17 Nov 2026). If that way can't read the file, the
+ * whole file is decoded the old way, one slide at a time, three tries.
+ */
+async function soundRange(url: string, from: number, to: number, RATE: number, rangeOnly = false): Promise<Float32Array[]> {
+  const n = Math.max(1, Math.round((to - from) * RATE));
+  try {
+    const { ALL_FORMATS, AudioBufferSink, Input, UrlSource } = await import("mediabunny");
+    const input = new Input({ source: new UrlSource(url, { requestInit: { cache: "no-store" } }), formats: ALL_FORMATS });
+    try {
+      const track = await input.getPrimaryAudioTrack();
+      if (!track) throw new Error("no audio track");
+      const ctx = new OfflineAudioContext(2, n, RATE);
+      let got = 0;
+      for await (const wb of new AudioBufferSink(track).buffers(from, to)) {
+        const node = ctx.createBufferSource();
+        node.buffer = wb.buffer;
+        node.connect(ctx.destination);
+        node.start(Math.max(0, wb.timestamp - from), Math.max(0, from - wb.timestamp));
+        got++;
+      }
+      if (!got) throw new Error("no sound in range");
+      const out = await ctx.startRendering();
+      return [0, 1].map((c) => out.getChannelData(Math.min(c, out.numberOfChannels - 1)));
+    } finally {
+      input.dispose?.();
+    }
+  } catch (first) {
+    if (rangeOnly) throw first;
+    console.warn("slide sound: the range way failed, decoding the whole file", first);
+  }
+  const whole = async () => {
+    let last: unknown = null;
+    for (let i = 0; i < 3; i++) {
+      try {
+        const r = await fetch(url, { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const all = await new OfflineAudioContext(2, 1, RATE).decodeAudioData(await r.arrayBuffer());
+        const a = Math.max(0, Math.round(from * RATE));
+        const m = Math.max(1, Math.min(all.length - a, n));
+        return [0, 1].map((c) => all.getChannelData(Math.min(c, all.numberOfChannels - 1)).slice(a, a + m));
+      } catch (e) {
+        last = e;
+        await new Promise((ok) => setTimeout(ok, 1500 * (i + 1)));
+      }
+    }
+    throw last instanceof Error ? last : new Error("no sound");
+  };
+  const run = decodeLine.then(whole, whole);
+  decodeLine = run.catch(() => undefined);
+  return run;
+}
+
+/**
+ * The quietest moment of the sound near `t` (within ±0.3 s, the nearer the better): a slide's sound is cut there, in a
+ * real silence between words, not in the middle of one (the planned cuts come from the words' times as heard, which can
+ * be off by a little — a customer's slide started on half a word, 17 Nov 2026). Only the range is read; when it can't
+ * be, the planned time stands. The same time always gives the same cut, so two slides that meet agree on it.
+ */
+export async function quietCut(url: string, t: number): Promise<number> {
+  const RATE = 16000;
+  const W = 0.3;
+  const a = Math.max(0, t - W);
+  const ch = await soundRange(url, a, t + W, RATE, true).catch(() => null);
+  if (!ch?.length || ch[0].length < RATE * 0.05) return t;
+  return quietestNear(ch, RATE, a, t, W);
+}
+
+/** The centre of the quietest 30 ms of `ch` (starting at second `a`), weighed by its distance from `t`. */
+export function quietestNear(ch: Float32Array[], RATE: number, a: number, t: number, W: number): number {
+  const n = ch[0].length;
+  const hop = Math.max(1, Math.round(RATE * 0.01));
+  const win = Math.max(1, Math.round(RATE * 0.03));
+  let best = t;
+  let bestScore = Infinity;
+  for (let i = 0; i + win <= n; i += hop) {
+    let e = 0;
+    for (const c of ch) for (let j = i; j < i + win; j++) e += (c[j] ?? 0) * (c[j] ?? 0);
+    const centre = a + (i + win / 2) / RATE;
+    const score = Math.sqrt(e / (win * ch.length)) * (1 + (0.5 * Math.abs(centre - t)) / W) + 1e-9 * Math.abs(centre - t);
+    if (score < bestScore) {
+      bestScore = score;
+      best = centre;
+    }
+  }
+  return Math.round(best * 1000) / 1000;
+}
+
 async function soundPart(url: string, from: number, to: number): Promise<Blob> {
   const RATE = 48000;
-  const bytes = await (await fetch(url)).arrayBuffer();
-  const all = await new OfflineAudioContext(2, 1, RATE).decodeAudioData(bytes);
-  const a = Math.max(0, Math.round(from * RATE));
-  const n = Math.max(1, Math.min(all.length - a, Math.round((to - from) * RATE)));
-  const ch = [0, 1].map((c) => all.getChannelData(Math.min(c, all.numberOfChannels - 1)).subarray(a, a + n));
+  const ch = await soundRange(url, from, to, RATE);
+  const n = ch[0].length;
   const buf = new ArrayBuffer(44 + n * 4);
   const v = new DataView(buf);
   const str = (o: number, s: string) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
@@ -71,7 +162,7 @@ export interface DrawMotion {
   /** the library's sound effects (id → link), for the scene's cues */
   sfx?: Record<string, string>;
   /** the person's own sound under this slide (its part, in seconds of the file): the slide lasts exactly that long */
-  voice?: { url: string; from: number; to: number } | null;
+  voice?: { url: string; from: number; to: number; exact?: boolean } | null;
 }
 
 /**
@@ -249,7 +340,7 @@ async function aroundFace(bm: ImageBitmap, aspect: number, floor?: number, known
   return out;
 }
 
-type DrawOptions = { prompt: string; aspect: string; style: string; references: string[]; photos?: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" | "content"; edit?: DrawEdit | null; motion?: DrawMotion | null; template?: DrawTemplate | null };
+type DrawOptions = { /** a slide program kept so far is handed back (the content maker saves it: a refresh loses nothing) */ onProgram?: (p: { code: string; fonts: { head: string; body: string }; size: [number, number] }) => Promise<unknown>; prompt: string; aspect: string; style: string; references: string[]; photos?: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" | "content"; edit?: DrawEdit | null; motion?: DrawMotion | null; template?: DrawTemplate | null; /** more for the server: a motion carousel's still stage, or the still to animate */ extra?: Record<string, unknown> };
 
 /**
  * Draws the picture by program, with up to CODE_ROUNDS looks and rewrites. `photos` are the person's pictures to PUT IN
@@ -364,7 +455,7 @@ async function prepare(o: DrawOptions) {
   const assets = loaded.map((p, i) => ({ id: `photo${i + 1}`, bitmap: p.bm }));
   const photos = loaded.map((p) => p.small);
   const motion = o.motion ? { n: o.motion.n, motion: { seconds: o.motion.seconds, style: o.motion.style, first: o.motion.first, total: o.motion.total, ...(o.motion.voice ? { voiced: true } : {}) } } : {};
-  const call = <T>(body: Record<string, unknown>) => postJson<T>(URL, { model: o.model, prompt: o.prompt, aspect: o.aspect, style: o.style, references: o.references, photos, from: o.from ?? "studio", ...motion, ...body }, o.signal);
+  const call = <T>(body: Record<string, unknown>) => postJson<T>(URL, { model: o.model, prompt: o.prompt, aspect: o.aspect, style: o.style, references: o.references, photos, from: o.from ?? "studio", ...motion, ...(o.extra ?? {}), ...body }, o.signal);
   return { assets, call };
 }
 
@@ -437,9 +528,13 @@ async function drawOnce(o: DrawOptions): Promise<DrawResult> {
   const fonts = w.fonts;
   const [W, H] = w.size;
   const host = new SceneHost();
+  // a motion carousel's still (stage 1) gets ONE look, and the fix it asks for is drawn without a second look — faster
+  // (the owner, 17 Nov 2026: «سو الاسرع»)
+  const quick = o.extra?.stillFor === "motion";
+  const rounds = quick ? 2 : CODE_ROUNDS;
   try {
     let best: DrawResult | null = null;
-    for (let round = 1; round <= CODE_ROUNDS; round++) {
+    for (let round = 1; round <= rounds; round++) {
       let bm: ImageBitmap | null = null;
       for (let fix = 0; ; fix++) {
         if (o.signal?.aborted) throw Object.assign(new Error("⏹️ وقّفت الرسم."), { name: "AbortError" });
@@ -461,7 +556,17 @@ async function drawOnce(o: DrawOptions): Promise<DrawResult> {
       const png = await bitmapTo(bm, "image/png");
       const still = await bitmapTo(bm, "image/jpeg", 1280, 0.85);
       bm.close();
-      o.onStep({ text: `حيدرا ماكس يشوف الصورة ويقيّمها (جولة ${round} من ${CODE_ROUNDS})…`, preview: `data:image/jpeg;base64,${still}` });
+      // the content maker: no review at all — drawn and shown to the person (the owner, 17 Nov 2026: «آي مراجعة احذفها»)
+      if (o.from === "content") {
+        best = { png, scores: {}, pass: true, verdict: "", rounds: 1, coins, program: { code, fonts, size: [W, H] } };
+        break;
+      }
+      // quick: the fix of the one look, drawn, is the result (no second look)
+      if (quick && round === 2) {
+        best = { ...best!, png, rounds: 2, program: { code, fonts, size: [W, H] } };
+        break;
+      }
+      o.onStep({ text: quick ? "حيدرا ماكس يشوف التصميم ويقيّمه (نظرة وحدة)…" : `حيدرا ماكس يشوف الصورة ويقيّمها (جولة ${round} من ${CODE_ROUNDS})…`, preview: `data:image/jpeg;base64,${still}` });
       const r = await call<Reviewed>({ action: "review", code, still, round });
       coins += r.coins ?? 0;
       best = { png, scores: r.review.scores, pass: r.review.pass, verdict: r.review.verdict, rounds: round, coins, program: { code, fonts, size: [W, H] } };
@@ -485,12 +590,60 @@ const stopped = (o: DrawOptions) => {
  * a sheet of its frames and rewrites it below the bar, then the page renders the best one to MP4 with its sound (the
  * scene's own sound() and the library's effects at its cues). `png` is its last frame.
  */
+/** Arabic as compared: no diacritics or tatweel, one alef, ta marbuta and alef maqsura as written plainly. */
+const plainArabic = (t: string) => t.normalize("NFKC").replace(/[\u064B-\u065F\u0670\u0640]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه");
+
+/**
+ * The approved words a slide's program does not write (free, exact: the program holds every word it shows as text). A
+ * customer's slide showed «اثنين: علاقات بين القراء» for «ثانيًا: علاقات على أساس العلم» and dropped its sentence, and
+ * the picture check passed it (18 Nov 2026).
+ */
+export function missingWords(code: string, text: string): string[] {
+  const inCode = plainArabic(code);
+  const words = plainArabic(text).split(/[\s،,.:؛!؟?«»"()\-–]+/).filter((w) => /[\u0621-\u064A]{2,}/.test(w));
+  return [...new Set(words.filter((w) => !inCode.includes(w)))];
+}
+
 async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
-  const { assets, call } = await prepare({ ...o, photos: (o.photos ?? []).slice(0, PHOTOS_PER_ROUND) });
+  const { assets, call: callFull } = await prepare({ ...o, photos: (o.photos ?? []).slice(0, PHOTOS_PER_ROUND) });
+  // a slide set aside once (its answer ran past the time) comes back last with lighter thinking; the page sets the slide
+  // aside (it never waits twice in a row): each piece of work ends under 10 minutes (the owner, 17 Nov 2026)
+  const light = o.extra?.light === true;
+  const call = <T,>(body: Record<string, unknown>): Promise<T> => callFull<T>(light ? { ...body, light: true } : body);
   let coins = 0;
   o.onStep({ text: `🎬 حيدرا ماكس يكتب الشريحة ${m.n} مشهدًا متحركًا…` });
-  let w = await call<Wrote>({ action: "write" });
-  coins += w.coins ?? 0;
+  // a program kept before a refresh starts the slide again from there (no second writing)
+  const kept = o.extra?.program as { code: string; fonts: { head: string; body: string }; size: [number, number] } | undefined;
+  // «✏️ عدّل الشريحة»: the person's words patch the kept program (a few lines, nothing repainted or written again)
+  const change = kept && typeof o.extra?.change === "string" ? o.extra.change.trim() : "";
+  let w: Wrote;
+  if (kept && change) {
+    o.onStep({ text: `✏️ حيدرا ماكس يعدّل برنامج الشريحة ${m.n} نفسه بكلامك (بدون رسم من جديد)…` });
+    const e = await call<Wrote>({ action: "write", edit: true, code: kept.code, fonts: kept.fonts, brief: o.prompt, said: change, photosChanged: false });
+    coins += e.coins ?? 0;
+    if (e.code && !e.patchFailed) w = { ...e, size: kept.size };
+    else {
+      // the patch did not take: the slide is written again over its same picture, with the change in its request
+      o.onStep({ text: `التعديل ما ركب على البرنامج — حيدرا ماكس يكتب الشريحة ${m.n} من جديد مع تعديلك…` });
+      w = await call<Wrote>({ action: "write", prompt: `${o.prompt}\n\nTHE CHANGE THE PERSON ASKED FOR THIS SLIDE (apply it exactly): ${change}` });
+      coins += w.coins ?? 0;
+    }
+  } else {
+    if (kept) o.onStep({ text: `♻️ برنامج الشريحة ${m.n} محفوظ — نكمّل من عنده بدون كتابة جديدة…` });
+    w = kept ? { code: kept.code, problems: [], fonts: kept.fonts, size: kept.size, notes: "", coins: 0 } : await call<Wrote>({ action: "write" });
+    coins += w.coins ?? 0;
+  }
+  // every approved word must be written: a program that leaves words out (or rewords them) gets ONE patch for exactly that
+  const expect = typeof o.extra?.expectText === "string" ? o.extra.expectText.trim() : "";
+  const missing = expect && w.code ? missingWords(w.code, expect) : [];
+  if (missing.length) {
+    o.onStep({ text: `✍️ نص الشريحة ${m.n} ناقص أو متغيّر — حيدرا ماكس يصلّحه بالنص المعتمد حرفيًا…` });
+    const f = await call<Wrote>({ action: "write", code: w.code, fixRound: 0, errors: `TEXT CHECK: the slide must show the APPROVED text exactly, word for word, every word, nothing reworded, nothing added, nothing left out:\n${expect}\nThese approved words are missing from the program: ${missing.join(" ، ")}. Put the exact approved text in (keep the design, the layout and the motion).` }).catch(() => null);
+    if (f?.code) {
+      coins += f.coins ?? 0;
+      w = { ...f, size: w.size };
+    }
+  }
   let code = w.code;
   let problems = w.problems;
   const fonts = w.fonts;
@@ -513,7 +666,8 @@ async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
         } catch (e) {
           if (!(e instanceof SceneError) || fix >= CODE_FIXES) throw e instanceof SceneError ? new Error(`برنامج الشريحة ما اشتغل بعد ${fix + 1} محاولات: ${e.message}`) : e;
           o.onStep({ text: "البرنامج طلع فيه خطأ — حيدرا ماكس يصلّحه…" });
-          w = await call<Wrote>({ action: "write", code, errors: `${e.where}${e.t != null ? ` at t=${e.t.toFixed(2)}s` : ""}: ${e.message}\n${e.stack2}` });
+          // (the first fix is a patch; a program that still throws after it is written again whole)
+          w = await call<Wrote>({ action: "write", code, fixRound: fix, errors: `${e.where}${e.t != null ? ` at t=${e.t.toFixed(2)}s` : ""}: ${e.message}\n${e.stack2}` });
           coins += w.coins ?? 0;
           code = w.code;
           problems = w.problems;
@@ -524,6 +678,13 @@ async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
       const png = await bitmapTo(last, "image/png");
       const still = await bitmapTo(last, "image/jpeg", 1280, 0.85);
       last.close();
+      // no review round: the program runs and was checked frame by frame above; the content maker saves it, so a refresh
+      // goes straight to the video (the owner, 17 Nov 2026: «آي مراجعة احذفها… ليش لما نحدث يروح عالفاضي؟»)
+      if (o.extra?.still || o.from === "content") {
+        if (!kept || kept.code !== code) await o.onProgram?.({ code, fonts, size: [W, H] }).catch(() => undefined);
+        best = { result: { png, scores: {}, pass: true, verdict: "", rounds: 1, coins }, code };
+        break;
+      }
       // big enough cells for him to read the Arabic of every frame
       const sheet = await sheetAt(host, Array.from({ length: 12 }, (_, i) => Math.min((d * i) / 11, d - 1 / 30)), 4, 300);
       o.onStep({ text: `حيدرا ماكس يشوف فريمات الشريحة ${m.n} ويقيّمها (جولة ${round} من ${CODE_ROUNDS})…`, preview: `data:image/jpeg;base64,${still}` });
@@ -538,13 +699,26 @@ async function drawMotion(o: DrawOptions, m: DrawMotion): Promise<DrawResult> {
     if (best!.code !== code) info = await host.load(best!.code, { w: W, h: H, fps: 30, assets, fonts: sceneFonts(fonts) });
     stopped(o);
     o.onStep({ text: `🔊 أركّب صوت الشريحة ${m.n}…` });
-    const synth = info!.sound ? await host.sound().catch(() => null) : null;
+    // the sound effects come ONLY from the library made with ElevenLabs (the owner, 16 Nov 2026: «المؤثرات الصوتية لابد
+    // تاخذها من ألف لابس… المؤثر بالكود مزعج»): a scene's own sound() made in code is never played
+    const synth = null;
     const cues = readCues(info!.cues, info!.duration).flatMap((c) => (m.sfx?.[c.sfx] ? [{ url: m.sfx[c.sfx], t: c.t, vol: c.vol }] : []));
     // the person's own sound: this slide's part of it, and the slide lasts exactly as long as that part
-    const own = m.voice ? await soundPart(m.voice.url, m.voice.from, m.voice.to).catch(() => null) : null;
-    const length = m.voice ? Math.max(0.5, m.voice.to - m.voice.from) : info!.duration;
+    // a slide over the person's own sound never comes out silent: no sound, no slide (it is tried again)
+    // its edges moved to the real silence next to them (the start of the sound and its planned end stay when there is none)
+    const cut = m.voice && !m.voice.exact ? { from: m.voice.from > 0.05 ? await quietCut(m.voice.url, m.voice.from) : m.voice.from, to: await quietCut(m.voice.url, m.voice.to) } : null;
+    const part = cut && cut.to - cut.from >= 0.5 ? cut : m.voice;
+    const own = m.voice && part
+      ? await soundPart(m.voice.url, part.from, part.to).catch((e: unknown) => {
+          throw new Error(`ما قدرت أجيب صوت الشريحة ${m.n} من ملفك (${e instanceof Error ? e.message : "خطأ"}). اضغط «أعد المحاولة».`);
+        })
+      : null;
+    const length = part ? Math.max(0.5, part.to - part.from) : info!.duration;
     const audio = synth || cues.length || own ? await mixSoundtrack({ duration: length, synth, cues, voice: own, music: null }) : null;
     const video = await renderVideo(host, { duration: length, fps: 30, blur: info!.blur, sub: info!.blur > 0 ? 3 : 1, audio }, (p) => o.onStep({ text: `🎞️ أطلّع فيديو الشريحة ${m.n}… ${Math.round(p * 100)}٪` }), o.signal);
+    // checked before it is shown: its length, and the person's sound really in it (a silent slide reached the person, 17 Nov 2026)
+    o.onStep({ text: `🔎 أتأكد من فيديو الشريحة ${m.n} (الطول والصوت)…` });
+    await checkSlideVideo(video, { n: m.n, wantSeconds: length, wantSound: !!m.voice });
     return { ...best!.result, coins, video };
   } finally {
     host.destroy();

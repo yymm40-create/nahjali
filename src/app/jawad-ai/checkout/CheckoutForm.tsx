@@ -4,11 +4,67 @@ import { useEffect, useRef, useState } from "react";
 
 // Moyasar's form (Moyasar.js): the card number goes from the buyer's browser straight to Moyasar, never to our server.
 const MPF = "https://cdn.moyasar.com/mpf/1.19.0";
+// Apple Pay's label goes to Moyasar as the merchant's display_name, which takes ASCII only: an Arabic label fails the
+// merchant check and the Apple Pay sheet closes as soon as it opens (16 Nov 2026).
 // Apple Pay accepts cards from these countries (Moyasar's default is Saudi Arabia only)
 const GCC = ["SA", "KW", "IQ", "BH", "AE", "QA", "OM"];
 
 type MoyasarInit = (config: Record<string, unknown>) => void;
 const moyasar = () => (window as unknown as { Moyasar?: { init: MoyasarInit } }).Moyasar;
+
+// TEMPORARY diagnosis of Apple Pay closing at once (16 Nov 2026): every step Apple Pay reports (the session's options,
+// the merchant check's answer, a cancel and its sessionError) goes to /api/checkout/applepay-log, read in the server log.
+function diagnoseApplePay() {
+  const w = window as unknown as { ApplePaySession?: (new (v: number, r: unknown) => EventTarget & Record<string, unknown>) & { __diag?: boolean } };
+  const Base = w.ApplePaySession;
+  if (!Base || Base.__diag) return;
+  const t0 = Date.now();
+  const log = (step: string, data?: unknown) => {
+    try {
+      const body = JSON.stringify({ step, ms: Date.now() - t0, host: location.host, data });
+      if (!navigator.sendBeacon?.("/api/checkout/applepay-log", body)) void fetch("/api/checkout/applepay-log", { method: "POST", body, keepalive: true });
+    } catch {
+      /* diagnosis only */
+    }
+  };
+  const err = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}` : String(e));
+  class Diag extends (Base as unknown as new (v: number, r: unknown) => Record<string, unknown> & EventTarget) {
+    constructor(v: number, r: unknown) {
+      log("new", { v, r });
+      try {
+        super(v, r);
+      } catch (e) {
+        log("new-failed", err(e));
+        throw e;
+      }
+      const self = this as unknown as Record<string, (...a: unknown[]) => unknown>;
+      for (const m of ["completeMerchantValidation", "completePayment", "abort", "begin"]) {
+        const f = self[m];
+        if (typeof f === "function")
+          self[m] = (...a: unknown[]) => {
+            const d = a[0] as Record<string, unknown> | undefined;
+            log(m, m === "completeMerchantValidation" ? { keys: d ? Object.keys(d) : null, domainName: d?.domainName, displayName: d?.displayName } : a[0]);
+            try {
+              return f.apply(this, a);
+            } catch (e) {
+              log(`${m}-threw`, err(e));
+              throw e;
+            }
+          };
+      }
+      this.addEventListener("cancel", (e) => log("cancel", (e as unknown as { sessionError?: unknown }).sessionError ?? null));
+      this.addEventListener("validatemerchant", (e) => log("validatemerchant", (e as unknown as { validationURL?: string }).validationURL));
+      this.addEventListener("paymentauthorized", () => log("paymentauthorized"));
+    }
+  }
+  // the statics (canMakePayments, STATUS_SUCCESS…) are inherited from ApplePaySession; assigning them threw on iOS Safari
+  // («Attempted to assign to readonly property») and broke the page (16 Nov 2026)
+  Object.defineProperty(Diag, "__diag", { value: true });
+  w.ApplePaySession = Diag as unknown as typeof Base;
+  window.addEventListener("error", (e) => log("window-error", `${e.message}`));
+  window.addEventListener("unhandledrejection", (e) => log("rejection", err(e.reason)));
+  log("ready");
+}
 
 function loadMoyasar(): Promise<void> {
   if (moyasar()) return Promise.resolve();
@@ -38,6 +94,13 @@ export default function CheckoutForm(p: { amount: number; description: string; k
   useEffect(() => {
     if (started.current) return;
     started.current = true;
+    // diagnosis only: it must never stop the payment form
+    if (p.applePay)
+      try {
+        diagnoseApplePay();
+      } catch {
+        /* ignore */
+      }
     loadMoyasar()
       .then(() => {
         moyasar()!.init({
@@ -52,7 +115,7 @@ export default function CheckoutForm(p: { amount: number; description: string; k
           supported_networks: ["mada", "visa", "mastercard"],
           // which purchase this payment is for: the return and the webhook settle it by this, checked against our own record
           metadata: { kind: p.kind, ref: p.refId },
-          ...(p.applePay ? { apple_pay: { country: "SA", label: "الجواد الذكي", validate_merchant_url: "https://api.moyasar.com/v1/applepay/initiate", supported_countries: GCC } } : {}),
+          ...(p.applePay ? { apple_pay: { country: "SA", label: "JAWAD AI", validate_merchant_url: "https://api.moyasar.com/v1/applepay/initiate", supported_countries: GCC } } : {}),
         });
         setReady(true);
       })

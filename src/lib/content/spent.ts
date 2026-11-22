@@ -119,5 +119,37 @@ export async function contentSpent(userId: string, chatId: string): Promise<numb
   // the replies this conversation counted as they happened: never show less than that
   const replies = tallyContent({ chats: chats.map((c) => ({ id: String(c.id), createdAt: ms(c.created_at), updatedAt: ms(c.updated_at) })), files: [], jobs: [], calls: calls.filter((c) => c.label === BAQIR_LABEL) }).get(chatId) ?? 0;
   const kept = Math.max(0, Number(chat.spent_halalas ?? 0));
-  return (totals.get(chatId) ?? 0) + Math.max(0, kept - replies);
+  return Math.max(0, (totals.get(chatId) ?? 0) + Math.max(0, kept - replies) + (await spentOffset(chatId)));
+}
+
+// ───────── the owner's correction of a conversation's shown cost ─────────
+// When the platform's own fault cost a person (a picture drawn again for nothing…), the owner gives the money back
+// (/admin/users) and sets what the conversation shows (the owner, 17 Nov 2026: «ورجع لها ٧… تكلفة المحادثة خلها ١٨»).
+// Kept as an offset in content_kv, so what is spent afterwards still adds on top.
+
+const offsetKey = (chatId: string) => `spent-offset:${chatId}`;
+
+/** The owner's correction of a conversation's shown total (halalas, usually negative), 0 when none. */
+export async function spentOffset(chatId: string): Promise<number> {
+  const { data } = await db().from("content_kv").select("value").eq("key", offsetKey(chatId)).maybeSingle();
+  const n = Number(data?.value ?? 0);
+  return Number.isFinite(n) ? Math.round(n) : 0;
+}
+
+/** Makes the conversation show `halalas` now (what it spends later still adds on top). Owner only (the caller checks). */
+export async function setChatSpent(chatId: string, halalas: number): Promise<{ before: number; now: number }> {
+  const { data: chat } = await db().from("content_chats").select("user_id").eq("id", chatId).maybeSingle();
+  if (!chat) throw new Error("chat not found");
+  const before = (await contentSpent(String(chat.user_id), chatId)) ?? 0;
+  const offset = (await spentOffset(chatId)) + Math.round(halalas) - before;
+  const { error } = await db().from("content_kv").upsert({ key: offsetKey(chatId), value: String(offset), updated_at: new Date().toISOString() });
+  if (error) throw error;
+  return { before, now: (await contentSpent(String(chat.user_id), chatId)) ?? 0 };
+}
+
+/** A person's conversations in «صانع المحتوى», newest first, with what each shows (owner only, the caller checks). */
+export async function userContentChats(userId: string, limit = 15): Promise<{ id: string; title: string; updatedAt: string; spent: number }[]> {
+  const { data } = await db().from("content_chats").select("id,title,updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(limit);
+  const rows = (data ?? []) as { id: string; title: string | null; updated_at: string }[];
+  return Promise.all(rows.map(async (r) => ({ id: r.id, title: String(r.title ?? "").slice(0, 80), updatedAt: r.updated_at, spent: (await contentSpent(userId, r.id).catch(() => null)) ?? 0 })));
 }

@@ -503,6 +503,12 @@ export class Player {
     if (!this.plainSrc.has(src)) m.crossOrigin = "anonymous";
     const el = m;
     el.addEventListener("error", () => {
+      // a file of the computer (the desktop program serves it with CORS): the only way it fails is that it is not there
+      // any more — moved with its folder, renamed or deleted — never a storage's CORS
+      if (src.startsWith("haidara-media:")) {
+        this.trouble(a, `ما لقيت «${a.name ?? ""}» في مكانه على جهازك: انتقل مجلده أو تغيّر اسمه. من «الوسائط» اضغط «اربط الملفات من جديد» واختر مجلدها الجديد.`);
+        return;
+      }
       if (!el.crossOrigin || this.plainSrc.has(src)) {
         this.trouble(a, `ما قدر المتصفح يشغّل «${a.name ?? ""}»؛ قد يكون الملف تالفًا أو رابطه انتهى. جرّب تحديث الصفحة.`);
         return;
