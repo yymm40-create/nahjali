@@ -2,7 +2,7 @@ import { after } from "next/server";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, totalTokens, type ClaudeTurn } from "./anthropic";
-import { currentClaude, withClaude } from "./claude-model";
+import { forTask, keepClaude } from "./claude-model";
 import { addMessage, stageTurns } from "./conversation";
 import { generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
 import { failJob, JOB_STALE_MS, logReplyTokens, replyTokens, startJob, succeedJob } from "./usage";
@@ -206,7 +206,7 @@ async function queueReply(project: FilmProject, user: { id: string; email?: stri
     units: 0,
     unit: "tokens",
   });
-  if (created) { const picked = currentClaude().id; after(() => withClaude(picked, () => runSheetReply(project.id, job.id))); };
+  if (created) after(keepClaude(() => runSheetReply(project.id, job.id)));
   return job.id;
 }
 
@@ -903,7 +903,9 @@ export async function runSheetReply(projectId: string, jobId: string) {
     if (String(lastAsk?.content ?? "").startsWith(BATCH_REQUEST)) return await runSheetBatch(projectId, jobId, turns, handoffUsd);
     // an hour's cache: between replies the sheet pictures are drawn and the person looks at them (often more than 5
     // minutes), so on the 5-minute cache most replies wrote the whole conversation (with its pictures) again
-    const result = await callClaudeJson<Reply>({ system: SYSTEM, turns, schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS, cacheTtl: "1h" });
+    // «اختر رحلتك»: until the sheet map is approved the sheet maker plans and asks; after it he writes the sheets' prompts
+    const task = (await sheetVersions(projectId)).some((v) => v.kind === "sheet_understanding" && v.status === "approved") ? "sheets.prompt" : "sheets.plan";
+    const result = await forTask(task, () => callClaudeJson<Reply>({ system: SYSTEM, turns, schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS, cacheTtl: "1h" }));
     logReplyTokens("sheets", projectId, result.usage);
     const r = result.data;
     const { data: asked } = await db()
@@ -1009,7 +1011,7 @@ async function runSheetBatch(projectId: string, jobId: string, turns: ClaudeTurn
   if (!pending.length) throw new Error("no sheets left to write");
   const one = async (item: (typeof pending)[number]) => {
       // the shared prefix is marked, the sheet's own line is not (`cacheTail: false`): see batchAsk
-      const result = await callClaudeJson<Reply>({ system: SYSTEM, turns: batchAsk(turns, item), schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS, cacheTtl: "1h", cacheTail: false });
+      const result = await forTask("sheets.prompt", () => callClaudeJson<Reply>({ system: SYSTEM, turns: batchAsk(turns, item), schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS, cacheTtl: "1h", cacheTail: false }));
       logReplyTokens(`sheets-batch ${item.id}`, projectId, result.usage);
       return { item, result };
   };
@@ -1102,8 +1104,7 @@ async function convertStart(project: FilmProject, user: { id: string; email?: st
       estimateUsd: LIKENESS_USD, units: 0, unit: "tokens", assetId: up.id,
     });
     await setUploadMeta(up.id, { likeness_state: "running", likeness_error: null });
-    const picked = currentClaude().id;
-    after(() => withClaude(picked, () => describeAndDraw(project, user, up, job.id, style)));
+    after(keepClaude(() => describeAndDraw(project, user, up, job.id, style)));
     started++;
   }
   return started;
@@ -1114,12 +1115,12 @@ async function describeAndDraw(project: FilmProject, user: { id: string; email?:
   try {
     const link = await storage.from(FILM_BUCKET).createSignedUrl(up.storage_path!, 3600);
     if (link.error || !link.data) throw link.error ?? new Error("no link to the photo");
-    const r = await callClaudeJson<Likeness>({
+    const r = await forTask("sheets.likeness", () => callClaudeJson<Likeness>({
       system: LIKENESS_SYSTEM,
       turns: [{ role: "user", content: [{ type: "image", url: link.data.signedUrl }, { type: "text", text: `Target style (for "style_short"):\n${style.text}` }] }],
       schema: LIKENESS_SCHEMA,
       maxTokens: 3000,
-    });
+    }));
     likeness = r.data;
     await setUploadMeta(up.id, { likeness, likeness_state: "done", likeness_error: null });
     await succeedJob(jobId, { costUsd: claudeCost(r.usage), units: totalTokens(r.usage) });
@@ -1198,13 +1199,13 @@ const UNDERSTAND_SCHEMA = { type: "object", additionalProperties: false, require
 async function understandEdit(project: FilmProject, user: { id: string; email?: string | null }, o: { id: string; name: string; prompt: string; text: string }) {
   const { job } = await startJob({ projectId: project.id, user, service: "anthropic", operation: STAGE, idempotencyKey: `understand:${crypto.randomUUID()}`, estimateUsd: 0.05, units: 0, unit: "tokens" });
   try {
-    const r = await callClaudeJson<{ understanding: string }>({
+    const r = await forTask("sheets.understand_edit", () => callClaudeJson<{ understanding: string }>({
       system: "You are the sheet maker of an Arabic film studio. The person wants to change one character or environment sheet. Restate in Gulf Arabic, in 2–3 short lines, exactly what you understood will change in the picture and what stays the same. Do not write a prompt, do not ask anything else, do not judge.",
       turns: [{ role: "user", content: `الشيت: ${o.id} · ${o.name}\n\nوصفه الحالي (برومبت إنجليزي):\n${o.prompt.slice(0, 6000)}\n\nتعديلي:\n${o.text}` }],
       schema: UNDERSTAND_SCHEMA,
       maxTokens: 1200,
       effort: "low",
-    });
+    }));
     await succeedJob(job.id, { costUsd: claudeCost(r.usage), units: totalTokens(r.usage) });
     return r.data.understanding.trim();
   } catch (e) {
