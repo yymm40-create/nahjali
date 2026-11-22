@@ -81,17 +81,25 @@ async function loadSessions(supabase: SupabaseClient): Promise<SessionRow[]> {
   }
 }
 
+/** My library, with each book's habit and daily target (SQL 0125) when the columns are there. */
+async function loadLibrary(supabase: SupabaseClient) {
+  const read = (extra: string) => supabase.from("mahdi_user_books").select(`state, added_at, finished_at${extra}, book:mahdi_books (${BOOK_COLUMNS})`).order("added_at");
+  const res = await read(", habit_id, daily_target");
+  if (res.error && ["42703", "PGRST204"].includes(res.error.code ?? "")) return read("");
+  return res;
+}
+
 /** Everything the reading screens need for the signed-in user. */
 export async function loadReading(supabase: SupabaseClient, me: string): Promise<ReadingData> {
   const [lib, sessions, goals] = await Promise.all([
-    supabase.from("mahdi_user_books").select(`state, added_at, finished_at, book:mahdi_books (${BOOK_COLUMNS})`).order("added_at"),
+    loadLibrary(supabase),
     loadSessions(supabase),
     supabase.from("mahdi_reading_goals").select("*").maybeSingle(),
   ]);
   const g = goals.data;
-  const library = ((lib.data ?? []) as unknown as { state: LibraryEntry["state"]; added_at: string; finished_at: string | null; book: BookRow | null }[])
+  const library = ((lib.data ?? []) as unknown as { state: LibraryEntry["state"]; added_at: string; finished_at: string | null; habit_id?: string | null; daily_target?: number | null; book: BookRow | null }[])
     .filter((r) => r.book)
-    .map((r) => ({ book: bookFromRow(r.book!, me), state: r.state, addedAt: r.added_at, finishedAt: r.finished_at }));
+    .map((r) => ({ book: bookFromRow(r.book!, me), state: r.state, addedAt: r.added_at, finishedAt: r.finished_at, habitId: r.habit_id ?? null, dailyTarget: r.daily_target ?? null }));
   const unitOf = new Map(library.map((e) => [e.book.id, e.book.unit]));
   return {
     library,

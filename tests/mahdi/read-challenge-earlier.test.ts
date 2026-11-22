@@ -22,7 +22,7 @@ describe("pages read before («earlier»)", () => {
     expect(sql).toContain("mahdi_group_habit_logs");
     expect(sql).toContain("mahdi_challenge_logs");
     expect(sql).toContain("goal_habit");
-    expect(read("src/app/api/mahdi/reading/sessions/route.ts")).toMatch(/if \(!earlier\) await applyToHabit/);
+    expect(read("src/app/api/mahdi/reading/sessions/route.ts")).toMatch(/if \(!earlier\) \{\s*await applyToHabit/);
   });
   it("the breakdown: mine for everyone, anyone's for the owner", () => {
     const api = read("src/app/api/mahdi/read-challenge/route.ts");

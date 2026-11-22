@@ -1540,6 +1540,30 @@ export const ar = {
     saved: "حُفظت الجلسة.",
     savedOffline: "لا يوجد اتصال. حفظنا الجلسة على جهازك وسنرسلها عند عودة الإنترنت.",
     pendingSessions: (n: number) => `${n} جلسة بانتظار الإرسال`,
+    // a book's own habit (SQL 0125)
+    bookHabit: {
+      title: "عادة هالكتاب",
+      pages: "صفحة",
+      narrations: "رواية",
+      perDay: (unit: string) => `${unit} باليوم`,
+      linked: "في قائمة عاداتك: كل ما تقرأ في هالكتاب تنضاف صفحاتك لها.",
+      today: (read: string, target: string, unit: string) => `اليوم: ${read} من ${target} ${unit}`,
+      doneToday: "خلّصت حد اليوم ✓",
+      change: "غيّر العدد",
+      remove: "ما أبي عادة له",
+      removeTitle: "تشيل عادة هالكتاب؟",
+      removeBody: "تنحذف العادة من قائمة عاداتك مع أيامها. قراءتك في الكتاب تبقى.",
+      makeTitle: "خلّه عادة يومية",
+      makeHint: "حدد كم تقرأ منه كل يوم، وينضاف لقائمة عاداتك. كل ما تسجّل قراءتك فيه تنحسب في العادة، ولما توصل الحد تكتمل.",
+      make: "أضفه لعاداتي",
+      made: "أضفناه لعاداتك 📖",
+      saved: "انحفظ الحد اليومي",
+      removed: "انشالت عادة الكتاب",
+      badTarget: "اكتب عدد من 1 إلى 1000.",
+      notMade: "ما قدرنا نسوي العادة: يمكن وصلت لحد العادات، أو للكتاب عادة من قبل.",
+      onAdd: "📅 يصير عادة يومية في قائمة عاداتك",
+      onAddHint: "كل ما تقرأ فيه تنحسب صفحاتك في العادة، وتقدر تغيّر الحد اليومي من صفحة الكتاب.",
+    },
     // pages already in the book's map (a page counts once in «تحدي القراءة»)
     repeat: {
       some: (fresh: number, repeated: number) =>
@@ -2280,6 +2304,7 @@ export const ar = {
         book: "صفحات كتاب في «القارئ العلوي»",
         habit: "عادة وحدتها صفحة",
         goal_habit: "مكتوبة باليد في عادة القراءة",
+        book_habit: "مكتوبة باليد في عادة الكتاب",
         group_habit: "عادة في برنامج «إخوة الولاية»",
         challenge: "«التحديات الموحدة»",
       },

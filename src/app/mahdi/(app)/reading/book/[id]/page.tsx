@@ -11,6 +11,7 @@ import { duration, sendSession, shrinkImage, uploadBookPdf } from "@/lib/mahdi/c
 import { parseNumberInput } from "@/lib/mahdi/client/derive";
 import type { ReadingData } from "@/lib/mahdi/types";
 import BookCover from "@/components/mahdi/BookCover";
+import BookHabitCard from "@/components/mahdi/BookHabitCard";
 import { CoverPicker, PdfPicker, pdfSizeLabel } from "@/components/mahdi/BookFiles";
 import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
 import Icon from "@/components/mahdi/Icon";
@@ -197,6 +198,9 @@ export default function BookPage() {
           <p className="whitespace-pre-line">{book.description}</p>
         </section>
       )}
+
+      {/* the book's own habit: today's pages against its daily target */}
+      <BookHabitCard entry={entry} onFresh={apply} />
 
       <form className="m-card space-y-3 p-5" onSubmit={addPages}>
         <label className="block">

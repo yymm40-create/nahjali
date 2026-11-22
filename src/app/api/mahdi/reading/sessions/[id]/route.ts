@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { loadReading } from "@/lib/mahdi/server/reading";
-import { applyToHabit, readingReply } from "@/lib/mahdi/server/reading-write";
+import { addToHabit, applyToHabit, bookHabitOf, readingReply } from "@/lib/mahdi/server/reading-write";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -21,5 +21,7 @@ export const DELETE = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const { goals, library } = await loadReading(supabase, profile.userId);
   const unit = library.find((e) => e.book.id === s.book_id)?.book.unit ?? "page";
   await applyToHabit(supabase, goals, s.log_date, s.seconds, s.pages_count, unit, -1).catch((e) => console.error("[mahdi reading habit]", e));
+  const bookHabit = await bookHabitOf(supabase, s.book_id);
+  if (bookHabit && bookHabit !== goals.habitId) await addToHabit(supabase, bookHabit, s.log_date, s.pages_count, -1).catch((e) => console.error("[mahdi book habit]", e));
   return NextResponse.json(await readingReply(supabase, profile));
 });

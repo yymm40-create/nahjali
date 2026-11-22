@@ -51,7 +51,7 @@ export interface ReadDetailRow {
   day: string;
   /** book: a session of «القارئ العلوي» · habit: a habit in pages · goal_habit: typed by hand into the reading-goal habit
    *  · group_habit: a «إخوة الولاية» program habit · challenge: a «التحديات الموحدة» challenge */
-  source: "book" | "habit" | "goal_habit" | "group_habit" | "challenge";
+  source: "book" | "habit" | "goal_habit" | "book_habit" | "group_habit" | "challenge";
   /** the session (for «book»), the habit or the challenge */
   refId: string;
   title: string;
