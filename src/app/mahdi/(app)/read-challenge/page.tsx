@@ -21,6 +21,8 @@ interface Row {
   mine: boolean;
   /** only for the owner: whose breakdown to open */
   id?: string;
+  /** only for the owner: sessions that only repeated pages, or a very big day */
+  flag?: { repeats: number; maxDay: number } | null;
 }
 interface Data {
   challenge: ReadChallenge | null;
@@ -161,6 +163,7 @@ export default function ReadChallengePage() {
                 <span className="min-w-0 flex-1 truncate font-semibold" dir="auto">
                   {r.displayName}
                   {r.mine && <span className="m-gold"> · {R.you}</span>}
+                  {r.flag && <span className="block text-xs font-normal" style={{ color: "var(--m-error)" }}>⚠️ {R.flag(r.flag.repeats, r.flag.maxDay)}</span>}
                 </span>
                 <span className="m-num shrink-0 text-end">
                   <b>{fmtNum(r.pages)}</b> <span className="m-muted text-sm">{R.pageWord}</span>

@@ -1540,6 +1540,13 @@ export const ar = {
     saved: "حُفظت الجلسة.",
     savedOffline: "لا يوجد اتصال. حفظنا الجلسة على جهازك وسنرسلها عند عودة الإنترنت.",
     pendingSessions: (n: number) => `${n} جلسة بانتظار الإرسال`,
+    // pages already in the book's map (a page counts once in «تحدي القراءة»)
+    repeat: {
+      some: (fresh: number, repeated: number) =>
+        fresh === 0 ? `كل هالصفحات مسجّلة عندك من قبل في هالكتاب (${repeated}).` : `منها ${fresh} جديدة، و${repeated} مسجّلة عندك من قبل في هالكتاب.`,
+      all: "هالصفحات مسجّلة عندك من قبل، وما تنحسب مرة ثانية في «تحدي القراءة». لو قاعد تعيد قراءتها اضغط «احفظ على أي حال».",
+      saveAnyway: "احفظ على أي حال",
+    },
     sessionTooShort: "الجلسة قصيرة جدًا. اقرأ قليلًا ثم أنهِها.",
     duration: "مدة الجلسة",
     // goals and stats
@@ -2252,6 +2259,8 @@ export const ar = {
     pageWord: "صفحة",
     card: "تحدي القراءة: مين يقرأ أكثر؟ شوف الترتيب",
     detailNotReady: "التفاصيل تحتاج تحديث القاعدة (ملف SQL رقم 0121).",
+    flag: (repeats: number, maxDay: number) =>
+      [repeats > 0 ? `${repeats} جلسات مكررة` : "", maxDay > 300 ? `${maxDay} صفحة في يوم واحد` : ""].filter(Boolean).join(" · ") + " — راجعه",
     detail: {
       open: (name: string) => `تفاصيل صفحات ${name}`,
       tapHint: "اضغط على اسمك وتشوف صفحاتك من وين انحسبت.",

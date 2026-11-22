@@ -40,3 +40,23 @@ describe("a page of a book counts once (SQL 0122)", () => {
     expect(sql).toContain("to_regclass('public.mahdi_group_habit_logs')");
   });
 });
+
+describe("warning before saving pages already in the book", () => {
+  it("counts new and repeated pages against the book's map", async () => {
+    const { newPages } = await import("@/lib/mahdi/engine");
+    // Ahmed's case: pages 7–296 already there, then 9–166 again
+    expect(newPages([[9, 166]], [[7, 296]])).toEqual({ fresh: 0, repeated: 158 });
+    expect(newPages([[290, 310]], [[7, 296]])).toEqual({ fresh: 14, repeated: 7 });
+    expect(newPages([[1, 10]], [])).toEqual({ fresh: 10, repeated: 0 });
+  });
+  it("both saving screens ask before saving only repeated pages", () => {
+    for (const f of ["src/app/mahdi/(app)/reading/session/page.tsx", "src/app/mahdi/(app)/reading/book/[id]/page.tsx"]) {
+      const src = read(f);
+      expect(src).toContain("newPages(");
+      expect(src).toContain("t.reading.repeat.saveAnyway");
+    }
+  });
+  it("the owner sees who to look at", () => {
+    expect(read("src/app/api/mahdi/read-challenge/route.ts")).toContain("readChallengeFlags");
+  });
+});

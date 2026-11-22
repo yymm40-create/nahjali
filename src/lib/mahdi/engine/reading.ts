@@ -55,6 +55,17 @@ export function mergeRanges(ranges: readonly (readonly number[])[], maxPage = In
 /** How many distinct pages the ranges cover. */
 export const countPages = (ranges: readonly PageRange[]) => mergeRanges(ranges).reduce((n, [a, b]) => n + b - a + 1, 0);
 
+/**
+ * Of the pages in `ranges`, how many are new and how many were already saved in the book (`read`, its map). A page of a
+ * book counts once in «تحدي القراءة», so the screens warn before saving pages already there.
+ */
+export function newPages(ranges: readonly PageRange[], read: readonly PageRange[]): { fresh: number; repeated: number } {
+  const total = countPages(ranges);
+  const both = countPages(mergeRanges([...ranges, ...read]));
+  const fresh = both - countPages(mergeRanges(read));
+  return { fresh, repeated: total - fresh };
+}
+
 const toLatinDigits = (s: string) =>
   s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6f0));
 

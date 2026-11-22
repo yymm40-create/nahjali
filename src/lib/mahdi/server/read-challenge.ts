@@ -81,3 +81,26 @@ export async function setSessionEarlier(challengeId: string, sessionId: string, 
   boardCache.delete(challengeId);
   return true;
 }
+
+/**
+ * For the owner: who to look at — members with sessions that only repeated pages already saved, or a day over
+ * `DAY_FLAG` pages. Read from the same lines as the count (SQL 0122); empty before it.
+ */
+export const DAY_FLAG = 300;
+export async function readChallengeFlags(challengeId: string): Promise<Map<string, { repeats: number; maxDay: number }>> {
+  const out = new Map<string, { repeats: number; maxDay: number }>();
+  const { data, error } = await createAdminClient().rpc("mahdi_read_challenge_rows", { p_challenge: challengeId });
+  if (error) return out;
+  const days = new Map<string, number>();
+  for (const r of (data ?? []) as { user_id: string; day: string; pages: number | string; counted: boolean; why: string | null }[]) {
+    const f = out.get(r.user_id) ?? out.set(r.user_id, { repeats: 0, maxDay: 0 }).get(r.user_id)!;
+    if (r.why === "repeat") f.repeats++;
+    if (r.counted) {
+      const key = `${r.user_id}:${r.day}`;
+      const n = (days.get(key) ?? 0) + Number(r.pages);
+      days.set(key, n);
+      f.maxDay = Math.max(f.maxDay, n);
+    }
+  }
+  return out;
+}
