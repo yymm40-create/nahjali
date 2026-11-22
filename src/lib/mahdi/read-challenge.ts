@@ -58,6 +58,7 @@ export interface ReadDetailRow {
   pages: number;
   ranges: [number, number][] | null;
   counted: boolean;
-  /** why it doesn't count: «earlier» (read before) or «narration» (a book of narrations) */
-  why: "earlier" | "narration" | null;
+  /** why it doesn't count: «earlier» (read before), «narration» (a book of narrations) or «repeat» (only pages of
+   *  that book already saved before — a page counts once, SQL 0122) */
+  why: "earlier" | "narration" | "repeat" | null;
 }
