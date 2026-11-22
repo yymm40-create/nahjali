@@ -27,10 +27,27 @@ export function styleTestPictures<P extends Picture>(style: StyleRow | null | un
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
-/** The test picture attached to the sheets' drawing, or null (switched off, no style approved yet, or no picture of it). */
-export function styleTestRef<P extends Picture>(style: StyleRow | null | undefined, assets: readonly P[], hasFile?: (p: P) => boolean): P | null {
-  if (!style || style.status !== "approved" || !testRefOn(style)) return null;
+/** The test picture that would go with a drawing — the one the person picked, else the latest — whether or not it is on. */
+export function styleTestCandidate<P extends Picture>(style: StyleRow | null | undefined, assets: readonly P[], hasFile?: (p: P) => boolean): P | null {
+  if (!style || style.status !== "approved") return null;
   const pics = styleTestPictures(style, assets, hasFile);
   const wanted = style.data.testRef?.assetId;
   return (wanted ? pics.find((p) => p.id === wanted) : undefined) ?? pics.at(-1) ?? null;
 }
+
+/** The test picture attached to the sheets' drawing, or null (switched off, no style approved yet, or no picture of it). */
+export function styleTestRef<P extends Picture>(style: StyleRow | null | undefined, assets: readonly P[], hasFile?: (p: P) => boolean): P | null {
+  return testRefOn(style) ? styleTestCandidate(style, assets, hasFile) : null;
+}
+
+/**
+ * One drawing's own choice («📎» on a sheet's card, ticked or not when «ولّد» is pressed) wins over the film's setting;
+ * none (the chain that draws by itself) follows the setting.
+ */
+export function testRefFor<P extends Picture>(style: StyleRow | null | undefined, assets: readonly P[], useTest: boolean | undefined, hasFile?: (p: P) => boolean): P | null {
+  if (useTest === false) return null;
+  return useTest === true ? styleTestCandidate(style, assets, hasFile) : styleTestRef(style, assets, hasFile);
+}
+
+/** Whether a drawn picture really went with the test picture (written on it only once it was attached). */
+export const drawnWithTest = (meta: Record<string, unknown> | null | undefined) => typeof meta?.style_test_ref === "string" && Boolean(meta.style_test_ref);

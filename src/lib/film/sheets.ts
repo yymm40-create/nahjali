@@ -8,7 +8,7 @@ import { generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
 import { failJob, JOB_STALE_MS, logReplyTokens, replyTokens, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
 import { GENERATOR_FACTS, MASTER_STYLE_ONLY, SHEET_APP_INTEGRATION, SHEET_MAKER_PROMPT, SHEET_MAKER_SCHEMA, STYLE_PLACEHOLDER, TEST_STYLE_FOR_MASTER, TEST_STYLE_FOR_SHEET } from "@config/film-prompts/sheet-maker";
-import { STYLE_TEST_KEY, styleTestPictures, styleTestRef, type TestRefChoice } from "./style-test-ref";
+import { STYLE_TEST_KEY, styleTestPictures, testRefFor, type TestRefChoice } from "./style-test-ref";
 import { findStyle } from "@config/film-styles";
 import { sheetImpact } from "./impact";
 import { CONVERT_SHEETS, convertSheetPrompt, LIKENESS_SCHEMA, LIKENESS_SYSTEM, PORTRAITS_PER_PHOTO, portraitPrompt, type Likeness } from "@config/film-prompts/convert-person";
@@ -215,14 +215,14 @@ async function queueReply(project: FilmProject, user: { id: string; email?: stri
 
 export type SheetAction =
   | { action: "start" }
-  | { action: "approve"; versionId: string; choices?: Record<string, MapChoice>; count?: number }
+  | { action: "approve"; versionId: string; choices?: Record<string, MapChoice>; count?: number; useTest?: boolean }
   | { action: "answers"; versionId: string; answers: string[] }
   | { action: "revise"; text: string; versionId?: string; mode?: "edit" | "direct" }
   | { action: "retry" }
   | { action: "finish" }
   | { action: "test_styles"; styleIds: string[] }
   | { action: "choose_style"; styleId: string }
-  | { action: "generate_image"; sheetId: string; count?: number }
+  | { action: "generate_image"; sheetId: string; count?: number; useTest?: boolean }
   // «تأكد من فهمي»: how the sheet maker understood an edit, before anything is written or drawn
   | { action: "understand_edit"; sheetId: string; text: string }
   | { action: "write_all" }
@@ -262,11 +262,13 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
   };
   // A picture that can't start (coins, too many at once) never undoes the approval before it: the page keeps its
   // «ولّد الصورة» button to try again
+  // «📎» on a sheet's card: this drawing's own choice to send the style test picture (none: the film's setting)
+  const useTest = "useTest" in input && typeof input.useTest === "boolean" ? input.useTest : undefined;
   const tryImage = async (v: SheetVersion, count = 1) => {
     let images = 0;
     try {
       for (let i = 0; i < count; i++) {
-        await generateSheet(project, user, v, assets);
+        await generateSheet(project, user, v, assets, useTest);
         images++;
       }
       return { images };
@@ -765,10 +767,11 @@ export function sheetHandoff(project: Pick<FilmProject, "title">, versions: Shee
 }
 
 /** Generates the picture of an approved sheet prompt, with its references (the master for style only). */
-async function generateSheet(project: FilmProject, user: { id: string; email?: string | null }, prompt: SheetVersion, assets: FilmAsset[]) {
+async function generateSheet(project: FilmProject, user: { id: string; email?: string | null }, prompt: SheetVersion, assets: FilmAsset[], useTest?: boolean) {
   const sheetId = prompt.ref_key;
-  // «صورة الاختبار مرجع»: the test picture of the chosen style (on unless the person switched it off)
-  const test = styleTestRef(latest(await sheetVersions(project.id), "style"), assets, (a) => Boolean(a.storage_path));
+  // «صورة الاختبار مرجع»: the test picture of the chosen style — the card's own «📎» when it was sent, else the film's
+  // setting (on unless the person switched it off)
+  const test = testRefFor(latest(await sheetVersions(project.id), "style"), assets, useTest, (a) => Boolean(a.storage_path));
   if (!prompt.data.prompt) throw new UserError("برومبت هذا الشيت فاضي.", 409);
   // a real person converted: the sheet's only references are his chosen single images — no real photo, no master
   if (convertUploads(assets, sheetId).length) {

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { STYLE_TEST_KEY, styleTestPictures, styleTestRef, testRefOn } from "@/lib/film/style-test-ref";
+import { STYLE_TEST_KEY, drawnWithTest, styleTestCandidate, styleTestPictures, styleTestRef, testRefFor, testRefOn } from "@/lib/film/style-test-ref";
 import { TEST_STYLE_FOR_MASTER, TEST_STYLE_FOR_SHEET } from "@config/film-prompts/sheet-maker";
 
 const pic = (id: string, styleId: string, at: number, o: Partial<{ status: string; ref_key: string; kind: string }> = {}) => ({
@@ -45,5 +45,32 @@ describe("«صورة الاختبار مرجع»", () => {
     expect(body.indexOf("if (test) refs.push(test);")).toBeLessThan(body.indexOf("refs.push(images[MASTER_ID]);"));
     expect(body).toContain("TEST_STYLE_FOR_MASTER");
     expect(src).toContain('case "set_test_ref"');
+  });
+
+  it("a card's own «📎» wins over the film's setting; without it the setting decides", () => {
+    const off = style({ testRef: { on: false, assetId: "a1" } });
+    // ticked on the card while the film's setting is off: the picked picture goes
+    expect(testRefFor(off, tests, true)?.id).toBe("a1");
+    expect(styleTestCandidate(off, tests)?.id).toBe("a1");
+    // unticked on the card while the setting is on: nothing goes
+    expect(testRefFor(style(), tests, false)).toBeNull();
+    // the chain that draws by itself follows the setting
+    expect(testRefFor(style(), tests, undefined)?.id).toBe("a2");
+    expect(testRefFor(off, tests, undefined)).toBeNull();
+    // ticked, but no test picture: nothing to send (and nothing said to be sent)
+    expect(testRefFor(style(), [], true)).toBeNull();
+  });
+
+  it("a picture says it went with the test picture only when the server wrote so on it", () => {
+    expect(drawnWithTest({ style_test_ref: "a2" })).toBe(true);
+    expect(drawnWithTest({})).toBe(false);
+    expect(drawnWithTest(null)).toBe(false);
+    const src = readFileSync("src/lib/film/sheets.ts", "utf8");
+    // written on the picture's row with the very picture that was attached to it
+    expect(src).toContain("meta: test ? { style_test_ref: test.id } : {}");
+    // the card's choice reaches the drawing
+    expect(src).toContain("await generateSheet(project, user, v, assets, useTest);");
+    const card = readFileSync("src/app/film/[id]/sheets/SheetCards.tsx", "utf8");
+    expect(card).toContain("...(canTest ? { useTest } : {})");
   });
 });
