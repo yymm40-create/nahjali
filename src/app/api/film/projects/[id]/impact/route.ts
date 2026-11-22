@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { getOwnedProject, requireFilmApiUser } from "@/lib/film/access";
 import { applyImpact, dropImpact, impactsOf } from "@/lib/film/impact";
+import { withProjectClaude } from "@/lib/film/journey";
 
 export const maxDuration = 120;
 
@@ -17,7 +18,8 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
   const user = await requireFilmApiUser();
   const project = await getOwnedProject((await params).id, user.id, "all");
   const b = (await req.json().catch(() => ({}))) as { action?: unknown; id?: unknown; sheets?: unknown; generations?: unknown };
-  if (b.action === "apply") return NextResponse.json(await applyImpact(project, user, b.id, b));
+  // the remade sheets and shots are written with the project's journey
+  if (b.action === "apply") return NextResponse.json(await withProjectClaude(project, user.email, (b as { model?: unknown }).model, () => applyImpact(project, user, b.id, b)));
   if (b.action === "drop") {
     await dropImpact(project, b.id);
     return NextResponse.json({ ok: true });

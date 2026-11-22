@@ -5,6 +5,8 @@ import { requireFilmApiUser } from "@/lib/film/access";
 import { projectFields } from "@/lib/film/validate";
 import { FILM_LIMITS } from "@config/film";
 import { normalizeJourneyIntake } from "@/lib/film/intake";
+import { setProjectJourney } from "@/lib/film/journey";
+import { isFilmJourney } from "@config/film-journey";
 
 /** Creates a new film project from the user's title and story. */
 export const POST = handle(async (req: Request) => {
@@ -33,5 +35,8 @@ export const POST = handle(async (req: Request) => {
     made = await db.from("film_projects").insert(row).select("id").single();
   }
   if (made.error || !made.data) throw made.error ?? new Error("insert failed");
+  // «اختر رحلتك»: the mind that writes this film, kept with it (a film whose choice could not be kept is still made: it
+  // answers with the person's own pick, and the choice can be made again from its pages)
+  if (isFilmJourney(body.journey)) await setProjectJourney(made.data.id, body.journey).catch((e) => console.error("film journey not kept", e));
   return NextResponse.json({ id: made.data.id });
 });

@@ -3,7 +3,8 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
 import { stageTurns } from "./conversation";
-import { currentClaude, withClaude } from "./claude-model";
+import { forTask, keepClaude } from "./claude-model";
+import { scriptTask } from "@config/film-journey";
 import { failJob, JOB_STALE_MS, logReplyTokens, replyTokens, startJob, succeedJob } from "./usage";
 import type { FilmJob, FilmProject } from "./types";
 import { readResearch, researchText } from "./research";
@@ -148,12 +149,12 @@ export async function scriptAction(project: FilmProject, user: { id: string; ema
       // «الرجوع الذكي»: a screenplay approved again while sheets or shots exist → سجاد lists what the change reaches
       const again = v.kind === "screenplay" && project.stage !== "screenwriter" && versions.some((x) => x.kind === "screenplay" && x.id !== v.id && x.status === "approved");
       await approve(project.id, v, versions);
-      if (again) after(() => screenplayImpact(project, user));
+      if (again) after(keepClaude(() => screenplayImpact(project, user)));
       if (v.kind === "handoff") {
         // The approved handoff unlocks the sheet maker (a project already past it stays where it is)
         if (project.stage === "screenwriter") await db().from("film_projects").update({ stage: "sheets" }).eq("id", project.id);
         // a scene of a series: سجاد checks its continuity with the scenes around it
-        after(() => watchAfterScreenplay(project.id));
+        after(keepClaude(() => watchAfterScreenplay(project.id)));
         return null;
       }
       userText = "اعتمد";
@@ -218,7 +219,7 @@ export async function scriptAction(project: FilmProject, user: { id: string; ema
     units: 0,
     unit: "tokens",
   });
-  if (created) { const picked = currentClaude().id; after(() => withClaude(picked, () => runScriptJob(project.id, newJob.id))); };
+  if (created) after(keepClaude(() => runScriptJob(project.id, newJob.id)));
   return newJob.id;
 }
 
@@ -255,7 +256,9 @@ export async function runScriptJob(projectId: string, jobId: string) {
     try {
       // an hour's cache: the person reads each deliverable (the story, the screenplay) before answering, often for more than
       // 5 minutes, and the 5-minute cache was gone by then — the whole conversation was written again on the next reply
-      result = await callClaudeJson<ScriptReply>({ system: SYSTEM, turns, schema: SCREENWRITER_SCHEMA, maxTokens: MAX_TOKENS, cacheTtl: "1h" });
+      // «اختر رحلتك»: the reply is named by the deliverable it will be (the understanding, the questions, the screenplay, the handoff)
+      const task = scriptTask(msgs.filter((m) => m.role === "user").at(-1)?.content ?? "", await scriptVersions(projectId));
+      result = await forTask(task, () => callClaudeJson<ScriptReply>({ system: SYSTEM, turns, schema: SCREENWRITER_SCHEMA, maxTokens: MAX_TOKENS, cacheTtl: "1h" }));
       usage = result.usage;
       logReplyTokens("screenwriter", projectId, usage);
     } catch (err) {
@@ -303,7 +306,7 @@ export async function runScriptJob(projectId: string, jobId: string) {
     if (isHandoff) {
       // the project moves to the sheet maker the first time only: a screenplay revised later never pushes it back
       await client.from("film_projects").update({ stage: "sheets" }).eq("id", projectId).eq("stage", "screenwriter");
-      after(() => watchAfterScreenplay(projectId));
+      after(keepClaude(() => watchAfterScreenplay(projectId)));
     }
 
     await succeedJob(jobId, { costUsd: claudeCost(usage) + handoffUsd, units: totalTokens(usage) });
