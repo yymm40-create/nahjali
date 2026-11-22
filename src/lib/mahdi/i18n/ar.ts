@@ -2254,6 +2254,8 @@ export const ar = {
     expand: "كبّر المحادثة لحجم الشاشة",
     shrink: "رجّع المحادثة صغيرة",
     card: "الشيخ الذكي: روايات وأدعية من مكتبة الثقلين بمصادرها",
+    homeHint: "يبحث لك في كتب الحديث من مكتبة الثقلين ويجيبك بالنص ومصدره",
+    ask: "اسأل سؤالك",
   },
   // «رابط حسابي»: what my public link shows of my reading (only when I turn it on)
   publicReading: {

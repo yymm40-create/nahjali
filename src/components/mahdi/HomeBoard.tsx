@@ -38,6 +38,7 @@ import EmergencySetup from "./EmergencySetup";
 import Tick, { TICK_SHAPES, useTickPref } from "./home/Tick";
 import { shownPlace, useLook } from "./ThemeRoot";
 import ShrineArt from "./ShrineArt";
+import SheikhLink from "./SheikhLink";
 import { designOf } from "@config/mahdi";
 import Sheet from "./Sheet";
 import { StoriesBar } from "./social/Stories";
@@ -167,6 +168,9 @@ export default function HomeBoard() {
 
       <PushPrompt />
       <ReviewHints />
+
+      {/* «الشيخ الذكي»: on everyone's home, above the cards they arrange (not one of them, so never turned off) */}
+      <SheikhLink home />
 
       <div className="m-board">
         {list.map((id) => (
