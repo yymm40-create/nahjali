@@ -30,3 +30,13 @@ describe("pages read before («earlier»)", () => {
     expect(api).toMatch(/who !== user\.id && \(!owner/);
   });
 });
+
+describe("a page of a book counts once (SQL 0122)", () => {
+  it("only the first session that saved a page counts it", () => {
+    const sql = read("supabase/migrations/0122_mahdi_read_challenge_new_pages.sql");
+    expect(sql).toContain("distinct on (user_id, book_id, page)");
+    expect(sql).toContain("'repeat'");
+    // works without the group tables (0083) too
+    expect(sql).toContain("to_regclass('public.mahdi_group_habit_logs')");
+  });
+});
