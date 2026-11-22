@@ -14,6 +14,9 @@ import { useDesktop } from "./desktop";
 import type { EditorAsset, ImportItem, ProjectSummary } from "./types";
 import TemplateCard from "./TemplateCard";
 import { READY_TEMPLATES, type Template } from "@/lib/editor/templates";
+import { DRAFT_LANGS, DRAFT_LENGTHS, DRAFT_LIMITS, DRAFT_RATIOS, type DraftLang } from "@/lib/editor/draft";
+import type { Ratio } from "@/lib/editor/model";
+import { track } from "@/lib/feature-track";
 
 const ago = (iso: string, now: number) => {
   const m = Math.round((now - new Date(iso).getTime()) / 60_000);
@@ -34,6 +37,7 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
   const [now, setNow] = useState<number | null>(null);
   const [wizard, setWizard] = useState(false);
   const [gallery, setGallery] = useState(false);
+  const [idea, setIdea] = useState(false);
   const onDesktop = useDesktop();
   useEffect(() => {
     const t = setTimeout(() => setNow(Date.now()), 0);
@@ -161,6 +165,15 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
                 </button>
               </li>
               <li>
+                <button type="button" onClick={() => (loginHref ? router.push(loginHref) : setIdea(true))} className="group flex aspect-[4/5] w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-jw-accent/40 bg-jw-accent/5 p-3 text-center transition hover:border-jw-accent">
+                  <span className="grid h-12 w-12 place-items-center rounded-full bg-jw-surface-2 text-jw-accent transition group-hover:scale-110" aria-hidden>
+                    <Icon name="wand" size={24} />
+                  </span>
+                  <span className="font-bold">من فكرة لمسودة</span>
+                  <span className="text-[11px] text-jw-muted">اكتب فكرتك وحيدرا ماكس يسوي الفيديو كامل</span>
+                </button>
+              </li>
+              <li>
                 <label className={`group flex aspect-[4/5] w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-jw-line bg-jw-surface/60 p-3 text-center transition hover:border-jw-accent ${opening ? "pointer-events-none opacity-70" : ""}`}>
                   <input
                     type="file"
@@ -218,6 +231,7 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
       </div>
       {wizard && <NewProject onClose={() => setWizard(false)} />}
       {gallery && <TemplateGallery onClose={() => setGallery(false)} />}
+      {idea && <IdeaStart onClose={() => setIdea(false)} />}
     </div>
   );
 }
@@ -453,6 +467,80 @@ function TemplateGallery({ onClose }: { onClose: () => void }) {
             {grid(mine)}
           </section>
         )}
+      </div>
+    </div>
+  );
+}
+
+const SHAPES: Record<string, string> = { "9:16": "طولي (ريلز)", "16:9": "عرضي (يوتيوب)", "1:1": "مربع", "4:5": "منشور" };
+
+/**
+ * «من فكرة لمسودة» from the launcher: the idea (or a script), its length, shape and language; a project in that shape
+ * opens with the window where «حيدرا ماكس» shows each route's price, writes the plan and makes it after a yes.
+ */
+function IdeaStart({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const [text, setText] = useState("");
+  const [seconds, setSeconds] = useState<number>(30);
+  const [ratio, setRatio] = useState<Ratio>("9:16");
+  const [lang, setLang] = useState<DraftLang>("ar");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => e.key === "Escape" && !busy && onClose();
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [busy, onClose]);
+  const go = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const title = text.trim().split(/\s+/).slice(0, 6).join(" ").slice(0, 60) || "مسودة";
+      const { id } = await postJson<{ id: string }>("/api/jawad/editor/projects", { kind: ratio === "16:9" ? "horizontal" : "reel", title });
+      track("editor.draft_home");
+      leaveStartKit({ projectId: id, files: [], assets: [], draft: { idea: text.trim(), seconds, ratio, lang } });
+      router.push(`/jawad-ai/editor/${id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "تعذّر.");
+      setBusy(false);
+    }
+  };
+  const seg = <T extends string | number>(label: string, value: T, items: [T, string][], pick: (v: T) => void) => (
+    <fieldset className="space-y-1.5">
+      <legend className="text-xs font-bold">{label}</legend>
+      <div className="jw-seg flex-wrap" role="radiogroup" aria-label={label}>
+        {items.map(([k, t]) => (
+          <button key={String(k)} type="button" role="radio" aria-checked={value === k} onClick={() => pick(k)}>
+            {t}
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  );
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-labelledby="is-title" onClick={(e) => e.target === e.currentTarget && !busy && onClose()}>
+      <div className="jw-panel jw-scroll max-h-[92dvh] w-full max-w-lg space-y-4 overflow-y-auto rounded-b-none p-4 sm:rounded-2xl">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 id="is-title" className="text-lg font-black">من فكرة لمسودة</h2>
+            <p className="text-xs text-jw-muted">حيدرا ماكس يكتب الخطة، وتشوف سعر كل طريقة قبل ما يتصنع أي شي.</p>
+          </div>
+          <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon" onClick={onClose} disabled={busy} aria-label="إغلاق">
+            <Icon name="x" size={18} />
+          </button>
+        </div>
+        <label className="block space-y-1">
+          <span className="text-xs font-bold">الفكرة أو السكربت</span>
+          <textarea autoFocus className="jw-input min-h-32 w-full text-sm leading-6" dir="auto" maxLength={DRAFT_LIMITS.idea} value={text} onChange={(e) => setText(e.target.value)} placeholder="مثال: ليش لازم نشرب ماء كفاية؟ ٣ أسباب بسيطة… أو الصق السكربت كامل" />
+        </label>
+        {seg("الطول", seconds, DRAFT_LENGTHS.map((s) => [s, `${s} ثانية`] as [number, string]), setSeconds)}
+        {seg("الشكل", ratio, DRAFT_RATIOS.map((r) => [r, SHAPES[r]] as [Ratio, string]), setRatio)}
+        {seg("اللغة", lang, Object.entries(DRAFT_LANGS) as [DraftLang, string][], setLang)}
+        <p className="text-[11px] leading-5 text-jw-faint">بعدها تختار الصوت وطريقة الصورة (صور + موشن، موشن بالكود، أو فيديو مولّد) وكل وحدة بسعرها.</p>
+        {error && <p className="error-box text-xs">{error}</p>}
+        <button type="button" className="jw-btn jw-btn-primary w-full" disabled={busy || text.trim().length < 3} onClick={go}>
+          {busy ? <span className="jw-spinner" /> : <Icon name="wand" size={16} />} كمّل
+        </button>
       </div>
     </div>
   );

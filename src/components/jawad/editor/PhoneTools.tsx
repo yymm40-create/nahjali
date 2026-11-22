@@ -19,6 +19,7 @@ export type PhoneAction =
   | { kind: "transcript" }
   | { kind: "shorts" }
   | { kind: "templates" }
+  | { kind: "draft" }
   | { kind: "claude" }
   | { kind: "ask"; text: string }
   | { kind: "extract" }
@@ -75,6 +76,7 @@ const MAIN: Chip[] = [
   { id: "transcript", label: "النص", icon: "book", go: { kind: "transcript" } },
   { id: "shorts", label: "مقاطع قصيرة", icon: "scissors", go: { kind: "shorts" } },
   { id: "templates", label: "قوالب", icon: "grid", go: { kind: "templates" } },
+  { id: "draft", label: "من فكرة", icon: "wand", go: { kind: "draft" }, accent: true },
   { id: "media", label: "الوسائط", icon: "folder", go: { kind: "library" } },
   { id: "project", label: "المقاس", icon: "ratio", go: { kind: "project" } },
 ];

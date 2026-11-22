@@ -50,6 +50,7 @@ import { planSeedanceExtend, startMake } from "@/lib/editor/make-any";
 import { smartMask } from "@/lib/editor/smart-mask";
 import { translateCaptions } from "@/lib/editor/translate";
 import { findShorts } from "@/lib/editor/shorts-find";
+import { draftPlan, draftPrice, draftQuote, draftStart } from "@/lib/editor/draft-server";
 
 // listening to a long clip can take a while
 // حيدرا ماكس's long answers (a big timeline, a few correction rounds) may run as long as the platform allows
@@ -76,7 +77,7 @@ export const PUT = handle(async (req: Request, ctx: Ctx) => {
   return NextResponse.json(await saveTimeline(p, { ...b, actor: pageActor(b.actor) }));
 });
 
-const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "lab_chat", "lab_search", "lab_cover_write", "lab_cover_review", "lab_picture", "upscale", "transcribe", "align", "translate_captions", "shorts", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
+const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "lab_chat", "lab_search", "lab_cover_write", "lab_cover_review", "lab_picture", "upscale", "transcribe", "align", "translate_captions", "shorts", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff", "draft_quote", "draft_plan", "draft_price", "draft_start"]);
 
 /** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history, snapshot, rules. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
@@ -160,6 +161,15 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     // «اصنع لي…» from حيدرا ماكس: a priced plan started as a JAWAD AI job
     case "make_start":
       return NextResponse.json(await startMake(user, owner, b, new URL(req.url).origin, who.team));
+    // «من فكرة لمسودة»: the prices first (planning and each route), the plan, the edited plan priced, its parts started
+    case "draft_quote":
+      return NextResponse.json(await draftQuote(p, who, b), noStore);
+    case "draft_plan":
+      return NextResponse.json(await draftPlan(p, who, b));
+    case "draft_price":
+      return NextResponse.json(await draftPrice(p, who, b), noStore);
+    case "draft_start":
+      return NextResponse.json(await draftStart(p, who, user, owner, b, new URL(req.url).origin, who.team));
     // Seedance only: continue a selected clip from its first/last boundary frame.
     case "extend_plan":
       return NextResponse.json(await planSeedanceExtend(who, b));
