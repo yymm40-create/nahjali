@@ -16,14 +16,12 @@ interface Log {
 
 const L = t.sheikhLog;
 const usd = (n: number) => `$${n < 0.1 ? n.toFixed(4) : n.toFixed(2)}`;
-const who = (p: number) => (p === 0 ? L.you : L.person(p));
 const time = (iso: string) => new Date(iso).toLocaleTimeString("ar-u-nu-latn", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Riyadh" });
 
-/** The owner's log of «الشيخ الذكي»: every question with its answer, and the numbers — nobody named. */
+/** The owner's log of «الشيخ الذكي»: every question people asked (not his own) with its answer, and the numbers — nobody named. */
 export default function SheikhQuestionsPage() {
   const [data, setData] = useState<Log | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [hideMine, setHideMine] = useState(false);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   useEffect(() => {
@@ -32,8 +30,8 @@ export default function SheikhQuestionsPage() {
 
   const list = useMemo(() => {
     const words = q.trim();
-    return (data?.questions ?? []).filter((x) => (!hideMine || x.person !== 0) && (!words || x.question.includes(words) || (x.answer ?? "").includes(words)));
-  }, [data, hideMine, q]);
+    return (data?.questions ?? []).filter((x) => !words || x.question.includes(words) || (x.answer ?? "").includes(words));
+  }, [data, q]);
 
   const head = (
     <header className="flex items-center gap-3">
@@ -53,11 +51,11 @@ export default function SheikhQuestionsPage() {
   if (!s.questions) return <div className="space-y-4">{head}<p className="m-muted">{L.empty}</p></div>;
   const maxDay = Math.max(1, ...s.days.map((d) => d.questions));
   const tiles: [string, string, string?][] = [
-    [L.questions, fmtNum(s.questions), L.others(s.othersQuestions, s.othersPeople)],
+    [L.questions, fmtNum(s.questions)],
     [L.people, fmtNum(s.people), L.cameBack(s.cameBack)],
     [`${L.quick} / ${L.deep}`, `${fmtNum(s.quick)} / ${fmtNum(s.deep)}`],
     [L.avgTime, `${s.avgSecs.quick === null ? "—" : L.secs(Math.round(s.avgSecs.quick))} / ${s.avgSecs.deep === null ? "—" : L.secs(Math.round(s.avgSecs.deep))}`, `${L.quick} / ${L.deep}`],
-    [L.cost, usd(s.usd), L.othersCost(usd(s.othersUsd))],
+    [L.cost, usd(s.usd)],
     [L.avgCost, `${s.avgUsd.quick === null ? "—" : usd(s.avgUsd.quick)} / ${s.avgUsd.deep === null ? "—" : usd(s.avgUsd.deep)}`, `${L.quick} / ${L.deep}`],
     [L.noSources, fmtNum(s.noSources), `${L.noAnswer}: ${fmtNum(s.noAnswer)}`],
     [L.reports, fmtNum(s.reports)],
@@ -106,9 +104,6 @@ export default function SheikhQuestionsPage() {
         <h2 className="font-semibold">{L.all} ({fmtNum(list.length)})</h2>
         <div className="flex flex-wrap items-center gap-3">
           <input className="m-field min-h-11 flex-1" value={q} onChange={(e) => setQ(e.target.value)} placeholder={L.search} aria-label={L.search} />
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={hideMine} onChange={(e) => setHideMine(e.target.checked)} /> {L.hideMine}
-          </label>
         </div>
         {list.length === 0 && <p className="m-muted text-sm">{L.none}</p>}
         {list.map((x) => {
@@ -117,7 +112,7 @@ export default function SheikhQuestionsPage() {
           return (
             <article key={key} className="m-card space-y-2 p-4">
               <div className="m-muted flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                <span className="font-semibold">{who(x.person)}</span>
+                <span className="font-semibold">{L.person(x.person)}</span>
                 <span className="m-num">{riyadhDay(x.at)} · {time(x.at)}</span>
                 <span>{x.mode === "deep" ? L.deep : L.quick}</span>
                 {x.secs !== null && <span>{L.secs(x.secs)}</span>}
