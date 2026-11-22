@@ -195,6 +195,7 @@ async function loadExtras(supabase: SupabaseClient, logsFrom: string): Promise<P
       showAvatar: Boolean(privacy.data?.show_avatar),
       privateAccount: Boolean(privacy.data?.private_account),
       storiesInFeed: privacy.data?.stories_in_feed !== false,
+      shareReading: Boolean(privacy.data?.share_reading),
     },
     challenges: {
       sections: sections.data ?? [],

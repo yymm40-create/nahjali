@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { peopleOf, profileView, personByUsername } from "@/lib/mahdi/server/social";
+import { publicReadingOf } from "@/lib/mahdi/server/public-reading";
 
 type Ctx = { params: Promise<{ username: string }> };
 
@@ -19,5 +20,6 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
     if (!view.canSee) throw new UserError(t.social.profile.private, 403);
     return NextResponse.json({ people: await peopleOf(person.id, list) });
   }
-  return NextResponse.json({ profile: view });
+  // what they read and their place in «تحدي القراءة», when they show it on their link
+  return NextResponse.json({ profile: { ...view, reading: await publicReadingOf(person.id).catch(() => null) } });
 });

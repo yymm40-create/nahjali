@@ -187,6 +187,8 @@ export interface Privacy {
   privateAccount: boolean;
   /** Stories on top of the community, or only in their own place. */
   storiesInFeed: boolean;
+  /** «رابط حسابي»: my link (and my page) show what I read and my place in «تحدي القراءة» (SQL 0126) */
+  shareReading?: boolean;
 }
 
 export interface ChallengeSection {
