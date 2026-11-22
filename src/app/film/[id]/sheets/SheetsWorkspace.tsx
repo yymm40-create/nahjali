@@ -15,7 +15,7 @@ import StepCard from "../../StepCard";
 import type { MapChoice, MapItem, SheetVersion } from "@/lib/film/sheets";
 import SheetCards from "./SheetCards";
 import ConvertCards from "./ConvertCards";
-import { styleTestPictures, styleTestRef, testRefOn } from "@/lib/film/style-test-ref";
+import { styleTestCandidate, styleTestPictures, styleTestRef, testRefOn } from "@/lib/film/style-test-ref";
 import StyleBrowser, { StyleThumb, type StyleCardView } from "@/components/style-map/StyleBrowser";
 
 const MAX_REFERENCE_UPLOADS = 4; // same as lib/film/sheets.ts (that file is server-only)
@@ -135,6 +135,8 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
   const questions = latestOf("sheet_questions");
   const styleTest = latestOf("style_test");
   const style = latestOf("style");
+  // «📎 أرفق صورة الاختبار» on every sheet card: the test picture a drawing can be sent with
+  const testCandidate = styleTestCandidate(style, assets.filter((a) => a.ref_key === TEST), (a) => Boolean(a.url));
   const mapVersion = versions.filter((v) => v.kind === "sheet_understanding" && v.status === "approved").at(-1) ?? understanding;
   const map = mapVersion?.data.sheet_map ?? [];
   const choices = mapVersion?.status === "approved" ? (mapVersion.data.choices ?? {}) : {};
@@ -323,7 +325,11 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
         </label>
       )}
       <SheetCards
+        // the cards' «📎» start again from the film's setting when it changes
+        key={testRefOn(style) ? "test-on" : "test-off"}
         projectId={projectId}
+        test={testCandidate ? { id: testCandidate.id, url: testCandidate.url } : null}
+        testOn={testRefOn(style)}
         items={orderedSheets.map((sid) => ({ id: sid, title: `${sid} · ${sid === MASTER ? "الماستر" : (map.find((m) => m.id === sid)?.name ?? "")}` }))}
         versions={versions}
         assets={assets}

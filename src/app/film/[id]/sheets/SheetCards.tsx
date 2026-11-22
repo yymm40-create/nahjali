@@ -3,7 +3,8 @@
 // The sheets as picture cards, side by side (swipe sideways): each character, place — and the master — shows its
 // picture only, no text. «اعتمد» approves it; «ولّد» makes 1–5 more attempts at once; «ما عجبني» takes the edit
 // and asks «تأكد من فهمي أول» (the sheet maker restates it, then «صح، اصنعها») or «اصنع مباشرة». Every attempt stays,
-// rejected ones too, folded under the card by version, newest first.
+// rejected ones too, folded under the card by version, newest first. «📎 أرفق صورة الاختبار» beside «ولّد» sends the
+// style test picture with THIS drawing (ticked = sent); every picture drawn with it says so («📎 انرسمت مع صورة الاختبار»).
 
 import { useState } from "react";
 import { postJson } from "@/lib/fetch";
@@ -11,6 +12,7 @@ import Spinner from "@/components/Spinner";
 import { credits } from "@/lib/film/credits";
 import Coined from "@/components/Coined";
 import type { SheetVersion } from "@/lib/film/sheets";
+import { drawnWithTest } from "@/lib/film/style-test-ref";
 
 export interface CardAsset {
   id: string;
@@ -28,23 +30,27 @@ type Send = (body: Record<string, unknown>) => Promise<void> | void;
 
 const SHEET_USD = 0.4;
 
-export default function SheetCards({ projectId, items, versions, assets, busy, send, onEdit, selected = [], onSelect }: { projectId: string; items: { id: string; title: string }[]; versions: SheetVersion[]; assets: CardAsset[]; busy: boolean; send: Send; onEdit: (sheetId: string) => void; selected?: string[]; onSelect?: (assetId: string) => void }) {
+export default function SheetCards({ projectId, items, versions, assets, busy, send, onEdit, selected = [], onSelect, test = null, testOn = false }: { projectId: string; items: { id: string; title: string }[]; versions: SheetVersion[]; assets: CardAsset[]; busy: boolean; send: Send; onEdit: (sheetId: string) => void; /** the style test picture a drawing can be sent with (null: none), and whether the film's setting sends it */ test?: { id: string; url: string } | null; testOn?: boolean; selected?: string[]; onSelect?: (assetId: string) => void }) {
   if (!items.length) return null;
   return (
     <section className="space-y-2">
       <p className="text-sm font-bold text-muted">اسحب يمين ويسار بين الشخصيات والأماكن 👈👉 · عجبتك؟ اعتمدها. ما عجبتك؟ «ما عجبني» واكتب وش تبي.</p>
       <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-3" style={{ scrollbarWidth: "thin" }}>
         {items.map((it) => (
-          <SheetCard key={it.id} projectId={projectId} id={it.id} title={it.title} prompts={versions.filter((v) => v.kind === "sheet_prompt" && v.ref_key === it.id)} images={assets.filter((a) => a.kind === "image" && a.ref_key === it.id)} busy={busy} send={send} onEdit={onEdit} selected={selected} onSelect={onSelect} />
+          <SheetCard key={it.id} projectId={projectId} id={it.id} title={it.title} prompts={versions.filter((v) => v.kind === "sheet_prompt" && v.ref_key === it.id)} images={assets.filter((a) => a.kind === "image" && a.ref_key === it.id)} busy={busy} send={send} onEdit={onEdit} selected={selected} onSelect={onSelect} test={test} testOn={testOn} />
         ))}
       </div>
     </section>
   );
 }
 
-function SheetCard({ projectId, id, title, prompts, images, busy, send, onEdit, selected = [], onSelect }: { projectId: string; id: string; title: string; prompts: SheetVersion[]; images: CardAsset[]; busy: boolean; send: Send; onEdit: (sheetId: string) => void; selected?: string[]; onSelect?: (assetId: string) => void }) {
+function SheetCard({ projectId, id, title, prompts, images, busy, send, onEdit, selected = [], onSelect, test, testOn }: { projectId: string; id: string; title: string; prompts: SheetVersion[]; images: CardAsset[]; busy: boolean; send: Send; onEdit: (sheetId: string) => void; selected?: string[]; onSelect?: (assetId: string) => void; test: { id: string; url: string } | null; testOn: boolean }) {
   const latest = prompts.at(-1);
   const [count, setCount] = useState(1);
+  // «📎 أرفق صورة الاختبار»: this card's own choice for its next drawing (starts as the film's setting); a real person's
+  // converted sheet is drawn only from his chosen single images, so it is not offered there
+  const [useTest, setUseTest] = useState(testOn);
+  const canTest = Boolean(test) && !latest?.data.convert;
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const [understood, setUnderstood] = useState<string | null>(null);
@@ -99,6 +105,13 @@ function SheetCard({ projectId, id, title, prompts, images, busy, send, onEdit, 
           <div className="grid aspect-video place-items-center text-sm font-bold text-muted">{ready ? "اضغط «ولّد» تحت" : "بانتظار وصفها"}</div>
         )}
       </div>
+      {/* the proof: written on the picture by the server only when the test picture went with its drawing */}
+      {main && main.status !== "failed" && (canTest || drawnWithTest(main.meta)) && (
+        <p className={`text-xs font-extrabold ${drawnWithTest(main.meta) ? "text-teal" : "text-muted"}`}>
+          {drawnWithTest(main.meta) ? (main.status === "generating" ? "📎 تنرسم مع صورة الاختبار" : "📎 انرسمت مع صورة الاختبار") : main.status === "generating" ? "تنرسم بدون صورة الاختبار" : "انرسمت بدون صورة الاختبار"}
+        </p>
+      )}
+
       {typeof main?.meta.at_name === "string" && <p className="text-xs font-bold text-muted">{main.meta.at_name}</p>}
 
       {!busy && main?.status === "generated" && !approved && (
@@ -116,6 +129,17 @@ function SheetCard({ projectId, id, title, prompts, images, busy, send, onEdit, 
         <button className="btn btn-ghost min-h-9 w-full text-xs" onClick={() => window.confirm("تتراجع عن اعتماد هذي الصورة؟ تقدر بعدها تولّد غيرها أو تعدّل.") && send({ action: "unapprove_image", assetId: approved.id })}>↩️ تراجع عن الاعتماد</button>
       )}
 
+      {!approved && (ready || writing) && canTest && test && (
+        <label className={`flex cursor-pointer items-center gap-2 rounded-xl border p-2 ${useTest ? "border-teal bg-teal/10" : "border-line"}`}>
+          <input type="checkbox" className="size-5 shrink-0 accent-teal" checked={useTest} disabled={busy} onChange={(e) => setUseTest(e.target.checked)} />
+          {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL */}
+          <img src={test.url} alt="صورة الاختبار" className="h-10 w-14 shrink-0 rounded-md object-cover" />
+          <span className="text-xs font-extrabold leading-5">
+            📎 أرفق صورة الاختبار مرجع للستايل
+            <span className="block font-bold text-muted">{useTest ? "بتنرسل مع الصور اللي تولّدها الحين" : "ما بتنرسل"}</span>
+          </span>
+        </label>
+      )}
       {!approved && (ready || writing) && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs font-bold text-muted">كم صورة؟</span>
@@ -124,7 +148,7 @@ function SheetCard({ projectId, id, title, prompts, images, busy, send, onEdit, 
               {n}
             </button>
           ))}
-          <button className="btn btn-secondary min-h-9 flex-1 px-3 text-sm" disabled={busy || !!generating} onClick={() => send(ready ? { action: "generate_image", sheetId: id, count } : { action: "approve", versionId: latest!.id, count })}>
+          <button className="btn btn-secondary min-h-9 flex-1 px-3 text-sm" disabled={busy || !!generating} onClick={() => send({ ...(ready ? { action: "generate_image", sheetId: id, count } : { action: "approve", versionId: latest!.id, count }), ...(canTest ? { useTest } : {}) })}>
             {live.length ? "🔁 ولّد" : "🖼️ ولّد"} ×{count} · <Coined text={credits(SHEET_USD * count, "image")} />
           </button>
         </div>
@@ -190,7 +214,7 @@ function Thumbs({ imgs, busy, send }: { imgs: CardAsset[]; busy: boolean; send: 
             <div className="grid aspect-video place-items-center rounded-md bg-surface text-[10px]">{i.status === "generating" ? "تتولد…" : i.status === "failed" ? "فشلت" : "…"}</div>
           )}
           <figcaption className="flex items-center justify-between text-[10px] font-bold">
-            <span>{i.status === "rejected" ? "مرفوضة" : i.status === "approved" ? "معتمدة" : i.status === "generated" ? "جديدة" : ""}</span>
+            <span>{i.status === "rejected" ? "مرفوضة" : i.status === "approved" ? "معتمدة" : i.status === "generated" ? "جديدة" : ""}{drawnWithTest(i.meta) ? " 📎" : ""}</span>
             {!busy && (i.status === "generated" || i.status === "rejected") && (
               <button className="underline" onClick={() => send({ action: "approve_image", assetId: i.id })}>اعتمدها</button>
             )}
