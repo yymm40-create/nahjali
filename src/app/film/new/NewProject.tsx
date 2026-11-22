@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
 import { sheetOf } from "@/components/jawad/content/media-prep";
-import { isYoutubeLink, storyLink } from "@/lib/film/story-link";
+import { isYoutubeLink, storyLink, storyUpload } from "@/lib/film/story-link";
 import { useClaudeModel } from "@/components/robots/claude-model";
 import { FILM_KINDS, type FilmKind } from "@config/film";
 import ProjectFields, { type FieldValues } from "../ProjectFields";
@@ -117,8 +117,10 @@ export default function NewProject() {
     try {
       const link = storyLink(values.story);
       if (link && !isYoutubeLink(link.url)) throw new Error("حط رابط فيديو يوتيوب صحيح. المتاح الحين روابط يوتيوب بس.");
+      const upload = storyUpload(values.story);
+      if (upload && !upload.video) throw new Error("ارفع الفيديو أول، وبعدها خل سجاد يفهمه.");
       const sheetId = link ? await prepareLink(link.url) : null;
-      if (link) setStep("👂 سجاد يشوف الفيديو ويسمعه…");
+      if (link || upload) setStep("👂 سجاد يشوف الفيديو ويسمعه…");
       const result = await postJson<{ intake: JourneyIntake }>("/api/film/intake", { draftId: draftId.current, kind, title: values.title, story: values.story, fixedFacts: values.fixedFacts, targetDurationSec: values.targetDurationSec, answers, previous: intake, model: claude.id, journey, ...(link ? { youtube: { sheetId } } : {}) });
       setIntake(result.intake);
     } catch (e) {

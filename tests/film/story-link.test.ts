@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isYoutubeLink, storyFromLink, storyLink, STORY_LINK_HEAD } from "@/lib/film/story-link";
+import { isYoutubeLink, storyFromLink, storyFromUpload, storyLink, storyUpload, STORY_LINK_HEAD } from "@/lib/film/story-link";
 
 describe("«🔗 رابط يوتيوب» story", () => {
   it("accepts YouTube video links only", () => {
@@ -16,5 +16,19 @@ describe("«🔗 رابط يوتيوب» story", () => {
     expect(storyLink(story)).toEqual({ url: "https://youtu.be/OditLH30a64", note: "نفس القصة بستايل كرتوني\nوبدون كلام" });
     expect(storyLink(storyFromLink("", ""))).toEqual({ url: "", note: "" });
     expect(storyLink("قصتي عن ولد وأبوه")).toBeNull();
+  });
+});
+
+describe("«📤 ارفع فيديو» story", () => {
+  const video = { name: "مقطعي.mp4", videoId: "11111111-2222-3333-4444-555555555555", sheetId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" };
+  it("round-trips the uploaded video, its frame sheet and the note", () => {
+    const story = storyFromUpload(video, "خذ الفكرة وغيّر المكان");
+    expect(storyUpload(story)).toEqual({ video, note: "خذ الفكرة وغيّر المكان" });
+    expect(storyLink(story)).toBeNull();
+  });
+  it("keeps the way chosen before the video is up, and works without a sheet", () => {
+    expect(storyUpload(storyFromUpload(null, ""))).toEqual({ video: null, note: "" });
+    expect(storyUpload(storyFromUpload({ ...video, sheetId: null }, ""))?.video).toEqual({ ...video, sheetId: null });
+    expect(storyUpload("قصتي")).toBeNull();
   });
 });

@@ -4,7 +4,8 @@ import { useState } from "react";
 import { FILM_LIMITS } from "@config/film";
 import { parseStory } from "@/lib/film/story-map";
 import StoryMap, { StoryWay, type StoryWayKey } from "./StoryMap";
-import { isYoutubeLink, storyFromLink, storyLink } from "@/lib/film/story-link";
+import { isYoutubeLink, storyFromLink, storyFromUpload, storyLink, storyUpload, type StoryVideo } from "@/lib/film/story-link";
+import StoryVideoUpload from "./StoryVideoUpload";
 
 export interface FieldValues {
   title: string;
@@ -46,15 +47,19 @@ export default function ProjectFields({
 }) {
   const set = (key: keyof FieldValues) => (e: { target: { value: string } }) => onChange({ ...values, [key]: e.target.value });
   // a story already written on the map opens on the map
-  const [way, setWay] = useState<StoryWayKey>(() => (withLink && storyLink(values.story) ? "link" : startOnMap || parseStory(values.story) !== null ? "map" : "free"));
+  const [way, setWay] = useState<StoryWayKey>(() => (withLink && storyLink(values.story) ? "link" : withLink && storyUpload(values.story) ? "upload" : startOnMap || parseStory(values.story) !== null ? "map" : "free"));
   const map = way === "map";
   const link = withLink && way === "link" ? (storyLink(values.story) ?? { url: "", note: "" }) : null;
   const setLink = (url: string, note: string) => onChange({ ...values, story: storyFromLink(url, note).slice(0, FILM_LIMITS.storyMax) });
+  const upload = withLink && way === "upload" ? (storyUpload(values.story) ?? { video: null, note: "" }) : null;
+  const setUpload = (video: StoryVideo | null, note: string) =>
+    onChange({ ...values, story: storyFromUpload(video, note).slice(0, FILM_LIMITS.storyMax) });
   // switching ways: a link's story is not carried into the free text (nor the free text into the link)
   const chooseWay = (w: StoryWayKey) => {
     if (w === way) return;
     if (w === "link") onChange({ ...values, story: storyFromLink("", "") });
-    else if (way === "link") onChange({ ...values, story: "" });
+    else if (w === "upload") onChange({ ...values, story: storyFromUpload(null, "") });
+    else if (way === "link" || way === "upload") onChange({ ...values, story: "" });
     setWay(w);
   };
   const seconds = kind === "film" || kind === "series" ? null : Number(values.targetDurationSec) || (kind === "scene" ? 60 : null);
@@ -68,7 +73,21 @@ export default function ProjectFields({
       <div className="space-y-2">
         <span className="block font-extrabold">فكرتك وقصتك</span>
         {!disabled && <StoryWay way={way} onWay={chooseWay} withLink={withLink} />}
-        {link && !disabled ? (
+        {upload && !disabled ? (
+          <div className="space-y-2">
+            <StoryVideoUpload video={upload.video} onVideo={(v) => setUpload(v, upload.note)} />
+            <label className="block space-y-1">
+              <span className="text-sm font-extrabold">وضّح لسجاد وش تبي منه <span className="text-xs text-muted">(اختياري)</span></span>
+              <textarea
+                className="field min-h-32"
+                value={upload.note}
+                onChange={(e) => setUpload(upload.video, e.target.value)}
+                maxLength={FILM_LIMITS.storyMax - 300}
+                placeholder="مثلًا: أبي نفس القصة بستايل كرتوني، أو خذ فكرته بس وغيّر الشخصيات، أو انسخ حركة الكاميرا والإضاءة"
+              />
+            </label>
+          </div>
+        ) : link && !disabled ? (
           <div className="space-y-2">
             <input
               className="field"
