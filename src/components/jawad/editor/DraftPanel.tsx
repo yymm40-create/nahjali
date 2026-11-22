@@ -231,7 +231,7 @@ export default function DraftPanel({ dock, open, onOpen, onClose, projectId, tl,
         )}
 
         {r ? (
-          <RunView r={r} readOnly={readOnly} onRetry={runner.retry} onStop={runner.stop} onClear={runner.clear} />
+          <RunView r={r} readOnly={readOnly} onRetry={runner.retry} onStop={runner.stop} onClear={runner.clear} onRebuild={runner.rebuild} />
         ) : !editing || !w.plan ? (
           <>
             <p className="text-xs leading-6 text-jw-muted">اكتب فكرتك أو الصق السكربت، وحيدرا ماكس يكتب لك خطة المشاهد. تعدّلها وتشوف سعرها، وما يتصنع شي لين توافق.</p>
@@ -480,7 +480,7 @@ function SceneCost({ parts }: { parts: PricedPart[] }) {
   );
 }
 
-function RunView({ r, readOnly, onRetry, onStop, onClear }: { r: NonNullable<ReturnType<typeof useDraftRun>["state"]>; readOnly: boolean; onRetry: (keys: string[]) => void; onStop: () => void; onClear: () => void }) {
+function RunView({ r, readOnly, onRetry, onStop, onClear, onRebuild }: { r: NonNullable<ReturnType<typeof useDraftRun>["state"]>; readOnly: boolean; onRetry: (keys: string[]) => void; onStop: () => void; onClear: () => void; onRebuild: () => void }) {
   const sum = runSummary(r.parts);
   const failedOf = (scene: number | null) => r.parts.filter((p) => p.scene === scene && (p.state === "failed" || p.state === "stopped"));
   const music = r.parts.find((p) => p.kind === "music");
@@ -495,7 +495,7 @@ function RunView({ r, readOnly, onRetry, onStop, onClear }: { r: NonNullable<Ret
           <div className="h-full bg-jw-accent transition-all" style={{ width: `${pct}%` }} />
         </div>
         <p className="text-[11px] text-jw-muted">
-          {r.built ? "انبنت المسودة على التايملاين (تراجع واحد يشيلها)." : sum.settled ? "نبني المسودة…" : `جاهز ${sum.done} من ${sum.total} — تقدر تكمل شغلك، ولما يخلص كل شي تنبني المسودة على التايملاين.`}
+          {r.built ? "انبنت المسودة على التايملاين (تراجع واحد يشيلها)." : r.buildError ? "ما انبنت المسودة بعد." : sum.settled ? (sum.done ? "نبني المسودة…" : "ما نجح أي جزء؛ أعد المشاهد أو ابدأ مسودة جديدة.") : `جاهز ${sum.done} من ${sum.total} — تقدر تكمل شغلك، ولما يخلص كل شي تنبني المسودة على التايملاين.`}
           {sum.failed ? ` · ${sum.failed} ما نجح` : ""}
         </p>
       </div>
@@ -537,6 +537,14 @@ function RunView({ r, readOnly, onRetry, onStop, onClear }: { r: NonNullable<Ret
           </li>
         )}
       </ol>
+      {r.buildError && (
+        <div className="space-y-1.5">
+          <p className="error-box text-[11px]">{r.buildError}</p>
+          <button type="button" className="jw-btn jw-btn-primary w-full text-xs" disabled={readOnly} onClick={onRebuild}>
+            جرّب البناء مرة ثانية
+          </button>
+        </div>
+      )}
       {!sum.settled && r.parts.some((p) => p.state === "queued") && (
         <button type="button" className="jw-btn w-full text-xs" disabled={readOnly} onClick={onStop}>
           <Icon name="stop" size={14} /> وقّف الباقي وابنِ باللي جاهز

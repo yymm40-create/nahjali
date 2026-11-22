@@ -26,6 +26,8 @@ export interface DraftRun {
   look: DraftLook;
   parts: PartRun[];
   built: BuiltInfo | null;
+  /** the timeline refused the draft (a locked track, too many clips…): not tried again until «جرّب البناء مرة ثانية» */
+  buildError?: string | null;
   at: number;
 }
 
@@ -174,11 +176,14 @@ export function useDraftRun(o: { projectId: string; tl: Timeline; run: (c: Comma
         return;
       }
       const sum = runSummary(r.parts);
-      if (!sum.settled || !r.parts.some((x) => x.state === "ready")) return;
+      if (r.buildError || !sum.settled || !r.parts.some((x) => x.state === "ready")) return;
       const files = Object.fromEntries(r.parts.filter((x) => x.state === "ready").map((x) => [x.key, fileOf(x)]));
       const b = assembleDraft(r.plan, r.opts, files, r.look);
       const done = run(draftCommands(b, tlRef.current, r.plan.title), { label: `من فكرة لمسودة: ${(r.plan.title || "مسودة").slice(0, 30)}`, by: "haidara" });
-      if (!done) return;
+      if (!done) {
+        set({ ...r, buildError: "ما قدرت أحط المسودة على التايملاين (شوف الرسالة اللي طلعت)." });
+        return;
+      }
       track("editor.draft_built");
       set({ ...r, built: b.info, parts: r.parts.map((x) => (x.state === "ready" ? { ...x, state: "placed" } : x)) });
       flash(sum.failed ? `انبنت المسودة ✓ — ${sum.failed} جزء ما نجح، أعده من نافذة المسودة.` : "انبنت المسودة على التايملاين ✓ (تراجع واحد يشيلها)");
@@ -189,7 +194,7 @@ export function useDraftRun(o: { projectId: string; tl: Timeline; run: (c: Comma
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, readOnly, run, onAssets, flash, set]);
 
-  const live = !!state && (!state.built || state.parts.some((x) => x.state !== "placed" && x.state !== "failed" && x.state !== "stopped"));
+  const live = !!state && !state.buildError && (!state.built || state.parts.some((x) => x.state !== "placed" && x.state !== "failed" && x.state !== "stopped"));
   useEffect(() => {
     if (!live || readOnly) return;
     const first = setTimeout(tick, 800);
@@ -216,5 +221,10 @@ export function useDraftRun(o: { projectId: string; tl: Timeline; run: (c: Comma
     /** what hasn't started stays unmade (nothing is taken for it); the draft is built with what is ready */
     stop: () => patchParts((x) => (x.state === "queued" ? { ...x, state: "stopped", error: "وقّفته" } : x)),
     clear: () => set(null),
+    /** after a refused build: try putting the draft on the timeline again */
+    rebuild: () => {
+      const r = ref.current;
+      if (r) set({ ...r, buildError: null });
+    },
   };
 }
