@@ -15,6 +15,7 @@ import StepCard from "../../StepCard";
 import type { MapChoice, MapItem, SheetVersion } from "@/lib/film/sheets";
 import SheetCards from "./SheetCards";
 import ConvertCards from "./ConvertCards";
+import { styleTestPictures, styleTestRef, testRefOn } from "@/lib/film/style-test-ref";
 import StyleBrowser, { StyleThumb, type StyleCardView } from "@/components/style-map/StyleBrowser";
 
 const MAX_REFERENCE_UPLOADS = 4; // same as lib/film/sheets.ts (that file is server-only)
@@ -268,6 +269,8 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           styles={styles}
           tests={assets.filter((a) => a.ref_key === TEST)}
           chosen={style?.data.styleId ?? null}
+          style={style ?? null}
+          onTestRef={(on, assetId) => send({ action: "set_test_ref", on, ...(assetId ? { assetId } : {}) })}
           busy={busy || writing}
           onTest={(ids) => send({ action: "test_styles", styleIds: ids })}
           onChoose={(id) => send({ action: "choose_style", styleId: id })}
@@ -525,12 +528,15 @@ function MapChoices({
 }
 
 function StyleTest({
-  v, styles, tests, chosen, busy, onTest, onChoose, actions,
+  v, styles, tests, chosen, style, onTestRef, busy, onTest, onChoose, actions,
 }: {
   v: SheetVersion;
   styles: StyleCard[];
   tests: Asset[];
   chosen: string | null;
+  /** the approved style's row: «صورة الاختبار مرجع» is kept on it */
+  style: SheetVersion | null;
+  onTestRef: (on: boolean, assetId?: string) => void;
   busy: boolean;
   onTest: (ids: string[]) => void;
   onChoose: (id: string) => void;
@@ -539,6 +545,10 @@ function StyleTest({
   const [picked, setPicked] = useState<string[]>([]);
   const nameOf = (id: string) => styles.find((s) => s.id === id)?.name ?? id;
   const toggle = (id: string) => setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : picked.length < 4 ? [...picked, id] : picked);
+  // «صورة الاختبار مرجع»: which test picture goes with the master and the sheets (on until switched off)
+  const refPics = styleTestPictures(style, tests, (t) => Boolean(t.url));
+  const used = styleTestRef(style, tests, (t) => Boolean(t.url));
+  const refOn = testRefOn(style);
 
   return (
     <article className="card space-y-4 p-5">
@@ -571,6 +581,10 @@ function StyleTest({
                   {!chosen && t.status === "generated" && (
                     <button className="btn btn-primary min-h-10 w-full text-sm" disabled={busy} onClick={() => onChoose(sid)}>اعتمد هذا الستايل</button>
                   )}
+                  {used?.id === t.id && <p className="text-center text-xs font-extrabold text-teal">📎 مرجع الستايل للماستر والشيتات</p>}
+                  {refOn && refPics.length > 1 && used?.id !== t.id && refPics.some((p) => p.id === t.id) && (
+                    <button className="btn btn-ghost min-h-9 w-full text-xs" disabled={busy} onClick={() => onTestRef(true, t.id)}>📎 خلّ هذي هي المرجع</button>
+                  )}
                 </figure>
               );
             })}
@@ -579,7 +593,20 @@ function StyleTest({
       )}
 
       {chosen ? (
-        <p className="rounded-2xl bg-surface-2 p-3 font-extrabold">🔒 الستايل المعتمد: {nameOf(chosen)} — نصه ينكتب حرفيًا في كل برومبت.</p>
+        <div className="space-y-2">
+          <p className="rounded-2xl bg-surface-2 p-3 font-extrabold">🔒 الستايل المعتمد: {nameOf(chosen)} — نصه ينكتب حرفيًا في كل برومبت.</p>
+          {refPics.length > 0 && (
+            <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-line p-3">
+              <input type="checkbox" className="mt-1 size-5 shrink-0" checked={refOn} disabled={busy} onChange={(e) => onTestRef(e.target.checked)} />
+              <span className="space-y-1">
+                <b className="block text-sm">🖼️ استخدم صورة الاختبار مرجع للستايل</b>
+                <span className="block text-xs leading-6 text-muted">
+                  تنرفق مع الماستر وكل شيت عشان يطلعون بنفس شكلها. تاخذ منها الستايل بس (الرسم والألوان والإضاءة)، وما تنسخ شخصياتها ولا مكانها. يمشي على الصور اللي تتولد من الحين.
+                </span>
+              </span>
+            </label>
+          )}
+        </div>
       ) : (
         <div className="space-y-3">
           <h3 className="font-extrabold">اختر من ٢ إلى ٤ ستايلات للتجربة ({picked.length}/٤)</h3>

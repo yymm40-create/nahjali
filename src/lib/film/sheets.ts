@@ -7,7 +7,8 @@ import { addMessage, stageTurns } from "./conversation";
 import { generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
 import { failJob, JOB_STALE_MS, logReplyTokens, replyTokens, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
-import { GENERATOR_FACTS, MASTER_STYLE_ONLY, SHEET_APP_INTEGRATION, SHEET_MAKER_PROMPT, SHEET_MAKER_SCHEMA, STYLE_PLACEHOLDER } from "@config/film-prompts/sheet-maker";
+import { GENERATOR_FACTS, MASTER_STYLE_ONLY, SHEET_APP_INTEGRATION, SHEET_MAKER_PROMPT, SHEET_MAKER_SCHEMA, STYLE_PLACEHOLDER, TEST_STYLE_FOR_MASTER, TEST_STYLE_FOR_SHEET } from "@config/film-prompts/sheet-maker";
+import { STYLE_TEST_KEY, styleTestPictures, styleTestRef, type TestRefChoice } from "./style-test-ref";
 import { findStyle } from "@config/film-styles";
 import { sheetImpact } from "./impact";
 import { CONVERT_SHEETS, convertSheetPrompt, LIKENESS_SCHEMA, LIKENESS_SYSTEM, PORTRAITS_PER_PHOTO, portraitPrompt, type Likeness } from "@config/film-prompts/convert-person";
@@ -18,7 +19,7 @@ const SYSTEM = `${SHEET_MAKER_PROMPT}\n\n${SHEET_APP_INTEGRATION}`;
 const ESTIMATE_USD = 0.8;
 const MAX_TOKENS = 32000;
 export const MASTER_ID = "STY-00";
-export const STYLE_TEST_ID = "STYLE-TEST";
+export const STYLE_TEST_ID = STYLE_TEST_KEY;
 export const MAX_REFERENCE_UPLOADS = 4;
 // Pictures generated at the same time (all the sheets together, plus a few style tests)
 const MAX_IMAGES_AT_ONCE = 24;
@@ -80,6 +81,8 @@ export interface SheetVersion {
     prompt?: string;
     references?: Reply["references"];
     styleId?: string;
+    /** «صورة الاختبار مرجع»: on the approved style's row (src/lib/film/style-test-ref.ts) */
+    testRef?: TestRefChoice;
     /** a sheet made from a real person's chosen single images (its pictures use only those) */
     convert?: boolean;
     portraits?: string[];
@@ -225,6 +228,7 @@ export type SheetAction =
   | { action: "write_all" }
   | { action: "approve_all_prompts" }
   | { action: "approve_all_images" }
+  | { action: "set_test_ref"; on: boolean; assetId?: string }
   /** «اعتمد المحدد»: these new pictures (one per sheet) */
   | { action: "approve_images"; assetIds: string[] }
   | { action: "approve_image"; assetId: string }
@@ -407,6 +411,21 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       // «حوّل شخصية واقعية»: with the style known, every real person's photos start turning into it now
       const warning = await startAllConversions(project, user);
       return { jobId, ...(warning ? { warning } : {}) };
+    }
+
+    case "set_test_ref": {
+      // «صورة الاختبار مرجع»: on or off, and which test picture of the chosen style — for the pictures drawn from now on
+      const style = latest(versions, "style");
+      if (!style || style.status !== "approved") throw new UserError("اعتمد الستايل أول.", 409);
+      const on = input.on !== false;
+      const pics = styleTestPictures(style, assets, (a) => Boolean(a.storage_path));
+      const assetId = typeof input.assetId === "string" && input.assetId ? input.assetId : undefined;
+      if (assetId && !pics.some((p) => p.id === assetId)) throw new UserError("هذي مو صورة اختبار للستايل المعتمد.", 400);
+      if (on && !pics.length) throw new UserError("ما فيه صورة اختبار للستايل المعتمد.", 409);
+      const testRef: TestRefChoice = { on, ...(assetId ? { assetId } : style.data.testRef?.assetId ? { assetId: style.data.testRef.assetId } : {}) };
+      const { error } = await db().from("film_versions").update({ data: { ...style.data, testRef } }).eq("id", style.id);
+      if (error) throw error;
+      return { jobId: null };
     }
 
     case "convert_start": {
@@ -748,6 +767,8 @@ export function sheetHandoff(project: Pick<FilmProject, "title">, versions: Shee
 /** Generates the picture of an approved sheet prompt, with its references (the master for style only). */
 async function generateSheet(project: FilmProject, user: { id: string; email?: string | null }, prompt: SheetVersion, assets: FilmAsset[]) {
   const sheetId = prompt.ref_key;
+  // «صورة الاختبار مرجع»: the test picture of the chosen style (on unless the person switched it off)
+  const test = styleTestRef(latest(await sheetVersions(project.id), "style"), assets, (a) => Boolean(a.storage_path));
   if (!prompt.data.prompt) throw new UserError("برومبت هذا الشيت فاضي.", 409);
   // a real person converted: the sheet's only references are his chosen single images — no real photo, no master
   if (convertUploads(assets, sheetId).length) {
@@ -766,11 +787,19 @@ async function generateSheet(project: FilmProject, user: { id: string; email?: s
   const own = assets.filter((a) => a.kind === "upload" && a.ref_key === sheetId && a.meta?.mode === "reference" && a.status === "uploaded");
   refs.push(...own);
   let text = prompt.data.prompt;
-  if (sheetId !== MASTER_ID) {
+  if (sheetId === MASTER_ID) {
+    if (test) {
+      refs.push(test);
+      text += `\n\n${TEST_STYLE_FOR_MASTER}`;
+    }
+  } else {
+    // the test picture just before the master, which stays the LAST image (MASTER_STYLE_ONLY says so)
+    if (test) refs.push(test);
     refs.push(images[MASTER_ID]);
+    if (test) text += `\n\n${TEST_STYLE_FOR_SHEET}`;
     text += `\n\n${MASTER_STYLE_ONLY}`;
   }
-  await startImage(project, user, { sheetId, prompt: text, refs, kind: "sheet", versionId: prompt.id, meta: {} });
+  await startImage(project, user, { sheetId, prompt: text, refs, kind: "sheet", versionId: prompt.id, meta: test ? { style_test_ref: test.id } : {} });
 }
 
 type ImageJob = { sheetId: string; prompt: string; refs: FilmAsset[]; kind: "test" | "sheet" | "portrait"; quality?: "medium" | "high"; versionId: string | null; meta: Record<string, unknown> };

@@ -383,6 +383,15 @@ When I press the website's approval button, you receive exactly "اعتمد" (so
 /** Appended by the website to every character/environment image prompt, where the master is attached last. */
 export const MASTER_STYLE_ONLY = `Reference note: the LAST attached image is the master style sheet (STY-00). Use it ONLY for visual style: rendering, line quality, color palette, lighting and texture. Do not copy any character, face, costume, prop or location design from it. Where it conflicts with this prompt or the other references, this prompt and the other references take priority.`;
 
+/**
+ * «صورة الاختبار مرجع» (src/lib/film/style-test-ref.ts): the style test picture the person liked, attached to the master's
+ * drawing. The master shows only basic shapes, so nothing of the frame's story may come into it.
+ */
+export const TEST_STYLE_FOR_MASTER = `Reference note: the attached image is the approved STYLE TEST frame — the look the client chose. Match its visual style as closely as possible: rendering, line quality, shading, color palette, lighting, materials and texture. Use it ONLY for style: do not draw its characters, faces, costumes, props, places or composition. This master shows only what the prompt above asks for.`;
+
+/** The same picture attached to a sheet's drawing: just before the master, which stays the LAST image. */
+export const TEST_STYLE_FOR_SHEET = `Reference note: the SECOND-TO-LAST attached image is the approved STYLE TEST frame — the look the client chose. Use it, together with the master, ONLY for visual style (rendering, line quality, shading, palette, lighting, texture), and keep this sheet as close to that look as possible. Do not copy any character, face, costume, prop, place or composition from it: this sheet's subject comes only from this prompt and its own references.`;
+
 /** Reply format enforced through Claude's structured outputs. */
 export const SHEET_MAKER_SCHEMA = {
   type: "object",
