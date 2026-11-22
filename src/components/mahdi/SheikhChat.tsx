@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
-import { linkPieces, plainAnswer, SHEIKH_QUESTION_MAX, type SheikhMsg, type SheikhSource } from "@/lib/mahdi/sheikh";
+import { linkPieces, plainAnswer, SHEIKH_QUESTION_MAX, type SheikhMode, type SheikhMsg, type SheikhSource } from "@/lib/mahdi/sheikh";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
 
@@ -12,12 +12,13 @@ const S = t.sheikh;
 interface Data {
   ready: boolean;
   messages: SheikhMsg[];
-  left?: number;
+  left?: Record<SheikhMode, number>;
 }
 
 /**
- * «الشيخ الذكي»: the conversation with the sheikh, kept on the server. He answers from our library (مكتبة الثقلين),
- * every narration quoted with its source as a tappable number. Used in the floating robot's panel and on /mahdi/sheikh.
+ * «الشيخ الذكي»: the conversation with the sheikh, kept on the server. He searches the app's copy of the thaqalayn
+ * hadith books and answers with the texts, their links and gradings — «سؤال سريع» or «بحث شامل» (with a Word file).
+ * Used in the floating robot's panel and on /mahdi/sheikh.
  */
 export default function SheikhChat({ autoFocus = false }: { autoFocus?: boolean }) {
   const { toast } = useMahdi();
@@ -25,6 +26,7 @@ export default function SheikhChat({ autoFocus = false }: { autoFocus?: boolean 
   const [error, setError] = useState("");
   const [text, setText] = useState("");
   const [pending, setPending] = useState<string | null>(null);
+  const [mode, setMode] = useState<SheikhMode>("quick");
   const endRef = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
 
@@ -52,7 +54,7 @@ export default function SheikhChat({ autoFocus = false }: { autoFocus?: boolean 
     setText("");
     setError("");
     try {
-      const r = await mahdiFetch<{ messages: SheikhMsg[]; left: number }>("/api/mahdi/sheikh", { method: "POST", json: { question: q } });
+      const r = await mahdiFetch<{ messages: SheikhMsg[]; left: Record<SheikhMode, number> }>("/api/mahdi/sheikh", { method: "POST", json: { question: q, mode } });
       setData((d) => ({ ready: true, messages: [...(d?.messages ?? []), ...r.messages], left: r.left }));
     } catch (e) {
       setText(q);
@@ -126,12 +128,29 @@ export default function SheikhChat({ autoFocus = false }: { autoFocus?: boolean 
                     <span />
                     <span />
                   </span>
-                  {S.searching}
+                  {mode === "deep" ? S.searchingDeep : S.searching}
                 </li>
               </>
             )}
             <div ref={endRef} />
           </ol>
+          <div className="flex gap-1.5" role="radiogroup" aria-label={S.modeLabel}>
+            {(["quick", "deep"] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                role="radio"
+                aria-checked={mode === k}
+                className="m-option min-h-9 flex-1 px-2 py-1 text-xs"
+                onClick={() => setMode(k)}
+                disabled={!!pending}
+                title={k === "quick" ? S.quickHint : S.deepHint}
+              >
+                <span className="font-semibold">{k === "quick" ? S.quick : S.deep}</span>
+                {data?.left && data.left[k] < 10 ? <span className="m-muted"> · {S.left(data.left[k])}</span> : null}
+              </button>
+            ))}
+          </div>
           <form
             className="flex items-end gap-2"
             onSubmit={(e) => {
@@ -163,7 +182,6 @@ export default function SheikhChat({ autoFocus = false }: { autoFocus?: boolean 
               <Icon name="send" size={18} />
             </button>
           </form>
-          {data?.left !== undefined && data.left < 10 && <p className="m-muted text-center text-[11px]">{S.left(data.left)}</p>}
         </>
       )}
       {error && (
@@ -238,6 +256,11 @@ function Answer({ m, onChange }: { m: SheikhMsg; onChange: (m: SheikhMsg) => voi
           ) : null,
         )}
       </div>
+      {m.mode === "deep" && (
+        <a href={`/api/mahdi/sheikh/word?id=${m.id}`} className="m-btn m-btn-ghost m-btn-sm w-full text-xs" download>
+          <Icon name="book" size={16} /> {S.word}
+        </a>
+      )}
       {m.sources.length > 0 && (
         <details className="text-xs">
           <summary className="m-muted cursor-pointer">

@@ -1,5 +1,7 @@
 // «الشيخ الذكي»: the pure parts of the chat (limits, the message shape, showing an answer), shared by the server, the
-// chat and the tests. The answers come from our own library (server/sheikh.ts), not from a Claude agent.
+// chat and the tests. The sheikh searches the app's own copy of the thaqalayn hadith books (server/sheikh.ts).
+
+export type SheikhMode = "quick" | "deep";
 
 export interface SheikhSource {
   n: number;
@@ -11,22 +13,23 @@ export interface SheikhSource {
 export interface SheikhMsg {
   id: string;
   role: "user" | "sheikh";
+  mode: SheikhMode;
   body: string;
   sources: SheikhSource[];
   reported: boolean;
   createdAt: string;
 }
 
-/** Questions a person may send in a day (the owner has no limit). */
-export const SHEIKH_DAILY = 30;
+/** Questions a person may send in a day, of each kind (the owner has no limit). */
+export const SHEIKH_DAILY: Record<SheikhMode, number> = { quick: 30, deep: 5 };
 export const SHEIKH_QUESTION_MAX = 1000;
 /** How much of the conversation the sheikh reads with a new question (its latest messages). */
 export const SHEIKH_MEMORY = 8;
 
 /** What is left of the day's questions, from the times of the person's questions. */
-export function sheikhLeft(askedAt: string[], now = Date.now()): number {
+export function sheikhLeft(mode: SheikhMode, askedAt: string[], now = Date.now()): number {
   const since = now - 24 * 3600_000;
-  return Math.max(0, SHEIKH_DAILY - askedAt.filter((t) => Date.parse(t) >= since).length);
+  return Math.max(0, SHEIKH_DAILY[mode] - askedAt.filter((t) => Date.parse(t) >= since).length);
 }
 
 /** A question as typed: trimmed, inner runs of blank lines folded; null when empty or too long. */
