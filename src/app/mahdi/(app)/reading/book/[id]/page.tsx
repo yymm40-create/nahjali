@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import type { BookUnit } from "@/lib/mahdi/engine";
-import { formatRanges, parsePagesInput } from "@/lib/mahdi/engine";
+import { formatRanges, newPages, parsePagesInput } from "@/lib/mahdi/engine";
 import { fmtDate, fmtNum, fmtPct, fmtRelativeDay, t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { duration, sendSession, shrinkImage, uploadBookPdf } from "@/lib/mahdi/client/reading";
@@ -29,6 +29,8 @@ export default function BookPage() {
   const [pagesText, setPagesText] = useState("");
   // pages read today, or before (a book already begun): those only fill the map, never today, a goal or a challenge
   const [earlier, setEarlier] = useState(false);
+  // pages already in the book's map: asked once before saving them again (a page counts once in «تحدي القراءة»)
+  const [repeatOk, setRepeatOk] = useState(false);
   const [pagesError, setPagesError] = useState("");
   const [removing, setRemoving] = useState(false);
   const [reporting, setReporting] = useState(false);
@@ -88,6 +90,10 @@ export default function BookPage() {
     e.preventDefault();
     const ranges = parsePagesInput(pagesText, book.pages);
     if (!ranges || ranges.length === 0) return setPagesError(U.invalid(book.pages));
+    if (newPages(ranges, p.ranges).fresh === 0 && !repeatOk) {
+      setRepeatOk(true);
+      return setPagesError(t.reading.repeat.all);
+    }
     setBusy(true);
     setPagesError("");
     try {
@@ -96,6 +102,7 @@ export default function BookPage() {
       toast(fresh ? U.saved : t.reading.savedOffline);
       setPagesText("");
       setEarlier(false);
+      setRepeatOk(false);
     } catch (err) {
       setPagesError((err as Error).message);
     }
@@ -194,7 +201,7 @@ export default function BookPage() {
       <form className="m-card space-y-3 p-5" onSubmit={addPages}>
         <label className="block">
           <span className="m-label">{U.add}</span>
-          <input className="m-field m-num" dir="ltr" value={pagesText} onChange={(e) => setPagesText(e.target.value)} placeholder="1-12, 30" />
+          <input className="m-field m-num" dir="ltr" value={pagesText} onChange={(e) => (setPagesText(e.target.value), setRepeatOk(false))} placeholder="1-12, 30" />
           <span className="m-hint mt-1 block">{U.addHint}</span>
         </label>
         {/* today's reading, or what was read before (a book already begun) */}
@@ -207,8 +214,13 @@ export default function BookPage() {
           </button>
         </div>
         {earlier && <p className="m-hint">{U.earlierHint}</p>}
+        {(() => {
+          const r = parsePagesInput(pagesText, book.pages);
+          const d = r && r.length ? newPages(r, p.ranges) : null;
+          return d && d.repeated > 0 ? <p className="m-note m-num text-sm">{t.reading.repeat.some(d.fresh, d.repeated)}</p> : null;
+        })()}
         {pagesError && <p className="m-error" role="alert">{pagesError}</p>}
-        <button className="m-btn m-btn-ghost w-full" disabled={busy || !pagesText.trim()}>{U.addSave}</button>
+        <button className="m-btn m-btn-ghost w-full" disabled={busy || !pagesText.trim()}>{repeatOk ? t.reading.repeat.saveAnyway : U.addSave}</button>
       </form>
 
       {notes.length > 0 && (

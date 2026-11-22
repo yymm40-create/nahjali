@@ -4,11 +4,15 @@ import { todayIn } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { readDays, readPhase } from "@/lib/mahdi/read-challenge";
 import { mahdiRoute, readJson, requireProfile, UserError, UUID_RE } from "@/lib/mahdi/server/api";
-import { currentReadChallenge, isReadMember, joinReadChallenge, readChallengeBoard, readChallengeDetail, setSessionEarlier } from "@/lib/mahdi/server/read-challenge";
+import { currentReadChallenge, DAY_FLAG, isReadMember, joinReadChallenge, readChallengeBoard, readChallengeDetail, readChallengeFlags, setSessionEarlier } from "@/lib/mahdi/server/read-challenge";
 
 export const runtime = "nodejs";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
+
+/** What the owner should look at for one member, or null. */
+const flagOf = (f: { repeats: number; maxDay: number } | undefined) =>
+  f && (f.repeats > 0 || f.maxDay > DAY_FLAG) ? { repeats: f.repeats, maxDay: Math.floor(f.maxDay) } : null;
 
 /**
  * «تحدي القراءة»: the challenge, whether I joined, and (with `?board=1`) the whole list with my place.
@@ -34,13 +38,15 @@ export const GET = mahdiRoute(async (req: Request) => {
   const base = { challenge, phase, ...readDays(challenge, today), joined };
   if (new URL(req.url).searchParams.get("board") !== "1") return NextResponse.json(base, { headers: NO_STORE });
   const board = await readChallengeBoard(challenge.id);
+  // the owner sees who to look at: repeated pages, or a very big day
+  const flags = owner ? await readChallengeFlags(challenge.id) : null;
   return NextResponse.json(
     {
       ...base,
       total: board.length,
       owner,
       // the owner opens anyone's breakdown; everyone else only their own (no ids of others)
-      board: board.map((e) => ({ rank: e.rank, displayName: e.displayName, avatarUrl: e.avatarUrl, pages: e.pages, days: e.days, mine: e.userId === user.id, ...(owner ? { id: e.userId } : {}) })),
+      board: board.map((e) => ({ rank: e.rank, displayName: e.displayName, avatarUrl: e.avatarUrl, pages: e.pages, days: e.days, mine: e.userId === user.id, ...(owner ? { id: e.userId, flag: flagOf(flags?.get(e.userId)) } : {}) })),
     },
     { headers: NO_STORE },
   );
