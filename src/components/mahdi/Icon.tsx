@@ -13,6 +13,8 @@ const PATHS = {
   chevronRight: "m9.5 6 6 6-6 6",
   chevronDown: "m6 9.5 6 6 6-6",
   chevronUp: "m6 14.5 6-6 6 6",
+  expand: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
+  shrink: "M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5",
   calendar: "M5 6.5h14a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7.5a1 1 0 0 1 1-1zM4 10.5h16M8.5 4v4M15.5 4v4",
   edit: "M5 19h3.5L18.5 9a2.1 2.1 0 0 0-3-3L5.5 16zM14 7.5l2.5 2.5",
   trash: "M5 7h14M10 4h4M7 7l.8 12a1 1 0 0 0 1 .9h6.4a1 1 0 0 0 1-.9L17 7M10.5 11v5M13.5 11v5",

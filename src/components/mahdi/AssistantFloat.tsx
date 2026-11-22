@@ -4,11 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import { setAssistantPrefs, useAssistantPrefs } from "@/lib/mahdi/client/assistant-prefs";
 import AssistantChat from "./AssistantChat";
+import SheikhChat from "./SheikhChat";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
 import Robot from "./Robot";
 
 const A = t.assistant;
+const S = t.sheikh;
 const SIZE = 60;
 const EDGE = 12;
 /** A press that moves less than this is a tap, not a drag. */
@@ -21,15 +23,17 @@ function navSpace() {
 }
 
 /**
- * «المساعد» floats over every screen as the robot, at the bottom (above the bar), never in the way: tap it for a
- * small chat that leaves the screen usable, fold the chat back into the robot, drag the robot anywhere (it settles
- * on the nearest side and keeps its place), or hide it (it comes back from «حسابي»). A reply notification opens the
- * chat with ?assistant=1 even when the robot is hidden.
+ * The robot floats over every screen at the bottom (above the bar), never in the way. Tap it for «الشيخ الذكي» (the
+ * owner, 22 November 2026: the robot is the sheikh now): a small chat that leaves the screen usable, or «كبّر» for the
+ * whole screen (phone or laptop); the conversation is kept. Fold the chat back into the robot, drag the robot anywhere
+ * (it settles on the nearest side and keeps its place), or hide it (it comes back from «حسابي»). A reply notification
+ * from the team opens the team's chat («المساعد») with ?assistant=1 even when the robot is hidden.
  */
 export default function AssistantFloat({ openFromLink, onLinkClosed, onRead }: { openFromLink: boolean; onLinkClosed: () => void; onRead: () => void }) {
   const { toast } = useMahdi();
   const prefs = useAssistantPrefs();
   const [open, setOpen] = useState(false);
+  const [full, setFull] = useState(false);
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
   const press = useRef<{ id: number; x: number; y: number; left: number; top: number; moved: boolean } | null>(null);
   const [moves, setMoves] = useState(0);
@@ -38,6 +42,7 @@ export default function AssistantFloat({ openFromLink, onLinkClosed, onRead }: {
 
   const close = () => {
     setOpen(false);
+    setFull(false);
     if (openFromLink) onLinkClosed();
     button.current?.focus();
   };
@@ -97,6 +102,9 @@ export default function AssistantFloat({ openFromLink, onLinkClosed, onRead }: {
         <ChatPanel
           key={moves}
           side={side}
+          kind={openFromLink ? "team" : "sheikh"}
+          full={full}
+          onFull={setFull}
           canHide={!prefs.hidden}
           onFold={close}
           onHide={() => {
@@ -107,13 +115,13 @@ export default function AssistantFloat({ openFromLink, onLinkClosed, onRead }: {
           onRead={onRead}
         />
       )}
-      {!prefs.hidden && (
+      {!prefs.hidden && !full && (
         <button
           ref={button}
           type="button"
           className="m-assist-bubble"
           style={place}
-          aria-label={shown ? A.fold : A.open}
+          aria-label={shown ? S.fold : S.open}
           aria-expanded={shown}
           data-dragging={drag ? "" : undefined}
           onPointerDown={onPointerDown}
@@ -154,24 +162,51 @@ function placeChat(side: "left" | "right"): React.CSSProperties {
     : { [side]: EDGE, top: bottom + 8, maxHeight: Math.min(460, below) };
 }
 
-/** The small chat: the robot and the name, fold, hide, and the conversation. Not modal: the screen stays usable. */
-function ChatPanel({ side, canHide, onFold, onHide, onRead }: { side: "left" | "right"; canHide: boolean; onFold: () => void; onHide: () => void; onRead: () => void }) {
+/**
+ * The chat: the robot and the name, «كبّر» / «صغّر», fold, hide, and the conversation — the sheikh's, or the team's
+ * when a reply notification opened it. Not modal while small (the screen stays usable); at full size it covers it.
+ */
+function ChatPanel({
+  side,
+  kind,
+  full,
+  onFull,
+  canHide,
+  onFold,
+  onHide,
+  onRead,
+}: {
+  side: "left" | "right";
+  kind: "sheikh" | "team";
+  full: boolean;
+  onFull: (v: boolean) => void;
+  canHide: boolean;
+  onFold: () => void;
+  onHide: () => void;
+  onRead: () => void;
+}) {
   const [place] = useState(() => placeChat(side));
+  const title = kind === "sheikh" ? S.title : A.title;
   return (
-    <div role="dialog" aria-modal="false" aria-label={A.title} className="m-assist-panel" style={place}>
+    <div role="dialog" aria-modal={full ? "true" : "false"} aria-label={title} className="m-assist-panel" style={full ? undefined : place} data-full={full ? "" : undefined}>
       <div className="flex items-center gap-2">
         <Robot size={34} />
-        <p className="flex-1 font-semibold">{A.title}</p>
-        <button type="button" className="m-icon-btn size-9" onClick={onFold} aria-label={A.fold} title={A.fold}>
-          <Icon name="chevronDown" size={20} />
+        <p className="flex-1 font-semibold">{title}</p>
+        {kind === "sheikh" && (
+          <button type="button" className="m-icon-btn size-9" onClick={() => onFull(!full)} aria-label={full ? S.shrink : S.expand} title={full ? S.shrink : S.expand}>
+            <Icon name={full ? "shrink" : "expand"} size={18} />
+          </button>
+        )}
+        <button type="button" className="m-icon-btn size-9" onClick={onFold} aria-label={S.fold} title={S.fold}>
+          <Icon name={full ? "close" : "chevronDown"} size={20} />
         </button>
-        {canHide && (
+        {canHide && !full && (
           <button type="button" className="m-icon-btn size-9" aria-label={A.hide} title={A.hide} onClick={onHide}>
             <Icon name="eyeOff" size={18} />
           </button>
         )}
       </div>
-      <AssistantChat onRead={onRead} />
+      {kind === "sheikh" ? <SheikhChat autoFocus={full} /> : <AssistantChat onRead={onRead} />}
     </div>
   );
 }
