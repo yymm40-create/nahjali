@@ -21,7 +21,10 @@ export const GET = mahdiRoute(async (req: Request) => {
   const { user } = await requireProfile(req);
   const rows = await myChat(user.id);
   if (!rows) return NextResponse.json({ ready: false, messages: [] }, { headers: NO_STORE });
-  return NextResponse.json({ ready: true, messages: rows.map(sheikhView), left: await allowance(user.id, isLeader(user.email)) }, { headers: NO_STORE });
+  const owner = isLeader(user.email);
+  // the owner sees what each answer cost (USD at list prices), to measure the sheikh
+  const messages = rows.map((r) => (owner ? { ...sheikhView(r), usd: Number(r.usd) || 0 } : sheikhView(r)));
+  return NextResponse.json({ ready: true, messages, left: await allowance(user.id, owner) }, { headers: NO_STORE });
 });
 
 /** `{ question, mode }` → asks (the question and the answer come back); `{ id, report }` → «في خطأ؟» on an answer. */
