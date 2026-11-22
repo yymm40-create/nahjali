@@ -1,6 +1,9 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, claudeCost } from "./anthropic";
+import { callClaudeJson, claudeCost, type ClaudePart } from "./anthropic";
+import { storyLink, isYoutubeLink } from "./story-link";
+import { listenToLinks } from "@/lib/link-listen";
+import { isUuid, uploadViews, type UploadRow } from "@/lib/jawad/server/uploads";
 import { getOwnedProject } from "./access";
 import { requireSeries } from "./series";
 
@@ -37,6 +40,9 @@ export interface JourneyIntakeBody {
   action?: unknown;
   /** the Claude model the person chose (config/claude-models.ts) */
   model?: unknown;
+  /** the story given as a YouTube link (lib/film/story-link): the person's upload of the video's frames, when the page
+   * could download it */
+  youtube?: { sheetId?: unknown } | null;
 }
 
 const string = { type: "string" } as const;
@@ -116,8 +122,47 @@ ${context ? `\n${context}` : ""}`;
   // one plain call: the rules are the (cached) system, the reply's shape is enforced by the schema. The Managed Agent path
   // added the whole prompt + schema to a session that kept every earlier pass, was priced as Opus whatever the person
   // chose, and on a failure paid twice
-  const r = await callClaudeJson<JourneyIntake>({ system: INTAKE_RULES, turns: [{ role: "user", content: prompt }], schema: SCHEMA, maxTokens: 12000, effort: "medium" });
-  return { intake: normalizeJourneyIntake(r.data), usd: claudeCost(r.usage) };
+  // «🔗 رابط يوتيوب»: the video is looked at (its frames, downloaded by the page) and heard (its words), and the film is
+  // built on it with the person's note — what he understood is shown for confirmation before anything is written
+  const video = await watchLink(user.id, text(body.story, 20000), body.youtube);
+  const content: ClaudePart[] = [{ type: "text", text: prompt }];
+  if (video) {
+    content.push({ type: "text", text: video.text });
+    if (video.sheetUrl) content.push({ type: "image", url: video.sheetUrl });
+  }
+  const r = await callClaudeJson<JourneyIntake>({ system: INTAKE_RULES, turns: [{ role: "user", content: video ? content : prompt }], schema: SCHEMA, maxTokens: 12000, effort: "medium" });
+  return { intake: normalizeJourneyIntake(r.data), usd: claudeCost(r.usage) + (video?.usd ?? 0) };
+}
+
+/**
+ * The story given as a YouTube link: its words (lib/link-listen, kept by the video's id so a re-check reads them back
+ * free) and its frames (the person's own upload of the frame sheet the page made from the download), with what سجاد
+ * must do with them. null when the story was written.
+ */
+async function watchLink(userId: string, story: string, youtube: JourneyIntakeBody["youtube"]): Promise<{ text: string; sheetUrl: string | null; usd: number } | null> {
+  const link = storyLink(story);
+  if (!link) return null;
+  if (!isYoutubeLink(link.url)) throw new UserError("حط رابط فيديو يوتيوب صحيح. المتاح الحين روابط يوتيوب بس.", 400);
+  const sheetId = youtube && typeof youtube === "object" ? youtube.sheetId : null;
+  const [heard, sheetUrl] = await Promise.all([
+    listenToLinks(link.url, [], { budgetMs: 90_000 }).catch(() => null),
+    (async () => {
+      if (!isUuid(sheetId)) return null;
+      const { data } = await db().from("jawad_uploads").select("*").eq("id", sheetId).eq("user_id", userId).maybeSingle();
+      if (!data || (data as UploadRow).kind !== "image") return null;
+      return (await uploadViews([data as UploadRow]))[0]?.url ?? null;
+    })().catch(() => null),
+  ]);
+  const text = [
+    "## القصة رابط فيديو يوتيوب",
+    `المستخدم ما كتب قصة: أعطاك رابط فيديو (${link.url}) لتبني فيلمه عليه، وتحته توضيحه: ${link.note ? `«${link.note}»` : "(ما كتب توضيح — اسأله وش يبي منه: نفس القصة، أو فكرتها بس، أو ستايلها وحركة كاميرتها)"}.`,
+    sheetUrl
+      ? "الصورة المرفقة لقطات من الفيديو نفسه مرتبة بالوقت (الوقت مكتوب على كل لقطة). شفها وحلل منها: الشخصيات وشكلها ولبسها، المكان، الستايل البصري (واقعي/كرتون/أنمي…)، الإضاءة والألوان، حركة الكاميرا وتقطيع اللقطات، وتسلسل الأحداث."
+      : "صور الفيديو ما انشافت (التنزيل ما كان متاح): اشتغل من كلامه وعنوانه، وقل في understanding إنك ما شفت الصورة، ولا تخترع وصف مشاهد.",
+    heard?.block || "كلام الفيديو ما انسمع.",
+    "المطلوب: understanding تشرح للمستخدم ببساطة وش فهمت من الفيديو (القصة وتسلسلها، الشخصيات، المكان، الستايل، الكاميرا) وكيف بتبني فيلمه عليه حسب توضيحه — هذا اللي بيأكده قبل ما يبدأ السيناريست. concept قصة كاملة مبنية على الفيديو وتوضيحه (لا تنسخ الرابط فيها). title عنوان مناسب لو العنوان المبدئي فاضي. لا تخترع تفاصيل ما في الفيديو ولا التوضيح، واسأل عن الناقص في questions.",
+  ].join("\n\n");
+  return { text, sheetUrl, usd: heard?.usd ?? 0 };
 }
 
 /** سجاد's rules at the journey's gate (the same every pass, so they are read from the cache). */

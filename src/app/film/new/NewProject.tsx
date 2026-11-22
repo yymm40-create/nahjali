@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { postJson } from "@/lib/fetch";
+import { api, postJson } from "@/lib/fetch";
+import { sheetOf } from "@/components/jawad/content/media-prep";
+import { isYoutubeLink, storyLink } from "@/lib/film/story-link";
 import { useClaudeModel } from "@/components/robots/claude-model";
 import { FILM_KINDS, type FilmKind } from "@config/film";
 import ProjectFields, { type FieldValues } from "../ProjectFields";
@@ -73,16 +75,57 @@ export default function NewProject() {
     return () => clearTimeout(t);
   }, []);
 
+  // «🔗 رابط يوتيوب»: what was prepared from the link (its frames as one picture), once per link — a re-check reuses it
+  const linkPrep = useRef<{ url: string; sheetId: string | null } | null>(null);
+  const [step, setStep] = useState("");
+
+  /** The video of the link, downloaded and laid out as a sheet of frames for سجاد to look at (null: only its words). */
+  async function prepareLink(url: string): Promise<string | null> {
+    if (linkPrep.current?.url === url) return linkPrep.current.sheetId;
+    let sheetId: string | null = null;
+    try {
+      const start = await postJson<{ enabled: boolean; key?: string }>("/api/film/youtube", { url });
+      if (start.enabled && start.key) {
+        setStep("⬇️ أنزّل الفيديو من يوتيوب…");
+        const until = Date.now() + 16 * 60_000;
+        for (;;) {
+          const s = await api<{ state: string; files?: { kind: string; name: string; url: string | null }[] }>(`/api/film/youtube?key=${encodeURIComponent(start.key)}`);
+          if (s.state === "failed") break;
+          if (s.state === "ready") {
+            const video = (s.files ?? []).find((f) => f.kind === "video");
+            if (video?.url) {
+              setStep("🎞️ أطلّع صور الفيديو…");
+              sheetId = (await sheetOf(video.url, video.name))?.id ?? null;
+            }
+            break;
+          }
+          if (Date.now() > until) break;
+          await new Promise((r) => setTimeout(r, 4000));
+        }
+      }
+    } catch {
+      /* the download is not available (or the day's limit): سجاد still hears the video's words through the link */
+    }
+    linkPrep.current = { url, sheetId };
+    return sheetId;
+  }
+
   async function understand(answers: Record<string, string> = {}) {
     setBusy(true);
     setError("");
+    setStep("");
     try {
-      const result = await postJson<{ intake: JourneyIntake }>("/api/film/intake", { draftId: draftId.current, kind, title: values.title, story: values.story, fixedFacts: values.fixedFacts, targetDurationSec: values.targetDurationSec, answers, previous: intake, model: claude.id, journey });
+      const link = storyLink(values.story);
+      if (link && !isYoutubeLink(link.url)) throw new Error("حط رابط فيديو يوتيوب صحيح. المتاح الحين روابط يوتيوب بس.");
+      const sheetId = link ? await prepareLink(link.url) : null;
+      if (link) setStep("👂 سجاد يشوف الفيديو ويسمعه…");
+      const result = await postJson<{ intake: JourneyIntake }>("/api/film/intake", { draftId: draftId.current, kind, title: values.title, story: values.story, fixedFacts: values.fixedFacts, targetDurationSec: values.targetDurationSec, answers, previous: intake, model: claude.id, journey, ...(link ? { youtube: { sheetId } } : {}) });
       setIntake(result.intake);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
+      setStep("");
     }
   }
 
@@ -135,7 +178,7 @@ export default function NewProject() {
           {kind === "scene" && <p className="text-xs leading-6 text-muted">المشهد القصير يقف بنفسه: مكان واحد ولحظة واحدة — أسرع وأرخص، وما يفتح أحداثًا تحتاج مشاهد ثانية.</p>}
         </section>}
 
-        {!intake && <ProjectFields key={startOnMap ? "map" : "free"} startOnMap={startOnMap} kind={kind} values={values} onChange={(next) => { setValues(next); setIntake(null); }} />}
+        {!intake && <ProjectFields key={startOnMap ? "map" : "free"} startOnMap={startOnMap} withLink kind={kind} values={values} onChange={(next) => { setValues(next); setIntake(null); }} />}
         <ResearchChoice value={research} onChange={setResearch} />
         {/* which mind writes the film: before سجاد reads the idea, because his reading is the journey's first reply */}
         {!intake && kind && (
@@ -153,7 +196,7 @@ export default function NewProject() {
             {!kind && <p className="text-center text-sm font-bold text-muted">اختر أول: مشهد قصير أو فيلم سينمائي؟</p>}
             {kind && !research && values.title.trim() && <p className="text-center text-sm font-bold text-muted">اختر: تبيني أبحث لتطوير القصة أو لا؟</p>}
             <button className="btn btn-primary w-full text-xl" onClick={() => void understand()} disabled={busy || !values.title.trim() || values.story.trim().length < 10 || !research || !kind}>
-              {busy ? "سجاد يراجع الفكرة…" : <><span aria-hidden>🤖</span> خل سجاد يفهمها ويسأل الناقص</>}
+              {busy ? step || "سجاد يراجع الفكرة…" : <><span aria-hidden>🤖</span> خل سجاد يفهمها ويسأل الناقص</>}
             </button>
           </>
         )}
