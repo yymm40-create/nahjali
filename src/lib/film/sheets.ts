@@ -7,8 +7,8 @@ import { addMessage, stageTurns } from "./conversation";
 import { generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
 import { failJob, JOB_STALE_MS, logReplyTokens, replyTokens, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
-import { GENERATOR_FACTS, MASTER_STYLE_ONLY, SHEET_APP_INTEGRATION, SHEET_MAKER_PROMPT, SHEET_MAKER_SCHEMA, STYLE_PLACEHOLDER, TEST_STYLE_FOR_MASTER, TEST_STYLE_FOR_SHEET } from "@config/film-prompts/sheet-maker";
-import { STYLE_TEST_KEY, styleTestPictures, testRefFor, type TestRefChoice } from "./style-test-ref";
+import { GENERATOR_FACTS, SHEET_APP_INTEGRATION, SHEET_MAKER_PROMPT, SHEET_MAKER_SCHEMA, STYLE_PLACEHOLDER } from "@config/film-prompts/sheet-maker";
+import { STYLE_TEST_KEY, promptWithTestStyle, sheetEditHead, sheetEdits, styleTestPictures, testRefFor, type TestRefChoice } from "./style-test-ref";
 import { findStyle } from "@config/film-styles";
 import { sheetImpact } from "./impact";
 import { CONVERT_SHEETS, convertSheetPrompt, LIKENESS_SCHEMA, LIKENESS_SYSTEM, PORTRAITS_PER_PHOTO, portraitPrompt, type Likeness } from "@config/film-prompts/convert-person";
@@ -771,7 +771,8 @@ async function generateSheet(project: FilmProject, user: { id: string; email?: s
   const sheetId = prompt.ref_key;
   // «صورة الاختبار مرجع»: the test picture of the chosen style — the card's own «📎» when it was sent, else the film's
   // setting (on unless the person switched it off)
-  const test = testRefFor(latest(await sheetVersions(project.id), "style"), assets, useTest, (a) => Boolean(a.storage_path));
+  const style = latest(await sheetVersions(project.id), "style");
+  const test = testRefFor(style, assets, useTest, (a) => Boolean(a.storage_path));
   if (!prompt.data.prompt) throw new UserError("برومبت هذا الشيت فاضي.", 409);
   // a real person converted: the sheet's only references are his chosen single images — no real photo, no master
   if (convertUploads(assets, sheetId).length) {
@@ -789,20 +790,21 @@ async function generateSheet(project: FilmProject, user: { id: string; email?: s
   const refs = [...refIds].map((id) => images[id]).filter(Boolean);
   const own = assets.filter((a) => a.kind === "upload" && a.ref_key === sheetId && a.meta?.mode === "reference" && a.status === "uploaded");
   refs.push(...own);
-  let text = prompt.data.prompt;
-  if (sheetId === MASTER_ID) {
-    if (test) {
-      refs.push(test);
-      text += `\n\n${TEST_STYLE_FOR_MASTER}`;
-    }
-  } else {
-    // the test picture just before the master, which stays the LAST image (MASTER_STYLE_ONLY says so)
-    if (test) refs.push(test);
-    refs.push(images[MASTER_ID]);
-    if (test) text += `\n\n${TEST_STYLE_FOR_SHEET}`;
-    text += `\n\n${MASTER_STYLE_ONLY}`;
-  }
+  const master = sheetId === MASTER_ID;
+  // the test picture: the master's only reference, or a sheet's just before the master, which stays the LAST image
+  if (test) refs.push(test);
+  if (!master) refs.push(images[MASTER_ID]);
+  // with it, the test frame governs the look: the written style leaves the prompt and the master becomes secondary
+  // …and above it the person's own edits of this sheet, in their words («ويتبع تعديلاتي اللي أكتبها»)
+  const edits = test ? sheetEdits(await userMessages(project.id, sheetEditHead(sheetId)), sheetId) : [];
+  const text = promptWithTestStyle(prompt.data.prompt, { master, withTest: Boolean(test), styleText: style?.body, edits });
   await startImage(project, user, { sheetId, prompt: text, refs, kind: "sheet", versionId: prompt.id, meta: test ? { style_test_ref: test.id } : {} });
+}
+
+/** The person's messages to the sheet maker that start with `head`, oldest first. */
+async function userMessages(projectId: string, head: string): Promise<string[]> {
+  const { data } = await db().from("film_messages").select("content").eq("project_id", projectId).eq("stage", STAGE).eq("role", "user").like("content", `${head}%`).order("created_at", { ascending: true }).limit(50);
+  return (data ?? []).map((m) => String(m.content ?? ""));
 }
 
 type ImageJob = { sheetId: string; prompt: string; refs: FilmAsset[]; kind: "test" | "sheet" | "portrait"; quality?: "medium" | "high"; versionId: string | null; meta: Record<string, unknown> };
