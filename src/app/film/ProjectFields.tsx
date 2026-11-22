@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { FILM_LIMITS } from "@config/film";
 import { parseStory } from "@/lib/film/story-map";
-import StoryMap, { StoryWay } from "./StoryMap";
+import StoryMap, { StoryWay, type StoryWayKey } from "./StoryMap";
+import { isYoutubeLink, storyFromLink, storyLink } from "@/lib/film/story-link";
 
 export interface FieldValues {
   title: string;
@@ -21,7 +22,9 @@ const toDigits = (s: string) =>
 
 /**
  * Title, story, fixed facts and approximate duration — shared by the new-project and project pages. The story is
- * written freely, or with «🗺️ ساعدني أكتبها»: a question per station (StoryMap), composed into the same story text.
+ * written freely, or with «🗺️ ساعدني أكتبها»: a question per station (StoryMap), composed into the same story text, or
+ * (a new film only, `withLink`) as «🔗 رابط يوتيوب»: a YouTube link and the person's note under it (lib/film/story-link),
+ * which «سجاد» downloads, looks at and hears before he builds the film on it.
  */
 export default function ProjectFields({
   values,
@@ -29,6 +32,7 @@ export default function ProjectFields({
   disabled,
   kind,
   startOnMap,
+  withLink,
 }: {
   values: FieldValues;
   onChange: (v: FieldValues) => void;
@@ -37,10 +41,22 @@ export default function ProjectFields({
   kind?: "scene" | "film" | "series" | "";
   /** open on the story map even when nothing is written yet (a link like /film/new?map=1) */
   startOnMap?: boolean;
+  /** offer «🔗 رابط يوتيوب» as a third way (the new-film page) */
+  withLink?: boolean;
 }) {
   const set = (key: keyof FieldValues) => (e: { target: { value: string } }) => onChange({ ...values, [key]: e.target.value });
   // a story already written on the map opens on the map
-  const [map, setMap] = useState(() => startOnMap || parseStory(values.story) !== null);
+  const [way, setWay] = useState<StoryWayKey>(() => (withLink && storyLink(values.story) ? "link" : startOnMap || parseStory(values.story) !== null ? "map" : "free"));
+  const map = way === "map";
+  const link = withLink && way === "link" ? (storyLink(values.story) ?? { url: "", note: "" }) : null;
+  const setLink = (url: string, note: string) => onChange({ ...values, story: storyFromLink(url, note).slice(0, FILM_LIMITS.storyMax) });
+  // switching ways: a link's story is not carried into the free text (nor the free text into the link)
+  const chooseWay = (w: StoryWayKey) => {
+    if (w === way) return;
+    if (w === "link") onChange({ ...values, story: storyFromLink("", "") });
+    else if (way === "link") onChange({ ...values, story: "" });
+    setWay(w);
+  };
   const seconds = kind === "film" || kind === "series" ? null : Number(values.targetDurationSec) || (kind === "scene" ? 60 : null);
 
   return (
@@ -51,8 +67,35 @@ export default function ProjectFields({
       </label>
       <div className="space-y-2">
         <span className="block font-extrabold">فكرتك وقصتك</span>
-        {!disabled && <StoryWay map={map} onMap={setMap} />}
-        {map && !disabled ? (
+        {!disabled && <StoryWay way={way} onWay={chooseWay} withLink={withLink} />}
+        {link && !disabled ? (
+          <div className="space-y-2">
+            <input
+              className="field"
+              dir="ltr"
+              inputMode="url"
+              value={link.url}
+              onChange={(e) => setLink(e.target.value.trim(), link.note)}
+              placeholder="https://www.youtube.com/watch?v=…"
+              aria-label="رابط فيديو يوتيوب"
+            />
+            {link.url && !isYoutubeLink(link.url) ? (
+              <p className="text-xs font-bold text-red-600">هذا مو رابط فيديو يوتيوب. المتاح الحين روابط يوتيوب بس.</p>
+            ) : (
+              <p className="text-xs leading-6 text-muted">المتاح الحين روابط يوتيوب بس. سجاد ينزّل الفيديو ويشوف صوره ويسمع كلامه، ويقول لك وش فهم منه قبل ما يبني عليه فيلمك.</p>
+            )}
+            <label className="block space-y-1">
+              <span className="text-sm font-extrabold">وضّح لسجاد وش تبي منه <span className="text-xs text-muted">(اختياري)</span></span>
+              <textarea
+                className="field min-h-32"
+                value={link.note}
+                onChange={(e) => setLink(link.url, e.target.value)}
+                maxLength={FILM_LIMITS.storyMax - 200}
+                placeholder="مثلًا: أبي نفس القصة بستايل كرتوني، أو خذ فكرته بس وغيّر الشخصيات، أو انسخ حركة الكاميرا والإضاءة"
+              />
+            </label>
+          </div>
+        ) : map && !disabled ? (
           <StoryMap story={values.story} durationSec={seconds} onChange={(story) => onChange({ ...values, story: story.slice(0, FILM_LIMITS.storyMax) })} />
         ) : (
           <textarea

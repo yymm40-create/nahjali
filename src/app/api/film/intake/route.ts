@@ -5,7 +5,7 @@ import { requireFilmApiUser } from "@/lib/film/access";
 import { confirmJourneyUpgrade, understandJourney, type JourneyIntakeBody } from "@/lib/film/intake";
 import { isFilmJourney, journeyModelId } from "@config/film-journey";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 export const POST = handle(async (req: Request) => {
   const user = await requireFilmApiUser();

@@ -91,7 +91,7 @@ export default function ScenePrep({ seriesId, episodeId, sceneId, initialTitle =
               <span className="block text-xs font-bold text-muted">من المسلسل والحلقة</span>
             </button>
           </div>
-          {mode === "mine" && <StoryWay map={map} onMap={setMap} />}
+          {mode === "mine" && <StoryWay way={map ? "map" : "free"} onWay={(w) => setMap(w === "map")} />}
           {mode === "mine" && map ? (
             <StoryMap story={text} durationSec={null} onChange={(t) => setText(t.slice(0, 20000))} />
           ) : mode && (
