@@ -5,7 +5,7 @@
 // a time. Each generator node is an ordinary studio job (the same /api/jawad/generate: the price the person agreed to,
 // the hold, the refund on failure, «أعمالي»). Before a run the page shows what will run and the total; a node whose
 // inputs did not change keeps its finished result (config/jawad/canvas.ts → planRun), so a rerun pays only for what
-// changed. Canvases and recipes are saved per person (migration 0121; before it runs, the canvas lives in this browser
+// changed. Canvases and recipes are saved per person (migration 0126; before it runs, the canvas lives in this browser
 // and saving says so in one line).
 
 import dynamic from "next/dynamic";
@@ -343,7 +343,7 @@ export default function CanvasStudio({ generators, prices, pricing, user, owner,
     return () => clearTimeout(t);
   }, [user, available, loadGraph]);
 
-  // kept in this browser on every change; saved to the account a moment after (an opened canvas, once 0121 has run)
+  // kept in this browser on every change; saved to the account a moment after (an opened canvas, once 0126 has run)
   useEffect(() => {
     if (!dirty) return;
     const t = setTimeout(async () => {

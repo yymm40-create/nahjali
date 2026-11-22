@@ -3,7 +3,7 @@ import { handle } from "@/lib/api";
 import { requireJawadApiUser } from "@/lib/jawad/server/access";
 import { createCanvas, listCanvases } from "@/lib/jawad/server/canvas";
 
-/** JAWAD AI · «اللوحة»: whether saving is on (migration 0121), and the person's canvases and recipes. */
+/** JAWAD AI · «اللوحة»: whether saving is on (migration 0126), and the person's canvases and recipes. */
 export const GET = handle(async () => {
   const { user } = await requireJawadApiUser();
   return NextResponse.json(await listCanvases(user.id));

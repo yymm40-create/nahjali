@@ -1,5 +1,5 @@
 // «الجواد الذكي!» | JAWAD AI — «اللوحة», the database side: the person's saved canvases and their own recipes
-// (migration 0121). Server only. Until 0121 runs every read answers «not ready» and the page keeps saving off with a
+// (migration 0126). Server only. Until 0126 runs every read answers «not ready» and the page keeps saving off with a
 // one-line note; nothing here throws for a missing table. The graph is checked (config/jawad/canvas.ts) before it is kept.
 
 import { UserError } from "@/lib/api";
@@ -8,7 +8,7 @@ import { asRecipe, cleanCanvasName, cleanGraph, type CanvasGraph } from "@config
 import { isUuid } from "./uploads";
 
 const db = () => createAdminClient();
-/** The table of 0121 isn't there yet. */
+/** The table of 0126 isn't there yet. */
 export const canvasMissing = (e: unknown) => ["42P01", "PGRST202", "PGRST205"].includes((e as { code?: string } | null)?.code ?? "");
 export const CANVAS_NOT_READY = "حفظ اللوحات يتفعّل قريب.";
 /** How many canvases and recipes one person keeps. */
@@ -38,7 +38,7 @@ interface Row {
 
 const summary = (r: Row): CanvasSummary => ({ id: r.id, name: r.name, kind: r.kind, nodes: Array.isArray(r.graph?.nodes) ? r.graph.nodes.length : 0, updatedAt: r.updated_at });
 
-/** Whether 0121 has run, and the person's canvases and recipes, newest first. */
+/** Whether 0126 has run, and the person's canvases and recipes, newest first. */
 export async function listCanvases(userId: string): Promise<{ ready: boolean; items: CanvasSummary[] }> {
   const { data, error } = await db().from("jawad_canvases").select("id,user_id,name,kind,graph,updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(MAX_SAVED);
   if (canvasMissing(error)) return { ready: false, items: [] };
