@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { normalizeTitle } from "@/lib/mahdi/engine";
+import { normalizeTitle, todayIn } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { BOOK_COLUMNS, bookFromRow, MAX_READING, type BookRow } from "@/lib/mahdi/server/reading";
-import { readingReply } from "@/lib/mahdi/server/reading-write";
+import { autoBookHabit, readingReply } from "@/lib/mahdi/server/reading-write";
 import { checkUploadedPdf, removePdf, storeCover } from "@/lib/mahdi/server/book-files";
 import { cleanLine, cleanText } from "@/lib/mahdi/server/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -78,6 +78,8 @@ export const POST = mahdiRoute(async (req: Request) => {
   } else {
     const { error } = await supabase.from("mahdi_user_books").insert({ user_id: user.id, book_id: bookId, state: "reading" });
     if (error) throw error;
+    // a new book becomes a habit too, unless the person said no («habit» = "0" in the form)
+    if (form.get("habit") !== "0") await autoBookHabit(supabase, user.id, todayIn(profile.timeZone), bookId);
   }
   return NextResponse.json({ bookId, duplicate, ...(await readingReply(supabase, profile)) });
 });

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { countPages, mergeRanges, parsePagesInput, type PageRange } from "@/lib/mahdi/engine";
+import { countPages, mergeRanges, newPages, parsePagesInput, type PageRange } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { parseNumberInput } from "@/lib/mahdi/client/derive";
 import { clock, elapsedMs, loadTimer, saveTimer, sendSession, type TimerState } from "@/lib/mahdi/client/reading";
@@ -42,6 +42,7 @@ export default function SessionPage() {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [repeatOk, setRepeatOk] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   const [awake, setAwake] = useState(false);
   const lock = useRef<WakeLockSentinel | null>(null);
@@ -133,6 +134,8 @@ export default function SessionPage() {
   const main: PageRange[] = mine && last >= 1 && last <= book.pages ? [[Math.min(mine.startPage, last), Math.max(mine.startPage, last)]] : [];
   const extraRanges = parsePagesInput(extra, book.pages);
   const ranges = mergeRanges([...main, ...(extraRanges ?? [])], book.pages);
+  // pages already saved in this book count once in «تحدي القراءة»: say so, and ask once before saving only those
+  const dup = p ? newPages(ranges, p.ranges) : { fresh: 0, repeated: 0 };
 
   async function save() {
     if (!mine) return;
@@ -140,6 +143,10 @@ export default function SessionPage() {
     if (extraRanges === null) return setError(U.invalid(book!.pages));
     const seconds = Math.floor(elapsedMs(mine) / 1000);
     if (!ranges.length && seconds < 30) return setError(t.reading.sessionTooShort);
+    if (ranges.length && dup.fresh === 0 && !repeatOk) {
+      setRepeatOk(true);
+      return setError(t.reading.repeat.all);
+    }
     setBusy(true);
     setError("");
     try {
@@ -224,12 +231,12 @@ export default function SessionPage() {
           <p className="m-num m-muted">{t.reading.duration}: {clock(ms)}</p>
           <label className="block">
             <span className="m-label">{U.endLabel}</span>
-            <input className="m-field m-num text-lg" inputMode="numeric" autoFocus value={endPage} onChange={(e) => setEndPage(e.target.value)} placeholder={String(mine.startPage)} />
+            <input className="m-field m-num text-lg" inputMode="numeric" autoFocus value={endPage} onChange={(e) => (setEndPage(e.target.value), setRepeatOk(false))} placeholder={String(mine.startPage)} />
             {main.length > 0 && <span className="m-hint mt-1 block">{U.readRange(main[0][0], main[0][1])}</span>}
           </label>
           <label className="block">
             <span className="m-label">{U.extra}</span>
-            <input className="m-field m-num" inputMode="text" dir="ltr" value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="40-45, 60" />
+            <input className="m-field m-num" inputMode="text" dir="ltr" value={extra} onChange={(e) => (setExtra(e.target.value), setRepeatOk(false))} placeholder="40-45, 60" />
             <span className="m-hint mt-1 block">{U.extraHint}</span>
           </label>
           <label className="block">
@@ -237,10 +244,11 @@ export default function SessionPage() {
             <textarea className="m-field" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t.reading.notePlaceholder} />
           </label>
           {ranges.length > 0 && <p className="m-num text-sm font-semibold">{U.count(countPages(ranges))}</p>}
+          {ranges.length > 0 && dup.repeated > 0 && <p className="m-note m-num text-sm">{t.reading.repeat.some(dup.fresh, dup.repeated)}</p>}
           {error && <p className="m-error" role="alert">{error}</p>}
           <div className="grid grid-cols-2 gap-3">
             <button type="button" className="m-btn m-btn-ghost" onClick={() => (setEnding(false), resume())}>{t.reading.resumeTimer}</button>
-            <button className="m-btn m-btn-primary" disabled={busy}>{busy ? t.common.saving : t.reading.save}</button>
+            <button className="m-btn m-btn-primary" disabled={busy}>{busy ? t.common.saving : repeatOk && dup.fresh === 0 && ranges.length ? t.reading.repeat.saveAnyway : t.reading.save}</button>
           </div>
         </form>
       )}

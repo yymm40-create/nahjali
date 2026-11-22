@@ -4,7 +4,7 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { filmPathsInUse } from "@/lib/editor/server";
 import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
-import { currentClaude, withClaude } from "./claude-model";
+import { forTask, keepClaude } from "./claude-model";
 import { addMessage, stageTurns } from "./conversation";
 import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
@@ -142,7 +142,7 @@ async function queueReply(project: FilmProject, user: User, messageId: string) {
     units: 0,
     unit: "tokens",
   });
-  if (created) { const picked = currentClaude().id; after(() => withClaude(picked, () => runDirectorReply(project.id, job.id))); };
+  if (created) after(keepClaude(() => runDirectorReply(project.id, job.id)));
   return job.id;
 }
 
@@ -807,7 +807,9 @@ export async function runDirectorReply(projectId: string, jobId: string) {
     // an hour's cache: the director's replies are spaced by Seedance renders and the person watching them (often more than
     // 5 minutes), so on the 5-minute cache most replies wrote the whole conversation again (measured: 6 replies ≈ $2.10
     // cold vs ≈ $1.02 kept for an hour — the 2× write is paid once, every later reply reads)
-    const result = await callClaudeJson<Reply>({ system, turns, schema: DIRECTOR_SCHEMA, maxTokens: MAX_TOKENS, cacheTtl: "1h" });
+    // «اختر رحلتك»: until his understanding is approved the director reads and restates; after it he plans and writes the shots
+    const task = versions.some((v) => v.kind === "dir_understanding" && v.status === "approved") ? "director.shots" : "director.understanding";
+    const result = await forTask(task, () => callClaudeJson<Reply>({ system, turns, schema: DIRECTOR_SCHEMA, maxTokens: MAX_TOKENS, cacheTtl: "1h" }));
     logReplyTokens("director", projectId, result.usage);
     const r = result.data;
     const kind = KIND_FOR(r);

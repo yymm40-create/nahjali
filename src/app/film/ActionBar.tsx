@@ -4,7 +4,8 @@ import { createContext, useContext, useState } from "react";
 import Coined from "@/components/Coined";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import MicButton from "@/components/robots/MicButton";
-import { useClaudeModel } from "@/components/robots/claude-model";
+import { filmJourneyOf } from "@config/film-journey";
+import { useFilmJourney } from "./JourneyPicker";
 
 export type SendMode = "edit" | "direct";
 
@@ -32,6 +33,8 @@ export default function ActionBar({
   const [mode, setMode] = useState<SendMode | null>(null);
   const [text, setText] = useState("");
   const left = useContext(EditsLeftContext);
+  // a project with a journey («اختر رحلتك») answers with its minds: the device's own pick is not asked here
+  const journey = filmJourneyOf(useFilmJourney());
   const editable = Boolean(onSend);
   const send = left === 0 ? undefined : onSend;
   if (busy || (!onApprove && !editable)) return null;
@@ -59,7 +62,7 @@ export default function ActionBar({
       {mode && send && (
         <div className="space-y-2">
           {warning && <p className="rounded-2xl border-s-4 border-gold bg-gold/10 p-3 text-sm font-bold">⚠️ {warning}</p>}
-          <ClaudeModelPicker />
+          {journey ? <p className="text-xs font-bold text-muted">{journey.icon} يكتبه عقل «{journey.name}» (تغيّرها من أعلى الصفحة).</p> : <ClaudeModelPicker />}
           <MicButton onText={(t) => setText((v) => (v.trim() ? `${v.trim()} ${t}` : t).slice(0, 4000))} className="w-full" />
           <textarea
             className="field min-h-24"

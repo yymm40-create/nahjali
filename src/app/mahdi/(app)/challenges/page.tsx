@@ -2,6 +2,7 @@
 
 import { t } from "@/lib/mahdi/i18n";
 import ChallengeList from "@/components/mahdi/ChallengeList";
+import ReadChallengeLink from "@/components/mahdi/ReadChallengeLink";
 
 /** Unified challenges set by the admin: the same definition for everyone, so comparing is fair. */
 export default function ChallengesPage() {
@@ -9,6 +10,7 @@ export default function ChallengesPage() {
     <div className="space-y-6">
       <h1 className="m-display text-3xl">{t.challenges.title}</h1>
       <p className="m-note">{t.challenges.intro}</p>
+      <ReadChallengeLink />
       <ChallengeList />
     </div>
   );

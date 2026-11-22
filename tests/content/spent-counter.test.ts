@@ -63,6 +63,6 @@ describe("wired", () => {
     expect(read("src/app/api/content/produce/route.ts")).toContain("contentSpent(user.id, chatId)");
     expect(read("src/app/api/content/generate/route.ts")).toContain("contentSpent(user.id, chatId)");
     const page = read("src/components/jawad/content/ContentChat.tsx");
-    expect(page.match(/if \(typeof r\.spent === "number"\) setSpent\(r\.spent\)/g)?.length).toBe(3);
+    expect(page.match(/if \(typeof r\.spent === "number"\) setSpent\(r\.spent\)/g)?.length).toBe(2); // the slides loop reads it in one place (take), the media loop in another
   });
 });

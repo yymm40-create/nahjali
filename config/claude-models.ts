@@ -73,6 +73,9 @@ export const CLAUDE_MODELS: readonly ClaudeModel[] = [
 
 /** The model a robot uses when the person has not chosen. */
 export const DEFAULT_CLAUDE_MODEL = "claude-opus-5-5";
+/** «صانع المحتوى»'s own default while the person has chosen none: «الرشيق» (the owner, 17 Nov 2026: «استخدم الرشيق مب
+ * الأصيل… خله الافتراضي» — half the price of «الأصيل», and enough for this work). A model the person picked themselves stays theirs. */
+export const CONTENT_CLAUDE_MODEL = "claude-sonnet-5-5";
 
 export const findClaudeModel = (id: unknown): ClaudeModel | null => (typeof id === "string" ? CLAUDE_MODELS.find((m) => m.id === id) ?? null : null);
 

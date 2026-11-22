@@ -13,6 +13,8 @@ import StepWhy from "../StepWhy";
 import "../stage/stage.css";
 import JourneyIntakeCard from "../JourneyIntakeCard";
 import type { JourneyIntake } from "@/lib/film/intake";
+import JourneyPicker from "../JourneyPicker";
+import { DEFAULT_FILM_JOURNEY, FILM_JOURNEY_KEY, isFilmJourney, type FilmJourney } from "@config/film-journey";
 
 /** The first screen of a scene: title + the user's own story. Saved as soon as it is created. */
 export default function NewProject() {
@@ -25,6 +27,27 @@ export default function NewProject() {
   const [busy, setBusy] = useState(false);
   // the person's Claude model: «سجاد» prepares the journey with it, not always the default
   const [claude] = useClaudeModel();
+  // «اختر رحلتك»: the mind that writes this film (the recommended one until the person picks; their last pick is remembered)
+  const [journey, setJourney] = useState<FilmJourney>(DEFAULT_FILM_JOURNEY);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        const kept = localStorage.getItem(FILM_JOURNEY_KEY);
+        if (isFilmJourney(kept)) setJourney(kept);
+      } catch {
+        /* private mode: the recommended journey stays */
+      }
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
+  const chooseJourney = (j: FilmJourney) => {
+    setJourney(j);
+    try {
+      localStorage.setItem(FILM_JOURNEY_KEY, j);
+    } catch {
+      /* the choice lasts for this film */
+    }
+  };
   const [error, setError] = useState("");
   const [intake, setIntake] = useState<JourneyIntake | null>(null);
   const draftId = useRef(crypto.randomUUID());
@@ -54,7 +77,7 @@ export default function NewProject() {
     setBusy(true);
     setError("");
     try {
-      const result = await postJson<{ intake: JourneyIntake }>("/api/film/intake", { draftId: draftId.current, kind, title: values.title, story: values.story, fixedFacts: values.fixedFacts, targetDurationSec: values.targetDurationSec, answers, previous: intake, model: claude.id });
+      const result = await postJson<{ intake: JourneyIntake }>("/api/film/intake", { draftId: draftId.current, kind, title: values.title, story: values.story, fixedFacts: values.fixedFacts, targetDurationSec: values.targetDurationSec, answers, previous: intake, model: claude.id, journey });
       setIntake(result.intake);
     } catch (e) {
       setError((e as Error).message);
@@ -68,7 +91,7 @@ export default function NewProject() {
     setBusy(true);
     setError("");
     try {
-      const { id } = await postJson<{ id: string }>("/api/film/projects", { ...values, title: intake.title || values.title, story: intake.concept || values.story, targetDurationSec: intake.targetDurationSec ?? values.targetDurationSec, fixedFacts: intake.fixedFacts.join("\n") || values.fixedFacts, research, kind, intake, workflowVersion: 2 });
+      const { id } = await postJson<{ id: string }>("/api/film/projects", { ...values, title: intake.title || values.title, story: intake.concept || values.story, targetDurationSec: intake.targetDurationSec ?? values.targetDurationSec, fixedFacts: intake.fixedFacts.join("\n") || values.fixedFacts, research, kind, intake, workflowVersion: 2, journey });
       // straight to the screenwriter, who starts by himself; «نعم»: سجاد opens there too and asks for the research's scope
       router.push(`${filmBase}/${id}/script?start=1${research === "yes" ? "&research=1" : ""}`);
     } catch (e) {
@@ -114,6 +137,14 @@ export default function NewProject() {
 
         {!intake && <ProjectFields key={startOnMap ? "map" : "free"} startOnMap={startOnMap} kind={kind} values={values} onChange={(next) => { setValues(next); setIntake(null); }} />}
         <ResearchChoice value={research} onChange={setResearch} />
+        {/* which mind writes the film: before سجاد reads the idea, because his reading is the journey's first reply */}
+        {!intake && kind && (
+          <section className="card space-y-2 p-3">
+            <b className="block text-base">اختر رحلتك</b>
+            <p className="text-xs leading-6 text-muted">أي عقل يكتب نصوص فيلمك (السيناريو، أوصاف الشيتات، برومبتات الفيديو). تقدر تغيّرها بعدين من صفحة المشروع.</p>
+            <JourneyPicker value={journey} onChange={chooseJourney} disabled={busy} />
+          </section>
+        )}
         {error && <p className="error-box">{error}</p>}
         {intake ? (
           <JourneyIntakeCard intake={intake} busy={busy} onRecheck={(answers) => void understand(answers)} onConfirm={() => void create()} onEdit={() => setIntake(null)} />

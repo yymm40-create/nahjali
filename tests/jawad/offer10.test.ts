@@ -14,7 +14,7 @@ describe("عرض الـ٢٥ ريال", () => {
     const by = Object.fromEntries(OFFER10_GRANTS.map((g) => [g.key, g]));
     expect(by.nano).toMatchObject({ cap: null, hours: 24, resolution: "1K" });
     expect(by.gpt).toMatchObject({ cap: 20, hours: 48 });
-    expect(by.seedance).toMatchObject({ cap: 3, resolution: "480p" });
+    expect(by.seedance).toMatchObject({ cap: 4, resolution: "480p" });
     for (const g of OFFER10_GRANTS) {
       const def = generatorById(g.generatorId);
       expect(def, g.generatorId).toBeTruthy();

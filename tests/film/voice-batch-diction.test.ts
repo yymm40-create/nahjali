@@ -121,7 +121,9 @@ describe("the film's voices page: speak all = prepare once, then each line", () 
       expect(page).toMatch(/model: claude\.id/);
     }
     const route = read("src/app/api/film/projects/[id]/voices/route.ts");
-    expect(route).toMatch(/b\.action === "prepare"[^\n]*withClaude\(model, \(\) => prepareLines\(project, user, b\.keys, b\.idempotencyKey, b\.diction\)\)/);
+    // the project's journey («اختر رحلتك») or, without one, the person's model: `mind` runs the work with it
+    expect(route).toMatch(/const mind = [^\n]*withProjectClaude\(project, user\.email, b\.model, fn\)/);
+    expect(route).toMatch(/b\.action === "prepare"[^\n]*mind\(\(\) => prepareLines\(project, user, b\.keys, b\.idempotencyKey, b\.diction\)\)/);
     expect(route).toMatch(/b\.diction, b\.prepared\)/);
     const lib = read("src/lib/film/voices.ts");
     // a prepared line is spoken without a check (or a hold) of its own
@@ -153,7 +155,8 @@ describe("the person's model reaches the robots of these pages", () => {
     expect(read("src/app/api/jawad/zaynab/route.ts")).toMatch(/withFixedPriceClaude\(body\.model/);
     expect(read("src/app/api/jawad/cartoon/route.ts")).toMatch(/direct\(input, body\.model\)/);
     expect(read("src/app/api/jawad/edit/understand/route.ts")).toMatch(/robotTurn\(user, body\.model/);
-    expect(read("src/app/api/film/intake/route.ts")).toMatch(/robotTurn\(user, body\.model/);
+    // a new film's journey gives سجاد's reading its mind; without one the person's model answers
+    expect(read("src/app/api/film/intake/route.ts")).toMatch(/robotTurn\(user, isFilmJourney\(journey\) \? journeyModelId\(journey, "intake"\) : body\.model/);
     expect(read("src/lib/jawad/server/smart-edit.ts")).toMatch(/findClaudeModel\(b\.model\) \? \{ claude: String\(b\.model\) \}/);
   });
 

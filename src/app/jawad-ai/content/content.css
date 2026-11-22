@@ -545,6 +545,9 @@
 .ct-slide .badge.fixed { color: #7dd3fc; }
 .ct-slide .badge.warn { background: #fbbf24; color: #1a1216; }
 .ct-slide .tools { position: absolute; bottom: 6px; inset-inline-end: 6px; display: flex; gap: 6px; }
+/* the link sits in the row beside «🔁», not on top of it (the older rule «.ct-slide a» above placed it absolutely, over the
+   redraw button: pressing «🔁» downloaded the video instead, 17 Nov 2026) */
+.ct-slide .tools a { position: static; }
 .ct-slide .tools a, .ct-slide .tools button { background: #000a; color: #fff; border: 0; font-size: 12px; padding: 3px 8px; border-radius: 999px; text-decoration: none; cursor: pointer; }
 .ct-slide .tools button:disabled { opacity: 0.4; cursor: not-allowed; }
 .ct-flags { margin: 0; padding-inline-start: 18px; font-size: 13px; color: #fde68a; }
@@ -744,3 +747,32 @@
 .ct-compose-opts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ct-verbose.on { background: color-mix(in srgb, var(--ct-teal) 24%, transparent); color: #fff; }
 .ct-editbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; font-size: 12.5px; color: #e9dfcf; background: color-mix(in srgb, var(--ct-amber) 14%, transparent); border: 1px dashed color-mix(in srgb, var(--ct-amber) 50%, transparent); }
+/* the pictures come first: the person approves them (or redraws any) before «حيدرا ماكس» designs and moves the slides */
+.ct-approve { display: grid; gap: 8px; border-color: rgba(34, 197, 94, 0.45); background: rgba(34, 197, 94, 0.08); }
+.ct-approve small { color: #bbf7d0; font-size: 12.5px; }
+.ct-approve .ct-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ct-go { justify-self: start; background: linear-gradient(180deg, #34d399, #16a34a); color: #04210f; font-weight: 800; border: 0; padding-inline: 18px; }
+.ct-steps { display: block; margin-top: 4px; color: #fcd34d; font-size: 12px; }
+/* «💡 وفّر رصيدك» */
+.ct-tips { margin: 6px 0 2px; padding: 10px 14px; border-radius: 14px; background: rgba(250, 204, 21, 0.08); border: 1px solid rgba(250, 204, 21, 0.35); font-size: 13px; line-height: 1.7; }
+.ct-tips b { color: #fde68a; }
+.ct-tips ul { margin: 6px 0 0; padding-inline-start: 18px; }
+.ct-tips li { margin: 3px 0; color: #f5f5f4; }
+
+/* «⏱️ وقت الصوت»: two typed times for one slide's sound */
+.ct-time-row { display: flex; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+.ct-time-row label { display: flex; align-items: center; gap: 6px; }
+.ct-time-row input { width: 84px; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; font: inherit; text-align: center; }
+.ct-time .ct-warn { color: #e5484d; display: block; }
+.ct-time textarea { display: block; width: 100%; box-sizing: border-box; margin: 8px 0; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; font: inherit; resize: vertical; }
+.ct-rules { display: grid; gap: 6px; margin: 8px 0; }
+.ct-rule { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ct-rule > span { font-weight: 700; min-width: 88px; font-size: .9em; }
+.ct-chip { padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; font: inherit; font-size: .85em; cursor: pointer; }
+.ct-chip.on { background: #3b82f6; border-color: #3b82f6; color: #fff; }
+.ct-rule input[type="color"] { width: 32px; height: 28px; padding: 0; border: none; background: none; }
+.ct-rule select { padding: 4px 8px; border-radius: 8px; background: transparent; color: inherit; font: inherit; }
+.ct-all { display: block; margin: 6px 0; }
+.ct-all small { display: block; opacity: .75; }
+.ct-retext { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 6px 0; }
+.ct-retext > span { font-weight: 700; }

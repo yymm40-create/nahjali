@@ -8,7 +8,8 @@ import { ASSET_DRAG } from "./Timeline";
 import type { EditorAsset, ImportItem } from "./types";
 import type { UploadItem } from "./useUploads";
 import SfxLibrary from "./SfxLibrary";
-import { desktopLinks, useDesktop } from "./desktop";
+import { desktop, desktopLinks, useDesktop } from "./desktop";
+import { shortName } from "./media";
 import { askShorts } from "./shorts-ask";
 
 const KIND_ICON = { video: "video", audio: "music", image: "image" } as const;
@@ -25,6 +26,7 @@ export default function Library({
   onAdd,
   onImported,
   onDelete,
+  onRelinked,
   readOnly,
 }: {
   projectId: string;
@@ -38,6 +40,8 @@ export default function Library({
   onAdd: (a: EditorAsset) => void;
   onImported: (a: EditorAsset[]) => void;
   onDelete: (a: EditorAsset) => void;
+  /** a file of the computer found again at its new place (same project file, new link) */
+  onRelinked?: (a: EditorAsset) => void;
   readOnly: boolean;
 }) {
   const [tab, setTab] = useState<"files" | "works" | "sfx">("files");
@@ -46,6 +50,40 @@ export default function Library({
   const [link, setLink] = useState("");
   // «ابحث في مقاطعك»: words said in the files (opens «ابحث في الكلام» with the results)
   const [said, setSaid] = useState("");
+  const missing = useMissingLocal(assets);
+  const folder = useRef<HTMLInputElement>(null);
+  const files = useRef<HTMLInputElement>(null);
+  const [relink, setRelink] = useState<{ busy: boolean; note: string | null }>({ busy: false, note: null });
+
+  // «اربط الملفات من جديد»: the files that moved, found by name (and size) in the folder or files picked, kept again
+  const relinkFrom = async (list: FileList | null) => {
+    const d = desktop();
+    if (!list?.length || !d) return;
+    const lost = assets.filter((a) => missing.has(a.id));
+    const picked = Array.from(list);
+    setRelink({ busy: true, note: null });
+    let back = 0;
+    let failed = "";
+    for (const a of lost) {
+      const same = picked.filter((f) => shortName(f.name) === a.name);
+      const f = same.find((x) => a.bytes > 0 && x.size === a.bytes) ?? (same.length === 1 ? same[0] : null);
+      if (!f) continue;
+      try {
+        const kept = await d.keepLocal(f);
+        if (!kept) continue;
+        const r = await postJson<{ asset: EditorAsset }>(`/api/jawad/editor/projects/${projectId}`, { action: "relink_local", id: a.id, localId: kept.id });
+        onRelinked?.(r.asset);
+        back++;
+      } catch (e) {
+        failed = e instanceof Error ? e.message : "تعذّر.";
+      }
+    }
+    const left = lost.length - back;
+    setRelink({
+      busy: false,
+      note: failed || (back ? `رجّعت ${back} ${back === 1 ? "ملف" : "ملفات"}${left ? `، وباقي ${left} ما لقيتها في اللي اخترته` : " ✅"}.` : "ما لقيت ولا ملف بنفس الاسم في اللي اخترته. اختر المجلد اللي نقلت له المقاطع."),
+    });
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -123,6 +161,42 @@ export default function Library({
             </>
           )}
 
+          {onDesktop && !readOnly && missing.size > 0 && (
+            <div className="space-y-2 rounded-lg border border-jw-danger/50 bg-jw-danger/10 p-2.5 text-xs">
+              <p className="font-semibold">
+                ما لقيت {missing.size === 1 ? "ملف واحد" : `${missing.size} ملفات`} في مكانها على جهازك (انتقل مجلدها أو تغيّر اسمه).
+              </p>
+              <p className="text-jw-muted">اختر المجلد اللي صارت فيه، وأرجعها كلها لمكانها في التايملاين.</p>
+              <input
+                ref={folder}
+                type="file"
+                className="hidden"
+                {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+                onChange={(e) => {
+                  void relinkFrom(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              <input
+                ref={files}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  void relinkFrom(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              <button type="button" className="jw-btn jw-btn-primary w-full" disabled={relink.busy} onClick={() => folder.current?.click()}>
+                {relink.busy ? <span className="jw-spinner" /> : "📁"} اربط الملفات من جديد
+              </button>
+              <button type="button" className="jw-btn w-full" disabled={relink.busy} onClick={() => files.current?.click()}>
+                أو اختر الملفات نفسها
+              </button>
+            </div>
+          )}
+          {relink.note && <p className="rounded-lg border border-jw-line bg-jw-surface-2 p-2 text-xs">{relink.note}</p>}
+
           {uploads.map((u) => (
             <div key={u.key} className={`rounded-lg border p-2 text-xs ${u.error ? "border-jw-danger/50 bg-jw-danger/10" : "border-jw-line bg-jw-surface-2"}`}>
               <div className="flex items-center gap-2">
@@ -171,7 +245,7 @@ export default function Library({
                         </span>
                       )}
                       {a.durationMs != null && <span className="absolute bottom-0.5 left-0.5 rounded bg-black/70 px-1 text-[10px] text-white" dir="ltr">{formatTime(a.durationMs, false)}</span>}
-                      {a.status === "pending" ? <span className="absolute inset-0 grid place-items-center bg-black/60 text-[10px] text-white">⏳ يتجهّز…</span> : a.status !== "ready" && <span className="absolute inset-0 grid place-items-center bg-black/60 text-[10px] text-jw-danger">انحذف</span>}
+                      {missing.has(a.id) ? <span className="absolute inset-0 grid place-items-center bg-black/60 px-1 text-center text-[10px] text-jw-danger">انتقل مكانه</span> : a.status === "pending" ? <span className="absolute inset-0 grid place-items-center bg-black/60 text-[10px] text-white">⏳ يتجهّز…</span> : a.status !== "ready" && <span className="absolute inset-0 grid place-items-center bg-black/60 text-[10px] text-jw-danger">انحذف</span>}
                       {!readOnly && a.status === "ready" && (
                         <span className="absolute right-0.5 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-jw-accent text-jw-on-accent opacity-90">
                           <Icon name="plus" size={12} strokeWidth={2.5} />
@@ -203,6 +277,36 @@ export default function Library({
       )}
     </div>
   );
+}
+
+/**
+ * The project's files kept on this computer that the desktop program no longer finds (moved, renamed or deleted):
+ * asked once per link (a refused first byte), so they can be pointed at their new place.
+ */
+function useMissingLocal(assets: EditorAsset[]) {
+  const [missing, setMissing] = useState<Set<string>>(new Set());
+  const key = assets
+    .filter((a) => a.url?.startsWith("haidara-media:"))
+    .map((a) => `${a.id}=${a.url}`)
+    .join(",");
+  useEffect(() => {
+    let live = true;
+    const list = key ? key.split(",").map((x) => x.split("=") as [string, string]) : [];
+    Promise.all(
+      list.map(([id, url]) =>
+        fetch(url, { headers: { Range: "bytes=0-0" } })
+          .then((r) => {
+            void r.body?.cancel().catch(() => undefined);
+            return r.status === 404 ? id : null;
+          })
+          .catch(() => null),
+      ),
+    ).then((ids) => live && setMissing(new Set(ids.filter((x): x is string => !!x))));
+    return () => {
+      live = false;
+    };
+  }, [key]);
+  return missing;
 }
 
 /** The person's works from JAWAD AI and the film maker, to bring in (the files stay where they are). */

@@ -26,6 +26,8 @@ export default function AddBookPage() {
   const [results, setResults] = useState<Book[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
+  // every book added becomes a habit (pages a day) unless the person turns this off
+  const [habit, setHabit] = useState(true);
   const [error, setError] = useState("");
   const [form, setForm] = useState<{ title: string; author: string; pages: string; description: string; unit: BookUnit }>({
     title: params.get("title") ?? "",
@@ -61,8 +63,9 @@ export default function AddBookPage() {
   async function choose(book: Book) {
     setBusy(true);
     try {
-      const { reading: fresh } = await mahdiFetch<{ reading: ReadingData }>("/api/mahdi/reading/library", { method: "POST", json: { bookId: book.id, action: "add" } });
+      const { reading: fresh } = await mahdiFetch<{ reading: ReadingData }>("/api/mahdi/reading/library", { method: "POST", json: { bookId: book.id, action: "add", habit } });
       store.setSnapPart({ reading: fresh });
+      if (habit) void store.refresh(true); // its habit is on the home now
       toast(t.reading.added);
       router.push(`/mahdi/reading/book/${book.id}`);
     } catch (e) {
@@ -84,6 +87,7 @@ export default function AddBookPage() {
     data.append("pages", String(pages));
     data.append("unit", form.unit);
     data.append("description", form.description.trim());
+    data.append("habit", habit ? "1" : "0");
     try {
       // An enhanced cover is already small; a photo is made smaller first
       if (cover) data.append("cover", cover instanceof File ? await shrinkImage(cover) : cover, cover instanceof File ? "cover.jpg" : "cover.webp");
@@ -93,6 +97,7 @@ export default function AddBookPage() {
       }
       const res = await mahdiFetch<{ bookId: string; duplicate: boolean; reading: ReadingData }>("/api/mahdi/reading/books", { method: "POST", body: data });
       store.setSnapPart({ reading: res.reading });
+      if (habit) void store.refresh(true);
       toast(res.duplicate ? t.reading.duplicate : t.reading.created);
       router.push(`/mahdi/reading/book/${res.bookId}`);
     } catch (err) {
@@ -108,6 +113,15 @@ export default function AddBookPage() {
         <Icon name="chevronRight" size={18} /> {t.reading.title}
       </Link>
       <h1 className="m-display text-3xl">{t.reading.addTitle}</h1>
+
+      {/* every book added becomes a habit, unless turned off here */}
+      <label className="m-card flex items-center gap-3 p-4">
+        <input type="checkbox" className="size-5 shrink-0 accent-[var(--m-gold)]" checked={habit} onChange={(e) => setHabit(e.target.checked)} />
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold">{t.reading.bookHabit.onAdd}</span>
+          <span className="block text-xs m-muted">{t.reading.bookHabit.onAddHint}</span>
+        </span>
+      </label>
 
       {full && (
         <div className="m-note space-y-2">

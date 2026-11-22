@@ -2318,6 +2318,16 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
               flash(list.length > 1 ? `أضفت ${list.length} ملفات للمكتبة؛ اضغط على أي واحد لتنزله في التايملاين.` : "أضفته للمكتبة؛ اضغط عليه لتنزله في التايملاين.");
             }}
             onDelete={removeAsset}
+            onRelinked={(a) => {
+              setAssets((xs) => xs.map((x) => (x.id === a.id ? a : x)));
+              infos.current.set(a.id, info(a));
+              setThumbs((t) => {
+                const rest = { ...t };
+                delete rest[a.id];
+                return rest;
+              });
+              flash(`رجع «${a.name}» لمكانه ✅`);
+            }}
             readOnly={readOnly}
           />
         </aside>

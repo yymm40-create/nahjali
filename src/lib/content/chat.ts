@@ -6,7 +6,7 @@
 
 import { remember, withNote } from "@/lib/robot-handoff";
 import { isSalesAsk, nearestSalesExamples, SALES_METHOD, salesExamplesBrief } from "@config/content-sales";
-import { isMotionCarouselAsk, MOTION_CAROUSEL_GUIDE, slideSeconds } from "@config/content-motion-carousel";
+import { findMotionCarouselStyle, isMotionCarouselAsk, MOTION_CAROUSEL_GUIDE, slideSeconds } from "@config/content-motion-carousel";
 import { isMahdiAsk, MAHDI_BRIEF } from "@config/mahdi/app-knowledge";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -22,13 +22,13 @@ import { findCarouselStyle } from "@config/content-carousel-styles";
 import { findContentFont } from "@config/content-fonts";
 import { findStyle } from "@config/film-styles";
 import { cleanHistory, getChat, readMedia, readQuestions, saveChat, type Attachment, type MediaItem, type MotionPlan, type PendingProduce, type Turn } from "./chats";
-import { attachmentsOf, uploadLinks } from "./files";
-import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, pathBlock, systemText, turnText } from "./persona";
+import { attachmentsOf, deleteProduced, pictureFromUpload, producedRow, uploadLinks } from "./files";
+import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, needsCatalog, pathBlock, systemText, turnText } from "./persona";
 import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
-import { attachedPictures, CAROUSEL_QUESTION, carouselHold, pickedCarousel, pickedFont, pickedKind, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "./maker";
-import { lastSlidesAt } from "./produce";
+import { askedSlides, attachedPictures, CAROUSEL_QUESTION, carouselHold, pathOf, pickedCarousel, pureGatePick, siteStep, pickedFont, pickedKind, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "./maker";
+import { chatEditPatch, lastSlidesAt, planRetryWords, planSoundTime } from "./produce";
 import { listenToFiles, listenToLinks } from "@/lib/link-listen";
 import { billYoutube } from "./youtube";
 import { chatSound } from "./sound";
@@ -39,9 +39,18 @@ const db = () => createAdminClient();
 export const ANSWER_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "questions", "record", "produce", "generate", "handoff"],
+  required: ["reply", "questions", "record", "produce", "generate", "handoff", "sound_times", "motion_style"],
   properties: {
     reply: { type: "string", description: "ردّك للعميل بالعربية الفصحى (ماركداون خفيف)." },
+    motion_style: {
+      type: "string",
+      description: "معرّف ستايل حركة الموشن كاروسيل (من قائمة ستايلات الحركة) إذا طلب العميل تغيير حركة الكاروسيل كله، أو إذا لم يختر حركة وتركها لك فاختر الأنسب للموضوع؛ وإلا فارغ. تغيير حركة شريحة واحدة فقط يُكتب في تعديل تلك الشريحة (mode=fix) لا هنا.",
+    },
+    sound_times: {
+      type: "array",
+      description: "وقت صوت شريحة طلبه العميل (من أي ثانية إلى أي ثانية في ملفه الصوتي/الفيديو): لكل شريحة رقمها وبداية ونهاية الجزء بالثواني من بداية الملف (00:29.29 = 29.29). الموقع يطبّقه بنفسه على الشريحة (في الكاروسيل الجاري، أو يعيد فيديو الشريحة الجاهزة بهذا الجزء بدون رسم). فارغة إذا لم يطلب وقتًا. لا تقل للعميل إنك سجّلته إلا إذا وضعته هنا.",
+      items: { type: "object", additionalProperties: false, required: ["n", "from", "to"], properties: { n: { type: "integer" }, from: { type: "number" }, to: { type: "number" } } },
+    },
     questions: {
       type: "array",
       description: "الأسئلة القابلة للضغط (حتى ٦). فارغة إذا لم يكن في ردّك سؤال أو قرار أو خطوة تالية.",
@@ -78,9 +87,10 @@ export const ANSWER_SCHEMA = {
           items: {
             type: "object",
             additionalProperties: false,
-            required: ["n", "text", "prompt", "picture"],
+            required: ["n", "text", "prompt", "picture", "own_picture"],
             properties: {
               n: { type: "integer", description: "رقم الشريحة من 1" },
+              own_picture: { type: "string", description: "معرّف (id) صورة من صور العميل المرفقة تكون صورة هذه الشريحة كما هي (بدل أن يرسمها GPT Image 2)، فقط إذا طلب العميل أن تكون صوره هو صور الشرائح؛ بترتيبها كما حدده العميل (إذا لم يكن الترتيب واضحًا فاسأله أولًا). وإلا فارغ. الافتراضي: نحن نرسم الصور." },
               text: { type: "string", description: "النص المعتمد الظاهر على الشريحة كما هو" },
               prompt: { type: "string", description: "توجيه الشريحة بالإنجليزية: مع maker=code أو mix لـ «حيدرا ماكس»، ومع maker=gpt لـ GPT Image 2 (يرسمها كاملة بكتابتها): ما يخص هذه الشريحة (مع ستايل من الجدول يضيف الموقع وصفه؛ وبدونه نظام التصميم كاملًا)، والنص العربي حرفيًا بين علامتي اقتباس مزدوجتين" },
               picture: { type: "string", description: "في الموشن كاروسيل: مع طريقة «حيدرا ماكس + صورة» توجيه صورة الشريحة كاملة، ومع «عناصر مفرّغة» توجيه عنصر واحد منفرد واضح على خلفية سادة، ومع «بالكود فقط» فارغ؛ وفي الكاروسيل الثابت: مع maker=mix إلزامي لكل شريحة، ومع maker=code إذا احتاجت الشريحة صورة (شخص، منتج، مشهد، رسمة) ما يرسمها الكود زين: توجيهها بالإنجليزية لـ GPT Image 2 بدون أي كتابة فيها أبدًا وبنفس ستايل الكاروسيل؛ وإلا فارغ؛ ومع maker=gpt فارغ دائمًا" },
@@ -137,9 +147,11 @@ interface Answer {
   reply: string;
   questions: unknown;
   record: string;
-  produce: { on: boolean; mode: string; maker?: string; aspect: string; carousel_id?: string; font_id?: string; template_id: string; style_id: string; refs?: string[]; slides: { n: number; text: string; prompt: string; picture?: string }[] };
+  produce: { on: boolean; mode: string; maker?: string; aspect: string; carousel_id?: string; font_id?: string; template_id: string; style_id: string; refs?: string[]; slides: { n: number; text: string; prompt: string; picture?: string; own_picture?: string }[] };
   generate?: { on: boolean; items: { kind: string; name: string; prompt: string; aspect: string; quality: string; resolution: string; seconds: number; with_sound: boolean; refs: string[] }[] };
   handoff: { on: boolean; title: string; shape: string; package: string; storyboard?: string };
+  sound_times?: { n: number; from: number; to: number }[];
+  motion_style?: string;
 }
 
 export interface Reply {
@@ -198,6 +210,70 @@ function toClaudeTurn(t: Turn, links: Map<string, string>): ClaudeTurn {
 }
 
 /** «كمّل» and its kin, alone: the person wants what stopped to go on, nothing new. */
+/** Digits as Western ones, and the Arabic decimal comma as a point. */
+const westDigits = (t: string) => t.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6f0)).replace(/٫/g, ".");
+
+/**
+ * «اعتمد الصور» written instead of pressed: the approval of the pictures in words (the owner, 18 Nov 2026: «واضح واحد
+ * يبي يحط اعتمد… إيش دخلك أنت إنه لازم يضغطها؟»). A short message that says approve / start the motion and asks for
+ * no change; a message that also asks for a change goes to «محمد باقر» as before.
+ */
+export function isApproveWords(t: string): boolean {
+  const s = t.trim().replace(/[.!؟?،,]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!s || s.length > 60) return false;
+  if (/(غي[ّ]?ر|عد[ّ]?ل|أعد|اعد|عيد|بدل|بدّل|شيل|لكن|ما ابي|ما أبي|ماابي)/.test(s) || /(^|\s)(لا|مو|مب|بس)(\s|$)/.test(s)) return false;
+  return /(^|\s)(ا|أ)?عتمد(ت|ها|هم|ي|وا)?(\s|$)|موافق|معتمد|^(تمام|اوكي|اوك|ok|okay)$|(ابد[أا]|إبد[أا]|ابدئي|ابدي|يلا|سو|سوي)\s*(سو\s*|سوي\s*)?(ال)?(موشن|تحريك|حركة|تصميم|الشرائح)/i.test(s);
+}
+
+/**
+ * A slide's sound time asked in words («دقائق الشريحة 3 من 00:29.29 الى 00:42.36»): the slide and the two times (in
+ * seconds), or null. Times are m:ss(.cc), h:mm:ss, or plain seconds between «من» and «إلى».
+ */
+const ORDINALS = ["او", "ثاني", "ثالث", "رابع", "خامس", "سادس", "سابع", "ثامن", "تاسع", "عاشر"];
+
+export function readSoundAsk(t: string): { n: number; from: number; to: number } | null {
+  const s = westDigits(t);
+  const slide = [
+    ...[...s.matchAll(/(?:الشريحة|الشريحه|شريحة|شريحه|السلايدة|السلايده|سلايدة|سلايده|سلايد)\s*(?:رقم\s*)?(\d{1,2})/g)].map((m) => Number(m[1])),
+    // «الشريحة الثالثة» / «لشريحة الثالثة»: the slide named by its order in words
+    ...[...s.matchAll(/(?:شريحة|شريحه|سلايدة|سلايده|سلايد)\s*(?:ال)?(أولى|اولى|اول|أول|ثانية|ثانيه|ثاني|ثالثة|ثالثه|ثالث|رابعة|رابعه|رابع|خامسة|خامسه|خامس|سادسة|سادسه|سادس|سابعة|سابعه|سابع|ثامنة|ثامنه|ثامن|تاسعة|تاسعه|تاسع|عاشرة|عاشره|عاشر)/g)].map((m) => ORDINALS.findIndex((o) => m[1].startsWith(o)) + 1),
+  ].filter((n) => n > 0);
+  if (new Set(slide).size !== 1) return null;
+  const clock = "(\\d{1,2}(?::\\d{1,2}){1,2}(?:[.,]\\d+)?|\\d+(?:[.,]\\d+)?)";
+  const m = new RegExp(`(?:من|from)\\s*${clock}\\s*(?:ث(?:انية)?\\s*)?(?:إلى|الى|إلين|لين|لين ما|حتى|to|-|–)\\s*${clock}`, "i").exec(s);
+  if (!m) return null;
+  const sec = (v: string) => {
+    const parts = v.replace(",", ".").split(":").map(Number);
+    if (parts.some((x) => !Number.isFinite(x))) return NaN;
+    if (parts.slice(1).some((x) => x >= 60)) return NaN;
+    return parts.reduce((a, x) => a * 60 + x, 0);
+  };
+  const from = sec(m[1]);
+  const to = sec(m[2]);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from < 0 || to <= from || to - from > 60) return null;
+  return { n: slide[0], from: Math.round(from * 100) / 100, to: Math.round(to * 100) / 100 };
+}
+
+/**
+ * «أعد المحاولة» / «أعد محاولة الفاشلة» / «أعد الشريحة ٤» / «عيد رسم ٢ و٣» written: the retry buttons' job — the slides
+ * named (or, with none named, the failed ones). A message that also asks for a change goes to «محمد باقر».
+ */
+export function readRetryAsk(t: string): number[] | "failed" | null {
+  const s = westDigits(t).trim().replace(/[.!؟?]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!s || s.length > 60) return null;
+  const m = /^(?:يلا\s+)?(?:أعد|اعد|عيد|أعيد|اعيد|جرب|جرّب)(?:\s+(?:المحاولة|محاولة|رسم|توليد|تسوي|صنع))?(?:\s+(?:كل\s+)?(?:ال)?(?:فاشلة|فاشله|فاشلين|اللي فشلت|اللي خربت))?(?:\s+(?:ال)?(?:شريحة|شريحه|شرائح|سلايدة|سلايده|سلايدات|سلايد))?(?:\s+رقم)?((?:\s*(?:و|،|,)?\s*\d{1,2})*)\s*(?:مرة ثانية|مره ثانيه|من جديد)?$/.exec(s);
+  if (!m) return null;
+  const ns = [...(m[1] ?? "").matchAll(/\d{1,2}/g)].map((x) => Number(x[0])).filter((n) => n > 0);
+  return ns.length ? [...new Set(ns)] : "failed";
+}
+
+/** The heard words with their times («[0:29.30–0:33.10] «…»»), for the slide map. */
+export function timedPhrases(ph: { text: string; from: number; to: number }[], max = 220): string {
+  const t = (x: number) => `${Math.floor(x / 60)}:${(x % 60).toFixed(2).padStart(5, "0")}`;
+  const list = ph.slice(0, max).map((p) => `[${t(p.from)}–${t(p.to)}] «${p.text}»`);
+  return ph.length > max ? `${list.join("\n")}\n…(والباقي بعد ${t(ph[max - 1].to)})` : list.join("\n");
+}
+
 export const isContinue = (t: string) => /^(يلا\s+)?(كمل|كمّل|كملي|كمّلي|اكمل|أكمل|تابع|استمر|كمل الرسم|كمّل الرسم|كمل التوليد|كمّل التوليد|continue|go on)[\s.!؟?]*$/i.test(t.trim());
 
 /** The pictures جواد made in this conversation (their file ids): references for the next picture of the same character. */
@@ -214,6 +290,15 @@ export async function say(userId: string, chatId: string | null, message: string
   const cut = full && Number.isInteger(opts.from) && opts.from! >= 0 && opts.from! < full.messages.length && full.messages[opts.from!].role === "user" ? opts.from! : -1;
   const before = full && cut >= 0 ? { ...full, messages: full.messages.slice(0, cut), record: "", pending: null } : full;
   const history = cleanHistory([...(before?.messages ?? []), { role: "user", text: said || "(ملفات مرفقة)", files: files.length ? files : undefined }]);
+  // the site's own steps (colours, font, still or motion, motion style, the way of making it): a press that answers one
+  // while another still waits is answered by the site itself, at once and for nothing (the owner, 17 Nov 2026: each
+  // press was a whole paid answer of «محمد باقر» that re-wrote every slide only for the site to hold it)
+  const step = chatId && !before?.pending ? siteStep(history) : null;
+  if (step) {
+    const reply: Turn = { role: "assistant", text: step.note, questions: [step.question] };
+    const id = await saveChat(userId, chatId, { messages: [...history, reply], ...(cut >= 0 ? { record: "", pending: null } : {}) });
+    return { chatId: id, text: reply.text, questions: reply.questions!, usd: 0, pending: null, editor: null, media: null, spentHalalas: full?.spentHalalas ?? 0 };
+  }
   // a long conversation: his own handoff of everything before, then the latest turns (lib/robot-handoff)
   const mem = await remember({ key: `content:${chatId ?? ""}`, userId, robot: "محمد باقر (صانع المحتوى)", turns: history, window: CONTENT.historyTurns });
   const turns = mem.kept;
@@ -226,25 +311,34 @@ export async function say(userId: string, chatId: string | null, message: string
   // the system stays the SAME every message (persona, rules, the catalogue: cached once); what changes per message —
   // the nearest examples, the chosen blocks, the record — rides at the start of this turn (it re-wrote everything at
   // full price each message when it sat in the system)
-  const parts = [
+  const allSaid = history.filter((t) => t.role === "user").map((t) => t.text).join(" ");
+  // decided from the WHOLE talk (not this message alone), so a block that came in stays in and the cached start holds
+  const talk = `${stripMarks(allSaid)} ${before?.record ?? ""}`;
+  // what stays the same for the whole conversation (the path's steps, the motion guide, what was heard): read ONCE and
+  // then from the cache — it rode with every message at full price before (the owner, 17 Nov 2026: «أي خطوة فيها قراءة زيادة شلها»)
+  const stable = [
     // the motion skills, feelings and drawing tools: when the work is motion graphics
-    ...(ids.motion || ids.mood || ids.path === "motion-graphics" || ids.path === "reel-graphics" || /موشن|motion|انترو|إنترو|تايبوغرافي|إنفوجرافيك|انفوجرافيك/i.test(`${ask} ${before?.record ?? ""}`) ? [motionCatalogBlock()] : []),
+    ...(ids.motion || ids.mood || ids.path === "motion-graphics" || ids.path === "reel-graphics" || /موشن|motion|انترو|إنترو|تايبوغرافي|إنفوجرافيك|انفوجرافيك/i.test(talk) ? [motionCatalogBlock()] : []),
     // the motion carousel (Instagram's rules, when it helps, how each slide moves and sounds): when the talk is a carousel or motion
-    ...(ids.carousel || ids.path === "motion-carousel" || isMotionCarouselAsk(`${ask} ${before?.record ?? ""}`) ? [MOTION_CAROUSEL_GUIDE] : []),
+    ...(ids.carousel || ids.path === "motion-carousel" || isMotionCarouselAsk(talk) ? [MOTION_CAROUSEL_GUIDE] : []),
     // the talk's rules, how edits are read, and the steps of the path the person is on
     pathBlock(ids, !!opts.verbose),
+    // selling: the method (the four steps), when that is what the person wants
+    ...(isSalesAsk(talk) ? [SALES_METHOD] : []),
+    // the app «لأجل المهدي» (every feature, its audiences, its content rules and ready ideas), when the conversation is about it
+    ...(isMahdiAsk(`${allSaid} ${before?.record ?? ""}`) ? [MAHDI_BRIEF] : []),
+  ].filter(Boolean);
+  // what changes per message — the picks, the nearest examples, the record — rides at the start of this turn
+  const parts = [
     chosenBlock(ids),
     contentExamplesBrief(nearestContentExamples(ask, 3)),
-    // selling: the method (the four steps) and the closest worked sales examples, when that is what the person wants
-    ...(isSalesAsk(`${ask} ${before?.record ?? ""}`) ? [SALES_METHOD, salesExamplesBrief(nearestSalesExamples(ask, 3))] : []),
-    // the app «لأجل المهدي» (every feature, its audiences, its content rules and ready ideas), when the conversation is about it
-    ...(isMahdiAsk(`${history.filter((t) => t.role === "user").map((t) => t.text).join(" ")} ${before?.record ?? ""}`) ? [MAHDI_BRIEF] : []),
+    ...(isSalesAsk(talk) ? [salesExamplesBrief(nearestSalesExamples(ask, 3))] : []),
     !findCarouselStyle(ids.carousel ?? "") && (ids.template || /كاروسيل|شرائح|carousel/i.test(ask + (before?.record ?? ""))) ? templateExamplesBrief(nearestTemplateExamples(ask, ids.template && ids.template !== "none" ? ids.template : null, 2)) : "",
   ].filter(Boolean);
   // a YouTube / TikTok link in this message (or earlier in the talk): heard by ElevenLabs before he answers, so he
   // works from what is said in it (lib/link-listen)
   const listened = await listenToLinks(said, turns.filter((t) => t.role === "user").slice(0, -1).map((t) => t.text), { budgetMs: 120_000 });
-  if (listened.block) parts.unshift(listened.block);
+  if (listened.block) stable.unshift(listened.block);
   // a sound or a video attached (now or earlier in the talk): its sound heard and written the same way, by the file's id
   const av = (fs: Attachment[] | undefined) => (fs ?? []).filter((f) => f.kind === "audio" || f.kind === "video");
   // a YouTube video the page downloaded for this message: paid with this reply (once); its words come through the link
@@ -256,27 +350,79 @@ export async function say(userId: string, chatId: string | null, message: string
     turns.filter((t) => t.role === "user").slice(0, -1).flatMap((t) => av(t.files)).map((f) => ({ id: f.id, kind: f.kind as "audio" | "video", name: f.name })),
     { budgetMs: 120_000 },
   );
-  if (heardFiles.block) parts.unshift(heardFiles.block);
+  if (heardFiles.block) stable.unshift(heardFiles.block);
   // the conversation's sound goes INTO the motion (lib/content/sound): he is told how, so he plans for it
   const snd = await chatSound(userId, turns).catch(() => null);
   if (snd)
-    parts.unshift(
-      `## صوت العميل يدخل الموشن\nالصوت «${snd.name}» (${Math.round(snd.seconds)} ث${snd.phrases.length ? "، فيه كلام" : "، موسيقى أو بدون كلام"}) هو صوت الموشن تلقائيًا:\n- موشن كاروسيل: الموقع يقسم الصوت على الشرائح بالترتيب بلا فراغ (كل شريحة طولها جزءها، والقطع عند نهاية جملة)، وكل شريحة تتحرك على جملها، وزر «حوّله ريل» يطلع الصوت متصل. ${snd.phrases.length ? "فخلّ الشرائح بنفس ترتيب الكلام، وكل شريحة عن الجزء اللي ينقال فيها، واختر عدد شرائح يناسب طول الكلام (تقريبًا شريحة لكل ٥–١٠ ثواني)." : "الموسيقى تنقسم على الشرائح بأطوالها."}\n- موشن جرافيكس: ينتقل مع الحزمة لمختبر الموشن ${snd.phrases.length ? "كصوت المشهد، والحركة تنبني على كلامه بأوقاته" : "كموسيقى المشهد"}.\nإذا قال العميل ما يبي صوته في الموشن، قل له يرسل رسالة بدون الملف ويقول «بدون صوتي».`,
+    stable.unshift(
+      `## صوت العميل يدخل الموشن\nالصوت «${snd.name}» (${Math.round(snd.seconds)} ث${snd.phrases.length ? "، فيه كلام" : "، موسيقى أو بدون كلام"}) هو صوت الموشن تلقائيًا:\n- موشن كاروسيل: ${snd.phrases.length ? `قبل كتابة نصوص الشرائح اسأل العميل سؤالًا واحدًا بأزرار (إلا إذا قاله من قبل): «كم ناخذ من كلامه الحرفي في نص الشرائح؟» بالخيارات: «حرفي كامل (١٠٠٪)»، «أغلبه بصياغته (٧٠٪ تقريبًا)»، «ملخص قصير (٤٠٪ تقريبًا)»، واكتب النصوص على النسبة التي يختارها. خريطة الشرائح فيها وقت صوت كل شريحة: لما تعرض نصوص الشرائح للاعتماد اكتب تحت كل شريحة سطرًا «🔊 من م:ث إلى م:ث» من الكلام المفرّغ تحته بأوقاته (من أول جملة تقولها الشريحة إلى آخر جملة فيها؛ الأوقات بالترتيب، ومب شرط متصلة: يجوز تتخطى جزءًا لا يخص المحتوى)، ونص الشريحة من الكلام اللي ينقال في وقتها على النسبة المختارة. عند التصنيع ضع نفس الأوقات بالضبط في sound_times لكل شريحة: الموقع يشغّل كل شريحة على وقتها كما في الخريطة. وإذا غيّر العميل وقت شريحة فحدّث الخريطة وضعه في sound_times، واذكر له الكلام اللي ينقال في الوقت الجديد واسأله بأزرار إذا يبي نص الشريحة يتغيّر له («إيه غيّره» / «لا خلّه مثل ما هو» / «غيّره بصياغة مختصرة»). اختر عدد شرائح يناسب طول الكلام (تقريبًا شريحة لكل ٥–١٥ ثانية).` : "الموسيقى تنقسم على الشرائح بأطوالها."} وزر «حوّله ريل» يطلع الصوت متصل.${snd.phrases.length ? `\n\n### الكلام المفرّغ بأوقاته (من بداية الملف)\n${timedPhrases(snd.phrases)}` : ""}\n- موشن جرافيكس: ينتقل مع الحزمة لمختبر الموشن ${snd.phrases.length ? "كصوت المشهد، والحركة تنبني على كلامه بأوقاته" : "كموسيقى المشهد"}.\nإذا قال العميل ما يبي صوته في الموشن، قل له يرسل رسالة بدون الملف ويقول «بدون صوتي».`,
     );
 
-  const system = systemText(persona.text, [catalogBlock()]);
-  const turnNote = turnText(parts, before?.record ?? "");
+  // the fixed system is the persona and the rules ONLY; the long tables (103 styles, 50 fonts, the templates, the 100
+  // cartoon styles) are read only while they can still be needed: once the look is picked, or in
+  // a path that never uses them, every message read ~20k tokens of tables for nothing
+  const system = systemText(persona.text);
+  // (the person's own words only: a pressed line «• الخط: …» names a pick, it does not ask about the fonts)
+  const ownWords = said.split("\n").filter((l) => !/\[[^\]:\s]+:[a-z0-9-]+\]\s*$/.test(l.trim())).join("\n");
+  const extra = needsCatalog(ids, ownWords) ? catalogBlock() : "";
+  // the look's steps the site asks by itself: he neither asks them nor writes slides before they are all answered
+  const carouselTalk = !!pickedCarousel(history)?.style && (!pathOf(history) || pathOf(history) === "carousel" || pathOf(history) === "motion-carousel");
+  const holdNow = carouselTalk && !before?.pending ? carouselHold(history, askedSlides(history)) : null;
+  const gateNote = !carouselTalk
+    ? ""
+    : holdNow
+      ? `[خطوات الشكل الباقية يسألها الموقع بنفسه بالأزرار (التالية: «${holdNow.question.label}»، ثم ما بعدها): لا تسأل عنها ولا تعلّق عليها، ولا تكتب أي شريحة قبل اكتمالها. إذا حان وقت التصنيع (النصوص معتمدة والعميل طلبه) فضع produce.on=true واترك "slides" فارغة []: الموقع يعرض السؤال الناقص بنفسه تحت ردّك، وبعد اكتمال الاختيارات تُكتب الشرائح مرة واحدة. أكمل في ردّك ما ليس من هذه الخطوات (النصوص، أسئلتك الأخرى).]`
+      : pureGatePick(said)
+        ? `[اكتملت خطوات الشكل كلها بأزرار الموقع (الستايل، الألوان، الخط، والحركة وطريقتها أو من يصمم). لا تسأل عن أي منها ولا تعدّدها. أكمل الخطوة التالية مباشرة: إن كانت نصوص الشرائح معتمدة وطلب العميل التصنيع فاكتب produce كاملًا الآن، وإلا فاعرض نصوص الشرائح لموافقة واحدة.]`
+        : "";
+  // the basic choices of the carousel made in this chat: he keeps them for any slides or carousel that follow, and never
+  // asks for them again unless the person asks to change one (the owner, 18 Nov 2026: «ماينسى هالخيارات الاساسية»)
+  const lookAt = before ? lastSlidesAt(before) : -1;
+  const look = lookAt >= 0 ? before!.messages[lookAt].slides : null;
+  const lookNote = look?.carouselId
+    ? `[خيارات العميل الأساسية في هذه المحادثة (ثابتة): ستايل الكاروسيل ${look.carouselId}${look.paletteId ? `، الألوان ${look.paletteId}` : "، ألوان الستايل"}${look.fontId ? `، الخط ${look.fontId}` : ""}${look.motion ? `، موشن كاروسيل بحركة ${look.motion.styleId}` : "، كاروسيل ثابت"}، المقاس ${look.aspect}. أي شرائح أو كاروسيل بعده في هذه المحادثة بنفسها: لا تسأل عنها ولا تعرض جداولها، إلا إذا طلب العميل تغيير واحد منها صراحةً (حركة الكاروسيل كله: ضع motion_style؛ حركة شريحة وحدة: تعديل تلك الشريحة). وإكمال شرائح هذا الكاروسيل أو تعديلها mode="fix". أي طلب يكتبه العميل يُنفَّذ كما كتبه، والأزرار مساعدة فقط: لا تقل له أبدًا إن عليه الضغط على زر.]`
+    : "";
+  const turnNote = [lookNote, gateNote, turnText(parts, before?.record ?? "")].filter(Boolean).join("\n\n");
   // a carousel that stopped half way (a wallet ran out, a closed page): «كمّل» goes on drawing it as it was — no new
   // answer, no new plan (a new plan drew the characters again, different, and the person had to explain it all again)
   const unfinished = before?.pending && cut < 0 ? before.pending : null;
   const left = unfinished ? unfinished.slides.map((x) => x.n).filter((n) => !unfinished.made.some((m) => m.n === n) && !unfinished.failed.some((f) => f.n === n)) : [];
+  // the pictures approved in words: the same as the button, no reply from him needed (and nothing paid for one)
+  const waitsApproval = !!unfinished && unfinished.maker === "code" && !unfinished.picturesOk && Object.keys(unfinished.arts ?? {}).length > 0;
+  if (unfinished && waitsApproval && left.length && !files.length && (isApproveWords(said) || isContinue(said))) {
+    const reply: Turn = { role: "assistant", text: `تمام، اعتمدت الصور ✅ وبدأ حيدرا ماكس يصمّم ${unfinished.motion ? "ويحرّك " : ""}${left.length === 1 ? `الشريحة ${left[0]}` : `الشرائح (${left.join("، ")})`}. تظهر لك هنا وحدة وحدة، لا تقفل الصفحة.` };
+    const id = await saveChat(userId, chatId, { messages: [...history, reply], pending: { ...unfinished, picturesOk: true } });
+    return { chatId: id, text: reply.text, questions: null, usd: 0, pending: { total: unfinished.slides.length, mode: unfinished.mode, todo: left }, editor: null, media: null, spentHalalas: full?.spentHalalas ?? 0 };
+  }
+  // the retry buttons asked in words, on a carousel that is not being made now: the same as the press, no paid reply
+  const retryAsk = !files.length && !(unfinished && left.length) ? readRetryAsk(said) : null;
+  const lastBlock = retryAsk && full ? full.messages[lastSlidesAt(full)]?.slides : null;
+  if (retryAsk && full && lastBlock && (retryAsk !== "failed" || lastBlock.failed.length)) {
+    const ns = retryAsk === "failed" ? lastBlock.failed.map((f) => f.n) : retryAsk.filter((n) => lastBlock.items.some((x) => x.n === n) || lastBlock.failed.some((f) => f.n === n));
+    if (ns.length) {
+      const reply: Turn = { role: "assistant", text: `تمام، أعيد ${ns.length === 1 ? `الشريحة ${ns[0]}` : `الشرائح (${ns.join("، ")})`} الحين بنفس التصميم والصورة المعتمدة.` };
+      const id = await saveChat(userId, chatId, { messages: [...history, reply] });
+      const saved = await getChat(userId, id);
+      const planned = saved ? await planRetryWords(userId, saved, ns).catch(() => null) : null;
+      if (planned?.pending) return { chatId: id, text: reply.text, questions: null, usd: 0, pending: { total: planned.pending.slides.length, mode: "fix", todo: planned.pending.slides.map((x) => x.n) }, editor: null, media: null, spentHalalas: full.spentHalalas ?? 0 };
+    }
+  }
   if (unfinished && left.length && !files.length && isContinue(said)) {
     const reply: Turn = { role: "assistant", text: `تمام، أكمل رسم ${left.length === 1 ? `الشريحة ${left[0]}` : `الشرائح الباقية (${left.join("، ")})`} من نفس المكان، بنفس التصميم والشخصيات اللي انرسمت.` };
     const id = await saveChat(userId, chatId, { messages: [...history, reply] });
     return { chatId: id, text: reply.text, questions: null, usd: 0, pending: { total: unfinished.slides.length, mode: "fix", todo: left }, editor: null, media: null, spentHalalas: full?.spentHalalas ?? 0 };
   }
   const waitingNote = !unfinished || !left.length ? "" : (`[كاروسيل ما خلص رسمه: الشرائح ${left.join("، ")} تنتظر بنفس التصميم والشخصيات اللي انرسمت، والموقع يكملها بنفسه بعد ردّك. لا تعيد تخطيط الكاروسيل ولا تغيّر شخصياته أو تصميمه أو نصوصه، ولا تطلب produce جديد، إلا إذا طلب العميل تغييرًا صريحًا.]`);
-  const r = await callClaudeJson<Answer>({ system, turnNote: waitingNote ? `${waitingNote}\n\n${turnNote}` : turnNote, turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email) });
+  // the pictures of a motion carousel wait for approval: asked in words to draw a picture again («أعد صورة ٣»، «غيّر
+  // الصورة الثانية…»), he names those slides and the site draws only their pictures again, in the same carousel. Before,
+  // he was told not to plan the carousel again and had no other way: the person asked, the page turned, and nothing was
+  // drawn (a customer, 17 Nov 2026)
+  const inPictures = !!unfinished && unfinished.maker === "code" && !unfinished.picturesOk && Object.keys(unfinished.arts ?? {}).length > 0;
+  const picturesNote = !inPictures ? "" : `[الكاروسيل في مرحلة اعتماد الصور (رُسمت صور الشرائح ${Object.keys(unfinished!.arts ?? {}).sort().join("، ")} وتنتظر اعتماد العميل بزر «اعتمد الصور» أو بكتابته «اعتمد»: الموقع يعتمدها بنفسه في الحالتين، فلا تقل له أبدًا إن كتابته لا تكفي. وإذا كان طلبه عن مكان الصورة أو الكتابة في الشريحة فقط (الصورة تحت، الكلام فوق، لا تقصها) وليس عن محتوى الصورة: اكتب الشريحة في "slides" بنفس "picture" حرفيًا كما هي، وضع المكان المطلوب في "prompt" — الموقع يبقي الصورة المعتمدة كما هي، وحيدرا ماكس يرتّبها بهذا المكان عند التصميم، فلا تُرسم من جديد). إذا طلب العميل إعادة صورة أو تعديلها: ضع produce.on=true وmode="fix"، وفي "slides" تلك الشرائح فقط بأرقامها، ولكل واحدة "picture" = توجيه صورتها الجديدة كاملًا بالإنجليزية بعد التعديل الذي طلبه (بلا أي كتابة)، و"text" و"prompt" كما هي. الموقع يعيد رسم صورها فقط بنفس الكاروسيل، ثم تعود للاعتماد. وقل له في سطر إنك أعدت رسم صورة الشريحة كذا، وإن زر «🔄 أعد صورة» تحت الصور يسويها بعد.]`;
+  // a slide's sound time written in the message: the site sets it itself (he had no way to, and said it was done)
+  const askedTime = readSoundAsk(said);
+  const timeNote = askedTime ? `[الموقع ثبّت بنفسه وقت صوت الشريحة ${askedTime.n}: من ${askedTime.from} إلى ${askedTime.to} ثانية من الملف، ويطبّقه عند صنع فيديوها. لا تكتب produce لأجل الوقت وحده، وقل للعميل في سطر إن الوقت انضبط كما كتبه. والكلام اللي في الوقت الجديد غالبًا يختلف عن نص الشريحة الحالي: اذكر له في سطر الكلام اللي ينقال في الوقت الجديد (من التفريغ بأوقاته)، واسأله سؤالًا واحدًا بأزرار: «تبي نص الشريحة يتغيّر للكلام الجديد؟» بالخيارات «إيه غيّره» و«لا خلّه مثل ما هو» و«غيّره بصياغة مختصرة». إذا اختار التغيير فهو تعديل لتلك الشريحة (mode="fix" بنصها الجديد).]` : "";
+  const r = await callClaudeJson<Answer>({ system, turnNote: [timeNote, picturesNote || waitingNote, turnNote].filter(Boolean).join("\n\n"), turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email), systemExtra: extra, stableNote: stable.join("\n\n"), systemTtl: "1h", cacheTail: false });
   const a = r.data;
   let usd = claudeCost(r.usage) + mem.usd + listened.usd + heardFiles.usd + yt.usd;
   const questions = readQuestions(a.questions);
@@ -286,35 +432,173 @@ export async function say(userId: string, chatId: string | null, message: string
 
   // a carousel to make: kept with the conversation; the page asks for the produce step right after
   let pending: PendingProduce | null = null;
-  if (a.produce?.on && Array.isArray(a.produce.slides) && a.produce.slides.length) {
+  // the person's pictures for slides drawn again: the ones attached to THIS message first (a new reference: «this is my
+  // picture, draw slides 3 and 4 again with it»), then the ones he names, then the carousel's own. Slides drawn again
+  // used to go without any of them, so the character came out different from the reference (a customer, 17 Nov 2026)
+  const allImages = new Set(history.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
+  const nowImages = files.filter((f) => f.kind === "image").map((f) => f.id);
+  const namedImages = (Array.isArray(a.produce?.refs) ? a.produce.refs : []).filter((r) => allImages.has(r));
+  // THE reference is the latest one the person gave (the owner, 17 Nov 2026: «أهم شي ياخذ آخر صورة انرسلت اللي حددها
+  // العميل كمرجع»): of the pictures sent after the carousel was made, the ones he names (what she pointed at), else the
+  // pictures of the latest message that had any. Only with none sent since does the carousel's own reference stay — never
+  // mixed with a newer one (an old face beside the new one pulled the drawing back to the old)
+  const refsWith = (old: string[] = [], since = 0) => {
+    const after = history.slice(Math.max(0, since)).filter((t) => t.role === "user");
+    const sentSince = new Set(after.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
+    const pointed = namedImages.filter((r) => sentSince.has(r));
+    const latestTurn = [...after].reverse().find((t) => (t.files ?? []).some((f) => f.kind === "image"));
+    const latest = (latestTurn?.files ?? []).filter((f) => f.kind === "image").map((f) => f.id);
+    const newest = pointed.length ? pointed : latest;
+    if (newest.length) return [...new Set(newest)].slice(0, 6);
+    return [...new Set([...nowImages, ...namedImages, ...old.filter((r) => allImages.has(r))])].slice(0, 6);
+  };
+
+  // the pictures stage: the slides he named get their pictures drawn again (nothing else of the carousel changes)
+  const redo = inPictures && a.produce?.on && Array.isArray(a.produce.slides) ? a.produce.slides.filter((x) => x && unfinished!.slides.some((y) => y.n === Number(x.n)) && !unfinished!.made.some((m) => m.n === Number(x.n))) : [];
+  if (redo.length) {
+    const p = unfinished!;
+    for (const x of redo) {
+      const k = String(Number(x.n));
+      const sl0 = p.slides.find((y) => y.n === Number(x.n));
+      // a change of PLACE only (the picture lower, the words on top…): the picture stays as approved, the slide's
+      // request carries the placement for «حيدرا ماكس» — painting it again changed nothing of where it sits (18 Nov 2026)
+      const samePicture = !!sl0 && (typeof x.picture !== "string" || !x.picture.trim() || x.picture.trim().slice(0, 3000) === (sl0.picture ?? "").trim());
+      if (samePicture && sl0 && p.arts?.[k]) {
+        if (typeof x.prompt === "string" && x.prompt.trim()) sl0.prompt = x.prompt.trim().slice(0, 4000);
+        continue;
+      }
+      const old = p.arts?.[k];
+      if (old) {
+        const rest = { ...(p.arts ?? {}) };
+        delete rest[k];
+        p.arts = rest;
+        await deleteProduced(userId, old).catch(() => undefined);
+      }
+      const sl = p.slides.find((y) => y.n === Number(x.n));
+      if (sl && typeof x.picture === "string" && x.picture.trim()) sl.picture = x.picture.trim().slice(0, 3000);
+      p.failed = p.failed.filter((f) => f.n !== Number(x.n));
+    }
+    const refs = refsWith(p.refs ?? [], p.at + 1);
+    if (refs.length) p.refs = refs;
+  }
+  if (!redo.length && a.produce?.on && Array.isArray(a.produce.slides) && a.produce.slides.length) {
     const aspect: CarouselAspect = isCarouselAspect(a.produce.aspect) ? a.produce.aspect : "1:1";
     const slides = a.produce.slides
       .filter((s) => s && typeof s.prompt === "string" && s.prompt.trim())
       .slice(0, CONTENT.maxSlides)
-      .map((s, i) => ({ n: Number(s.n) || i + 1, text: String(s.text ?? "").replace(/\s*<br\s*\/?>\s*/gi, "\n").slice(0, 2000), prompt: s.prompt.trim().slice(0, 4000), ...(typeof s.picture === "string" && s.picture.trim() ? { picture: s.picture.trim().slice(0, 3000) } : {}) }))
+      .map((s, i) => ({ ...(typeof s.own_picture === "string" && s.own_picture.trim() ? { own: s.own_picture.trim() } : {}), n: Number(s.n) || i + 1, text: String(s.text ?? "").replace(/\s*<br\s*\/?>\s*/gi, "\n").slice(0, 2000), prompt: s.prompt.trim().slice(0, 4000), ...(typeof s.picture === "string" && s.picture.trim() ? { picture: s.picture.trim().slice(0, 3000) } : {}) }))
       .sort((x, y) => x.n - y.n);
     const templateId = a.produce.template_id && findTemplate(a.produce.template_id) ? a.produce.template_id : "";
     const styleId = a.produce.style_id && findStyle(a.produce.style_id) ? a.produce.style_id : "";
-    const fixAt = a.produce.mode === "fix" ? lastSlidesAt({ messages: history }) : -1;
+    // slides asked for a carousel that is not finished (pictures not animated yet, slides that failed) are THAT carousel
+    // going on — its style, colours, font and motion — even when he called it a new one: «كمّل الموشن لبقية السلايدات»
+    // came back as a new carousel, the style table was asked again and nothing was made (إيمان, 18 Nov 2026)
+    const lastAt = lastSlidesAt({ messages: history });
+    const lastBlock = lastAt >= 0 ? history[lastAt].slides : null;
+    const notFinished = !!lastBlock && (lastBlock.failed.length > 0 || lastBlock.todo.length > 0 || lastBlock.items.some((x) => /^(picture|element)-/.test(x.name)) || lastBlock.items.length < lastBlock.total);
+    // (a new carousel is a new look picked since — a style, a maker, still or motion — or asked for in words)
+    const picksIn = (h: Turn[]) => !!(pickedCarousel(h) || pickedMaker(h) || pickedKind(h) || pickedMotionStyle(h));
+    // («كمّل الموشن لبقية…» names the motion: it is the carousel going on, not a pick of still or motion)
+    const now = history[history.length - 1];
+    const freshPick = history.slice(lastAt + 1, -1).some((t) => t.role === "user" && picksIn([t])) || (!!now && picksIn([now]) && !/(كم[ّ]?ل|بقي[ةه]|باقي|الباقي|خل[ّ]?ص)/.test(said)) || /(ستايل|الستايل|شكل|ألوان|الوان|خط)\s*(جديد|ثاني|آخر|اخر|مختلف)|غي[ّ]?ر\s*(ال)?(ستايل|شكل|ألوان|الوان|خط)/.test(said);
+    const newCarousel = /(كاروسيل|كاروسل|سلايدات|شرائح)\s*(جديد|جديدة|ثاني|ثانية|آخر|اخر|أخرى|اخرى)|موضوع\s*(جديد|ثاني|آخر|اخر)/.test(said);
+    const goesOn = a.produce.mode !== "fix" && !freshPick && !newCarousel && notFinished && slides.length > 0 && slides.length <= lastBlock!.total && slides.every((x) => x.n >= 1 && x.n <= lastBlock!.total);
+    const fixAt = a.produce.mode === "fix" || goesOn ? lastAt : -1;
     // who makes the slides is the person's pick, asked as the last step before a new carousel (the owner's order: «حيدرا ماكس» in code, GPT Image 2 painting each whole slide,
     // or GPT Image 2's pictures with «حيدرا ماكس»'s writing; no default): the server decides from the answer they pressed, not from what the model says. A fix goes back to the way the carousel was made
-    const fixed = fixAt >= 0 ? history[fixAt].slides : null;
+    const fixed0 = fixAt >= 0 ? history[fixAt].slides : null;
+    // a NEW carousel in a chat that made one: the basic choices are never forgotten — the last carousel's style, colours,
+    // font, motion and maker stand unless a new one is picked or asked for (the owner, 18 Nov 2026: «حله جذريا… انه
+    // ماينسى هالخيارات الاساسية»): no table asked again
+    const reuse = !fixed0 && !freshPick && lastBlock && lastBlock.carouselId ? lastBlock : null;
+    const fixed = fixed0 ?? reuse;
     const picked = fixed ? (fixed.maker === "code" ? (fixed.mix ? "mix" : "code") : "gpt") : pickedMaker(history);
     // a motion carousel: every slide is «حيدرا ماكس»'s moving scene (its style and way of making as pressed; a fix keeps the carousel's own)
     const motionPick = fixed ? null : pickedKind(history) === "motion" ? pickedMotionStyle(history) : null;
     const route = fixed ? null : pickedRoute(history);
+    // the person's own pictures as the slides' pictures (only when they asked: by default we paint them), in their order
+    const myImages = new Set(history.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
+    const ownOf = new Map(slides.flatMap((x) => (x.own && myImages.has(x.own) ? [[x.n, x.own] as const] : [])));
+    const allOwn = slides.length > 0 && slides.every((x) => ownOf.has(x.n));
+    // his pictures become the slides' pictures (no painting): with all of them there, nothing waits for an approval
+    const ownArts = async (p: PendingProduce) => {
+      if (!chatId || !ownOf.size || p.maker !== "code") return;
+      const arts = { ...(p.arts ?? {}) };
+      for (const [n, up] of ownOf) {
+        if (!p.slides.some((x) => x.n === n)) continue;
+        const id = await pictureFromUpload(userId, chatId, up, n, p.id).catch(() => null);
+        if (id) arts[String(n)] = id;
+      }
+      p.arts = arts;
+      if (p.slides.every((x) => arts[String(x.n)])) p.picturesOk = true;
+    };
+    // the motion asked in words for the whole carousel, or the one he chose when the person left it to him
+    const wordMotion = typeof a.motion_style === "string" && a.motion_style.trim() ? findMotionCarouselStyle(a.motion_style.trim()) : null;
+    const wantsMotion = pickedKind(history) === "motion" || pathOf(history) === "motion-carousel" || isMotionCarouselAsk(said) || !!wordMotion;
     const motion: MotionPlan | null =
-      fixed?.motion ? fixed.motion
+      fixed?.motion ? (wordMotion ? { ...fixed.motion, styleId: wordMotion.id, seconds: slideSeconds(wordMotion) } : fixed.motion)
       : motionPick && motionPick.id !== "help" && route ? { styleId: motionPick.id, ...(motionPick.own ? { own: motionPick.own } : {}), route, seconds: slideSeconds(motionPick.style) }
+      // his own pictures, or a motion he did not pick (left to us): the fitting one, over the pictures, nothing asked
+      : (allOwn || wordMotion) && wantsMotion ? { styleId: (wordMotion ?? motionPick?.style ?? findMotionCarouselStyle("kinetic-word"))!.id, route: allOwn ? "picture" : (route ?? "picture"), seconds: slideSeconds(wordMotion ?? motionPick?.style ?? findMotionCarouselStyle("kinetic-word")) }
       : null;
     const code = motion || picked === "code" ? { maker: "code" as const } : picked === "mix" ? { maker: "code" as const, mix: true } : {};
     const moving = motion ? { motion } : {};
-    const hold = fixed ? null : carouselHold(history, slides.length);
+    // his own pictures: the steps he skipped are not asked (the style, the colours, the font are the picked ones or his)
+    const hold = fixed || (allOwn && motion) ? null : carouselHold(history, slides.length);
     if (slides.length && fixAt >= 0) {
       // draw these slides again in the carousel that exists
       const block = history[fixAt].slides!;
-      pending = { id: randomUUID(), aspect: block.aspect, slides, at: fixAt, styleId: styleId || block.styleId, templateId: templateId || block.templateId, ...(block.carouselId ? { carouselId: block.carouselId } : {}), ...(block.fontId ? { fontId: block.fontId } : {}), ...(block.paletteId ? { paletteId: block.paletteId } : {}), mode: "fix", ...code, ...moving, made: [], failed: [], carry: block.failed.filter((f) => !slides.some((x) => x.n === f.n)) };
-      messages[fixAt] = { ...history[fixAt], slides: { ...block, todo: slides.map((x) => x.n), failed: pending.carry, running: true, report: undefined } };
+      // the references the carousel was made with (kept on its slides), behind the new ones
+      let before: string[] = [];
+      for (const it of block.items) {
+        const r = (await producedRow(userId, it.fileId).catch(() => null))?.meta.refs;
+        if (Array.isArray(r) && r.length) { before = r.filter((x): x is string => typeof x === "string"); break; }
+      }
+      const fixRefs = refsWith(before, fixAt + 1);
+      // colours or a font picked AFTER the carousel are the person's new choice for the slides made now («أبي أغيّر
+      // الألوان»): they win over the carousel's own (undefined: nothing picked since, the carousel's stand)
+      const pal = pickedPalette(history);
+      const newPalette = pal ? (pal.palette?.id ?? "") : undefined;
+      const fnt = pickedFont(history);
+      const newFont = fnt ? (fnt.font?.id ?? "") : undefined;
+      pending = { id: randomUUID(), ...(fixRefs.length ? { refs: fixRefs } : {}), aspect: block.aspect, slides, at: fixAt, styleId: styleId || block.styleId, templateId: templateId || block.templateId, ...(block.carouselId ? { carouselId: block.carouselId } : {}), ...(newFont !== undefined ? (newFont ? { fontId: newFont } : {}) : block.fontId ? { fontId: block.fontId } : {}), ...(newPalette !== undefined ? (newPalette ? { paletteId: newPalette } : {}) : block.paletteId ? { paletteId: block.paletteId } : {}), mode: "fix", ...code, ...moving, made: [], failed: [], carry: block.failed.filter((f) => !slides.some((x) => x.n === f.n)) };
+      // a change to made motion slides asked here, with no new picture or attachment: their programs are patched by the
+      // person's words over the same approved pictures (the owner, 17 Nov 2026: an edit in the chat wrote the slide from zero)
+      const patch = !files.length ? await chatEditPatch(userId, chatId ?? "", block, slides, said).catch(() => null) : null;
+      if (patch) pending = { ...pending, ...patch };
+      else if (block.motion) {
+        // a slide that stands in the carousel as its approved picture (never animated yet) keeps that picture: it is not
+        // painted again unless he wrote a NEW picture for it (18 Nov 2026: slides asked again were repainted and approved again)
+        const arts: Record<string, string> = {};
+        for (const sl of slides) {
+          const it = block.items.find((x) => x.n === sl.n);
+          if (!it || !/^(picture|element)-/.test(it.name)) continue;
+          const before = String((await producedRow(userId, it.fileId).catch(() => null))?.meta.picture ?? "").trim();
+          if (!sl.picture || sl.picture.trim() === before) arts[String(sl.n)] = it.fileId;
+        }
+        if (Object.keys(arts).length) pending = { ...pending, arts: { ...(pending.arts ?? {}), ...arts } };
+      }
+      // the carousel still being made goes on with it: its slides not made yet are kept in this order, with their pictures,
+      // programs and sound times (a change asked half way replaced it, and the slides left were never made, 18 Nov 2026)
+      if (unfinished && unfinished.at === fixAt && left.length) {
+        const more = unfinished.slides.filter((x) => left.includes(x.n) && !slides.some((y) => y.n === x.n));
+        if (more.length) {
+          const pick = <T,>(o: Record<string, T> | undefined) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => more.some((x) => String(x.n) === k)));
+          pending = {
+            ...pending,
+            slides: [...pending.slides, ...more].sort((x, y) => x.n - y.n),
+            arts: { ...pick(unfinished.arts), ...(pending.arts ?? {}) },
+            programs: { ...pick(unfinished.programs), ...(pending.programs ?? {}) },
+            soundTimes: { ...pick(unfinished.soundTimes), ...(pending.soundTimes ?? {}) },
+            ...(unfinished.sound !== undefined && pending.sound === undefined ? { sound: unfinished.sound } : {}),
+          };
+        }
+      }
+      // every slide has its approved picture: no second approval
+      if (block.motion && pending.slides.every((x) => pending!.arts?.[String(x.n)])) pending.picturesOk = true;
+      pending.carry = block.failed.filter((f) => !pending!.slides.some((x) => x.n === f.n));
+      await ownArts(pending);
+      messages[fixAt] = { ...history[fixAt], slides: { ...block, todo: pending.slides.map((x) => x.n), failed: pending.carry, running: true, report: undefined } };
     } else if (slides.length && hold) {
       // nothing is made until they choose: the question goes out, and their answer brings the slides back
       // (the table he offered himself, with his recommendations, stands in for the plain one)
@@ -325,18 +609,34 @@ export async function say(userId: string, chatId: string | null, message: string
       reply.text += `\n\n${hold.note}`;
     } else if (slides.length) {
       const pick = pickedCarousel(history);
-      const carouselId = pick?.style?.id ?? "";
+      const carouselId = pick?.style?.id ?? reuse?.carouselId ?? (a.produce.carousel_id && findCarouselStyle(a.produce.carousel_id) ? a.produce.carousel_id : "");
       // the font they picked; "auto" leaves it to the answer's own choice of a font of the list
       const font = pickedFont(history);
-      const fontId = font?.font?.id ?? (a.produce.font_id && findContentFont(a.produce.font_id) ? a.produce.font_id : "");
+      const fontId = font?.font?.id ?? reuse?.fontId ?? (a.produce.font_id && findContentFont(a.produce.font_id) ? a.produce.font_id : "");
       // the palette that replaces the style's colours (none picked, or "style": the style's own)
-      const paletteId = pickedPalette(history)?.palette?.id ?? "";
+      const paletteId = pickedPalette(history)?.palette?.id ?? reuse?.paletteId ?? "";
       const mine = new Set(history.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
       const named = (Array.isArray(a.produce.refs) ? a.produce.refs : []).filter((r) => mine.has(r));
       // they chose to add their own pictures: those go with the slides even if the answer forgot to name them
       const refs = (named.length || pickedPhotos(history) !== "mine" ? named : attachedPictures(history).map((f) => f.id)).slice(0, 6);
       pending = { id: randomUUID(), aspect, slides, at, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...(refs.length ? { refs } : {}), mode: "all", ...code, ...moving, made: [], failed: [], carry: [] };
+      await ownArts(pending);
+      if (reuse) reply.text += `\n\n🎨 بنفس ستايلك وألوانك وخطك${reuse.motion ? " وحركتك" : ""} من الكاروسيل السابق. تبي تغيّر شي منها؟ قل لي «غيّر الستايل» أو «غيّر الألوان».`;
       reply.slides = { aspect, items: [], todo: slides.map((x) => x.n), failed: [], running: true, total: slides.length, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...code, ...moving };
+    }
+  }
+
+  // a step of the look still waits — the style is picked and the colours, the font, the motion or the way of making it
+  // is not, or he said it is time to make it and wrote no slides: the site shows that step under his answer, and the
+  // presses that follow cost nothing (siteStep)
+  const wroteSlides = Array.isArray(a.produce?.slides) && a.produce.slides.some((x) => x && typeof x.prompt === "string" && x.prompt.trim());
+  if (!pending && !reply.slides && a.produce?.mode !== "fix" && (holdNow || (a.produce?.on && !wroteSlides))) {
+    const hold = holdNow ?? carouselHold(history, askedSlides(history));
+    if (hold && !reply.questions?.some((q) => q.label === hold.question.label)) {
+      const own = (hold.question.kind === "carousels" || hold.question.kind === "fonts" || hold.question.kind === "motioncarousels") && questions?.some((q) => q.kind === hold.question.kind);
+      const theirs = (questions ?? []).filter((q) => q.label !== hold.question.label && !(hold.question.kind === "palettes" && q.kind === "palettes"));
+      reply.questions = own ? questions! : [...theirs, hold.question].slice(-6);
+      reply.text += `\n\n${hold.note}`;
     }
   }
 
@@ -388,9 +688,32 @@ export async function say(userId: string, chatId: string | null, message: string
 
   // a reply that orders no new carousel keeps the one still being drawn (and the page goes on drawing it)
   const keep = !pending && unfinished && left.length ? unfinished : null;
-  const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : cut >= 0 ? "" : undefined, pending: keep ? undefined : pending, addUsd: usd });
+  // the sound time asked in words goes with the slide wherever it is: in the carousel being made now, or (a slide made
+  // already) its video is made again with that part — nothing repainted or written again
+  let timeKept = false;
+  let timeLater: { n: number; from: number; to: number } | null = null;
+  // the time read from the message, else the times he understood from it (a slide named in words, the slide spoken of before)
+  const theirTimes = (Array.isArray(a.sound_times) ? a.sound_times : [])
+    .map((x) => ({ n: Math.round(Number(x?.n)), from: Math.round(Number(x?.from) * 100) / 100, to: Math.round(Number(x?.to) * 100) / 100 }))
+    .filter((x) => x.n > 0 && x.from >= 0 && x.to > x.from && x.to - x.from <= 60);
+  for (const tm of askedTime ? [askedTime] : theirTimes.slice(0, 10)) {
+    const t = { [String(tm.n)]: { from: tm.from, to: tm.to } };
+    if (pending && pending.slides.some((x) => x.n === tm.n)) pending.soundTimes = { ...(pending.soundTimes ?? {}), ...t };
+    else if (unfinished && (redo.length || keep) && unfinished.slides.some((x) => x.n === tm.n)) {
+      unfinished.soundTimes = { ...(unfinished.soundTimes ?? {}), ...t };
+      timeKept = true;
+    } else if (!pending && !unfinished && !timeLater) timeLater = tm;
+  }
+  const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : cut >= 0 ? "" : undefined, pending: redo.length || timeKept ? unfinished : keep ? undefined : pending, addUsd: usd });
   usd = Math.round(usd * 10000) / 10000;
-  const goOn = pending ? { total: pending.slides.length, mode: pending.mode, todo: pending.slides.map((x) => x.n) } : keep ? { total: keep.slides.length, mode: "fix" as const, todo: left } : null;
+  let goOn = pending ? { total: pending.slides.length, mode: pending.mode, todo: pending.slides.map((x) => x.n) } : keep ? { total: keep.slides.length, mode: "fix" as const, todo: left } : null;
+  if (timeLater && full) {
+    const planned = await planSoundTime(userId, { ...full, id, messages }, timeLater).catch((e: unknown) => {
+      console.error("content sound time", e instanceof Error ? e.message : e);
+      return null;
+    });
+    if (planned?.pending) goOn = { total: planned.pending.slides.length, mode: "fix", todo: planned.pending.slides.map((x) => x.n) };
+  }
   return { chatId: id, text: reply.text, questions: reply.questions ?? null, usd, pending: goOn, editor, media, spentHalalas: full?.spentHalalas ?? 0 };
 }
 

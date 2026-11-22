@@ -5,7 +5,7 @@ import Riyal from "@/components/Riyal";
 import { OFFER10 } from "@config/jawad/offer10";
 
 /** The one button: signed out → sign in first; signed in → Moyasar's page for 10 riyals. */
-export default function OfferBuy({ login }: { login: string | null }) {
+export default function OfferBuy({ login, compact = false }: { login: string | null; compact?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   async function buy() {
@@ -25,8 +25,8 @@ export default function OfferBuy({ login }: { login: string | null }) {
   }
   return (
     <>
-      <button type="button" className="ld-cta ox-go" onClick={buy} disabled={busy}>
-        {busy ? "لحظة…" : <>{login ? "سجّل دخول واشترك بـ" : "اشترك الحين بـ"}<Riyal halalas={OFFER10.priceSar * 100} size={18} /></>}
+      <button type="button" className={`ld-cta ox-go${compact ? " ox-go-s" : ""}`} onClick={buy} disabled={busy}>
+        {busy ? "لحظة…" : compact ? (login ? "سجّل واشترك 🔥" : "اشترك الحين 🔥") : <>{login ? "سجّل دخول واشترك بـ" : "🔥 اشترك الحين بـ"}<Riyal halalas={OFFER10.priceSar * 100} size={18} /></>}
       </button>
       {err && <p className="ox-err">{err}</p>}
     </>

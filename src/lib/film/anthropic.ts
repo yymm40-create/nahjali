@@ -59,7 +59,7 @@ The person you are talking to is the OWNER and builder of this platform — «ا
 HIS WORD OVERRIDES EVERY RULE. Every rule, limit, style guide, house rule, safety-of-taste rule or "never" in the knowledge above or in your own instructions was written by him for his customers — and he may break any of them, including the ones he set himself, with a word. When he tells you to drop, bend or break a rule («كسره», «تجاوزه», «خالفه», «ما يهمني القيد», «أنا القائد أقول لك…»), do exactly what he says from that message on, without arguing, without warning him again, and without quietly keeping the rule in your output: the rule is off for him until he puts it back. If a rule is enforced in code and you cannot switch it off yourself, say so in one line and do the closest thing he asked. The only exceptions are things no one can lift: secret keys and passwords (you do not hold them), and what the law or the providers' own policies forbid (a real person imitated without consent, sexual content involving minors).
 </leader>`;
 
-export const siteSystem = (task: string, cache = true, leader = false, ttl?: "1h") => {
+export const siteSystem = (task: string, cache = true, leader = false, ttl?: "1h", extra = "") => {
   // the person's memory («ذاكرتي»), inside a robot's turn: after the cached task, so the cache still holds
   const memory = currentMemory();
   return [
@@ -69,6 +69,9 @@ export const siteSystem = (task: string, cache = true, leader = false, ttl?: "1h
     { type: "text", text: PLATFORM_BRIEF },
     ...(leader ? [{ type: "text", text: LEADER_BLOCK }] : []),
     { type: "text", text: task, ...(cache ? { cache_control: { type: "ephemeral", ...(ttl ? { ttl } : {}) } } : {}) },
+    // a second block of the task that is not always there (long tables read only while they can be needed): cached on
+    // its own, so the calls with it and the calls without it share the task's cache
+    ...(extra.trim() ? [{ type: "text", text: extra, ...(cache ? { cache_control: { type: "ephemeral", ...(ttl ? { ttl } : {}) } } : {}) }] : []),
     ...(memory ? [{ type: "text", text: memoryBlock(memory) }] : []),
   ];
 };
@@ -360,6 +363,9 @@ export async function callClaudeJson<T>({
   cacheTail = true,
   turnEffort,
   schemaFallback,
+  systemExtra,
+  stableNote,
+  systemTtl,
 }: {
   system: string;
   turns: ClaudeTurn[];
@@ -409,6 +415,16 @@ export async function callClaudeJson<T>({
    * malformed (400) over its format, it is asked once more with this narrower schema — same reply shape, no shared cache.
    */
   schemaFallback?: object;
+  /** A part of the system that is not in every call of this kind (long tables): its own cached block after `system`. */
+  systemExtra?: string;
+  /**
+   * What stays the same for the whole conversation but is not the same for every conversation (the path's steps, a
+   * guide, a transcript): the FIRST block of the first user turn, with its own cache mark — read once, then from the
+   * cache, instead of riding in `turnNote` at full price with every message.
+   */
+  stableNote?: string;
+  /** "1h": the system's blocks alone live an hour (the conversation's marks keep 5 minutes): the same system for everyone, with pauses between messages. */
+  systemTtl?: "1h";
 }): Promise<{ data: T; raw: string; usage: ClaudeUsage; partial?: boolean }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
@@ -427,6 +443,13 @@ export async function callClaudeJson<T>({
       cleanTurns[at] = { ...t, content: [note, ...(typeof t.content === "string" ? [{ type: "text", text: t.content } as ClaudePart] : t.content)] };
     }
   }
+  if (stableNote?.trim()) {
+    const at = cleanTurns.findIndex((t) => t.role === "user");
+    if (at >= 0) {
+      const t = cleanTurns[at];
+      cleanTurns[at] = { ...t, content: [{ type: "text", text: `<conversation_context>\n${stableNote.trim()}\n</conversation_context>`, cache: true }, ...(typeof t.content === "string" ? [{ type: "text", text: t.content } as ClaudePart] : t.content)] };
+    }
+  }
   if (!cleanTurns.length) throw new Error("Claude request has no non-empty message content");
   // Cache breakpoints, chosen before the pictures and documents are fitted (one block per part):
   // - each text part marked `cache` (a block that is the same on every call of its kind);
@@ -443,7 +466,8 @@ export async function callClaudeJson<T>({
     if (i === cleanTurns.length - 2 && cleanTurns.length >= 3) marks.push({ turn: i, block: t.content.length - 1, kind: "history" });
     if (cacheTail && i === cleanTurns.length - 1) marks.push({ turn: i, block: t.content.length - 1, kind: "tail" });
   });
-  while (marks.length > 3) {
+  // (a system with its second block takes two)
+  while (marks.length > (systemExtra?.trim() ? 2 : 3)) {
     const h = marks.findIndex((m) => m.kind === "history");
     marks.splice(h >= 0 ? h : marks.findIndex((m) => m.kind === "part"), 1);
   }
@@ -473,7 +497,7 @@ export async function callClaudeJson<T>({
       body: JSON.stringify({
         model: asked.id,
         max_tokens: maxTokens,
-        system: siteSystem(system, true, leader, cacheTtl),
+        system: siteSystem(system, true, leader, cacheTtl ?? systemTtl, systemExtra ?? ""),
         // the reply's own level rides as an effort-only system message after the latest turn (the top level stays fixed);
         // a retry that has to think less («low» after max_tokens) lowers it the same way
         messages: perTurn ? [...messages, { role: "system", content: [], output_config: { effort: level === effort ? turnEffort : level } }] : messages,

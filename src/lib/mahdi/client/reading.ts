@@ -59,6 +59,8 @@ export interface SessionBody {
   seconds: number;
   ranges: [number, number][];
   note: string;
+  /** pages read before (only the book's map; never today, a goal or a challenge) */
+  earlier?: boolean;
 }
 
 function loadPending(userId: string): SessionBody[] {

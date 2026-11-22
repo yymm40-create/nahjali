@@ -41,7 +41,7 @@ THE SLIDE AS A FILM: set duration to the slide's seconds and blur 0–0.5. Each 
 - SLIDE 1 IS THE COVER: its frame at t = 0 is already a complete, readable design (the title fully there); only secondary things move in;
 - one or two things move at a time, never everything; motion follows the reading order;
 - keep every word and key shape inside the centre 3:4 of the frame and ~150 px off the edges (the profile grid crops to 3:4);
-- sound: write a soft, short effect for each entry (cues from the library, or your own in sound(K, S)) — a tick, a breath of air, a soft pop, a gentle whoosh; never music, never an ambient bed, never loud.
+- sound: ONLY the library's effects (made with ElevenLabs), placed with cues — one soft, short effect for each entry (a tick, a breath of air, a soft pop, a gentle whoosh); NEVER write sound(K, S) or any sound made in code (the owner: code-made sound is annoying — it is not played); never music, never an ambient bed, never loud.
 
 ${MILLION_DOLLAR}
 
@@ -51,7 +51,7 @@ ${SCENE_CONTRACT}`;
 export const MOTION_RUBRIC = [
   ...PICTURE_RUBRIC,
   { id: "motion", ar: "الحركة", en: "The motion serves the meaning: entrances in reading order, one or two moves at a time, every word lands by 40% and holds still and readable, slide 1's first frame is a complete cover, the last frame is a finished state" },
-  { id: "sound", ar: "الصوت", en: "Sound (read the program's cues and sound() against the frames): one soft short effect per entry, on the landing frames, nothing loud, no music or ambient bed" },
+  { id: "sound", ar: "الصوت", en: "Sound (read the program's cues against the frames — only library effects, never sound() made in code): one soft short effect per entry, on the landing frames, nothing loud, no music or ambient bed" },
 ] as const;
 
 const WRITE_SCHEMA = {
@@ -133,13 +133,20 @@ const jpeg = (v: unknown) => (typeof v === "string" && /^[A-Za-z0-9+/=]+$/.test(
 const font = (v: unknown, d: string) => (typeof v === "string" && LAB_FONTS.includes(v) ? v : d);
 const fontMenu = () => LAB_FONTS.map((id) => `${id} (${FONT_BY_ID.get(id)?.kind})`).join(", ");
 
-async function ask<T>(user: RobotUser, model: unknown, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "medium" | "high" = "high", system = SYSTEM) {
+/** how long one answer may take: 5 minutes; a motion carousel's slide 9 — each piece of work ends under 10 minutes (the owner,
+ * 17 Nov 2026: «يخلص في أقل من 10 دقائق، بعدين يسوي الباقي»); a slide that runs past it is set aside and done after the rest */
+export const PICTURE_MS = 300_000;
+export const MOTION_MS = 540_000;
+/** the message a timed-out answer carries: the page reads it to try the slide once more with lighter thinking */
+export const LATE = "خدمة الذكاء الاصطناعي تأخرت. أعد المحاولة.";
+
+async function ask<T>(user: RobotUser, model: unknown, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "medium" | "high" = "high", system = SYSTEM, ms = PICTURE_MS) {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
-  const deadline = AbortSignal.timeout(300_000);
+  const deadline = AbortSignal.timeout(ms);
   return robotTurn(user, model, label, async () => {
     const r = await callClaudeJson<T>({ system, turns: [{ role: "user", content: parts }], schema, maxTokens, effort, fallback: true, signal: deadline }).catch((e) => {
       console.error("claude code picture", label, e);
-      if (deadline.aborted) throw new UserError("خدمة الذكاء الاصطناعي تأخرت. أعد المحاولة.", 504);
+      if (deadline.aborted) throw new UserError(LATE, 504);
       throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يكمل الصورة الحين. جرّب مرة ثانية.", user.email), 502);
     });
     return { ...r, usd: claudeCost(r.usage) };
@@ -162,34 +169,59 @@ function refsParts(raw: unknown): ClaudePart[] {
 }
 
 /** WRITE (or FIX after the scene page threw, or — with b.edit — CHANGE as a patch) the picture's program. */
-export async function pictureWrite(user: RobotUser, b: Record<string, unknown>) {
+type Asked = Awaited<ReturnType<typeof ask<unknown>>>;
+interface Written { code: string; problems: string[]; fonts: { head: string; body: string }; notes: string; size: number[]; coins: Asked["coins"]; model: Asked["model"]; patchFailed?: string }
+export async function pictureWrite(user: RobotUser, b: Record<string, unknown>): Promise<Written> {
   const prompt = text(b.prompt, 16000);
   if (prompt.length < 2) throw new UserError("اكتب وش تبي في الصورة.", 400);
   const motion = readMotionSlide(b.motion);
-  const [w, h] = motion ? motionSize(b.aspect) : pictureSize(b.aspect);
+  // the still of a motion carousel's slide (stage 1) is drawn at the motion size, so stage 2 can animate it as it is
+  const stillFor = b.stillFor === "motion" && !motion;
+  const [w, h] = motion || stillFor ? motionSize(b.aspect) : pictureSize(b.aspect);
   const style = text(b.style, 2000);
+  // stage 2: the approved still's program, to animate (not on a fix: the fix carries its own program)
+  const still = motion && !text(b.code, 10) ? text(b.still, 160_000) : "";
+  const stillFonts = (b.stillFonts && typeof b.stillFonts === "object" ? b.stillFonts : {}) as { head?: unknown; body?: unknown };
   // the font the person chose in «صانع المحتوى» (carried in the look): every word is set in it
   const pin = pinnedFont(style);
   const previous = text(b.code, 140_000);
   const errors = text(b.errors, 4000);
-  if (b.edit === true && previous && !errors && !motion) return pictureEdit(user, b, prompt, previous, [w, h], style);
+  if (b.edit === true && previous && !errors) return pictureEdit(user, b, prompt, previous, [w, h], style, motion ? { lines: motionLines(motion, b.n) } : null);
+  // a moving slide whose program threw: the FIRST fix comes back as a PATCH (a few lines), not the whole program written a
+  // second time (the owner, 17 Nov 2026: «ليش تكتب البرنامج مرتين؟»). A program that still throws after its patch is
+  // written again whole (the page says which fix this is: fixRound), and so is one whose patch can't be applied — a
+  // patch never uses up the slide's tries (17 Nov 2026: a cover slide failed after two patches)
+  const patchFix = !!motion && !!previous && b.fixRound === 0;
+  // a slide of the content maker over its painted, approved picture: the look is decided; he sets the words and the motion
+  const overPicture = b.from === "content" && !!motion && Array.isArray(b.photos) && b.photos.length > 0;
   const parts: ClaudePart[] = [
     {
       type: "text",
-      text: `${previous ? (motion ? "FIX the slide's program below." : "FIX the picture's program below.") : motion ? "MAKE this motion slide in code." : "DRAW this picture in code."}
+      text: `${previous ? (motion ? "FIX the slide's program below." : "FIX the picture's program below.") : still ? "ANIMATE this slide: its STILL design below is finished and approved." : motion ? "MAKE this motion slide in code." : "DRAW this picture in code."}
 ${motion ? motionLines(motion, b.n) : ""}
+${stillFor ? "THIS IS THE STILL DESIGN OF A MOTION SLIDE (stage 1 of 2): draw the slide's FINAL, complete frame — every word, picture and shape in place. In the next stage this exact program is animated, so build it in clean, separate layers (background, picture, each text block, decorations) that can each move on their own." : ""}
+${still ? `THE STILL (the slide as it must look when its motion settles): keep its layout, every word exactly, its fonts, colours, picture placement and decorations exactly as they are — do NOT redesign. Turn this program into a moving scene: bring the parts in and move them as the motion style says (entrances, camera, light, the style's moves, sound cues), so the frame at the end equals this still${motion?.first ? ", and the frame at t = 0 already shows the complete design (it is the cover)" : ""}.\nTHE STILL'S PROGRAM:\n${still}` : ""}
 THE REQUEST (the person's words — every word they want written appears EXACTLY as given, Arabic right to left): ${prompt}
 FRAME: ${w}×${h} (${b.aspect ?? "1:1"}) · ${pin ? `THE FONT the person chose (catalogue id): ${pin} — set every Arabic word in it, and return it as both fonts` : `FONTS you may pick (catalogue ids): ${fontMenu()}`}
 ${style ? `THE LOOK the person chose («الستايل»), to follow in every shape, light and texture: ${style}` : "No look chosen: pick a bold, original one that fits the request (never the safe template look)."}
 ${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the scene page — fix exactly this):\n${errors || "(no error text)"}` : ""}
-Return the COMPLETE program and the two fonts it uses.`,
+${patchFix ? 'Answer with "edits" on THE PROGRAM (exact search/replace) that fix exactly what went wrong, and code = ""; the COMPLETE program in "code" (edits []) only when the fix rewrites most of it. Return the two fonts it uses.' : "Return the COMPLETE program and the two fonts it uses."}`,
     },
     ...photosParts(b.photos),
     ...refsParts(b.references),
   ];
-  const r = await ask<{ code: string; fonts: { head: string; body: string }; notes: string }>(user, b.model, motion ? (previous ? "حيدرا ماكس · تصليح الشريحة المتحركة" : "حيدرا ماكس · شريحة متحركة") : previous ? "حيدرا ماكس · تصليح الصورة" : "حيدرا ماكس · رسم الصورة", parts, WRITE_SCHEMA, 64_000, "high", motion ? MOTION_SYSTEM : SYSTEM);
-  const chk = checkScene(r.data.code);
-  return { code: chk.code, problems: chk.problems, fonts: pin ? { head: pin, body: pin } : { head: font(r.data.fonts?.head, LAB_FONTS[0]), body: font(r.data.fonts?.body, LAB_FONTS[0]) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, model: r.model };
+  const r = await ask<{ code: string; edits?: unknown; fonts: { head: string; body: string }; notes: string }>(user, b.model, motion ? (previous ? "حيدرا ماكس · تصليح الشريحة المتحركة" : "حيدرا ماكس · شريحة متحركة") : previous ? "حيدرا ماكس · تصليح الصورة" : "حيدرا ماكس · رسم الصورة", parts, patchFix ? EDIT_SCHEMA : WRITE_SCHEMA, 64_000, patchFix || overPicture || ((motion || stillFor) && (b.light === true || !!still)) ? "medium" : "high", motion ? MOTION_SYSTEM : SYSTEM, motion || stillFor ? MOTION_MS : PICTURE_MS);
+  const fixed = patchFix ? patchProgram(previous, r.data) : null;
+  // a patch that can't be applied: the program is written again whole, in this same call
+  if (fixed && "patchFailed" in fixed) {
+    console.warn("claude code picture: a fix's patch could not be applied, writing the program whole", fixed.patchFailed);
+    const whole = await pictureWrite(user, { ...b, fixRound: 1 });
+    return { ...whole, coins: (r.coins ?? 0) + (whole.coins ?? 0) };
+  }
+  const chk = checkScene(fixed ? fixed.code : r.data.code);
+  // the animated still keeps the still's fonts
+  const keep = still && LAB_FONTS.includes(String(stillFonts.head)) ? { head: String(stillFonts.head), body: font(stillFonts.body, String(stillFonts.head)) } : null;
+  return { code: chk.code, problems: chk.problems, fonts: pin ? { head: pin, body: pin } : keep ? keep : { head: font(r.data.fonts?.head, LAB_FONTS[0]), body: font(r.data.fonts?.body, LAB_FONTS[0]) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, model: r.model };
 }
 
 /**
@@ -198,7 +230,7 @@ Return the COMPLETE program and the two fonts it uses.`,
  * in the program already, so no reference pictures go with it, and the photos only when they changed. `patchFailed`
  * when the patch can't be applied: the page then draws the picture from zero.
  */
-async function pictureEdit(user: RobotUser, b: Record<string, unknown>, prompt: string, previous: string, [w, h]: [number, number], style: string) {
+async function pictureEdit(user: RobotUser, b: Record<string, unknown>, prompt: string, previous: string, [w, h]: [number, number], style: string, motion: { lines: string } | null = null) {
   const f = (b.fonts ?? {}) as Record<string, unknown>;
   const fonts = { head: font(f.head, LAB_FONTS[0]), body: font(f.body, LAB_FONTS[0]) };
   const brief = text(b.brief, 16000);
@@ -208,7 +240,7 @@ async function pictureEdit(user: RobotUser, b: Record<string, unknown>, prompt: 
   const parts: ClaudePart[] = [
     {
       type: "text",
-      text: `CHANGE the picture's program below. It drew THE PREVIOUS BRIEF and the picture was accepted; now the person asks for a change and the design has THE NEW BRIEF. Change ONLY what the change needs (a word, a typo, a line, a colour, a size, a place, an element added or removed) and keep everything else exactly as it is: the layout, the type, the light, the finish.
+      text: `${motion ? `THIS IS A MOTION SLIDE (a moving scene): keep its motion, timing, sound cues and the way it runs exactly as they are unless the change is about them.\n${motion.lines}\n` : ""}CHANGE the picture's program below. It drew THE PREVIOUS BRIEF and the picture was accepted; now the person asks for a change and the design has THE NEW BRIEF. Change ONLY what the change needs (a word, a typo, a line, a colour, a size, a place, an element added or removed) and keep everything else exactly as it is: the layout, the type, the light, the finish.
 ${said ? `THE PERSON'S WORDS (the change they asked for): ${said}\n` : ""}THE NEW BRIEF (every word they want written appears EXACTLY as given, Arabic right to left): ${prompt}
 ${brief ? `THE PREVIOUS BRIEF (what the program draws now): ${brief}\n` : ""}FRAME: ${w}×${h} (${b.aspect ?? "1:1"}) · FONTS now: head ${fonts.head}, body ${fonts.body} · FONTS you may pick (catalogue ids): ${fontMenu()}
 ${style ? `THE LOOK the person chose: ${style}` : ""}
@@ -221,7 +253,7 @@ Answer with "edits" on THE PROGRAM (exact search/replace) and code = ""; the COM
     ...(changed ? photosParts(b.photos) : []),
   ];
   // medium thought: the change is named and the answer is a patch
-  const r = await ask<{ code: string; edits?: unknown; fonts: { head: string; body: string }; notes: string }>(user, b.model, "حيدرا ماكس · تعديل الصورة", parts, EDIT_SCHEMA, 64_000, "medium");
+  const r = await ask<{ code: string; edits?: unknown; fonts: { head: string; body: string }; notes: string }>(user, b.model, motion ? "حيدرا ماكس · تعديل الشريحة المتحركة" : "حيدرا ماكس · تعديل الصورة", parts, EDIT_SCHEMA, 64_000, "medium", motion ? MOTION_SYSTEM : SYSTEM, motion ? MOTION_MS : PICTURE_MS);
   const out = patchProgram(previous, r.data);
   const base = { fonts: { head: font(r.data.fonts?.head, fonts.head), body: font(r.data.fonts?.body, fonts.body) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, model: r.model };
   if ("patchFailed" in out) return { ...base, code: "", problems: [], patchFailed: out.patchFailed };
@@ -257,7 +289,7 @@ ${code}`,
     ...photosParts(b.photos),
     ...refsParts(b.references),
   ];
-  const r = await ask<Record<string, unknown>>(user, b.model, motion ? `حيدرا ماكس · مراجعة الشريحة المتحركة ${round}` : `حيدرا ماكس · مراجعة الصورة ${round}`, parts, motion ? MOTION_REVIEW_SCHEMA : patch ? REVIEW_EDIT_SCHEMA : REVIEW_SCHEMA, 64_000, "high", motion ? MOTION_SYSTEM : SYSTEM);
+  const r = await ask<Record<string, unknown>>(user, b.model, motion ? `حيدرا ماكس · مراجعة الشريحة المتحركة ${round}` : `حيدرا ماكس · مراجعة الصورة ${round}`, parts, motion ? MOTION_REVIEW_SCHEMA : patch ? REVIEW_EDIT_SCHEMA : REVIEW_SCHEMA, 64_000, motion && b.light === true ? "medium" : "high", motion ? MOTION_SYSTEM : SYSTEM, motion ? MOTION_MS : PICTURE_MS);
   const s = (r.data.scores ?? {}) as Record<string, unknown>;
   const scores = Object.fromEntries(rubric.map((x) => [x.id, Math.max(1, Math.min(10, Math.round(Number(s[x.id]) || 1)))])) as Record<string, number>;
   const pass = Object.values(scores).every((v) => v >= CODE_PASS);

@@ -2,6 +2,7 @@
 // by the studio's upload flow) and what was produced (the carousel's slides, in the jawad bucket). Server only.
 
 import { randomUUID } from "crypto";
+import sharp from "sharp";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { storage } from "@/lib/storage";
@@ -128,4 +129,40 @@ export async function deleteProduced(userId: string, fileId: string) {
   await db().from("content_files").delete().eq("id", fileId).eq("user_id", userId);
   // a picture جواد made is his (and in «أعمالي»), and a slide's video is the person's upload: only the conversation's record goes
   if (!row.meta.outputId && !row.meta.uploadId) await storage.from(JAWAD_BUCKET).remove([row.path]).catch(() => null);
+}
+
+/**
+ * The picture GPT Image 2 painted for slide `n` of the batch `batch` (its cut-out element when it has one), or null: what a
+ * made motion slide was drawn over, so drawing that slide again keeps the approved picture.
+ */
+export async function slidePicture(userId: string, chatId: string, n: number, batch: string): Promise<string | null> {
+  if (!isUuid(chatId) || !batch) return null;
+  const k = String(n).padStart(2, "0");
+  const { data } = await db().from("content_files").select("id,name").eq("user_id", userId).eq("chat_id", chatId).in("name", [`picture-${k}`, `element-${k}`]).eq("meta->>batch", batch).order("created_at", { ascending: false }).limit(4);
+  const rows = (data ?? []) as { id: string; name: string }[];
+  const hit = (rows.find((r) => r.name.startsWith("element-")) ?? rows[0])?.id;
+  if (hit) return hit;
+  // a slide made again keeps the picture of an EARLIER batch (its own batch painted none): the newest picture of that
+  // slide in the chat. Without this, a slide made a second time painted a new picture (18 Nov 2026)
+  const { data: any } = await db().from("content_files").select("id,name").eq("user_id", userId).eq("chat_id", chatId).in("name", [`picture-${k}`, `element-${k}`]).order("created_at", { ascending: false }).limit(4);
+  const all = (any ?? []) as { id: string; name: string }[];
+  return (all.find((r) => r.name.startsWith("element-")) ?? all[0])?.id ?? null;
+}
+
+/**
+ * The person's OWN picture (one they uploaded) as a slide's picture: kept as the slide's painted picture would be
+ * («picture-NN» of the carousel), so the slide is designed and moved over it — nothing painted, nothing to approve
+ * (the owner, 18 Nov 2026: «يرسل الصور من عنده ويصير الموشن على طول»). Null when it is not their ready image.
+ */
+export async function pictureFromUpload(userId: string, chatId: string, uploadId: string, n: number, batch: string): Promise<string | null> {
+  if (!isUuid(uploadId) || !isUuid(chatId)) return null;
+  const { data } = await db().from("jawad_uploads").select("id,kind,storage_path").eq("id", uploadId).eq("user_id", userId).eq("status", "ready").maybeSingle();
+  if (!data || data.kind !== "image") return null;
+  const { data: blob } = await storage.from(JAWAD_BUCKET).download(String(data.storage_path));
+  if (!blob) return null;
+  const img = sharp(Buffer.from(await blob.arrayBuffer())).rotate().resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true });
+  const bytes = await img.png().toBuffer();
+  const meta = await sharp(bytes).metadata();
+  const file = await addProduced({ userId, chatId, bytes, name: `picture-${String(n).padStart(2, "0")}`, width: meta.width ?? 0, height: meta.height ?? 0, meta: { slide: n, batch, own: uploadId, picture: "(the person's own picture)" } });
+  return file.id;
 }

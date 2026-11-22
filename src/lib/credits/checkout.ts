@@ -7,7 +7,8 @@
 // READ from Moyasar and settled by its metadata — each purchase checks status, currency and the amount against ITS OWN record, so
 // nothing in the URL, the ticket or the body is trusted, and one payment can only ever open the order it was made for.
 //   NEXT_PUBLIC_MOYASAR_PUBLISHABLE_KEY — pk_live_… (or pk_test_…) from the Moyasar dashboard; without it the old invoice page stays.
-//   NEXT_PUBLIC_MOYASAR_APPLE_PAY=1 — shows Apple Pay once the domain is verified with Apple in Moyasar's dashboard.
+//   Apple Pay shows by default: www.aljawadai.app is registered in Moyasar's «نطاقات Apple Pay» (4 November 2026) and the site serves
+//   /.well-known/apple-developer-merchantid-domain-association. NEXT_PUBLIC_MOYASAR_APPLE_PAY=0 hides it.
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { moyasarEnabled, type Payment } from "./moyasar";
@@ -32,7 +33,7 @@ export interface Ticket {
 export const publishableKey = () => process.env.NEXT_PUBLIC_MOYASAR_PUBLISHABLE_KEY?.trim() ?? "";
 /** Is the in-site form set up (the secret key to read payments, the publishable key for the form)? */
 export const formEnabled = () => moyasarEnabled() && /^pk_(live|test)_/.test(publishableKey());
-export const applePayOn = () => process.env.NEXT_PUBLIC_MOYASAR_APPLE_PAY?.trim() === "1";
+export const applePayOn = () => process.env.NEXT_PUBLIC_MOYASAR_APPLE_PAY?.trim() !== "0";
 
 const secret = () => process.env.JAWAD_WEBHOOK_SECRET || createHmac("sha256", process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").update("moyasar-checkout").digest("hex");
 const mac = (body: string) => createHmac("sha256", secret()).update(body).digest("base64url");

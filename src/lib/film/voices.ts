@@ -362,7 +362,8 @@ export async function describeVoice(project: FilmProject, speaker: unknown, hint
   const last = (k: string) => (rows.filter((r) => r.kind === k && r.status === "approved").at(-1) ?? rows.filter((r) => r.kind === k).at(-1))?.body ?? "";
   const wish = typeof hint === "string" ? hint.trim().slice(0, 600) : "";
   const { callClaudeJson } = await import("./anthropic");
-  const r = await callClaudeJson<{ description: string; sample: string }>({
+  const { forTask } = await import("./claude-model");
+  const r = await forTask("voice.describe", () => callClaudeJson<{ description: string; sample: string }>({
     system:
       "You write a voice for ElevenLabs voice design, for one character of an Arabic film. From what the film says about the character (age, gender, build, personality, role, mood) and how they speak in their lines, describe the voice in English in 120–600 characters: gender, age, accent (Gulf/Khaleeji Arabic unless the film says otherwise), pitch, texture, pace, energy and emotion, recording quality (clean, close, studio). Concrete, no names of real people. Follow the person's wish when given. Also give an Arabic sample text of 120–400 characters in the character's own voice (their lines joined if long enough, else in the same spirit).",
     turns: [{ role: "user", content: `CHARACTER: ${s}\n\nTHEIR LINES:\n${lines.map((l) => `- ${l.line}`).join("\n")}\n\nTHE FILM'S CHARACTERS (sheets):\n${last("sheet_understanding").slice(0, 6000)}\n\nSCREENPLAY:\n${last("screenplay").slice(0, 8000)}${wish ? `\n\nTHE PERSON'S WISH FOR THIS VOICE:\n${wish}` : ""}` }],
@@ -370,7 +371,7 @@ export async function describeVoice(project: FilmProject, speaker: unknown, hint
     maxTokens: 2000,
     effort: "low",
     fallback: true,
-  }).catch((e) => {
+  })).catch((e) => {
     console.error("film describe voice", e);
     throw new UserError("ما قدر الذكاء الاصطناعي يكتب الوصف الحين؛ اكتبه بنفسك أو جرّب بعد شوي.", 502);
   });

@@ -11,8 +11,8 @@ const db = vi.hoisted(() => ({ chat: null as unknown, editorProjects: [] as unkn
 
 vi.mock("@/lib/film/anthropic", async (orig) => ({
   ...(await orig<typeof import("@/lib/film/anthropic")>()),
-  callClaudeJson: vi.fn(async (o: { system: string; turnNote?: string; turns: { role: string; content: unknown }[] }) => {
-    claude.calls.push({ system: `${o.system}\n\n${o.turnNote ?? ""}`, fixed: o.system, turns: o.turns });
+  callClaudeJson: vi.fn(async (o: { system: string; systemExtra?: string; stableNote?: string; turnNote?: string; turns: { role: string; content: unknown }[] }) => {
+    claude.calls.push({ system: `${o.system}\n\n${o.systemExtra ?? ""}\n\n${o.stableNote ?? ""}\n\n${o.turnNote ?? ""}`, fixed: o.system, turns: o.turns });
     return { data: claude.answer, raw: "", usage: { input_tokens: 1000, output_tokens: 500 } };
   }),
 }));
@@ -35,6 +35,7 @@ vi.mock("@/lib/content/chats", async (orig) => {
 vi.mock("@/lib/content/files", () => ({
   attachmentsOf: vi.fn(async (_u: string, ids: unknown) => ({ list: (Array.isArray(ids) ? ids : []).map((id: string) => ({ id, kind: "video", name: `${id}.mp4`, durationMs: 4000 })), rows: [] })),
   uploadLinks: vi.fn(async () => new Map()),
+  producedRow: vi.fn(async () => null),
 }));
 vi.mock("@/lib/content/persona", async (orig) => ({ ...(await orig<typeof import("@/lib/content/persona")>()), getPersona: vi.fn(async () => ({ text: "PERSONA", edited: false })) }));
 vi.mock("@/lib/editor/server", () => ({

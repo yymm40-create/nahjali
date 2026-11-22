@@ -334,6 +334,27 @@ export async function addLocalAsset(p: EditorProject, b: { localId?: unknown; ki
   return view(data as AssetRow, null);
 }
 
+/**
+ * A file of the computer that was moved (its folder renamed or moved): the desktop program keeps it again at its new
+ * place (a new id there) and the project's file points at it — every clip of it on the timeline comes back as it was.
+ */
+export async function relinkLocalAsset(p: EditorProject, b: { id?: unknown; localId?: unknown }) {
+  stillOpen(p);
+  if (!isUuid(b.id) || !isUuid(b.localId)) throw new UserError("ملف غير صحيح.", 400);
+  const { data } = await db().from("editor_assets").select("*").eq("id", b.id).eq("project_id", p.id).maybeSingle();
+  const row = data as AssetRow | null;
+  if (!row || !row.meta?.local) throw new UserError("هذا الملف ما هو من ملفات جهازك.", 400);
+  const meta = { ...row.meta, localId: b.localId };
+  const { data: saved, error } = await db()
+    .from("editor_assets")
+    .update({ meta, path: `${p.user_id}/${p.id}/local/${b.localId}` })
+    .eq("id", row.id)
+    .select("*")
+    .single();
+  if (error || !saved) throw new UserError(NOT_READY, 503);
+  return view(saved as AssetRow, null);
+}
+
 export async function signAssetUpload(p: EditorProject, b: { kind?: unknown; container?: unknown; bytes?: unknown; name?: unknown }) {
   stillOpen(p);
   const kind = b.kind as AssetKind;

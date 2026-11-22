@@ -8,6 +8,7 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
+import { forTask } from "./claude-model";
 import { directorAction, directorVersions } from "./director";
 import { sheetAction, sheetVersions } from "./sheets";
 import { scriptVersions } from "./script";
@@ -126,7 +127,7 @@ export async function screenplayImpact(project: FilmProject, user: { id: string;
       "=== الشيتات الموجودة ===", sheets.length ? sheets.map((s) => `- ${s.id} «${s.name}»: ${s.coverage}`).join("\n") : "(لا شيتات)",
       "=== اللقطات المخطّطة ===", generations.length ? generations.map((g) => `- ${g.id} «${g.name}»: ${g.summary}${g.refs.length ? ` · المراجع: ${g.refs.join("، ")}` : ""}${g.dialogue ? ` · الحوار: ${g.dialogue.slice(0, 300)}` : ""}`).join("\n") : "(لا لقطات)",
     ].join("\n\n");
-    const r = await callClaudeJson<{ summary: string; sheets: { id: string; why: string }[]; generations: { id: string; why: string }[] }>({ system: SYSTEM, turns: [{ role: "user", content: ask }], schema: SCHEMA, maxTokens: 4000, effort: "medium" });
+    const r = await forTask("impact", () => callClaudeJson<{ summary: string; sheets: { id: string; why: string }[]; generations: { id: string; why: string }[] }>({ system: SYSTEM, turns: [{ role: "user", content: ask }], schema: SCHEMA, maxTokens: 4000, effort: "medium" }));
     const hitS = r.data.sheets.flatMap((x) => { const s = sheets.find((y) => y.id === x.id.trim()); return s ? [{ id: s.id, name: s.name, why: x.why.trim() }] : []; });
     const hitG = r.data.generations.flatMap((x) => { const g = generations.find((y) => y.id === x.id.trim()); return g ? [{ id: g.id, name: g.name, why: x.why.trim() }] : []; });
     const kept = [...sheets.filter((s) => !hitS.some((h) => h.id === s.id)).map((s) => s.name), ...generations.filter((g) => !hitG.some((h) => h.id === g.id)).map((g) => `${g.id} ${g.name}`)];
