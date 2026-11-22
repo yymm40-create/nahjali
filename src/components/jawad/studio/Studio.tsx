@@ -1138,6 +1138,15 @@ export default function Studio({ section, studioSections, generators: allGenerat
               })}
             </div>}
             <SectionHint kind={def.output} />
+            {unified && (
+              <Link href="/jawad-ai/canvas" className="flex items-center gap-3 rounded-xl border border-jw-line bg-jw-surface-2 p-2.5 text-start hover:border-jw-accent">
+                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-jw-accent-soft text-jw-accent"><Icon name="node" size={18} /></span>
+                <span className="min-w-0 flex-1">
+                  <b className="block text-sm">🧩 اللوحة</b>
+                  <small className="block text-xs text-jw-muted">اربط برومبت ← صورة ← فيديو ← صوت كوصفة، وشغّلها كلها بضغطة</small>
+                </span>
+              </Link>
+            )}
             <GeneratorCard gen={gen} owner={owner} onOpen={() => setPicker(true)} />
             <CompareGenerators
               kind={def.output}

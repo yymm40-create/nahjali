@@ -62,6 +62,15 @@ export const FEATURES = [
   { id: "studio.taste_manage", section: "studio", label: "«🎨 ذوقي»: تسمية أو حذف ذوق" },
   { id: "studio.brand_save", section: "studio", label: "«هويتي»: حفظ الهوية (ألوان، شعار، خطوط، نبرة)" },
   { id: "studio.brand_use", section: "studio", label: "«طبّق هويتي» في التوليد" },
+  { id: "studio.canvas_open", section: "studio", label: "فتح «🧩 اللوحة» (العقد)" },
+  { id: "studio.canvas_node_add", section: "studio", label: "«اللوحة»: إضافة عقدة" },
+  { id: "studio.canvas_wire", section: "studio", label: "«اللوحة»: توصيل سلك" },
+  { id: "studio.canvas_run_all", section: "studio", label: "«اللوحة»: «شغّل الكل»" },
+  { id: "studio.canvas_run_one", section: "studio", label: "«اللوحة»: تشغيل عقدة وحدة (أو «من جديد»)" },
+  { id: "studio.canvas_cached", section: "studio", label: "«اللوحة»: تشغيل أعاد نتائج جاهزة بدون دفع" },
+  { id: "studio.canvas_save", section: "studio", label: "«اللوحة»: حفظ لوحة" },
+  { id: "studio.canvas_recipe_save", section: "studio", label: "«اللوحة»: «احفظ كوصفة»" },
+  { id: "studio.canvas_recipe_use", section: "studio", label: "«اللوحة»: فتح وصفة (جاهزة أو من وصفاتي)" },
 
   // «حيدرة كت» (/jawad-ai/editor)
   { id: "editor.open", section: "editor", label: "فتح مشروع في حيدرة كت" },
@@ -142,7 +151,7 @@ export const FUNNELS: Record<UseSection, { label: string; any: FeatureId[] }[]> 
   studio: [
     { label: "فتحوا الاستوديو", any: ["studio.open"] },
     { label: "كتبوا برومبت", any: ["studio.prompt"] },
-    { label: "ضغطوا «توليد»", any: ["studio.generate"] },
+    { label: "ضغطوا «توليد»", any: ["studio.generate", "studio.canvas_run_all", "studio.canvas_run_one"] },
     { label: "نجح توليدهم", any: ["studio.job_ok"] },
     { label: "نزّلوا النتيجة أو استخدموها", any: ["studio.download", "studio.use_as_ref", "studio.share_link", "studio.share_permanent", "studio.gallery_publish", "studio.variation", "studio.smart_edit", "studio.compose_person", "studio.inpaint", "studio.outpaint", "studio.upscale"] },
   ],
