@@ -63,6 +63,8 @@ export interface ProfileView {
   counts: { posts: number; followers: number; following: number };
   /** Only on my own page: people waiting for my answer. */
   requests?: SocialUser[];
+  /** what they read and their place in «تحدي القراءة», when they show it on their link (SQL 0126) */
+  reading?: PublicReading | null;
 }
 
 export interface StoryView {
@@ -94,3 +96,17 @@ export const STORY_BACKGROUNDS = {
   rose: "radial-gradient(120% 120% at 50% 0%, #3a1c26, #150b0f 70%)",
 } as const;
 export type StoryStyle = keyof typeof STORY_BACKGROUNDS;
+
+/** «رابط حسابي»: what a person's public link shows of their reading (only when they turned it on). */
+export interface PublicReading {
+  /** pages read this month (in the person's own calendar) */
+  monthPages: number;
+  /** every page read since they started */
+  totalPages: number;
+  /** books finished */
+  finished: number;
+  /** what they are reading now (up to 3 titles) */
+  now: string[];
+  /** their place in «تحدي القراءة», when they joined the current (or last) one */
+  challenge: { title: string; rank: number; total: number; pages: number; over: boolean } | null;
+}

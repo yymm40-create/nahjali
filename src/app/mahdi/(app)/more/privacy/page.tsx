@@ -49,6 +49,7 @@ export default function PrivacyPage() {
         {row("showAvatar", t.privacy.showAvatar, t.more.avatarHint, !p.community)}
         {row("privateAccount", t.privacy.privateAccount, t.privacy.privateAccountHint, !p.community)}
         {row("storiesInFeed", t.privacy.storiesInFeed, t.privacy.storiesInFeedHint, !p.community)}
+        {row("shareReading", t.privacy.shareReading, t.privacy.shareReadingHint)}
       </section>
     </div>
   );

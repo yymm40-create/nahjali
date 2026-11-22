@@ -21,7 +21,7 @@ const useOrigin = () => useSyncExternalStore(noop, () => location.origin, () => 
  * an Instagram story (with the link to one's page copied for Instagram's link sticker), save it, or post it.
  */
 export default function SharePage() {
-  const { state, timeline, toast } = useMahdi();
+  const { state, store, timeline, toast } = useMahdi();
   const { shrine } = useLook();
   const { snap } = state;
   const [kind, setKind] = useState<ShareKind>("week");
@@ -73,6 +73,18 @@ export default function SharePage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+
+  /** «أظهر قراءتي ومركزي في رابط حسابي» (privacy, SQL 0126). */
+  async function setShareReading(on: boolean) {
+    setBusy(true);
+    try {
+      const r = await mahdiFetch<{ privacy: typeof snap.privacy }>("/api/mahdi/privacy", { method: "PATCH", json: { shareReading: on } });
+      store.setSnapPart({ privacy: r.privacy });
+    } catch (e) {
+      toast((e as Error).message);
+    }
+    setBusy(false);
+  }
 
   async function copyLink(forStory = false) {
     if (!link) return toast(I.noUsername);
@@ -133,6 +145,44 @@ export default function SharePage() {
   return (
     <div className="space-y-6">
       <h1 className="m-display text-3xl">{t.share.title}</h1>
+
+      {/* «رابط حسابي»: the link for Instagram, and whether it shows my reading and my place in «تحدي القراءة» */}
+      <section className="m-card space-y-3 p-5" aria-labelledby="my-link">
+        <h2 id="my-link" className="flex items-center gap-2 font-semibold">
+          <Icon name="link" size={18} className="m-gold" /> {t.publicReading.linkTitle}
+        </h2>
+        <p className="text-sm m-muted">{t.publicReading.linkHint}</p>
+        {link ? (
+          <>
+            <p className="m-num truncate rounded-xl px-3 py-2 text-sm" dir="ltr" style={{ background: "var(--m-surface-2)" }}>
+              {link}
+            </p>
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                className="mt-1 size-5 shrink-0 accent-[var(--m-gold)]"
+                checked={Boolean(snap.privacy.shareReading)}
+                disabled={busy}
+                onChange={(e) => void setShareReading(e.target.checked)}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">{t.publicReading.toggle}</span>
+                <span className="block text-xs m-muted">{t.publicReading.toggleHint}</span>
+              </span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" className="m-btn m-btn-primary" onClick={() => copyLink()}>
+                <Icon name="link" size={18} /> {t.publicReading.copy}
+              </button>
+              <a href={link} target="_blank" rel="noreferrer" className="m-btn m-btn-ghost">
+                {t.publicReading.open}
+              </a>
+            </div>
+          </>
+        ) : (
+          <p className="m-note text-sm">{t.publicReading.needUsername}</p>
+        )}
+      </section>
       <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
         <section className="m-card space-y-5 p-5">
           <fieldset>

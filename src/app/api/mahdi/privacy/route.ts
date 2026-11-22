@@ -21,6 +21,8 @@ export const PATCH = mahdiRoute(async (req: Request) => {
     show_avatar: "showAvatar" in body ? parseBool(body.showAvatar) : Boolean(cur.show_avatar),
     private_account: "privateAccount" in body ? parseBool(body.privateAccount) : Boolean(cur.private_account),
     stories_in_feed: "storiesInFeed" in body ? parseBool(body.storiesInFeed) : cur.stories_in_feed !== false,
+    // «رابط حسابي» (SQL 0126): not tied to the community switch — it is about my own link
+    ...("share_reading" in cur || "shareReading" in body ? { share_reading: "shareReading" in body ? parseBool(body.shareReading) : Boolean(cur.share_reading) } : {}),
   };
   if (!next.community) {
     if (body.leaderboard === true || body.showAvatar === true) throw new UserError(t.privacy.needCommunity, 400);
@@ -29,7 +31,14 @@ export const PATCH = mahdiRoute(async (req: Request) => {
   }
   // Before migration 0020 the private account and stories switches do not exist yet
   let social = true;
-  const res = await supabase.from("mahdi_privacy").upsert({ user_id: user.id, ...next });
+  let res = await supabase.from("mahdi_privacy").upsert({ user_id: user.id, ...next });
+  // before SQL 0126 there is no «share_reading»
+  if (res.error && ["42703", "PGRST204"].includes(res.error.code ?? "") && "share_reading" in next) {
+    if ("shareReading" in body) throw new UserError(t.publicReading.notReady, 503);
+    const { share_reading: _skip, ...rest } = next;
+    void _skip;
+    res = await supabase.from("mahdi_privacy").upsert({ user_id: user.id, ...rest });
+  }
   if (res.error && notMigrated(res.error)) {
     if ("privateAccount" in body || "storiesInFeed" in body) throw new UserError(t.social.notReady, 503);
     social = false;
@@ -41,6 +50,6 @@ export const PATCH = mahdiRoute(async (req: Request) => {
   await syncPublicProfile(user.id);
   forgetLeaderboard();
   return NextResponse.json({
-    privacy: { community: next.community, leaderboard: next.leaderboard, showAvatar: next.show_avatar, privateAccount: social && next.private_account, storiesInFeed: next.stories_in_feed },
+    privacy: { community: next.community, leaderboard: next.leaderboard, showAvatar: next.show_avatar, privateAccount: social && next.private_account, storiesInFeed: next.stories_in_feed, shareReading: Boolean((next as { share_reading?: boolean }).share_reading) },
   });
 });

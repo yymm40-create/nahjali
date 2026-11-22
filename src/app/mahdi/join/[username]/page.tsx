@@ -3,6 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getMahdiSession } from "@/lib/mahdi/server/session";
 import { isPrivate, personByUsername } from "@/lib/mahdi/server/social";
+import { publicReadingOf } from "@/lib/mahdi/server/public-reading";
+import PublicReadingCard from "@/components/mahdi/PublicReadingCard";
 import { t } from "@/lib/mahdi/i18n";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +30,8 @@ export default async function Join({ params }: { params: Promise<{ username: str
   if (user && profile) redirect(`/mahdi/u/${encodeURIComponent(handle)}?invited=1`);
   const person = handle ? await personByUsername(handle).catch(() => null) : null;
   const locked = person ? await isPrivate(person.id).catch(() => false) : Boolean(handle);
+  // what they read and their place in «تحدي القراءة» — only if they chose to show it on their link
+  const reading = person ? await publicReadingOf(person.id).catch(() => null) : null;
   const go = (to: "signup" | "login" | "app") => `/api/mahdi/invite?u=${encodeURIComponent(handle)}&to=${to}`;
 
   return (
@@ -54,6 +58,8 @@ export default async function Join({ params }: { params: Promise<{ username: str
         <p className="m-muted">{person ? I.lead(person.displayName) : I.leadAnonymous}</p>
         {locked && <p className="text-xs m-muted">{I.private}</p>}
       </section>
+
+      {reading && <PublicReadingCard reading={reading} />}
 
       <section className="space-y-2">
         <p className="m-shadow-text">{t.auth.tagline}</p>

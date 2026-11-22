@@ -8,6 +8,7 @@ import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import type { FollowState, ProfileView, SocialUser } from "@/lib/mahdi/social";
 import Avatar from "@/components/mahdi/Avatar";
 import CommunityFeed from "@/components/mahdi/CommunityFeed";
+import PublicReadingCard from "@/components/mahdi/PublicReadingCard";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
 import Sheet from "@/components/mahdi/Sheet";
@@ -115,6 +116,9 @@ export default function PersonPage() {
           </>
         )}
       </header>
+
+      {/* what they read and their place in «تحدي القراءة», if they show it on their link */}
+      {profile.reading && <PublicReadingCard reading={profile.reading} />}
 
       {profile.canSee ? (
         <CommunityFeed user={user.username ?? name} empty={<p className="m-card p-6 text-center m-muted">{self ? P.emptyMine : P.empty}</p>} />
