@@ -1,8 +1,8 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, type ClaudePart } from "./anthropic";
-import { storyLink, isYoutubeLink } from "./story-link";
-import { listenToLinks } from "@/lib/link-listen";
+import { storyLink, storyUpload, isYoutubeLink } from "./story-link";
+import { listenToFiles, listenToLinks } from "@/lib/link-listen";
 import { isUuid, uploadViews, type UploadRow } from "@/lib/jawad/server/uploads";
 import { getOwnedProject } from "./access";
 import { requireSeries } from "./series";
@@ -134,33 +134,50 @@ ${context ? `\n${context}` : ""}`;
   return { intake: normalizeJourneyIntake(r.data), usd: claudeCost(r.usage) + (video?.usd ?? 0) };
 }
 
+/** One of the person's own uploads (owned, ready, of this kind), with a short-lived link. */
+async function ownUpload(userId: string, id: unknown, kind: "image" | "video") {
+  if (!isUuid(id)) return null;
+  const { data } = await db().from("jawad_uploads").select("*").eq("id", id).eq("user_id", userId).maybeSingle();
+  if (!data || (data as UploadRow).kind !== kind) return null;
+  const view = (await uploadViews([data as UploadRow]))[0];
+  return view?.url ? { url: view.url, name: view.fileName || "فيديو" } : null;
+}
+
 /**
- * The story given as a YouTube link: its words (lib/link-listen, kept by the video's id so a re-check reads them back
- * free) and its frames (the person's own upload of the frame sheet the page made from the download), with what سجاد
- * must do with them. null when the story was written.
+ * The story given as a video — a YouTube link or the person's own upload (lib/film/story-link): its words (heard through
+ * the link or the stored file, kept by the video's id so a re-check reads them back free) and its frames (the person's
+ * upload of the frame sheet the page made), with what سجاد must do with them. null when the story was written.
  */
 async function watchLink(userId: string, story: string, youtube: JourneyIntakeBody["youtube"]): Promise<{ text: string; sheetUrl: string | null; usd: number } | null> {
   const link = storyLink(story);
-  if (!link) return null;
-  if (!isYoutubeLink(link.url)) throw new UserError("حط رابط فيديو يوتيوب صحيح. المتاح الحين روابط يوتيوب بس.", 400);
-  const sheetId = youtube && typeof youtube === "object" ? youtube.sheetId : null;
-  const [heard, sheetUrl] = await Promise.all([
-    listenToLinks(link.url, [], { budgetMs: 90_000 }).catch(() => null),
+  const upload = link ? null : storyUpload(story);
+  if (!link && !upload) return null;
+  if (link && !isYoutubeLink(link.url)) throw new UserError("حط رابط فيديو يوتيوب صحيح. المتاح الحين روابط يوتيوب بس.", 400);
+  if (upload && !upload.video) throw new UserError("ارفع الفيديو أول، وبعدها خل سجاد يفهمه.", 400);
+  const note = (link ?? upload)!.note;
+  const sheetId = link ? (youtube && typeof youtube === "object" ? youtube.sheetId : null) : upload!.video!.sheetId;
+  const [heard, sheet] = await Promise.all([
     (async () => {
-      if (!isUuid(sheetId)) return null;
-      const { data } = await db().from("jawad_uploads").select("*").eq("id", sheetId).eq("user_id", userId).maybeSingle();
-      if (!data || (data as UploadRow).kind !== "image") return null;
-      return (await uploadViews([data as UploadRow]))[0]?.url ?? null;
-    })().catch(() => null),
+      if (link) return listenToLinks(link.url, [], { budgetMs: 90_000 });
+      const video = await ownUpload(userId, upload!.video!.videoId, "video");
+      if (!video) throw new UserError("الفيديو المرفوع ما انلقى (ربما انحذف). ارفعه من جديد.", 400);
+      return listenToFiles([{ id: upload!.video!.videoId, kind: "video", name: video.name, url: video.url }], [], { budgetMs: 90_000 });
+    })().catch((e) => {
+      if (e instanceof UserError) throw e;
+      return null;
+    }),
+    ownUpload(userId, sheetId, "image").catch(() => null),
   ]);
+  const sheetUrl = sheet?.url ?? null;
+  const what = link ? `رابط فيديو يوتيوب (${link.url})` : `فيديو رفعه من جهازه («${upload!.video!.name}»)`;
   const text = [
-    "## القصة رابط فيديو يوتيوب",
-    `المستخدم ما كتب قصة: أعطاك رابط فيديو (${link.url}) لتبني فيلمه عليه، وتحته توضيحه: ${link.note ? `«${link.note}»` : "(ما كتب توضيح — اسأله وش يبي منه: نفس القصة، أو فكرتها بس، أو ستايلها وحركة كاميرتها)"}.`,
+    "## القصة فيديو",
+    `المستخدم ما كتب قصة: أعطاك ${what} لتبني فيلمه عليه، وتحته توضيحه: ${note ? `«${note}»` : "(ما كتب توضيح — اسأله وش يبي منه: نفس القصة، أو فكرتها بس، أو ستايلها وحركة كاميرتها)"}.`,
     sheetUrl
       ? "الصورة المرفقة لقطات من الفيديو نفسه مرتبة بالوقت (الوقت مكتوب على كل لقطة). شفها وحلل منها: الشخصيات وشكلها ولبسها، المكان، الستايل البصري (واقعي/كرتون/أنمي…)، الإضاءة والألوان، حركة الكاميرا وتقطيع اللقطات، وتسلسل الأحداث."
-      : "صور الفيديو ما انشافت (التنزيل ما كان متاح): اشتغل من كلامه وعنوانه، وقل في understanding إنك ما شفت الصورة، ولا تخترع وصف مشاهد.",
+      : "صور الفيديو ما انشافت: اشتغل من كلامه (وعنوانه إن وجد)، وقل في understanding إنك ما شفت الصورة، ولا تخترع وصف مشاهد.",
     heard?.block || "كلام الفيديو ما انسمع.",
-    "المطلوب: understanding تشرح للمستخدم ببساطة وش فهمت من الفيديو (القصة وتسلسلها، الشخصيات، المكان، الستايل، الكاميرا) وكيف بتبني فيلمه عليه حسب توضيحه — هذا اللي بيأكده قبل ما يبدأ السيناريست. concept قصة كاملة مبنية على الفيديو وتوضيحه (لا تنسخ الرابط فيها). title عنوان مناسب لو العنوان المبدئي فاضي. لا تخترع تفاصيل ما في الفيديو ولا التوضيح، واسأل عن الناقص في questions.",
+    "المطلوب: understanding تشرح للمستخدم ببساطة وش فهمت من الفيديو (القصة وتسلسلها، الشخصيات، المكان، الستايل، الكاميرا) وكيف بتبني فيلمه عليه حسب توضيحه — هذا اللي بيأكده قبل ما يبدأ السيناريست. concept قصة كاملة مبنية على الفيديو وتوضيحه (لا تنسخ الرابط ولا أرقام الملفات فيها). title عنوان مناسب لو العنوان المبدئي فاضي. لا تخترع تفاصيل ما في الفيديو ولا التوضيح، واسأل عن الناقص في questions.",
   ].join("\n\n");
   return { text, sheetUrl, usd: heard?.usd ?? 0 };
 }

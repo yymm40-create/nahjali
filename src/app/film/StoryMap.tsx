@@ -55,17 +55,23 @@ export default function StoryMap({ story, durationSec, onChange, disabled }: { s
 }
 
 /** «✍️ أكتب بحرية» or «🗺️ ساعدني أكتبها»: the two ways of writing the story. */
-export type StoryWayKey = "free" | "map" | "link";
+export type StoryWayKey = "free" | "map" | "link" | "upload";
 
-/** How the story is given: written freely, on the story map, or (a new film only) as a YouTube link with a note. */
+/** How the story is given: written freely, on the story map, or (a new film only) from a video — a YouTube link or one
+ * uploaded from the device — with a note. */
 export function StoryWay({ way, onWay, withLink, disabled }: { way: StoryWayKey; onWay: (way: StoryWayKey) => void; withLink?: boolean; disabled?: boolean }) {
   const ways: (readonly [StoryWayKey, string, string, string])[] = [
     ["free", "✍️", "أكتب بحرية", "قصتك بكلماتك"],
     ["map", "🗺️", "ساعدني أكتبها", "سؤال لكل محطة، مع أمثلة"],
-    ...(withLink ? ([["link", "🔗", "رابط يوتيوب", "سجاد يحلل الفيديو ويبني عليه"]] as const) : []),
+    ...(withLink
+      ? ([
+          ["link", "🔗", "رابط يوتيوب", "سجاد يحلل الفيديو ويبني عليه"],
+          ["upload", "📤", "ارفع فيديو", "من جهازك، وسجاد يقراه"],
+        ] as const)
+      : []),
   ];
   return (
-    <div className={`grid gap-2 ${withLink ? "grid-cols-3" : "grid-cols-2"}`} role="group" aria-label="طريقة كتابة القصة">
+    <div className={`grid gap-2 ${withLink ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2"}`} role="group" aria-label="طريقة كتابة القصة">
       {ways.map(([w, icon, label, note]) => (
         <button key={w} type="button" disabled={disabled} aria-pressed={way === w} onClick={() => onWay(w)} className={`rounded-2xl border-2 p-3 text-start ${way === w ? "border-[var(--film-blue)] bg-[var(--film-blue)]/10" : "border-line"}`}>
           <span className="block text-2xl" aria-hidden>{icon}</span>
