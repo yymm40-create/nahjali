@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getOwnedProject, requireFilmApiUser } from "@/lib/film/access";
 import { FILM_BUCKET, projectDir } from "@/lib/film/types";
 import { FILM_LIMITS } from "@config/film";
-import { brandMeta, tellScreenwriterOfBrand } from "@/lib/film/ad-brand";
+import { brandMeta, tellOfBrand } from "@/lib/film/ad-brand";
 import type { AdBrandRole } from "@config/film-ad";
 
 import { storage } from "@/lib/storage";
@@ -53,6 +53,6 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
     .single();
   if (e2) throw e2;
   const meta = brandMeta(brand);
-  if (meta.brand) await tellScreenwriterOfBrand(project, data.id, meta.brand as AdBrandRole, (fileName ?? "").slice(0, 120)).catch((e) => console.error("brand note not added", e));
+  if (meta.brand) await tellOfBrand(project, data.id, meta.brand as AdBrandRole, (fileName ?? "").slice(0, 120)).catch((e) => console.error("brand note not added", e));
   return NextResponse.json({ id: data.id });
 });

@@ -96,8 +96,8 @@ export default async function ProjectView({ id, base }: { id: string; base: stri
 
       {!stage && project.stage !== "screenwriter" && <RewindCard projectId={project.id} />}
 
-      {/* «📣 خلّه إعلان»: a scene or a film becomes an ad before the screenwriter hands over (or an ad changes its reference) */}
-      {!project.series_id && kind !== "lesson" && project.stage === "screenwriter" && <AdConvert projectId={project.id} ad={kind === "ad"} reference={adPlan?.reference ?? ""} />}
+      {/* «📣 خلّه إعلان»: a scene or a film becomes an ad before the director starts (or an ad changes its reference) */}
+      {!project.series_id && kind !== "lesson" && (project.stage === "screenwriter" || project.stage === "sheets") && <AdConvert projectId={project.id} ad={kind === "ad"} reference={adPlan?.reference ?? ""} />}
 
       <References projectId={project.id} initial={references} ad={kind === "ad"} />
 

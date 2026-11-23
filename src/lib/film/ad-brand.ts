@@ -12,7 +12,7 @@ import { JAWAD_BUCKET } from "@/lib/jawad/server/runtime";
 import { addMessage } from "./conversation";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmProject } from "./types";
 import { normalizeAdPlan, readBrand, type AdPlan } from "./intake";
-import { AD_BRIEF, AD_BRAND_ROLES, AD_CONVERT_NOTE, adBrandLines, adBrandRole, type AdBrandPicture, type AdBrandRole } from "@config/film-ad";
+import { AD_BRIEF, AD_BRAND_ROLES, AD_CONVERT_NOTE, adBrandLines, adBrandRole, adSheetsNote, type AdBrandPicture, type AdBrandRole } from "@config/film-ad";
 
 const db = () => createAdminClient();
 const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
@@ -103,14 +103,14 @@ export function adPlanOf(project: Pick<FilmProject, "intake">): AdPlan | null {
 }
 
 /**
- * «📣 خلّه إعلان»: a project made before (a scene or a film, the screenwriter not yet handed over) becomes an ad — its
- * intake carries the ad plan (kept, or empty), with the reference ad's reading when one is given. When the screenwriter
- * already started, the ad's rules and the brand's pictures are added to his conversation (read with the person's next
- * message there). Nothing is deleted.
+ * «📣 خلّه إعلان»: a project made before (a scene or a film, before the director starts) becomes an ad — its intake
+ * carries the ad plan (kept, or empty), with the reference ad's reading when one is given. The step working now reads
+ * it with the person's next message there: the screenwriter the ad's rules, the brand's pictures and the reference's
+ * style; the sheet maker (already started) the brand's pictures and where they go on the map. Nothing is deleted.
  */
 export async function makeAd(project: FilmProject, o: { imitate?: string; reference?: string; frames?: { userId: string; sheetId: unknown } }) {
   if (project.series_id) throw new UserError("مشاهد المسلسل ما تتحول لإعلان.", 400);
-  if (project.stage !== "screenwriter") throw new UserError("التحويل لإعلان قبل ما يسلّم السيناريست بس.", 409);
+  if (project.stage !== "screenwriter" && project.stage !== "sheets") throw new UserError("التحويل لإعلان قبل ما يبدأ المخرج بس.", 409);
   const intake = project.intake && typeof project.intake === "object" ? (project.intake as Record<string, unknown>) : {};
   if (intake.lesson) throw new UserError("هذا درس، ما يتحول لإعلان.", 400);
   const was = adPlanOf(project);
@@ -122,21 +122,30 @@ export async function makeAd(project: FilmProject, o: { imitate?: string; refere
     await db().from("film_assets").update({ status: "rejected" }).eq("project_id", project.id).eq("kind", "upload").eq("ref_key", "").contains("meta", { ad_reference: true });
     await copyUpload(project, o.frames.userId, String(o.frames.sheetId), { ad_reference: true }, "ad-reference");
   }
-  // the screenwriter already working: he reads the ad's rules and the brand with the person's next message
-  const { count } = await db().from("film_messages").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("stage", "screenwriter");
-  const style = o.imitate ? `أسلوب الإعلان المرجعي (${plan.reference || "أعطاه صاحب البراند"}) اللي ننقله:\n${plan.imitate}` : "";
-  if (count && (!was || style)) {
+  // the step working now reads it with the person's next message there (a step not started yet gets it when it starts)
+  const stage = project.stage;
+  const { count } = await db().from("film_messages").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("stage", stage);
+  if (!count) return plan;
+  if (stage === "screenwriter") {
+    const style = o.imitate ? `أسلوب الإعلان المرجعي (${plan.reference || "أعطاه صاحب البراند"}) اللي ننقله:\n${plan.imitate}` : "";
     // already an ad: only the new reference is said
     const parts = was ? [style] : [AD_CONVERT_NOTE, AD_BRIEF.split("\n").filter((l) => !l.includes("المرحلة")).join("\n"), await brandText(project.id), style];
-    await addMessage(project.id, "screenwriter", parts.filter(Boolean).join("\n\n"));
+    if (parts.some(Boolean)) await addMessage(project.id, stage, parts.filter(Boolean).join("\n\n"));
+  } else if (!was) {
+    // the sheet maker: the brand's pictures and where they go (the reference ad is the director's)
+    await addMessage(project.id, stage, `${AD_CONVERT_NOTE.replace("كمّل من حيث وصلت بنفس الشغل", "كمّل من حيث وصلت بنفس الشغل (إذا الخريطة انعرضت، عدّلها بس إذا طلبت)")}\n\n${adSheetsNote(await brandText(project.id))}`);
   }
   return plan;
 }
 
-/** A brand picture added to an ad whose screenwriter is already working: he gets it with the person's next message. */
-export async function tellScreenwriterOfBrand(project: FilmProject, assetId: string, role: AdBrandRole, name: string) {
-  if (project.stage !== "screenwriter" || !adPlanOf(project)) return;
-  const { count } = await db().from("film_messages").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("stage", "screenwriter");
+/**
+ * A brand picture added to an ad whose screenwriter or sheet maker is already working: he gets it with the person's next
+ * message (a step not started yet gets every brand picture when it starts).
+ */
+export async function tellOfBrand(project: FilmProject, assetId: string, role: AdBrandRole, name: string) {
+  const stage = project.stage;
+  if ((stage !== "screenwriter" && stage !== "sheets") || !adPlanOf(project)) return;
+  const { count } = await db().from("film_messages").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("stage", stage);
   if (!count) return;
-  await addMessage(project.id, "screenwriter", `صورة براند جديدة رفعها صاحب الإعلان:\n${adBrandLines([{ role, name, assetId }]).split("\n").slice(1).join("\n")}`);
+  await addMessage(project.id, stage, `صورة براند جديدة رفعها صاحب الإعلان:\n${adBrandLines([{ role, name, assetId }]).split("\n").slice(1).join("\n")}`);
 }
