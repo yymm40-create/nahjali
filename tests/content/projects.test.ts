@@ -49,7 +49,11 @@ const addFile = (name: string, meta: Record<string, unknown>) => {
 vi.mock("@/lib/content/files", () => ({
   addProducedFromOutput: vi.fn(async (o: { name: string; meta: Record<string, unknown> }) => addFile(o.name, o.meta)),
   addProduced: vi.fn(async (o: { name: string; meta: Record<string, unknown> }) => addFile(o.name, o.meta)),
-  attachmentsOf: vi.fn(async () => ({ list: [], rows: [] })),
+  attachmentsOf: vi.fn(async (_u: string, ids: unknown[]) => {
+    const vids = (Array.isArray(ids) ? ids : []).filter((x): x is string => typeof x === "string" && x.startsWith("vid"));
+    return { list: vids.map((id) => ({ id, kind: "video", name: id, durationMs: 4000 })), rows: vids.map((id) => ({ id, kind: "video", storage_path: `p/${id}`, bytes: 1 })) };
+  }),
+  addProducedVideo: vi.fn(async (o: { name: string; meta: Record<string, unknown> }) => addFile(`${o.name}-video`, o.meta).id),
   producedBytes: vi.fn(async (_u: string, id: string) => Buffer.from(`bytes-${id}`)),
   producedRow: vi.fn(async (_u: string, id: string) => (db.files.has(id) ? { id, ...db.files.get(id)! } : null)),
   producedLinks: vi.fn(async () => new Map([...db.files.keys()].map((id) => [id, `https://x/${id}`]))),
@@ -64,7 +68,7 @@ vi.mock("@/lib/content/project", async (orig) => {
 vi.mock("@/lib/jawad/server/uploads", () => ({ drawnPng: vi.fn(async (_u: string, b: { png?: string }) => (b.png ? Buffer.from(b.png, "base64") : null)) }));
 
 import { produce, produceFromCode, planPictureRedo } from "@/lib/content/produce";
-import { addToStore, handOff, lookLines, readStore, storeBrief, storeNote, threadTurns, EMPTY_STORE } from "@/lib/content/project";
+import { addToStore, handOff, lookLines, readStore, storeBrief, storeNote, threadTurns, twoChats, EMPTY_STORE } from "@/lib/content/project";
 
 let PNG = "";
 const slide = (n: number) => ({ n, text: `نص ${n}`, prompt: `slide ${n} prompt "نص ${n}"` });
@@ -90,9 +94,11 @@ beforeEach(async () => {
   }
 });
 
-describe("«حيدرا ماكس» alone: two chats", () => {
+// a motion carousel «حيدرا ماكس» makes alone in code: its pictures in code first, then the motion in the second chat
+const MOTION = { motion: { styleId: "kinetic-word", route: "code", seconds: 4 } };
+describe("«حيدرا ماكس» alone in a motion carousel: two chats", () => {
   it("draws every slide's PICTURE first in code, with no writing, then waits for the approval", async () => {
-    start(2);
+    start(2, MOTION);
     const a = await produce("u", "chat-1");
     expect(gen.calls).toHaveLength(0);
     expect(a.phase).toBe("pictures");
@@ -116,7 +122,7 @@ describe("«حيدرا ماكس» alone: two chats", () => {
   });
 
   it("approving hands the pictures to the second chat with a delivery message, and the slides are written there", async () => {
-    start(2);
+    start(2, MOTION);
     await produce("u", "chat-1");
     await produceFromCode("u", "chat-1", { n: 1, png: PNG, stage: "picture" });
     await produce("u", "chat-1");
@@ -141,7 +147,7 @@ describe("«حيدرا ماكس» alone: two chats", () => {
     expect(w.code?.photos).toHaveLength(1);
     expect(w.code?.prompt).toContain("you drew in code in stage 1");
     expect(w.code?.text).toBe("نص 1");
-    const made = await produceFromCode("u", "chat-1", { n: 1, png: PNG });
+    const made = await produceFromCode("u", "chat-1", { n: 1, png: PNG, video: "vid-1" });
     expect(made.at).toBe(2);
     expect(state().messages[2].slides!.items.find((x) => x.n === 1)!.name).toBe("slide-01");
     // the first chat's pictures stay as they were approved
@@ -149,12 +155,12 @@ describe("«حيدرا ماكس» alone: two chats", () => {
   });
 
   it("a picture changed in the first chat after the handoff is drawn again, approved, and handed on as an update", async () => {
-    start(1);
+    start(1, MOTION);
     await produce("u", "chat-1");
     await produceFromCode("u", "chat-1", { n: 1, png: PNG, stage: "picture" });
     await produce("u", "chat-1", { approvePictures: true });
     await produce("u", "chat-1");
-    await produceFromCode("u", "chat-1", { n: 1, png: PNG });
+    await produceFromCode("u", "chat-1", { n: 1, png: PNG, video: "vid-1" });
     expect(state().pending).toBeNull();
 
     const r = await produce("u", "chat-1", { redoApproved: [{ n: 1, note: "خل الخلفية ليل" }] });
@@ -262,6 +268,13 @@ describe("the project's pieces", () => {
     expect(note).toContain("لا يُستخدم أبدًا");
     expect(note).toContain("مرجع: الإضاءة");
     expect(note).toContain("الخط: ثمانية");
+  });
+
+  it("one chat for GPT Image 2 alone and for a still carousel «حيدرا ماكس» makes alone; two for the pictures + his writing, and for motion", () => {
+    expect(twoChats({})).toBe(false);
+    expect(twoChats({ maker: "code" })).toBe(false);
+    expect(twoChats({ maker: "code", mix: true })).toBe(true);
+    expect(twoChats({ maker: "code", motion: { styleId: "kinetic-word", route: "code", seconds: 4 } })).toBe(true);
   });
 
   it("the look fixed by the choices reads in plain words", () => {

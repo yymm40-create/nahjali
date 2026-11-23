@@ -30,8 +30,12 @@ export const threadOf = (t: Turn): Thread => (t.thread === "design" ? "design" :
 /** Whether the project has its second chat already. */
 export const hasDesign = (messages: Turn[]) => messages.some((t) => t.thread === "design");
 
-/** A carousel «حيدرا ماكس» takes part in is made in two chats; one GPT Image 2 paints whole stays in one. */
-export const twoChats = (p: Pick<PendingProduce, "maker">) => p.maker === "code";
+/**
+ * Which carousels are made in two chats: GPT Image 2's pictures with «حيدرا ماكس»'s writing, and every motion carousel.
+ * One GPT Image 2 paints whole stays one chat, and so does a still one «حيدرا ماكس» makes alone, pictures and writing
+ * at once (the owner, 23 Nov 2026: «حيدرة ماكس خله فالكاروسيل الصور والكتابة… محادثة وحدة»).
+ */
+export const twoChats = (p: Pick<PendingProduce, "maker" | "mix" | "motion">) => p.maker === "code" && (!!p.mix || !!p.motion);
 
 /**
  * The turns «محمد باقر» is given in one chat: the first chat sees only its own talk; the second starts from the delivery
