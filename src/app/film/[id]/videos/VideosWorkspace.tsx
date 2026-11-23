@@ -145,7 +145,10 @@ export default function VideosWorkspace({
       ? lastModel
       : realFaceOn && generations.some((g) => g.model === "seedance-real-face")
         ? "seedance-real-face"
-        : generations.filter((g) => g.model === "seedance-2.0").length > generations.length / 2 ? "seedance-2.0" : "seedance-2.5",
+        : // the director's Wan 3.0 is kept too (it fell back to Seedance 2.5, twice the price — a lesson's test, 23 Nov 2026)
+          wanOn && generations.filter((g) => g.model === "wan-3.0").length > generations.length / 2
+          ? "wan-3.0"
+          : generations.filter((g) => g.model === "seedance-2.0").length > generations.length / 2 ? "seedance-2.0" : "seedance-2.5",
   );
   const [rendering, setRendering] = useState(videosRunning > 0);
   // The director answering the client's notes on a video
