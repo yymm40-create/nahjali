@@ -19,6 +19,7 @@ import {
   type ScriptKind,
 } from "@config/film-prompts/screenwriter";
 import { filmKind, projectKind } from "@config/film";
+import { completeHandoff } from "./handoff-guard";
 import { journeyIntakeText, normalizeJourneyIntake } from "./intake";
 
 const STAGE = "screenwriter";
@@ -290,12 +291,14 @@ export async function runScriptJob(projectId: string, jobId: string) {
     if (pending.length) await client.from("film_versions").update({ status: "superseded" }).in("id", pending);
     // The handoff works in the background: it is kept (approved) for the next stage, never shown as a step
     const isHandoff = kind === "handoff";
+    // a (nearly) empty handoff carries the approved screenplay itself (lib/film/handoff-guard)
+    const screenplay = versions.filter((v) => v.kind === "screenplay" && v.status === "approved").at(-1)?.body;
     const { error } = await client.from("film_versions").insert({
       project_id: projectId,
       stage: STAGE,
       kind,
       version: (same.at(-1)?.version ?? 0) + 1,
-      body: reply.content,
+      body: isHandoff ? completeHandoff(reply.content, screenplay) : reply.content,
       data: { notes: reply.notes, questions: kind === "questions" ? reply.questions : undefined, cost_usd: claudeCost(usage), usage: replyTokens(usage) },
       status: isHandoff ? "approved" : "awaiting_approval",
       approved_at: isHandoff ? new Date().toISOString() : null,
