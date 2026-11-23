@@ -28,6 +28,7 @@ import {
 import { storage } from "@/lib/storage";
 import { requireSeedanceRoom } from "@/lib/access-perks";
 import { isAdmin } from "@config/site";
+import { completeHandoff } from "./handoff-guard";
 const STAGE = "director";
 const VIDEO_OP = "director_video";
 const ESTIMATE_USD = 1;
@@ -234,7 +235,8 @@ export async function directorAction(project: FilmProject, user: User, input: Di
           .maybeSingle();
         return data?.body as string | undefined;
       };
-      const script = await handoff("screenwriter", "handoff");
+      // a handoff saved (nearly) empty before the guard: the approved screenplay goes with it (lib/film/handoff-guard)
+      const script = completeHandoff((await handoff("screenwriter", "handoff")) ?? "", await handoff("screenwriter", "screenplay")) || undefined;
       const sheets = await handoff("sheets", "sheet_handoff");
       if (!script || !sheets) throw new UserError("ما لقينا رسالتَي التسليم المعتمدتين من السيناريست وصانع الشيت.", 409);
       await insertSetup(project.id, versions, input.superDirector);
