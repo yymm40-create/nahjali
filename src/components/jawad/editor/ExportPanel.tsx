@@ -526,6 +526,11 @@ export default function ExportPanel({
               </span>
               <span className="block text-xs text-jw-faint">المصدر: {sourceLine(source)}</span>
             </p>
+            {tl.tracks.some((t) => t.solo || t.off) && (
+              <p className="rounded-lg bg-jw-warn/10 p-2 text-xs leading-5 text-jw-warn">
+                فيه مسارات عليها S (سولو) أو H (مطفّية): التصدير يطلع مثل ما تشوفه وتسمعه الحين. شيلها من رؤوس المسارات إذا تبي الكل.
+              </p>
+            )}
             {plan.noSource && wantSource && <p className="rounded-lg bg-jw-warn/10 p-2 text-xs text-jw-warn">ما فيه مقطع فيديو في التايملاين أطابق مقاسه، فاستخدمت مقاس المشروع.</p>}
             {plan.heavy && (
               <p className="rounded-lg bg-jw-warn/10 p-2 text-xs text-jw-warn">

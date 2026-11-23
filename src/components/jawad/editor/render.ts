@@ -1,6 +1,7 @@
 // «حيدرة كت» — draws one frame of a timeline. The preview and the export both call this, so what people see while
 // editing is what they get in the file.
 
+import { coversFrame, type CoverAsset } from "@/lib/editor/cover";
 import { familyOf } from "./fontload";
 import { drawWithFx, fxPlan } from "./fx";
 import { transitionLook, type TrLook, type TrMask } from "@/lib/editor/transitions";
@@ -196,8 +197,25 @@ export function layersAt(tl: Timeline, ms: number): Layer[] {
   return out;
 }
 
-/** Draws in the timeline's own units (tl.width × tl.height); the caller's transform maps them to its canvas. */
-export function drawFrame(ctx: CanvasRenderingContext2D, tl: Timeline, ms: number, frameOf: (clip: Clip, ms: number) => Frame | null, o: { transparent?: boolean } = {}) {
+/**
+ * What is SEEN at `ms`: the layers from the topmost clip that fills the whole frame upward. What is under it is hidden
+ * whole, so it is neither decoded nor drawn (src/lib/editor/cover.ts) — on a timeline of stacked cameras that is one
+ * video instead of all of them.
+ */
+export function shownLayers(tl: Timeline, ms: number, assetOf: (id: string) => CoverAsset | undefined): Layer[] {
+  const all = layersAt(tl, ms);
+  for (let i = all.length - 1; i > 0; i--) {
+    const l = all[i];
+    if ("clip" in l && l.look === PLAIN && coversFrame(tl, l.clip, assetOf(l.clip.assetId ?? ""))) return all.slice(i);
+  }
+  return all;
+}
+
+/**
+ * Draws in the timeline's own units (tl.width × tl.height); the caller's transform maps them to its canvas.
+ * `assetOf` (the preview gives it): what is wholly covered is skipped.
+ */
+export function drawFrame(ctx: CanvasRenderingContext2D, tl: Timeline, ms: number, frameOf: (clip: Clip, ms: number) => Frame | null, o: { transparent?: boolean; assetOf?: (id: string) => CoverAsset | undefined } = {}) {
   const W = tl.width;
   const H = tl.height;
   // a transparent export (WebM with alpha) keeps empty places empty: no background colour under the clips
@@ -208,7 +226,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, tl: Timeline, ms: numbe
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
   }
-  for (const l of layersAt(tl, ms)) {
+  for (const l of o.assetOf ? shownLayers(tl, ms, o.assetOf) : layersAt(tl, ms)) {
     if ("solid" in l) {
       if (l.alpha <= 0) continue;
       ctx.save();

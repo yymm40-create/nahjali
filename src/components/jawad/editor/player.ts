@@ -5,9 +5,9 @@
 // pictures follow the clock, drawn on one canvas with the same drawFrame the export uses. Only clips near the playhead
 // hold an element, so long projects stay light.
 
-import { clipEnd, duration, gainAt, hasSoundFx, sourceTime, speedAt, voiceSpans, type Clip, type Timeline } from "@/lib/editor/model";
+import { clipEnd, duration, gainAt, hasSoundFx, sourceTime, speedAt, voiceSpans, type Clip, type Timeline, type Track } from "@/lib/editor/model";
 import { rampKey, rampSamples } from "@/lib/editor/ramp";
-import { drawFrame, getPreviewScale, layersAt, setPreviewScale, type Frame } from "./render";
+import { drawFrame, getPreviewScale, layersAt, setPreviewScale, shownLayers, type Frame } from "./render";
 import { gradeView } from "./grade-gl";
 import { Masker } from "./segment";
 import { decodeWhole } from "./audio";
@@ -430,6 +430,9 @@ export class Player {
     return end > 0 && this.ms >= end ? end - 1 : this.ms;
   }
 
+  /** A file's kind and size, for «is this clip hiding what is under it». */
+  private assetOf = (id: string) => this.assets.get(id);
+
   /** Media clips on screen now (two during a transition). */
   private active() {
     return layersAt(this.tl, this.shown()).flatMap((l) => ("clip" in l && !l.clip.text ? [l] : []));
@@ -442,6 +445,30 @@ export class Player {
     // a clip in a transition shows a held frame (its first before the cut, its last after it)
     const held = new Map<string, number>();
     for (const l of layersAt(this.tl, ms)) if ("clip" in l && (ms < l.clip.start || ms >= clipEnd(l.clip))) held.set(l.clip.id, l.ms);
+    // Only what is SEEN gets a decoder: a clip wholly covered by the one over it (cameras stacked on one another), or
+    // on a hidden track, has no element at all — it used to play like the rest, and thirty videos decoding at once is
+    // what froze the editor. The clip the top one will uncover when it ends is made ready a moment before, paused on
+    // the frame it will show.
+    const all = layersAt(this.tl, ms);
+    const top = shownLayers(this.tl, ms, this.assetOf);
+    const seen = new Set(top.flatMap((l) => ("clip" in l ? [l.clip.id] : [])));
+    const warm = new Map<string, number>();
+    const cover = all.length > top.length ? top[0] : null;
+    if (cover && "clip" in cover) {
+      const opens = clipEnd(cover.clip);
+      if (opens - ms < AHEAD_MS) for (const l of shownLayers(this.tl, opens, this.assetOf)) if ("clip" in l && !seen.has(l.clip.id)) warm.set(l.clip.id, opens);
+    }
+    // A covered video whose own sound is on still has to be heard. One or two of them keep their video (a podcast's
+    // second camera: nothing changes). Three or more — every camera of a shoot left with its sound on — play their
+    // sound from a sound-only element: the browser reads the same file and decodes none of its picture.
+    const unseen = (track: Track, clip: Clip, a: PlayerAsset) => track.kind !== "audio" && a.kind === "video" && ms >= clip.start && ms < clipEnd(clip) && !seen.has(clip.id) && !held.has(clip.id) && !warm.has(clip.id);
+    const sounding = (track: Track, clip: Clip, a: PlayerAsset) => a.hasAudio && !track.muted && clip.volume > 0 && !this.webSound(clip, a);
+    let unseenHeard = 0;
+    for (const track of this.tl.tracks) for (const clip of track.clips) {
+      const a = clip.assetId ? this.assets.get(clip.assetId) : null;
+      if (a?.url && !clip.text && unseen(track, clip, a) && sounding(track, clip, a)) unseenHeard++;
+    }
+    const lean = unseenHeard >= 3;
     for (const track of this.tl.tracks) {
       for (const clip of track.clips) {
         if (clip.text || !clip.assetId) continue;
@@ -453,19 +480,26 @@ export class Player {
         }
         const end = clipEnd(clip);
         if (end < ms - KEEP_MS || clip.start > ms + KEEP_MS) continue;
-        wanted.add(clip.id);
         const on = ms >= clip.start && ms < end;
+        // a picture nobody sees: no element (its sound plays through Web Audio; the rare file whose sound only the
+        // element can play keeps it)
+        const picture = track.kind !== "audio" && a.kind === "video";
+        const heard = on && sounding(track, clip, a);
+        const showing = !picture || seen.has(clip.id) || held.has(clip.id) || heard;
+        if (picture && !heard && (track.hidden || (on && !showing && !warm.has(clip.id)))) continue;
+        wanted.add(clip.id);
         const soon = !on && clip.start > ms && clip.start - ms < AHEAD_MS;
         if (!on && !soon && !held.has(clip.id) && !this.media.has(clip.id)) continue;
-        const m = this.element(clip, a);
+        const m = this.element(clip, a, lean && heard && unseen(track, clip, a));
         // the sound plays through Web Audio; the element only shows the picture (unless its sound can't be decoded)
         const gain = on && !this.webSound(clip, a) ? gainAt(track, clip, ms, this.spans) : 0;
         m.muted = track.muted || gain <= 0;
         m.volume = Math.min(1, Math.max(0, gain));
-        const at = (on ? sourceTime(clip, ms) : held.has(clip.id) ? sourceTime(clip, held.get(clip.id)!) : clip.in) / 1000;
+        // (covered for a moment more: it waits on the frame it will show when the clip over it ends)
+        const at = (on && !showing ? sourceTime(clip, warm.get(clip.id) ?? ms) : on ? sourceTime(clip, ms) : held.has(clip.id) ? sourceTime(clip, held.get(clip.id)!) : clip.in) / 1000;
         // forward the element plays (faster when shuttling, up to the browser's limit); backward it is stepped frame
         // by frame like a scrub (no browser plays a video backward)
-        const live = on && this.playing && this.rate > 0;
+        const live = on && showing && this.playing && this.rate > 0;
         // («منحنى السرعة»: the rate follows the curve at this moment)
         let rate = speedAt(clip, ms) * (this.rate > 0 ? this.rate : 1);
         if (live) {
@@ -492,13 +526,15 @@ export class Player {
     }
   }
 
-  private element(clip: Clip, a: PlayerAsset): Media {
+  private element(clip: Clip, a: PlayerAsset, soundOnly = false): Media {
     // a 4K video plays its light copy here (the export still reads the original)
     const src = (a.kind === "video" && a.preview) || a.url!;
+    // (`soundOnly`: a video nobody sees but whose sound is on — a sound element, no picture decoded)
+    const tag = a.kind === "video" && !soundOnly ? "VIDEO" : "AUDIO";
     let m = this.media.get(clip.id);
-    if (m && m.dataset.src === src) return m;
+    if (m && m.dataset.src === src && m.tagName === tag) return m;
     if (m) release(m);
-    m = document.createElement(a.kind === "video" ? "video" : "audio");
+    m = document.createElement(tag === "VIDEO" ? "video" : "audio");
     // a file storage refused with CORS before: plainly (it shows and plays; only the export may refuse it)
     if (!this.plainSrc.has(src)) m.crossOrigin = "anonymous";
     const el = m;
@@ -635,7 +671,7 @@ export class Player {
     // one frame that can't be drawn (a picture the browser isn't ready to give) must never break the page
     try {
       this.fit();
-      drawFrame(this.ctx, this.tl, this.shown(), this.frameOf);
+      drawFrame(this.ctx, this.tl, this.shown(), this.frameOf, { assetOf: this.assetOf });
     } catch (e) {
       console.warn("editor draw", e);
     }

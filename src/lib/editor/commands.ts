@@ -147,7 +147,7 @@ export type Command =
   | { type: "update_clip"; clipId: string; patch: ClipPatch }
   /** `role`: the red track of pieces to fix, or the green one of what was made («التعديل الذكي») */
   | { type: "add_track"; kind: TrackKind; role?: TrackRole }
-  | { type: "update_track"; trackId: string; patch: Partial<Pick<Track, "muted" | "hidden" | "locked" | "name" | "duck" | "color">> }
+  | { type: "update_track"; trackId: string; patch: Partial<Pick<Track, "muted" | "hidden" | "locked" | "name" | "duck" | "color" | "solo" | "off">> }
   /** a motion point at timeline time `at` with this look (one already there is replaced) */
   | { type: "set_key"; clipId: string; at: number; transform: Partial<Transform> }
   | { type: "remove_key"; clipId: string; at: number }
@@ -175,7 +175,7 @@ export type Command =
   | { type: "transition_all"; trackId?: string; kind: TransitionKind | null; ms?: number }
   | { type: "remove_track"; trackId: string }
   /** the same switch on several tracks at once (⌥ on a track's eye, speaker or lock; a folder's own switches) */
-  | { type: "update_tracks"; trackIds: string[]; patch: Partial<Pick<Track, "muted" | "hidden" | "locked">> }
+  | { type: "update_tracks"; trackIds: string[]; patch: Partial<Pick<Track, "muted" | "hidden" | "locked" | "solo" | "off">> }
   /** «مجلد مسارات»: these tracks into a new folder (`name`) or an existing one (`folderId`); `folderId: null` takes them out */
   | { type: "folder_tracks"; trackIds: string[]; name?: string; folderId?: string | null }
   | { type: "update_folder"; folderId: string; patch: Partial<Pick<TrackFolder, "name" | "closed">> }
@@ -383,6 +383,12 @@ const bare = (t: Timeline): Timeline => {
 const seqsOf = (t: Timeline): Sequence[] => (t.seqs?.length ? t.seqs : [{ id: FIRST_SEQ, name: "تسلسل 1", tl: null }]);
 /** The list with the open timeline's content parked in its own place (before another one opens). */
 const parked = (t: Timeline, seqs: Sequence[]): Sequence[] => seqs.map((x) => (x.tl ? x : { ...x, tl: bare(t) }));
+
+/** «S» / «H» on a track: kept only while on (an untouched track stays as it was saved). */
+function setFlag(track: Track, key: "solo" | "off", on: boolean) {
+  if (on) track[key] = true;
+  else delete track[key];
+}
 
 /** A folder with no track left in it goes. */
 function dropEmptyFolders(t: Timeline) {
@@ -1192,6 +1198,11 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       if (p.muted != null) track.muted = !!p.muted;
       if (p.hidden != null) track.hidden = !!p.hidden;
       if (p.locked != null) track.locked = !!p.locked;
+      if (p.solo != null) {
+        if (track.kind === "text") fail("السولو لمسارات الفيديو والصوت.");
+        setFlag(track, "solo", !!p.solo);
+      }
+      if (p.off != null) setFlag(track, "off", !!p.off);
       if (p.name != null) track.name = String(p.name).slice(0, 40);
       if (p.color !== undefined) {
         if (p.color !== null && !TRACK_COLORS.includes(p.color)) fail("لون غير معروف.");
@@ -1201,7 +1212,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         if (track.kind !== "audio") fail("الخفض التلقائي لمسارات الصوت.");
         track.duck = !!p.duck;
       }
-      const label = p.duck != null ? (track.duck ? "خفض تلقائي وقت الكلام" : "أطفأت الخفض التلقائي") : p.locked != null ? (track.locked ? "قفلت مسارًا" : "فتحت مسارًا") : p.muted != null ? (track.muted ? "كتمت مسارًا" : "شغّلت صوت مسار") : p.hidden != null ? (track.hidden ? "أخفيت مسارًا" : "أظهرت مسارًا") : p.color !== undefined ? "لوّنت مسارًا" : "سمّيت مسارًا";
+      const label = p.solo != null ? (track.solo ? `سولو: «${track.name}» بروحه` : "شلت السولو") : p.off != null ? (track.off ? `طفّيت «${track.name}» مؤقتًا` : `شغّلت «${track.name}»`) : p.duck != null ? (track.duck ? "خفض تلقائي وقت الكلام" : "أطفأت الخفض التلقائي") : p.locked != null ? (track.locked ? "قفلت مسارًا" : "فتحت مسارًا") : p.muted != null ? (track.muted ? "كتمت مسارًا" : "شغّلت صوت مسار") : p.hidden != null ? (track.hidden ? "أخفيت مسارًا" : "أظهرت مسارًا") : p.color !== undefined ? "لوّنت مسارًا" : "سمّيت مسارًا";
       return { timeline: t, label };
     }
 
@@ -1222,9 +1233,11 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         if (p.muted != null && track.kind !== "text") track.muted = !!p.muted;
         if (p.hidden != null && track.kind !== "audio") track.hidden = !!p.hidden;
         if (p.locked != null) track.locked = !!p.locked;
+        if (p.solo != null && track.kind !== "text") setFlag(track, "solo", !!p.solo);
+        if (p.off != null) setFlag(track, "off", !!p.off);
       }
       const n = tracks.length;
-      const label = p.locked != null ? (p.locked ? `قفلت ${n} مسارات` : `فتحت ${n} مسارات`) : p.muted != null ? (p.muted ? `كتمت ${n} مسارات` : `شغّلت صوت ${n} مسارات`) : p.hidden ? `أخفيت ${n} مسارات` : `أظهرت ${n} مسارات`;
+      const label = p.solo != null ? (p.solo ? `سولو على ${n} مسارات` : "شلت السولو عن الكل") : p.off != null ? (p.off ? `طفّيت ${n} مسارات مؤقتًا` : `شغّلت ${n} مسارات`) : p.locked != null ? (p.locked ? `قفلت ${n} مسارات` : `فتحت ${n} مسارات`) : p.muted != null ? (p.muted ? `كتمت ${n} مسارات` : `شغّلت صوت ${n} مسارات`) : p.hidden ? `أخفيت ${n} مسارات` : `أظهرت ${n} مسارات`;
       return { timeline: t, label };
     }
 
