@@ -200,8 +200,9 @@ export interface StageView { key: StageKey; label: string; state: "done" | "open
  */
 export function stagesOf(msgs: Msg[], path: string | null): StageView[] {
   const real = msgs.filter((m) => !m.error);
-  const twoChats = real.some((m) => m.thread === "design");
   const blocks = real.filter((m) => m.slides).map((m) => ({ s: m.slides!, design: m.thread === "design" }));
+  // (a two-chat carousel shows its four stages from the start, before its pictures are handed on)
+  const twoChats = real.some((m) => m.thread === "design") || blocks.some((b) => b.s.split);
   const lastBot = (design?: boolean) => [...real].reverse().find((m) => m.role === "assistant" && (design === undefined || (m.thread === "design") === design));
   const asks = (m?: Msg) => !!m?.questions?.length;
   const finished = (s: SlidesView) => !s.running && s.items.length > 0 && s.todo.length === 0 && s.phase !== "approve" && s.phase !== "pictures";
