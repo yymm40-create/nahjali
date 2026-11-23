@@ -152,6 +152,9 @@ const TRACK_KINDS: { kind: Track["kind"]; label: string; icon: "layers" | "music
   { kind: "text", label: "نص وكابشن", icon: "type" },
 ];
 
+/** the colours a clip can be marked with (a press on the selected clip's dot goes through them) */
+const LABELS = ["#ef4444", "#f59e0b", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899", "#78716c"];
+
 /** A timecode HH:MM:SS:FF (the «بريمير» timeline). */
 export const timecode = (ms: number, fps: number) => {
   const f = Math.floor(((ms % 1000) / 1000) * fps);
@@ -198,7 +201,9 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   const [, redraw] = useState(0);
   const fitted = useRef(false);
   const total = duration(tl);
-  const main = mainTrack(tl);
+  // «بدون مسار رئيسي»: no track is drawn or treated as the main one
+  const main = tl.noMain ? undefined : mainTrack(tl);
+  const firstPicture = mainTrack(tl);
 
   // tracks as people expect them: the top layer first, the main track under the pictures, sound at the bottom
   const ordered = useMemo(() => {
@@ -426,6 +431,41 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       cancelAnimationFrame(raf);
     };
   }, [compact, player, pps, total]);
+
+  // ---------- «الخريطة»: the whole timeline in one strip under it, with the part on screen as a window to drag ----------
+  const mapWin = useRef<HTMLDivElement>(null);
+  const span = total + 15_000;
+  const placeMap = useCallback(() => {
+    const el = scroller.current;
+    const w = mapWin.current;
+    if (!el || !w || compact) return;
+    const from = (el.scrollLeft * 1000) / shown.current;
+    const len = ((el.clientWidth - HEAD) * 1000) / shown.current;
+    w.style.left = `${Math.max(0, Math.min(100, (from / span) * 100))}%`;
+    w.style.width = `${Math.max(0.6, Math.min(100, (len / span) * 100))}%`;
+  }, [compact, HEAD, span]);
+  useLayoutEffect(placeMap);
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || compact) return;
+    el.addEventListener("scroll", placeMap, { passive: true });
+    const ro = new ResizeObserver(placeMap);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", placeMap);
+      ro.disconnect();
+    };
+  }, [placeMap, compact]);
+  /** a press or a drag on the map: that moment comes to the middle of the screen */
+  const mapGo = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = scroller.current;
+    if (!el || (e.type === "pointermove" && !e.currentTarget.hasPointerCapture(e.pointerId))) return;
+    if (e.type === "pointerdown") e.currentTarget.setPointerCapture(e.pointerId);
+    const r = e.currentTarget.getBoundingClientRect();
+    const ms = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * span;
+    exactLeft.current = null;
+    el.scrollLeft = (ms * shown.current) / 1000 - (el.clientWidth - HEAD) / 2;
+  };
 
   const msAt = (clientX: number) => {
     const el = scroller.current!;
@@ -804,6 +844,11 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     const graded = c.grades.filter((g) => g.on).length;
     // «زامن الصوت» left it where it was (red) or is not sure of it (amber)
     const flag = ghost ? undefined : flags?.[c.id];
+    // «H» / «S» / the colour on this clip — pressed on one of several selected clips, they act on all of them
+    const mine = sel ? selected : [c.id];
+    const mark = (patch: { off?: boolean; solo?: boolean; label?: string | null }) => run({ type: "mark_clips", clipIds: mine, patch });
+    const chip = "pointer-events-auto grid h-4 min-w-4 place-items-center rounded-[3px] px-0.5 text-[9px] font-black leading-none shadow";
+    const stop = (e: React.PointerEvent) => e.stopPropagation();
     const handle = compact ? 18 : 10;
     return (
       <div
@@ -813,7 +858,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
         tabIndex={-1}
         aria-label={c.text ? `نص: ${c.text.body}` : nestName ? `متداخل: ${nestName}` : (a?.name ?? "مقطع")}
         aria-pressed={sel}
-        className={`absolute top-1 bottom-1 overflow-hidden text-[11px] text-white ${pro ? "rounded-[3px] border border-black/50" : "rounded-md shadow"} ${tone} ${sel ? (pro ? "z-10 outline outline-2 outline-white" : "z-10 ring-2 ring-jw-accent") : pro ? "" : "ring-1 ring-black/40"} ${(d?.moved && d.mode === "move") || along ? "opacity-80" : ""} ${missing ? "outline-2 outline-dashed outline-jw-danger" : ""} ${flag ? (flag.level === "bad" ? "outline outline-2 outline-red-500" : "outline outline-2 outline-amber-400") : ""}`}
+        className={`absolute top-1 bottom-1 overflow-hidden text-[11px] text-white ${pro ? "rounded-[3px] border border-black/50" : "rounded-md shadow"} ${tone} ${sel ? (pro ? "z-10 outline outline-2 outline-white" : "z-10 ring-2 ring-jw-accent") : pro ? "" : "ring-1 ring-black/40"} ${(d?.moved && d.mode === "move") || along ? "opacity-80" : c.off ? "opacity-40 grayscale" : ""} ${c.solo ? "outline outline-2 outline-amber-400" : ""} ${missing ? "outline-2 outline-dashed outline-jw-danger" : ""} ${flag ? (flag.level === "bad" ? "outline outline-2 outline-red-500" : "outline outline-2 outline-amber-400") : ""}`}
         title={flag ? `${flag.level === "bad" ? "ما تزامن" : "راجعه"}: ${flag.why}` : undefined}
         style={{
           left: X0 - HEAD + lanePx(start),
@@ -851,6 +896,41 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
         }}
       >
         {!pro && track.color && <span className="pointer-events-none absolute inset-0 border-s-4" style={{ borderColor: track.color, background: `${track.color}33` }} />}
+        {c.label && <span className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-[5px]" style={{ background: c.label }} />}
+        {c.off && <span className="pointer-events-none absolute inset-0" style={{ background: "repeating-linear-gradient(135deg, rgba(0,0,0,.45) 0 6px, transparent 6px 12px)" }} />}
+        {/* the clip's own «S» «H» and colour: on a selected clip to press, on any clip as a mark when on */}
+        {!ghost && !compact && (sel || c.off || c.solo) && lanePx(end - start) > 46 && (
+          <span className="pointer-events-none absolute right-3.5 top-1.5 z-[2] flex gap-0.5" dir="ltr">
+            {track.kind === "video" && !c.text && (sel || c.solo) && (
+              <button type="button" disabled={readOnly} className={`${chip} ${c.solo ? "bg-amber-400 text-black" : "bg-black/70 text-white hover:bg-amber-400 hover:text-black"}`} onPointerDown={stop} onClick={() => mark({ solo: !c.solo })} aria-pressed={!!c.solo} aria-label={c.solo ? "شيل السولو عن المقطع" : "سولو المقطع"} title="S · سولو المقطع: طول ما هو على الشاشة يصير الفيديو الوحيد (اللي فوقه يتنحى)">
+                S
+              </button>
+            )}
+            {(sel || c.off) && (
+              <button type="button" disabled={readOnly} className={`${chip} ${c.off ? "bg-red-600 text-white" : "bg-black/70 text-white hover:bg-red-600"}`} onPointerDown={stop} onClick={() => mark({ off: !c.off })} aria-pressed={!!c.off} aria-label={c.off ? "شغّل المقطع" : "طفّي المقطع مؤقتًا"} title="H · طفّي المقطع مؤقتًا: كأنه مو موجود (ما ينشاف ولا ينسمع)">
+                H
+              </button>
+            )}
+            {sel && (
+              <button
+                type="button"
+                disabled={readOnly}
+                className={`${chip} border border-white/60`}
+                style={{ background: c.label ?? "rgba(0,0,0,.7)" }}
+                onPointerDown={stop}
+                onClick={(e) => {
+                  // ⇧: every clip of this colour; ⌥: no colour; a press: the next colour
+                  if (e.shiftKey) return onSelect(tl.tracks.flatMap((t) => t.clips.filter((x) => (x.label ?? null) === (c.label ?? null)).map((x) => x.id)));
+                  mark({ label: e.altKey ? null : LABELS[(LABELS.indexOf(c.label ?? "") + 1) % LABELS.length] });
+                }}
+                aria-label="لون المقطع"
+                title="لون المقطع (ميّز به المقاطع): ضغطة = اللون اللي بعده · ⌥ = بدون لون · ⇧ = حدّد كل المقاطع اللي بنفس اللون"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-white/90" />
+              </button>
+            )}
+          </span>
+        )}
         {flag && (
           <>
             <span className={`pointer-events-none absolute inset-0 ${flag.level === "bad" ? "bg-red-600/55" : "bg-amber-400/30"}`} />
@@ -957,6 +1037,8 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       ...(loose("audio").length > 1 ? [{ label: `📁 مسارات الصوت في مجلد (${loose("audio").length})`, on: () => run({ type: "folder_tracks", trackIds: loose("audio").map((t) => t.id), name: "الصوت" }) }] : []),
       ...(loose("text").length > 1 ? [{ label: `📁 مسارات النصوص في مجلد (${loose("text").length})`, on: () => run({ type: "folder_tracks", trackIds: loose("text").map((t) => t.id), name: "النصوص" }) }] : []),
       ...(selTracks.length ? [{ label: `📁 مسارات المقاطع المحددة في مجلد (${selTracks.length})`, on: () => run({ type: "folder_tracks", trackIds: selTracks.map((t) => t.id) }) }] : []),
+      ...(tl.tracks.filter((t) => t.kind === "video" && t.id !== main?.id && t.clips.length).length > 1 ? [{ label: "🧲 لمّ مسارات الفيديو في أقل عدد (الفيلم نفسه)", on: () => run({ type: "pack_tracks", kind: "video" }) }] : []),
+      ...(tl.tracks.filter((t) => t.kind === "audio" && t.clips.length).length > 1 ? [{ label: "🧲 لمّ مسارات الصوت في أقل عدد", on: () => run({ type: "pack_tracks", kind: "audio" }) }] : []),
       ...(folders.some((f) => !f.closed) ? [{ label: "▸ اطوِ كل المجلدات", on: () => run(folders.filter((f) => !f.closed).map((f) => ({ type: "update_folder" as const, folderId: f.id, patch: { closed: true } })), { label: "طويت كل المجلدات" }) }] : []),
       ...(folders.some((f) => f.closed) ? [{ label: "▾ افتح كل المجلدات", on: () => run(folders.filter((f) => f.closed).map((f) => ({ type: "update_folder" as const, folderId: f.id, patch: { closed: false } })), { label: "فتحت كل المجلدات" }) }] : []),
     ];
@@ -1099,7 +1181,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
                       setFolderMenu((v) => (v ? null : { x: r.left, y: r.bottom + 4, trackId: null }));
                     }}
                     aria-label="مجلدات المسارات"
-                    title="مجلدات المسارات: ضم المسارات في مجلد ينطوي وينفتح"
+                    title="ترتيب المسارات: ضمّها في مجلد ينطوي وينفتح، أو لمّها في أقل عدد"
                     aria-expanded={!!folderMenu}
                   >
                     <Icon name="folder" size={13} />
@@ -1240,7 +1322,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
                   }}
                 >
                   {/* a phone: «+» after the last clip adds more (CapCut's way) */}
-                  {compact && isMain && !readOnly && total > 0 && (
+                  {compact && track.id === firstPicture?.id && !readOnly && total > 0 && (
                     <button type="button" className="absolute top-1 bottom-1 grid w-11 place-items-center rounded-md border border-jw-line bg-jw-surface text-jw-ink shadow" style={{ left: X0 + lanePx(trackEnd(track)) + 6 }} onClick={onEmpty} aria-label="أضف مقطع" title="أضف مقطع">
                       <Icon name="plus" size={18} strokeWidth={2.5} />
                     </button>
@@ -1331,6 +1413,25 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
           )}
         </div>
       </div>
+      {!compact && total > 0 && (
+        <div className="flex h-[18px] shrink-0 border-t border-jw-line bg-jw-surface" dir="ltr">
+          <span className="grid shrink-0 place-items-center border-e border-jw-line text-[9px] text-jw-faint" style={{ width: HEAD }} dir="rtl">
+            الخريطة · {tl.tracks.reduce((n, t) => n + t.clips.length, 0)} مقطع
+          </span>
+          <div className="relative flex-1 cursor-pointer overflow-hidden" onPointerDown={mapGo} onPointerMove={mapGo} role="slider" aria-label="خريطة التايملاين: اسحب لتنتقل" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0} title="الخريطة: التايملاين كله. اضغط أو اسحب عشان تروح لأي مكان">
+            {ordered.flatMap((t, i) =>
+              t.clips.map((c) => (
+                <span
+                  key={c.id}
+                  className={`pointer-events-none absolute ${flags?.[c.id]?.level === "bad" ? "bg-red-500" : selected.includes(c.id) ? "bg-jw-accent" : t.kind === "audio" ? "bg-emerald-500/70" : t.kind === "text" ? "bg-violet-500/70" : "bg-sky-500/70"} ${c.off ? "opacity-30" : ""}`}
+                  style={{ left: `${(c.start / span) * 100}%`, width: `max(1px, ${((clipEnd(c) - c.start) / span) * 100}%)`, top: `${(i / ordered.length) * 100}%`, height: `max(1px, ${100 / ordered.length}%)`, background: c.label ?? undefined }}
+                />
+              )),
+            )}
+            <div ref={mapWin} className="pointer-events-none absolute inset-y-0 rounded-sm border border-jw-accent bg-jw-accent/15" />
+          </div>
+        </div>
+      )}
       {compact && (
         <div className="pointer-events-none absolute inset-y-0 left-1/2 z-30 w-0" aria-hidden>
           <div className="absolute -left-[5px] top-0 h-0 w-0 border-x-[5px] border-t-[6px] border-x-transparent border-t-jw-ink" />

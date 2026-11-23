@@ -194,6 +194,8 @@ export function layersAt(tl: Timeline, ms: number): Layer[] {
       if (clip.start > ms) break;
     }
   }
+  // «S» on a picture clip: while it is on screen it is the only video (texts and motion stay over it)
+  if (out.some((l) => "clip" in l && l.clip.solo)) return out.filter((l) => !("clip" in l) || l.track.kind !== "video" || l.clip.solo);
   return out;
 }
 

@@ -2425,7 +2425,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             </button>
           ))}
         </div>
-        <button type="button" className={`${toolBtn} hidden lg:flex ${tl.magnetic ? "text-jw-accent" : ""}`} onClick={() => run({ type: "set_magnetic", on: !tl.magnetic })} disabled={readOnly} title="المغناطيس: المسار الرئيسي بدون فراغات" aria-pressed={tl.magnetic}>
+        <button type="button" className={`${toolBtn} hidden lg:flex ${tl.noMain ? "" : "text-jw-accent"}`} onClick={() => run({ type: "set_main_track", on: !!tl.noMain })} disabled={readOnly} title={tl.noMain ? "بدون مسار رئيسي: كل مسارات الفيديو مثل بعض. اضغط يرجع المسار الرئيسي" : "فيه مسار رئيسي. اضغط يصير بدون رئيسي: كل المسارات مثل بعض (وينطفي المغناطيس)"} aria-pressed={!tl.noMain}>
+          <Icon name="film" size={16} /> {tl.noMain ? "بدون رئيسي" : "رئيسي"}
+        </button>
+        <button type="button" className={`${toolBtn} hidden ${tl.noMain ? "" : "lg:flex"} ${tl.magnetic ? "text-jw-accent" : ""}`} onClick={() => run({ type: "set_magnetic", on: !tl.magnetic })} disabled={readOnly} title="المغناطيس: المسار الرئيسي بدون فراغات" aria-pressed={tl.magnetic}>
           <Icon name="magnet" size={16} /> مغناطيس
         </button>
         {tl.magnetic && (
