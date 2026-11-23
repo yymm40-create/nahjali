@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import { clipEnd, clipLength, duration, formatTime, mainTrack, timelineTime, trackEnd, TRACK_COLORS, TRANSITIONS, type Clip, type Timeline as TL, type Track, type TrackFolder } from "@/lib/editor/model";
 import type { Command } from "@/lib/editor/commands";
 import { freeSlot, groupSnap, movedLabel, nearestPoint, trackShift } from "@/lib/editor/snap";
+import { liveTracks } from "@/lib/editor/cover";
 import Icon from "../Icon";
 import type { EditorAsset } from "./types";
 import type { SyncFlag } from "./sync";
@@ -167,7 +168,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   for (const kind of ["video", "audio", "text"] as const) tl.tracks.filter((t) => t.kind === kind).forEach((t, i) => labels.set(t.id, `${kind === "video" ? "V" : kind === "audio" ? "A" : "T"}${i + 1}`));
   // a phone (CapCut's way): no track heads, the playhead fixed in the middle and the clips slide under it; half a screen
   // of room on each side lets the very start and the end reach it
-  const HEAD = compact ? 0 : 168;
+  const HEAD = compact ? 0 : 204;
   const scroller = useRef<HTMLDivElement>(null);
   const [pad, setPad] = useState(0);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -224,6 +225,8 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   }, []);
   // a computer: tall enough that a clip's picture or waveform shows under its name
   const height = (t: Track) => Math.max(16, Math.round((t.id === main?.id ? (compact ? 56 : 74) : t.kind === "audio" ? (compact ? 30 : 52) : t.kind === "text" ? (compact ? 30 : 40) : compact ? 30 : 56) * (compact ? 1 : vz)));
+  // «S» / «H» worked out: which tracks are really seen and heard now (the rows of the others are dimmed)
+  const quiet = useMemo(() => new Set(liveTracks(tl.tracks).filter((t) => (t.kind === "audio" ? t.muted : t.hidden)).map((t) => t.id)), [tl.tracks]);
   // «مجلدات المسارات»: a folder's row where its first track stands, its tracks under it (none when it is folded)
   const display = useMemo(() => {
     const out: ({ folder: TrackFolder; tracks: Track[]; track?: undefined } | { track: Track; folder: TrackFolder | null })[] = [];
@@ -1248,7 +1251,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
                     const c = findOwn(m.id);
                     return c ? clipView(track, c, true) : null;
                   })}
-                  {track.hidden && <span className="pointer-events-none absolute inset-0 bg-black/40" />}
+                  {quiet.has(track.id) && <span className={`pointer-events-none absolute inset-0 ${track.off ? "bg-black/60" : "bg-black/40"}`} />}
                   {/* the cuts between touching clips: their transition, or a button to add one */}
                   {track.kind !== "audio" &&
                     !drag?.moved &&
@@ -1350,8 +1353,14 @@ function TrackHead({ track, tracks, inFolder, isMain, width, compact, readOnly, 
   // the colours open over the editor (the timeline's own box would cut them off)
   const [painting, setPainting] = useState<{ x: number; y: number } | null>(null);
   // ⌥ (Alt) held: the same switch on EVERY track that has it (all eyes shut or open, all sound off or on, all locks)
-  const toggle = (patch: Partial<Pick<Track, "muted" | "hidden" | "locked">>, all = false) => (all ? run({ type: "update_tracks", trackIds: tracks.map((t) => t.id), patch }) : run({ type: "update_track", trackId: track.id, patch }));
+  const toggle = (patch: Partial<Pick<Track, "muted" | "hidden" | "locked" | "off">>, all = false) => (all ? run({ type: "update_tracks", trackIds: tracks.map((t) => t.id), patch }) : run({ type: "update_track", trackId: track.id, patch }));
   const ALL = " (⌥ + ضغطة: كل المسارات)";
+  // «S»: pictures are soloed among pictures and sound among sound. ⌥: this one and no other of its sort
+  const solo = (only: boolean) => {
+    const mates = tracks.filter((t) => t.kind === track.kind && t.id !== track.id && t.solo).map((t) => t.id);
+    if (only && mates.length) run([{ type: "update_tracks", trackIds: mates, patch: { solo: false } }, { type: "update_track", trackId: track.id, patch: { solo: true } }], { label: `سولو: «${track.name}» بروحه` });
+    else run({ type: "update_track", trackId: track.id, patch: { solo: only ? true : !track.solo } });
+  };
   const btn = "grid h-6 w-6 place-items-center rounded hover:bg-jw-surface-3";
   const icon = track.kind === "audio" ? "music" : track.motion ? "sparkles" : track.kind === "text" ? "type" : isMain ? "film" : "layers";
   return (
@@ -1417,6 +1426,31 @@ function TrackHead({ track, tracks, inFolder, isMain, width, compact, readOnly, 
           </div>,
           document.querySelector("[data-ed-theme]") ?? document.body,
           )}
+        {/* «S»: this one alone among its sort (pictures, or sound); ⌥: only this one. «H»: off for now, as if not there */}
+        {track.kind !== "text" && (
+          <button
+            type="button"
+            disabled={readOnly}
+            className={`grid h-5 w-4 place-items-center rounded text-[10px] font-black leading-none ${track.solo ? "bg-amber-400 text-black" : "hover:bg-jw-surface-3"}`}
+            onClick={(e) => solo(e.altKey)}
+            aria-pressed={!!track.solo}
+            aria-label={track.solo ? `شيل السولو عن ${track.name}` : `سولو ${track.name}`}
+            title={`S · سولو: ${track.kind === "audio" ? "هذا الصوت بروحه (باقي الأصوات تسكت)" : "هذا الفيديو بروحه (باقي مسارات الفيديو تختفي)"} · ⌥ + ضغطة: هذا بس`}
+          >
+            S
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={readOnly}
+          className={`grid h-5 w-4 place-items-center rounded text-[10px] font-black leading-none ${track.off ? "bg-red-600 text-white" : "hover:bg-jw-surface-3"}`}
+          onClick={(e) => toggle({ off: !track.off }, e.altKey)}
+          aria-pressed={!!track.off}
+          aria-label={track.off ? `شغّل ${track.name}` : `طفّي ${track.name} مؤقتًا`}
+          title={`H · ${track.off ? "شغّل المسار" : "طفّي المسار مؤقتًا: ما ينشاف ولا ينسمع ولا يثقّل"}${ALL}`}
+        >
+          H
+        </button>
         {track.kind !== "text" && (
           <button type="button" disabled={readOnly} className={`${btn} ${track.muted ? "text-jw-danger" : ""}`} onClick={(e) => toggle({ muted: !track.muted }, e.altKey)} aria-label={track.muted ? "شغّل الصوت" : "اكتم"} title={(track.muted ? "شغّل الصوت" : "اكتم") + ALL}>
             <Icon name={track.muted ? "volumeOff" : "volume"} size={13} />

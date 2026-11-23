@@ -5,6 +5,7 @@
 // Tracks are drawn bottom to top in array order: the first video track is the main one (magnetic: no gaps), tracks
 // after it are drawn over it. Audio tracks are heard, not drawn. Time always runs left → right, even in Arabic.
 
+import { liveTracks } from "./cover";
 import { FX_BY_ID, FX_MAX } from "./effects";
 import { motionLabel, readMotion, type MotionEl } from "./motion-elements";
 import { TR_LIST } from "./transitions";
@@ -569,6 +570,10 @@ export interface Track {
   motion?: boolean;
   /** «بدّل الكاميرات تلقائياً»: a video track holding one synced camera's original clip (the cuts are made from it) */
   angles?: boolean;
+  /** «S»: among the tracks of its sort (pictures, or sound) only the soloed ones play (src/lib/editor/cover.ts) */
+  solo?: boolean;
+  /** «H»: off for now, as if the track were not there — not seen, not heard, not decoded */
+  off?: boolean;
   /** «مجلد المسارات» this track is shown in (a TrackFolder's id); none = on its own */
   folder?: string;
   /** clips never overlap and are kept sorted by `start` */
@@ -645,16 +650,22 @@ export function seqLength(tl: Timeline, id: string) {
 /**
  * The timeline as it plays: every nested timeline («Nest») opened into the clips it holds, at their place in time,
  * cut to the nest's in/out; its pictures stacked right above the nest's track, its sound added. The nest's volume
- * multiplies theirs and its grading goes over each of their pictures. Up to 3 levels deep; a loop is ignored. The
- * player and the export use this, so a nest plays and exports like any clips.
+ * multiplies theirs and its grading goes over each of their pictures. Up to 3 levels deep; a loop is ignored. «S» and
+ * «H» on the tracks are worked out into `hidden` and `muted` here too. The player and the export use this, so a nest
+ * plays and exports like any clips, and a soloed or switched-off track plays and exports as it is heard and seen.
  */
 export function flatten(tl: Timeline): Timeline {
-  if (!tl.tracks.some((t) => t.clips.some((c) => c.seq))) return tl;
+  if (!tl.tracks.some((t) => t.clips.some((c) => c.seq))) {
+    // no nest: only «S» and «H» to work out (the same object when there are none, so nothing redraws for nothing)
+    const live = liveTracks(tl.tracks);
+    return live === tl.tracks ? tl : { ...tl, tracks: live };
+  }
   const map = contents(tl);
   const open = (t: Timeline, depth: number, stack: string[]): Timeline => {
     const pictures: Track[] = [];
     const sounds: Track[] = [];
-    for (const tr of t.tracks) {
+    // («S» and «H» worked out first: what is drawn and heard reads `hidden` and `muted` only)
+    for (const tr of liveTracks(t.tracks)) {
       (tr.kind === "audio" ? sounds : pictures).push({ ...tr, clips: tr.clips.filter((c) => !c.seq) });
       for (const n of tr.clips) {
         if (!n.seq || depth >= 3 || stack.includes(n.seq)) continue;
@@ -1209,7 +1220,7 @@ export function readTimeline(raw: unknown, assets: Set<string> | null = null, ne
       list.push(c);
       clips++;
     }
-    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, color: TRACK_COLORS.includes(String(t.color)) ? String(t.color) : null, role: kind === "video" && (t.role === "fix" || t.role === "fixed" || t.role === "cont") ? t.role : null, ...(kind === "text" && t.motion === true ? { motion: true } : {}), ...(kind === "video" && t.angles === true ? { angles: true } : {}), ...(typeof t.folder === "string" && folders.some((x) => x.id === t.folder) ? { folder: t.folder } : {}), clips: settle(list) });
+    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, color: TRACK_COLORS.includes(String(t.color)) ? String(t.color) : null, role: kind === "video" && (t.role === "fix" || t.role === "fixed" || t.role === "cont") ? t.role : null, ...(kind === "text" && t.motion === true ? { motion: true } : {}), ...(kind === "video" && t.angles === true ? { angles: true } : {}), ...(typeof t.folder === "string" && folders.some((x) => x.id === t.folder) ? { folder: t.folder } : {}), ...(t.solo === true && kind !== "text" ? { solo: true } : {}), ...(t.off === true ? { off: true } : {}), clips: settle(list) });
   }
   if (!tracks.some((t) => t.kind === "video")) tracks.unshift({ id: "main", kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] });
   const width = int(o.width, 144, 4096, 1080);

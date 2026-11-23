@@ -221,6 +221,29 @@ export default async function checks({ browser, base, out }) {
     await page.close();
   });
 
+  // ---- S and H on every track
+  await check("«S» solos a track among its sort and «H» switches one off", async () => {
+    const page = await open("?cams=4");
+    await head(page, "v2").getByRole("button", { name: /^سولو/ }).click();
+    let t = await tl(page);
+    eq(t.tracks.filter((x) => x.solo).map((x) => x.id), ["v2"], "soloed");
+    // a second one plays with it; ⌥ leaves only the pressed one
+    await head(page, "v0").getByRole("button", { name: /^سولو/ }).click();
+    eq((await tl(page)).tracks.filter((x) => x.solo).map((x) => x.id), ["v0", "v2"], "two soloed");
+    await head(page, "v1").getByRole("button", { name: /^سولو/ }).click({ modifiers: ["Alt"] });
+    eq((await tl(page)).tracks.filter((x) => x.solo).map((x) => x.id), ["v1"], "only this one");
+    // sound is soloed apart from pictures
+    await head(page, "a0").getByRole("button", { name: /^سولو/ }).click();
+    eq((await tl(page)).tracks.filter((x) => x.solo).map((x) => x.id), ["v1", "a0"], "a camera and a sound");
+    await head(page, "v3").getByRole("button", { name: /^طفّي/ }).click();
+    t = await tl(page);
+    eq(t.tracks.filter((x) => x.off).map((x) => x.id), ["v3"], "off");
+    await page.screenshot({ path: join(out, "solo-off.png") });
+    await head(page, "v3").getByRole("button", { name: /^شغّل كاميرا/ }).click({ modifiers: ["Alt"] });
+    eq((await tl(page)).tracks.some((x) => x.off), false, "⌥: all on");
+    await page.close();
+  });
+
   // ---- the whole screen
   await check("the timeline takes the whole screen and gives it back", async () => {
     const page = await open("?cams=8");

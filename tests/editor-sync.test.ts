@@ -203,3 +203,97 @@ describe("pickAnchor: which clip the others line up to", () => {
     expect(pickAnchor([{ id: "poem", fileMs: 240_000 }, { id: "cam1", fileMs: 20_000 }])).toBe("poem");
   });
 });
+
+/** A recited poem: the same tune every verse, new words (formants) on every syllable, a soft beat under it. */
+function recital(seconds: number, seed: number, bpm = 92, beatLevel = 0.5) {
+  const r = rng(seed);
+  const n = Math.round(seconds * RATE);
+  const x = new Float32Array(n);
+  const beat = (60 / bpm) * RATE;
+  for (let b = 0; b * beat < n; b++) {
+    const at = Math.round(b * beat);
+    for (let k = 0; k < 0.09 * RATE && at + k < n; k++) x[at + k] += beatLevel * Math.exp(-k / (0.02 * RATE)) * Math.sin((2 * Math.PI * 65 * k) / RATE);
+  }
+  const tune = [0, 2, 4, 5, 4, 2, 0, -1, 0, 2, 4, 7, 5, 4, 2, 0];
+  for (let h = 0; (h * beat) / 2 < n; h++) {
+    const at = Math.round((h * beat) / 2 + (r() - 0.5) * 0.02 * RATE);
+    const len = Math.round(((0.55 + 0.4 * r()) * beat) / 2);
+    const f0 = 130 * Math.pow(2, tune[h % 16] / 12);
+    const F1 = 300 + r() * 500;
+    const F2 = 900 + r() * 900;
+    const lvl = 0.3 + 0.3 * r();
+    if (r() < 0.1) continue;
+    for (let k = 0; k < len && at + k < n; k++) {
+      const t = k / RATE;
+      let v = 0;
+      for (let hm = 1; hm * f0 < 1900; hm++) {
+        const f = hm * f0;
+        v += ((Math.exp(-(((f - F1) / 140) ** 2)) + 0.7 * Math.exp(-(((f - F2) / 180) ** 2)) + 0.08) / hm ** 0.3) * Math.sin(2 * Math.PI * f * t);
+      }
+      x[at + k] += lvl * Math.sin((Math.PI * k) / len) ** 0.6 * v * 0.3;
+    }
+  }
+  return x;
+}
+
+/** A camera in a real room: a dense echo that rings for `rt` seconds, a dull mic, hiss; `rate`: its clock against the master's. */
+function roomCamera(master: Float32Array, from: number, len: number, seed: number, o: { rt: number; snr: number; rate?: number; along?: Float32Array }) {
+  const r = rng(seed);
+  const n = Math.round(len * RATE);
+  const a0 = Math.round(from * RATE);
+  const L = Math.round(o.rt * RATE);
+  const ir = new Float32Array(L);
+  ir[0] = 1;
+  for (let i = 1; i < L; i++) if (r() < 0.25) ir[i] = (r() * 2 - 1) * 0.5 * Math.exp((-6.9 * i) / L);
+  const rate = o.rate ?? 1;
+  const dry = new Float32Array(n + L);
+  for (let i = -L; i < n; i++) {
+    const p = a0 + i * rate;
+    const k = Math.floor(p);
+    dry[i + L] = (master[k] ?? 0) * (1 - (p - k)) + (master[k + 1] ?? 0) * (p - k);
+  }
+  const y = new Float32Array(n);
+  let pw = 0;
+  for (let i = 0; i < n; i++) {
+    let v = 0;
+    for (let k = 0; k < L; k++) if (ir[k]) v += ir[k] * dry[i + L - k];
+    y[i] = v;
+    pw += v * v;
+  }
+  if (o.along) for (let i = 0; i < n; i++) y[i] += 0.8 * (o.along[a0 + i] ?? 0);
+  const noise = Math.sqrt(pw / n) / o.snr;
+  let lp = 0;
+  for (let i = 0; i < n; i++) {
+    lp += 0.3 * (y[i] - lp);
+    y[i] = lp + noise * (r() * 2 - 1) * 1.7;
+  }
+  return y;
+}
+
+describe("findLag on camera clips of a recited poem, in a room (the sound's picture)", () => {
+  const master = recital(160, 7);
+  const clips = [
+    [6, 12],
+    [41.3, 20],
+    [93.7, 15],
+    [128.2, 25],
+  ] as const;
+  const all = (name: string, o: Parameters<typeof roomCamera>[4], tol: number) =>
+    it(name, () => {
+      clips.forEach(([from, len], i) => {
+        const f = findLag(master, roomCamera(master, from, len, 500 + i, o), RATE);
+        expect(f.confidence, `clip at ${from}`).not.toBe("none");
+        expect(Math.abs(f.lag + from), `clip at ${from}`).toBeLessThan(tol);
+      });
+    }, 120_000);
+
+  all("a room that rings for 0.8 s", { rt: 0.8, snr: 2 }, 0.04);
+  all("people reciting along with the playback", { rt: 0.6, snr: 2, along: recital(160, 7, 92, 0) }, 0.04);
+  // a clock a thousandth off slides 25 ms over a 25 s clip: any place within that is as right as another
+  all("a camera whose clock runs a thousandth fast", { rt: 0.6, snr: 2, rate: 1.001 }, 0.045);
+  all("…or a thousandth slow", { rt: 0.3, snr: 3, rate: 0.999 }, 0.045);
+
+  it("still refuses talk that has nothing to do with it", () => {
+    for (let i = 0; i < 4; i++) expect(findLag(speech(60 + i * 20, 40 + i), speech(25 + i * 10, 140 + i), RATE).confidence, `pair ${i}`).toBe("none");
+  }, 120_000);
+});
