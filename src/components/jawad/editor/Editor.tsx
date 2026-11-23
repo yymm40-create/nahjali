@@ -2091,7 +2091,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       data-ed-theme={ws ? "ws" : theme}
       data-ed-page={bigPage ? "big" : undefined}
       data-ed-bars={bars}
-      data-ed-skin={ws && skin === "glass" ? "glass" : undefined}
+      // (not in the colour room: colour is judged against neutral greys, never against coloured light)
+      data-ed-skin={ws && skin === "glass" && !colorRoom ? "glass" : undefined}
       // a phone: the editor takes the whole screen (JAWAD AI's header steps aside, sections.css)
       data-ed-full=""
       style={{ ...(bars !== "open" ? ({ "--jw-header-h": "0px", "--jw-bar-h": "0px" } as React.CSSProperties) : {}), ...(ws ? (wsVars(ws) as React.CSSProperties) : {}), ...(T.font ? { fontFamily: `"${familyOf(T.font!)}", var(--jw-font)` } : {}), ...(sideChat ? ({ "--jw-chat-pad": chatPad } as React.CSSProperties) : {}) }}
