@@ -17,6 +17,7 @@ declare global {
     __labels: string[];
     __seek: (ms: number) => void;
     __flags: (f: Record<string, SyncFlag>) => void;
+    __run: (cmd: Command | Command[]) => void;
   }
 }
 
@@ -29,7 +30,9 @@ const assets: EditorAsset[] = [asset("poem", "audio", 240), asset("main", "video
 const tracks: unknown[] = [{ id: "main", kind: "video", name: "الرئيسي", clips: [clip("m1", "main", 0, 60), clip("m2", "main", 60_000, 60)] }];
 for (let i = 0; i < cams; i++) {
   assets.push(asset(`cam${i}`, "video", 40));
-  tracks.push({ id: `v${i}`, kind: "video", name: `كاميرا ${i + 1}`, clips: [clip(`c${i}a`, `cam${i}`, 5000 + i * 9000, 12), clip(`c${i}b`, `cam${i}`, 30_000 + i * 9000, 10)] });
+  // ?apart=1: every camera's clips clear of the others' (what «لمّ المسارات» can gather)
+  const step = new URLSearchParams(location.search).get("apart") ? 26_000 : 9000;
+  tracks.push({ id: `v${i}`, kind: "video", name: `كاميرا ${i + 1}`, clips: [clip(`c${i}a`, `cam${i}`, 5000 + i * step, 12), clip(`c${i}b`, `cam${i}`, (step > 9000 ? 18_000 : 30_000) + i * step, step > 9000 ? 8 : 10)] });
 }
 tracks.push({ id: "a0", kind: "audio", name: "القصيدة", clips: [clip("p", "poem", 0, 240)] });
 tracks.push({ id: "a1", kind: "audio", name: "صوت 2", clips: [clip("s1", "poem", 10_000, 20)] });
@@ -85,6 +88,9 @@ function App() {
       window.__labels.push(`ERROR ${e instanceof Error ? e.message : e}`);
     }
   };
+  useEffect(() => {
+    window.__run = run;
+  });
   return (
     <div className="jw" style={{ height: "100vh" }}>
       <div className="jw-sec relative flex h-full flex-col" data-jw-section="editor" data-ed-theme="dark">

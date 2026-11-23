@@ -6,6 +6,7 @@ import { isMotionKind, motionLabel, MOTION_KINDS, MOTION_MS, newMotion, readMoti
 import { applyLook, LOOKS, MAX_LAYERS, NEUTRAL_GRADE, readGrade, readGrades, type Grade } from "./grade";
 import { cutTimed, isFlat, rampArea, rampName, readRamp, type Ramp, type RampPresetId } from "./ramp";
 import { angleSpan, MULTICAM } from "./multicam";
+import { packLanes } from "./pack-tracks";
 import {
   allTracks,
   clipEnd,
@@ -186,6 +187,12 @@ export type Command =
   | { type: "set_ratio"; ratio: Ratio }
   | { type: "set_background"; color: string }
   | { type: "set_magnetic"; on: boolean }
+  /** «بدون مسار رئيسي» (`on: false`): every picture track like the others; `on: true` brings the main track back */
+  | { type: "set_main_track"; on: boolean }
+  /** «H» / «S» on clips, or their colour mark (`label: null` takes it off) */
+  | { type: "mark_clips"; clipIds: string[]; patch: { off?: boolean; solo?: boolean; label?: string | null } }
+  /** «لمّ المسارات»: the clips of the picture (or sound) tracks into the fewest tracks; the film stays the same */
+  | { type: "pack_tracks"; kind: "video" | "audio" }
   /** «مغناطيس كل المسارات»: a delete cuts the same seconds out of every track and closes them (needs the magnet on) */
   | { type: "set_magnet_all"; on: boolean }
   /** puts the main track's clips one after another from 0 (used by «ركّب النسخة الأولى» too) */
@@ -351,7 +358,8 @@ const sameSort = (x: Track, c: Clip) => !!x.motion === !!c.motion;
 function newTrack(t: Timeline, kind: TrackKind): Track {
   if (t.tracks.length >= LIMITS.tracks) fail("وصلت لأكثر عدد من المسارات.");
   const n = t.tracks.filter((x) => x.kind === kind).length + 1;
-  const track: Track = { id: newId("t"), kind, name: `${TRACK_NAME[kind]} ${n}`, muted: false, hidden: false, locked: false, duck: false, clips: [] };
+  // («بدون مسار رئيسي»: a picture track is just «فيديو N», there is no main one to be over)
+  const track: Track = { id: newId("t"), kind, name: `${kind === "video" && t.noMain ? "فيديو" : TRACK_NAME[kind]} ${n}`, muted: false, hidden: false, locked: false, duck: false, clips: [] };
   // pictures go right above the other pictures (under the text); text and sound at the end
   if (kind === "video") {
     const last = t.tracks.map((x) => x.kind).lastIndexOf("video");
@@ -1218,7 +1226,8 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
 
     case "remove_track": {
       const track = editable(t, cmd.trackId);
-      if (mainTrack(t)?.id === track.id) fail("المسار الرئيسي ما ينحذف.");
+      if (mainTrack(t)?.id === track.id && !t.noMain) fail("المسار الرئيسي ما ينحذف.");
+      if (track.kind === "video" && t.tracks.filter((x) => x.kind === "video").length < 2) fail("لازم يبقى مسار فيديو واحد على الأقل.");
       t.tracks = t.tracks.filter((x) => x.id !== track.id);
       dropEmptyFolders(t);
       return { timeline: t, label: "حذفت مسارًا" };
@@ -1391,7 +1400,73 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       return { timeline: t, label: "حطّيت التعديل على المسار الأخضر", select: [made.id] };
     }
 
+    case "set_main_track": {
+      const first = mainTrack(t);
+      if (cmd.on) {
+        delete t.noMain;
+        if (first && first.name === "فيديو 1") first.name = "الرئيسي";
+        return { timeline: t, label: "رجّعت المسار الرئيسي" };
+      }
+      t.noMain = true;
+      t.magnetic = false;
+      t.magnetAll = false;
+      // it is a picture track like the others now, named like them
+      if (first && first.name === "الرئيسي") first.name = "فيديو 1";
+      return { timeline: t, label: "بدون مسار رئيسي: كل المسارات مثل بعض" };
+    }
+
+    case "mark_clips": {
+      const p = cmd.patch;
+      const found = cmd.clipIds.map((id) => findClip(t, id)).filter((f): f is NonNullable<typeof f> => !!f);
+      if (!found.length) fail("ما لقينا هذي المقاطع.");
+      if (p.label != null && !TRACK_COLORS.includes(p.label)) fail("لون غير معروف.");
+      for (const { clip, track } of found) {
+        if (p.off != null) {
+          if (p.off) clip.off = true;
+          else delete clip.off;
+        }
+        if (p.solo != null) {
+          if (p.solo && track.kind === "video" && !clip.text) clip.solo = true;
+          else delete clip.solo;
+        }
+        if (p.label !== undefined) {
+          if (p.label) clip.label = p.label;
+          else delete clip.label;
+        }
+      }
+      const n = found.length;
+      const what = n > 1 ? `${n} مقاطع` : "مقطعًا";
+      const label = p.off != null ? (p.off ? `طفّيت ${what} مؤقتًا` : `شغّلت ${what}`) : p.solo != null ? (p.solo ? `سولو على ${what}` : `شلت السولو عن ${what}`) : p.label ? `لوّنت ${what}` : `شلت اللون عن ${what}`;
+      return { timeline: t, label, select: found.map((f) => f.clip.id) };
+    }
+
+    case "pack_tracks": {
+      const main = t.noMain ? null : mainTrack(t);
+      // the tracks whose clips may change places: plain ones of this kind (not the main one, a locked one, the smart
+      // edit's, the cameras kept for «بدّل الزاوية», or one that is off / soloed — those are someone's own choice)
+      const lanes = t.tracks.filter((x) => x.kind === cmd.kind && x !== main && !x.locked && !x.role && !x.angles && !x.motion && !x.off && !x.solo && !x.hidden && !x.muted);
+      const before = lanes.filter((x) => x.clips.length).length;
+      if (before < 2) fail("ما فيه مسارات تنلمّ (يبي لها مسارين فيهم مقاطع على الأقل، غير الرئيسي والمقفول والمخفي).");
+      const to = packLanes(lanes.flatMap((x, lane) => x.clips.map((c) => ({ id: c.id, lane, start: c.start, end: clipEnd(c) }))));
+      const all = lanes.flatMap((x, lane) => x.clips.map((clip) => ({ clip, from: lane })));
+      for (const x of lanes) x.clips = [];
+      for (const { clip, from } of all) {
+        const lane = to.get(clip.id) ?? from;
+        // (a transition belongs to the cut with the next clip of its track: on another track it has no cut)
+        if (lane !== from) clip.transition = null;
+        lanes[lane].clips.push(clip);
+      }
+      for (const x of lanes) x.clips.sort((a, b) => a.start - b.start);
+      const empty = new Set(lanes.filter((x) => !x.clips.length).map((x) => x.id));
+      t.tracks = t.tracks.filter((x) => !empty.has(x.id));
+      dropEmptyFolders(t);
+      const after = lanes.length - empty.size;
+      if (after >= before && !empty.size) return { timeline: t, label: "المسارات ملمومة من قبل: ما تنقص أكثر" };
+      return { timeline: t, label: `لمّيت ${before} مسار في ${after}` };
+    }
+
     case "set_magnetic": {
+      if (cmd.on && t.noMain) fail("المغناطيس للمسار الرئيسي: رجّع المسار الرئيسي أول.");
       t.magnetic = cmd.on;
       if (!cmd.on) t.magnetAll = false;
       const main = mainTrack(t);
@@ -1400,6 +1475,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
     }
 
     case "set_magnet_all": {
+      if (cmd.on && t.noMain) fail("المغناطيس للمسار الرئيسي: رجّع المسار الرئيسي أول.");
       if (cmd.on && !t.magnetic) {
         t.magnetic = true;
         const main = mainTrack(t);

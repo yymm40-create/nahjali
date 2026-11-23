@@ -244,6 +244,64 @@ export default async function checks({ browser, base, out }) {
     await page.close();
   });
 
+  // ---- H, S and the colour on the selected clip; the map; no main track; packing
+  await check("the selected clip has its own «S» «H» and colour, for all the selected", async () => {
+    const page = await open("?cams=4");
+    const a = await box(page, "c0a");
+    const b = await box(page, "c1a");
+    await page.mouse.click(a.x + 8, a.y + a.height - 6);
+    await page.keyboard.down("Shift");
+    await page.mouse.click(b.x + 8, b.y + b.height - 6);
+    await page.keyboard.up("Shift");
+    const clip = (id) => page.locator(`[data-clip="${id}"]`).first();
+    await clip("c0a").getByRole("button", { name: "طفّي المقطع مؤقتًا" }).click();
+    const marks = async (k) => (await tl(page)).tracks.flatMap((x) => x.clips.filter((c) => c[k]).map((c) => c.id));
+    eq(await marks("off"), ["c0a", "c1a"], "both off");
+    await clip("c1a").getByRole("button", { name: "شغّل المقطع" }).click();
+    eq(await marks("off"), [], "both on again");
+    await clip("c0a").getByRole("button", { name: "سولو المقطع" }).click();
+    eq(await marks("solo"), ["c0a", "c1a"], "soloed");
+    await clip("c0a").getByRole("button", { name: "لون المقطع" }).click();
+    eq((await marks("label")).length, 2, "coloured");
+    await page.screenshot({ path: join(out, "clip-marks.png") });
+    await page.close();
+  });
+  await check("the map under the timeline goes where it is pressed", async () => {
+    const page = await open("?cams=4");
+    // zoom in so the timeline is wider than the screen
+    for (let i = 0; i < 5; i++) await page.getByRole("button", { name: "تكبير", exact: true }).click();
+    await page.waitForTimeout(150);
+    const map = await page.getByRole("slider", { name: /خريطة التايملاين/ }).boundingBox();
+    await page.mouse.click(map.x + map.width * 0.75, map.y + map.height / 2);
+    await page.waitForTimeout(150);
+    const st = await page.evaluate(() => {
+      const el = document.querySelector(".jw-scroll");
+      return { left: el.scrollLeft, max: el.scrollWidth - el.clientWidth };
+    });
+    if (!(st.left > st.max * 0.55 && st.left < st.max * 0.95)) throw new Error(`scrolled to ${Math.round(st.left)} of ${Math.round(st.max)}`);
+    await page.screenshot({ path: join(out, "map.png") });
+    await page.close();
+  });
+  await check("without a main track the first track is like the others; packing gathers the cameras", async () => {
+    const page = await open("?cams=8&apart=1");
+    const h = async (id) => (await page.locator(`[data-track-id="${id}"]`).boundingBox()).height;
+    if (!((await h("main")) > (await h("v1")))) throw new Error("the main track should be taller to begin with");
+    await page.evaluate(() => window.__run({ type: "set_main_track", on: false }));
+    await page.waitForTimeout(150);
+    eq(await h("main"), await h("v1"), "same height");
+    eq(await head(page, "main").getByText("الرئيسي").count(), 0, "not named the main one");
+    // the cameras' two rounds of clips (each over the next camera's) fold into fewer tracks
+    await page.getByRole("button", { name: "مجلدات المسارات" }).click();
+    await page.getByRole("menuitem", { name: /لمّ مسارات الفيديو/ }).click();
+    await page.waitForTimeout(150);
+    const t = await tl(page);
+    const n = t.tracks.filter((x) => x.kind === "video").length;
+    // (the first track is a plain one now, so it is gathered with the rest)
+    if (n > 3) throw new Error(`still ${n} picture tracks`);
+    await page.screenshot({ path: join(out, "packed.png") });
+    await page.close();
+  });
+
   // ---- the whole screen
   await check("the timeline takes the whole screen and gives it back", async () => {
     const page = await open("?cams=8");

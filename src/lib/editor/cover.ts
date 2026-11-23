@@ -34,15 +34,19 @@ export function coversFrame(frame: { width: number; height: number }, clip: Clip
  * «S» and «H» on the tracks, worked out into what plays. «H» (off): the track is not there for now — not seen, not
  * heard. «S» (solo) on picture tracks: only the soloed ones are seen; on sound tracks: only the soloed ones are
  * heard (the sound of every other track goes quiet, the pictures' own sound too). Pictures and sound are soloed apart:
- * a soloed camera does not silence the poem. Returns the same list when nothing is soloed or off.
+ * a soloed camera does not silence the poem. A clip that is off («H» on the clip) is left out. Returns the same list
+ * when nothing is soloed or off.
  */
 export function liveTracks(tracks: Track[]): Track[] {
   const soloPicture = tracks.some((t) => t.kind === "video" && t.solo && !t.off);
   const soloSound = tracks.some((t) => t.kind === "audio" && t.solo && !t.off);
-  if (!soloPicture && !soloSound && !tracks.some((t) => t.off)) return tracks;
+  const offClips = tracks.some((t) => t.clips.some((c) => c.off));
+  if (!soloPicture && !soloSound && !offClips && !tracks.some((t) => t.off)) return tracks;
   return tracks.map((t) => {
     const hidden = t.hidden || !!t.off || (soloPicture && t.kind === "video" && !t.solo);
     const muted = t.muted || !!t.off || (soloSound && !(t.kind === "audio" && t.solo));
-    return hidden === t.hidden && muted === t.muted ? t : { ...t, hidden, muted };
+    // «H» on a clip: it is simply not there for the player and the export
+    const clips = t.clips.some((c) => c.off) ? t.clips.filter((c) => !c.off) : t.clips;
+    return hidden === t.hidden && muted === t.muted && clips === t.clips ? t : { ...t, hidden, muted, clips };
   });
 }

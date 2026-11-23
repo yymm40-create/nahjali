@@ -501,6 +501,12 @@ export interface Clip {
    * keeps what it has and later group changes reach it field by field.
    */
   own: boolean;
+  /** «H» on the clip: off for now, as if it were not there (not seen, not heard, not decoded) */
+  off?: boolean;
+  /** «S» on a picture clip: while it lasts, it is the only video seen (the clips over it step aside) */
+  solo?: boolean;
+  /** the colour the person marked the clip with (one of TRACK_COLORS), to tell many clips apart */
+  label?: string;
   /** «التعديل الذكي»: a piece lifted onto the red track, with what to fix in it (null elsewhere) */
   fix: Fix | null;
   /** «مسار الموشن»: a motion element drawn live from this data (motion-elements.ts); absent/null on every other clip */
@@ -609,6 +615,11 @@ export interface Timeline {
   /** beat marks (timeline ms) the cuts snap to */
   markers: number[];
   tracks: Track[];
+  /**
+   * «بدون مسار رئيسي»: every picture track is like the others — none is named or drawn as the main one, none packs its
+   * clips, any may be deleted while one picture track is left. (Never with `magnetic`.)
+   */
+  noMain?: boolean;
   /** «مجلدات المسارات» (absent = none); every one has at least one track */
   folders?: TrackFolder[];
   /**
@@ -1174,6 +1185,9 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
           })
           .filter((w) => w.w),
     own: kind === "text" && o.own === true,
+    ...(o.off === true ? { off: true } : {}),
+    ...(o.solo === true && kind === "video" ? { solo: true } : {}),
+    ...(TRACK_COLORS.includes(String(o.label)) ? { label: String(o.label) } : {}),
     fix: kind === "video" ? readFix(o.fix) : null,
     ...(motion ? { motion } : {}),
     sound: kind === "text" ? null : readSound(o.sound),
@@ -1225,7 +1239,9 @@ export function readTimeline(raw: unknown, assets: Set<string> | null = null, ne
   if (!tracks.some((t) => t.kind === "video")) tracks.unshift({ id: "main", kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] });
   const width = int(o.width, 144, 4096, 1080);
   const height = int(o.height, 144, 4096, 1920);
-  const out: Timeline = { v: EDITOR_VERSION, width: width - (width % 2), height: height - (height % 2), fps: pick<number>(Number(o.fps), [24, 25, 30, 60], 30), background: color(o.background, "#000000"), magnetic: o.magnetic !== false, magnetAll: o.magnetic !== false && o.magnetAll === true, markers: readMarkers(o.markers), tracks };
+  const noMain = o.noMain === true;
+  const magnetic = o.magnetic !== false && !noMain;
+  const out: Timeline = { v: EDITOR_VERSION, width: width - (width % 2), height: height - (height % 2), fps: pick<number>(Number(o.fps), [24, 25, 30, 60], 30), background: color(o.background, "#000000"), magnetic, magnetAll: magnetic && o.magnetAll === true, markers: readMarkers(o.markers), tracks, ...(noMain ? { noMain: true } : {}) };
   const used = folders.filter((f) => tracks.some((t) => t.folder === f.id));
   if (used.length) out.folders = used;
   const main = mainTrack(out);
