@@ -51,7 +51,7 @@ export const GET = mahdiRoute(async (req: Request) => {
       .split("\n")
       .filter((l) => l.trim())
       .map((l) => new Paragraph({ bidirectional: true, spacing: { after: 160, line: 360 }, children: lineChildren(l) })),
-    new Paragraph({ bidirectional: true, spacing: { before: 400 }, children: [run("«الشيخ الذكي» — تطبيق لأجل المهدي · المصدر: مكتبة الثقلين thaqalayn.com. هذا بحث في نصوص الروايات، وليس فتوى.")] }),
+    new Paragraph({ bidirectional: true, spacing: { before: 400 }, children: [run("«الشيخ الذكي» — تطبيق لأجل المهدي · المصدر: مكتبة الثقلين thaqalayn.com.")] }),
   ];
   const doc = new Document({ styles: { default: { document: { run: { font: FONT, rightToLeft: true } } } }, sections: [{ properties: {}, children: paragraphs }] });
   const buf = await Packer.toBuffer(doc);

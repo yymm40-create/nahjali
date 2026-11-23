@@ -85,7 +85,6 @@ export default function SheikhChat({ autoFocus = false }: { autoFocus?: boolean 
             {data && !messages.length && !pending && (
               <li className="space-y-3 py-1">
                 <p className="text-[0.92rem] leading-relaxed">{S.intro}</p>
-                <p className="m-muted text-xs">{S.notFatwa}</p>
                 <div className="flex flex-wrap gap-2">
                   {S.examples.map((x) => (
                     <button key={x} type="button" className="m-chip text-start text-xs" onClick={() => send(x)}>
