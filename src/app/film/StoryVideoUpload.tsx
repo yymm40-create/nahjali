@@ -10,7 +10,7 @@ import type { StoryVideo } from "@/lib/film/story-link";
  * (with progress), and its frames are laid out as one timed picture from the file itself (no second download) and put
  * up too — «سجاد» looks at that picture and hears the video's words (lib/film/intake) before he builds on it.
  */
-export default function StoryVideoUpload({ video, onVideo }: { video: StoryVideo | null; onVideo: (v: StoryVideo | null) => void }) {
+export default function StoryVideoUpload({ video, onVideo, lesson }: { video: StoryVideo | null; onVideo: (v: StoryVideo | null) => void; lesson?: boolean }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -70,7 +70,7 @@ export default function StoryVideoUpload({ video, onVideo }: { video: StoryVideo
         </label>
       )}
       {error && <p className="text-xs font-bold text-red-600">{error}</p>}
-      <p className="text-xs leading-6 text-muted">سجاد يشوف صور الفيديو ويسمع كلامه، ويقول لك وش فهم منه قبل ما يبني عليه فيلمك.</p>
+      <p className="text-xs leading-6 text-muted">سجاد يشوف صور الفيديو ويسمع كلامه، ويقول لك وش فهم منه قبل ما يبني عليه {lesson ? "الدرس" : "فيلمك"}.</p>
     </div>
   );
 }
