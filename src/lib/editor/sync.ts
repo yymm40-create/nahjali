@@ -4,7 +4,9 @@
 // 1) the loudness of each file every 5 ms is compared at every possible shift at once (FFT cross-correlation): the shift where
 //    the rises and falls of the two sounds fit best is the answer, to within a few milliseconds;
 // 2) around that shift the sound waves themselves are compared (±40 ms), which brings it to a fraction of a frame.
-// A shift is trusted only when its peak stands far above all the other shifts; otherwise the answer says so instead of guessing.
+// A shift is trusted only when its peak stands far above all the other shifts. A sound on a beat (a poem, music) fits at every
+// beat, so there the waves themselves choose among the tallest peaks (waveLag); when nothing stands out the answer says so
+// instead of guessing.
 
 export interface Found {
   /** seconds: a moment that is at time t in the first file is at time t + lag in the second */
@@ -107,7 +109,13 @@ export function envelope(x: Float32Array, rate: number): Float32Array {
   return out;
 }
 
-/** The best shift of the loudness curves, in envelope steps, and how convincing it is. */
+/** How many of the tallest loudness peaks are kept as candidates (a rhythmic sound has one on every beat). */
+const PEAKS = 10;
+
+/**
+ * The best shift of the loudness curves, in envelope steps, and how convincing it is; `peaks`: the tallest shifts (the
+ * best first), each at least 0.15 s from the others.
+ */
 export function envelopeLag(ea: Float32Array, eb: Float32Array) {
   const c = crossCorrelate(ea, eb);
   // only shifts where the two overlap by at least a good part of the shorter one (a sliver of overlap proves nothing)
@@ -115,23 +123,30 @@ export function envelopeLag(ea: Float32Array, eb: Float32Array) {
   const lo = c.min + need;
   const hi = c.max - need;
   if (hi <= lo) return null;
-  let best = lo;
-  let bv = -Infinity;
+  const n = hi - lo + 1;
+  const v = new Float64Array(n);
   let sum = 0;
   let sq = 0;
-  for (let l = lo; l <= hi; l++) {
-    const v = c.get(l);
-    sum += v;
-    sq += v * v;
-    if (v > bv) {
-      bv = v;
-      best = l;
-    }
+  for (let i = 0; i < n; i++) {
+    const x = c.get(lo + i);
+    v[i] = x;
+    sum += x;
+    sq += x * x;
   }
-  const n = hi - lo + 1;
   const mean = sum / n;
   const sd = Math.sqrt(Math.max(1e-12, sq / n - mean * mean));
-  return { lag: best, z: (bv - mean) / sd };
+  const peaks: number[] = [];
+  let top = 0;
+  const apart = Math.round(ENV_RATE * 0.15);
+  for (let k = 0; k < PEAKS; k++) {
+    let bi = -1;
+    for (let i = 0; i < n; i++) if (v[i] > -Infinity && (bi < 0 || v[i] > v[bi])) bi = i;
+    if (bi < 0) break;
+    peaks.push(lo + bi);
+    if (k === 0) top = v[bi];
+    for (let i = Math.max(0, bi - apart); i <= Math.min(n - 1, bi + apart); i++) v[i] = -Infinity;
+  }
+  return { lag: peaks[0], z: (top - mean) / sd, peaks };
 }
 
 /** Pre-emphasis: the rumble and hum are taken away so the comparison looks at the voice's detail. */
@@ -141,10 +156,22 @@ const emphasise = (x: Float32Array) => {
   return y;
 };
 
-/** Around a coarse shift (seconds), compares the waves themselves ±`span` seconds; null when they do not resemble each other. */
-export function refineLag(a: Float32Array, b: Float32Array, rate: number, coarse: number, span = 0.04, windowSec = 20): number | null {
-  const ha = emphasise(a);
-  const hb = emphasise(b);
+/** The emphasised copy of a sound, kept while the sound is (a long master is compared with many clips). */
+const emphasised = new WeakMap<Float32Array, Float32Array>();
+const emph = (x: Float32Array) => {
+  let y = emphasised.get(x);
+  if (!y) emphasised.set(x, (y = emphasise(x)));
+  return y;
+};
+
+/**
+ * Around a coarse shift (seconds), compares the waves themselves ±`span` seconds over the loudest `windowSec` of `a`
+ * that has a partner in `b`: the shift where they fit best, how alike they are there (`ncc`, 1 = the same wave) and
+ * over how many seconds they were compared; null when the two do not overlap enough at that shift.
+ */
+export function compareWaves(a: Float32Array, b: Float32Array, rate: number, coarse: number, span = 0.04, windowSec = 20): { lag: number; ncc: number; sec: number } | null {
+  const ha = emph(a);
+  const hb = emph(b);
   const shift = Math.round(coarse * rate);
   const reach = Math.ceil(span * rate);
   // the part of `a` whose partner lies inside `b` (with room for the search)
@@ -178,8 +205,45 @@ export function refineLag(a: Float32Array, b: Float32Array, rate: number, coarse
     }
     if (s > top.v) top = { d, v: s, eb };
   }
-  const ncc = top.v / Math.sqrt(Math.max(1e-12, ea * top.eb));
-  return ncc >= 0.15 ? coarse + top.d / rate : null;
+  return { lag: coarse + top.d / rate, ncc: top.v / Math.sqrt(Math.max(1e-12, ea * top.eb)), sec: win / rate };
+}
+
+/** Around a coarse shift (seconds), compares the waves themselves ±`span` seconds; null when they do not resemble each other. */
+export function refineLag(a: Float32Array, b: Float32Array, rate: number, coarse: number, span = 0.04, windowSec = 20): number | null {
+  const r = compareWaves(a, b, rate, coarse, span, windowSec);
+  return r && r.ncc >= 0.15 ? r.lag : null;
+}
+
+/**
+ * A wave match this alike is trusted outright; from WAVE_LOW up (over 20 s of sound; more is asked of a shorter
+ * stretch, where chance alone reaches higher) it is trusted when no other beat comes near it. Two unrelated
+ * recordings reach about 0.04 by chance.
+ */
+export const WAVE_HIGH = 0.12;
+export const WAVE_LOW = 0.06;
+/** …the best beat's waves must be this many times more alike than the next one's */
+export const WAVE_LEAD = 2.5;
+
+/**
+ * A rhythmic sound (a poem on a beat, music): its loudness fits at every beat, so no shift stands far above the
+ * others and the loudness alone cannot say which beat is the right one. The waves can: each of the tallest loudness
+ * peaks is compared wave against wave, and the one whose waves really are alike — far more than at any other beat —
+ * is the answer. Null when none stands out (two different recordings).
+ */
+export function waveLag(a: Float32Array, b: Float32Array, rate: number, peaks: number[]): { lag: number; ncc: number } | null {
+  // the shorter sound is the one whose loudest part is looked for in the other
+  const flip = b.length < a.length;
+  const found: { lag: number; ncc: number; sec: number }[] = [];
+  for (const p of peaks) {
+    const coarse = p / ENV_RATE;
+    const r = flip ? compareWaves(b, a, rate, -coarse) : compareWaves(a, b, rate, coarse);
+    if (r) found.push({ lag: flip ? -r.lag : r.lag, ncc: r.ncc, sec: r.sec });
+  }
+  found.sort((x, y) => y.ncc - x.ncc);
+  const best = found[0];
+  if (!best || best.ncc < WAVE_LOW * Math.sqrt(20 / Math.max(1, Math.min(20, best.sec)))) return null;
+  const next = found.find((f) => Math.abs(f.lag - best.lag) > 0.1)?.ncc ?? 0;
+  return best.ncc >= WAVE_LEAD * Math.max(next, 1e-6) ? best : null;
 }
 
 /** The shift between two mono sounds at `rate` Hz (the same rate for both). */
@@ -188,7 +252,11 @@ export function findLag(a: Float32Array, b: Float32Array, rate: number): Found {
   if (!r) return { lag: 0, z: 0, confidence: "none" };
   const coarse = r.lag / ENV_RATE;
   const confidence = r.z >= HIGH ? "high" : r.z >= LOW ? "low" : "none";
-  if (confidence === "none") return { lag: coarse, z: r.z, confidence };
+  if (confidence === "none") {
+    // no shift stands out by loudness (a sound on a beat fits at every beat): let the waves choose among the beats
+    const w = waveLag(a, b, rate, r.peaks);
+    return w ? { lag: w.lag, z: r.z, confidence: w.ncc >= WAVE_HIGH ? "high" : "low" } : { lag: coarse, z: r.z, confidence };
+  }
   const fine = refineLag(a, b, rate, coarse);
   return { lag: fine ?? coarse, z: r.z, confidence };
 }

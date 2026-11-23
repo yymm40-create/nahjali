@@ -6,11 +6,12 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { clipEnd, clipLength, duration, formatTime, mainTrack, timelineTime, trackEnd, TRACK_COLORS, TRANSITIONS, type Clip, type Timeline as TL, type Track } from "@/lib/editor/model";
+import { clipEnd, clipLength, duration, formatTime, mainTrack, timelineTime, trackEnd, TRACK_COLORS, TRANSITIONS, type Clip, type Timeline as TL, type Track, type TrackFolder } from "@/lib/editor/model";
 import type { Command } from "@/lib/editor/commands";
-import { freeSlot, movedLabel, nearestPoint } from "@/lib/editor/snap";
+import { freeSlot, groupSnap, movedLabel, nearestPoint, trackShift } from "@/lib/editor/snap";
 import Icon from "../Icon";
 import type { EditorAsset } from "./types";
+import type { SyncFlag } from "./sync";
 
 export interface PlayerLike {
   readonly ms: number;
@@ -54,6 +55,12 @@ interface Props {
   /** «تعليقات المراجعة»: the client's comments on the ruler (a press opens one); `lost`: on its version's own time */
   notes?: { id: number; at: number; how: "same" | "moved" | "lost"; done: boolean; text: string }[];
   onNote?: (id: number) => void;
+  /** «زامن الصوت»: the clips it could not line up (red) or lined up with medium confidence (amber) */
+  flags?: Record<string, SyncFlag>;
+  onFlags?: (next: Record<string, SyncFlag>) => void;
+  /** the timeline takes the whole editor (the button in its corner; Esc leaves) */
+  full?: boolean;
+  onFull?: () => void;
 }
 
 /** What the library puts on a drag (the asset's id). */
@@ -84,8 +91,12 @@ interface Drag {
   ghostTrack: string;
   /** the moment the clip is stuck to (another clip's edge, the playhead, a beat), for the guide line */
   snapAt: number | null;
-  /** the other selected clips, moving with it by the same time (they keep their tracks) */
-  group: { id: string; trackId: string; start: number }[];
+  /** the other selected clips, moving with it by the same time (and by the same number of tracks, each among its own kind) */
+  group: { id: string; trackId: string; start: number; end: number }[];
+  /** the top (px in the scrolled content) of the row the clip is over, for the «+2.4 ث» badge */
+  top: number;
+  /** where each of the others is headed (clip id → track id), when the drag crossed to another track */
+  groupTrack: Record<string, string>;
   /** ⌘ / Ctrl / Alt held while dragging: a copy goes where it is dropped and the clip stays (Premiere's Alt-drag) */
   copy?: boolean;
   /** ⌘ / Ctrl / Shift pressed on a clip already selected: a plain click (no drag) takes it out of the selection */
@@ -106,6 +117,14 @@ interface Box {
 /** the zoom's range in pixels per second: from a 4-hour film on one screen (0.02) to single frames (1500) */
 export const MIN_PPS = 0.02;
 export const MAX_PPS = 1500;
+/** «تكبير طولي»: how tall the tracks are drawn, from half to three times the usual */
+export const MIN_VZ = 0.5;
+export const MAX_VZ = 3;
+const VZ_KEY = "editor-tl-vz";
+/** the widest the timeline's content is ever drawn (px): past this browsers misplace what is inside */
+const MAX_CONTENT_PX = 8_000_000;
+/** a folder's own row */
+const FOLDER_H = 24;
 /** the room above the tracks (drop a clip there: a new track) and under them */
 const GAP_TOP = 26;
 const GAP_BOTTOM = 56;
@@ -141,7 +160,7 @@ export const timecode = (ms: number, fps: number) => {
 };
 const PRO_TONE = { video: "#2f4f6e", image: "#3a5470", audio: "#2f6b4f", text: "#7346b0" } as const;
 
-export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, onSync, syncing = false, run, player, compact, readOnly, onEmpty, onTransition, onDropFiles, onDropAsset, onMenu, look = "classic", range, notes, onNote }: Props) {
+export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, onSync, syncing = false, run, player, compact, readOnly, onEmpty, onTransition, onDropFiles, onDropAsset, onMenu, look = "classic", range, notes, onNote, flags, onFlags, full = false, onFull }: Props) {
   const pro = look === "pro";
   // track labels like V1, V2, A1, T1 (bottom-up for pictures, top-down for sound)
   const labels = new Map<string, string>();
@@ -171,7 +190,11 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   const [pps, setPps] = useState(40);
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
-  const anchor = useRef<{ ms: number; x: number } | null>(null);
+  // a zoom asked for and not drawn yet: the moment `ms` goes under screen x at `pps`
+  const anchor = useRef<{ ms: number; x: number; pps: number } | null>(null);
+  // the zoom the page shows right now (set with the scroll, so the two always belong together)
+  const shown = useRef(40);
+  const [, redraw] = useState(0);
   const fitted = useRef(false);
   const total = duration(tl);
   const main = mainTrack(tl);
@@ -181,48 +204,110 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     const visual = tl.tracks.filter((t) => t.kind !== "audio").reverse();
     return [...visual, ...tl.tracks.filter((t) => t.kind === "audio")];
   }, [tl.tracks]);
+  // «تكبير طولي»: the tracks taller or shorter (kept on this device), so many tracks fit or one shows its waveform big
+  const [vz, setVz] = useState(1);
+  useEffect(() => {
+    try {
+      const v = Number(localStorage.getItem(VZ_KEY));
+      if (v >= MIN_VZ && v <= MAX_VZ) {
+        const t = setTimeout(() => setVz(v), 0);
+        return () => clearTimeout(t);
+      }
+    } catch {}
+  }, []);
+  const zoomTall = useCallback((next: number) => {
+    const v = Math.round(Math.min(MAX_VZ, Math.max(MIN_VZ, next)) * 100) / 100;
+    setVz(v);
+    try {
+      localStorage.setItem(VZ_KEY, String(v));
+    } catch {}
+  }, []);
   // a computer: tall enough that a clip's picture or waveform shows under its name
-  const height = (t: Track) => (t.id === main?.id ? (compact ? 56 : 74) : t.kind === "audio" ? (compact ? 30 : 52) : t.kind === "text" ? (compact ? 30 : 40) : compact ? 30 : 56);
+  const height = (t: Track) => Math.max(16, Math.round((t.id === main?.id ? (compact ? 56 : 74) : t.kind === "audio" ? (compact ? 30 : 52) : t.kind === "text" ? (compact ? 30 : 40) : compact ? 30 : 56) * (compact ? 1 : vz)));
+  // «مجلدات المسارات»: a folder's row where its first track stands, its tracks under it (none when it is folded)
+  const display = useMemo(() => {
+    const out: ({ folder: TrackFolder; tracks: Track[]; track?: undefined } | { track: Track; folder: TrackFolder | null })[] = [];
+    const done = new Set<string>();
+    for (const t of ordered) {
+      const f = t.folder ? ((tl.folders ?? []).find((x) => x.id === t.folder) ?? null) : null;
+      if (!f) {
+        out.push({ track: t, folder: null });
+        continue;
+      }
+      if (done.has(f.id)) continue;
+      done.add(f.id);
+      const members = ordered.filter((x) => x.folder === f.id);
+      out.push({ folder: f, tracks: members });
+      if (!f.closed) for (const m of members) out.push({ track: m, folder: f });
+    }
+    return out;
+  }, [ordered, tl.folders]);
 
+  // Where a zoom put the view, to the fraction of a pixel. The browser keeps whole pixels, and a zoom used to start
+  // from that rounded place: every step multiplied the lost fraction, so over a long zoom (a pinch is dozens of small
+  // steps) what was under the pointer slid away, off the screen. While the person has not scrolled since, the next
+  // step starts from the exact place instead.
+  const exactLeft = useRef<number | null>(null);
+  const leftNow = useCallback(() => {
+    const el = scroller.current;
+    if (!el) return 0;
+    const e = exactLeft.current;
+    return e != null && Math.abs(el.scrollLeft - e) <= 1 ? e : el.scrollLeft;
+  }, []);
   const lanePx = (ms: number) => (ms * pps) / 1000;
   const contentW = compact ? X0 + lanePx(total) + pad + 56 : HEAD + lanePx(total + 15_000) + 80;
 
   // ---------- zoom ----------
+  // A zoom never reads the zoom of the render it was written in: steps come faster than the page redraws (a wheel, a
+  // pinch), and a step that mixed the old zoom with the new scroll place sent the view somewhere else. Every step
+  // starts from the zoom asked for last (drawn or not) and from the moment that is under the pointer in it.
+  const ppsNow = useCallback(() => anchor.current?.pps ?? shown.current, []);
+  /** the moment (ms) under screen x (px from the scroller's left) */
+  const msUnder = useCallback(
+    (x: number) => {
+      const a = anchor.current;
+      return a ? a.ms + ((x - a.x) * 1000) / a.pps : ((leftNow() + x - X0) * 1000) / shown.current;
+    },
+    [leftNow, X0],
+  );
   const zoomTo = useCallback(
     (next: number, at?: { ms: number; x: number }) => {
       const el = scroller.current;
-      const z = Math.min(MAX_PPS, Math.max(MIN_PPS, next));
+      // never so far in that the content is wider than a browser draws right (a long film stops a little before single frames)
+      const z = Math.min(MAX_PPS, (MAX_CONTENT_PX * 1000) / (total + 15_000), Math.max(MIN_PPS, next));
       if (el) {
         const x = at?.x ?? el.clientWidth / 2;
-        const ms = at?.ms ?? ((el.scrollLeft + x - X0) * 1000) / pps;
-        anchor.current = { ms, x };
+        anchor.current = { ms: at?.ms ?? msUnder(x), x, pps: z };
       }
       setPps(z);
+      // (drawn again even when the zoom is the same, at its limit: the place asked for is always applied)
+      redraw((n) => n + 1);
     },
-    [pps, X0],
+    [total, msUnder],
   );
   useLayoutEffect(() => {
+    shown.current = pps;
     const el = scroller.current;
     const a = anchor.current;
     if (!el || !a) return;
+    if (a.pps !== pps) return; // a newer step is on its way
     anchor.current = null;
-    const x = X0 + (a.ms * pps) / 1000 - a.x;
+    const x = Math.max(0, Math.min(el.scrollWidth - el.clientWidth, X0 + (a.ms * pps) / 1000 - a.x));
     wantScroll.current = x;
+    exactLeft.current = x;
     el.scrollLeft = x;
-  }, [pps, X0]);
+  });
   const fit = useCallback(() => {
     const el = scroller.current;
     if (!el) return;
     if (compact) {
       // a phone: the whole thing on the screen when it is short, about a screen for every 8 seconds otherwise
-      anchor.current = { ms: player?.ms ?? 0, x: el.clientWidth / 2 };
-      setPps(Math.min(80, Math.max(24, total ? ((el.clientWidth - 40) * 1000) / total : 48)));
+      zoomTo(Math.min(80, Math.max(24, total ? ((el.clientWidth - 40) * 1000) / total : 48)), { ms: player?.ms ?? 0, x: el.clientWidth / 2 });
       return;
     }
     const w = el.clientWidth - HEAD - 40;
-    anchor.current = { ms: 0, x: HEAD };
-    setPps(Math.min(MAX_PPS, Math.max(MIN_PPS, total ? (w * 1000) / total : 40)));
-  }, [total, HEAD, compact, player]);
+    zoomTo(total ? (w * 1000) / total : 40, { ms: 0, x: HEAD });
+  }, [total, HEAD, compact, player, zoomTo]);
   // the first time there is something on the timeline, show all of it
   useEffect(() => {
     if (fitted.current || !total) return;
@@ -238,23 +323,28 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       if (d === "fit") return fit();
       const el = scroller.current;
       const ms = player?.ms ?? 0;
-      const x = el ? Math.min(el.clientWidth - 20, Math.max(20, X0 + (ms * pps) / 1000 - el.scrollLeft)) : 0;
-      zoomTo(d === "in" ? pps * 1.6 : pps / 1.6, el ? { ms, x } : undefined);
+      const x = el ? Math.min(el.clientWidth - 20, Math.max(20, X0 + (ms * shown.current) / 1000 - leftNow())) : 0;
+      zoomTo(d === "in" ? ppsNow() * 1.6 : ppsNow() / 1.6, el ? { ms, x } : undefined);
     };
     window.addEventListener(TL_ZOOM, on);
     return () => window.removeEventListener(TL_ZOOM, on);
-  }, [pps, zoomTo, fit, X0, player]);
+  }, [zoomTo, fit, X0, player, ppsNow, leftNow]);
 
   // Ctrl/⌘ + wheel (and a trackpad pinch) zooms around the pointer; two fingers on a phone too
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
     const wheel = (e: WheelEvent) => {
+      // ⌥ + wheel: the tracks taller or shorter («تكبير طولي»)
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !compact) {
+        e.preventDefault();
+        return zoomTall(vz * Math.exp(-(e.deltaY || e.deltaX) * 0.004));
+      }
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       const r = el.getBoundingClientRect();
       const x = e.clientX - r.left;
-      zoomTo(pps * Math.exp(-e.deltaY * 0.01), { ms: ((el.scrollLeft + x - X0) * 1000) / pps, x });
+      zoomTo(ppsNow() * Math.exp(-e.deltaY * 0.01), { ms: msUnder(x), x });
     };
     let pinch: { d: number; pps: number; ms: number; x: number } | null = null;
     const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
@@ -263,7 +353,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       const r = el.getBoundingClientRect();
       const x = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
       // (a phone keeps the moment under the fixed playhead where it is)
-      pinch = compact ? { d: dist(e.touches), pps, ms: player?.ms ?? 0, x: el.clientWidth / 2 } : { d: dist(e.touches), pps, ms: ((el.scrollLeft + x - X0) * 1000) / pps, x };
+      pinch = compact ? { d: dist(e.touches), pps: ppsNow(), ms: player?.ms ?? 0, x: el.clientWidth / 2 } : { d: dist(e.touches), pps: ppsNow(), ms: msUnder(x), x };
     };
     const move = (e: TouchEvent) => {
       if (!pinch || e.touches.length !== 2) return;
@@ -283,12 +373,15 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       el.removeEventListener("touchmove", move);
       el.removeEventListener("touchend", end);
     };
-  }, [pps, zoomTo, X0, compact, player]);
+  }, [zoomTo, compact, player, vz, zoomTall, ppsNow, msUnder]);
 
   // ---------- the playhead follows the player (drawn directly: 60 times a second without re-rendering) ----------
   useEffect(() => {
     if (!player) return;
-    const place = (ms: number, playing: boolean) => {
+    // `follow`: the view goes with the playhead (the player moved it). A zoom only redraws it where it is: the view
+    // stays on what the person zoomed on — it used to jump back to the playhead, taking the clips under the pointer
+    // off the screen
+    const place = (ms: number, playing: boolean, follow = true) => {
       const el = scroller.current;
       if (compact) {
         // the playhead stays put; the timeline slides so this moment is under it
@@ -302,10 +395,10 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       const x = HEAD + (ms * pps) / 1000;
       if (playhead.current) playhead.current.style.transform = `translateX(${x}px)`;
       // the playhead never leaves the view (playing, a jump to the start or end, a click in the library)
-      if (el && (x < el.scrollLeft + HEAD || x > el.scrollLeft + el.clientWidth - 24)) el.scrollLeft = x - HEAD - (el.clientWidth - HEAD) * (playing ? 0.15 : 0.4);
+      if (follow && el && (x < el.scrollLeft + HEAD || x > el.scrollLeft + el.clientWidth - 24)) el.scrollLeft = x - HEAD - (el.clientWidth - HEAD) * (playing ? 0.15 : 0.4);
     };
-    place(player.ms, false);
-    return player.subscribe(place);
+    place(player.ms, false, false);
+    return player.subscribe((ms, playing) => place(ms, playing));
   }, [player, pps, HEAD, compact]);
 
   // a phone: a swipe on the timeline scrubs the picture (and pauses it); the moment under the playhead is what plays
@@ -361,6 +454,12 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     return nearestPoint([...snapPoints, player?.ms ?? -1], ms, (SNAP_PX * 1000) / pps, own ? [own.start, clipEnd(own)] : []);
   };
   const snap = (ms: number, ignore: string) => snapTo(ms, ignore) ?? ms;
+  /** what a drag can stick to: the edges of every clip that is not moving, the playhead, the beats, the start */
+  const restPoints = (movingIds: Set<string>) => {
+    const pts = [0, player?.ms ?? -1, ...tl.markers];
+    for (const t of tl.tracks) for (const c of t.clips) if (!movingIds.has(c.id)) pts.push(c.start, clipEnd(c));
+    return pts;
+  };
   const findOwn = (id: string) => {
     for (const t of tl.tracks) for (const c of t.clips) if (c.id === id) return c;
     return null;
@@ -393,7 +492,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     const solo = !isSel && copyKey(e);
     const group =
       mode === "move" && !solo
-        ? tl.tracks.flatMap((t) => (t.locked ? [] : t.clips.filter((x) => x.id !== c.id && sel.includes(x.id)).map((x) => ({ id: x.id, trackId: t.id, start: x.start }))))
+        ? tl.tracks.flatMap((t) => (t.locked ? [] : t.clips.filter((x) => x.id !== c.id && sel.includes(x.id)).map((x) => ({ id: x.id, trackId: t.id, start: x.start, end: clipEnd(x) }))))
         : [];
     e.currentTarget.setPointerCapture(e.pointerId);
     const a = c.assetId ? assets.get(c.assetId) : null;
@@ -414,7 +513,9 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       ghostEnd: clipEnd(c),
       ghostTrack: track.id,
       snapAt: null,
+      top: rows.current.get(track.id)?.offsetTop ?? 0,
       group,
+      groupTrack: {},
       copy: mode === "move" && copyKey(e),
       toggleOff,
     };
@@ -455,26 +556,20 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     if (d.mode === "move") {
       const len = d.end - d.start;
       let s = Math.max(0, d.start + dms);
-      // stuck to another clip's edge, the playhead or a beat when it comes near (the guide line shows where)
-      const hitStart = snapTo(s, d.id);
-      const hitEnd = hitStart == null ? snapTo(s + len, d.id) : null;
-      next.snapAt = hitStart ?? hitEnd;
-      if (hitStart != null) s = hitStart;
-      else if (hitEnd != null) s = hitEnd - len;
+      // stuck to another clip's edge, the playhead or a beat when it comes near (the guide line shows where) — by any
+      // edge of any clip being moved, not only the one under the pointer
+      const hit = groupSnap(restPoints(new Set([d.id, ...d.group.map((g) => g.id)])), [d.start, d.end, ...d.group.flatMap((g) => [g.start, g.end])], s - d.start, (SNAP_PX * 1000) / pps);
+      if (hit) s = d.start + hit.dt;
       // with others: none of them goes before 0
       const earliest = Math.min(d.start, ...d.group.map((g) => g.start));
       next.ghostStart = Math.max(d.start - earliest, Math.round(s));
       next.ghostEnd = next.ghostStart + len;
-      if (d.group.length) {
-        next.ghostTrack = d.trackId;
-        dragRef.current = next;
-        setDrag(next);
-        return;
-      }
+      next.snapAt = hit && next.ghostStart === Math.round(s) ? hit.at : null;
       // which track is under the finger; above the pictures (or under the sound) makes a new one. Over a row the clip
       // can't go on (a text track between, the sound) it stays on the last row it could be on, instead of jumping back
       const clip = findOwn(d.id)!;
-      const onSound = tl.tracks.find((t) => t.id === d.trackId)?.kind === "audio";
+      const fromTrack = tl.tracks.find((t) => t.id === d.trackId);
+      const onSound = fromTrack?.kind === "audio";
       let target = d.ghostTrack === "new" ? d.trackId : d.ghostTrack;
       let found = false;
       for (const t of ordered) {
@@ -483,6 +578,20 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
           found = true;
           if (fits(t, clip, assets, onSound) && !t.locked) target = t.id;
         }
+      }
+      if (d.group.length) {
+        // a selection: all of them cross by the same number of tracks, each among the tracks of its kind (the ones of
+        // another kind — a video's sound under it — keep their tracks)
+        const lanes = tl.tracks.filter((t) => t.id === d.trackId || (fromTrack && t.kind === fromTrack.kind && !t.locked && !t.role && !t.angles && !!t.motion === !!fromTrack.motion));
+        const lane = (id: string) => lanes.findIndex((t) => t.id === id);
+        const mine = d.group.filter((g) => lane(g.trackId) >= 0);
+        const shift = lane(target) < 0 ? 0 : trackShift(lanes.length, lane(d.trackId), lane(target), mine.map((g) => lane(g.trackId)));
+        next.ghostTrack = lanes[lane(d.trackId) + shift]?.id ?? d.trackId;
+        next.groupTrack = shift ? Object.fromEntries(mine.map((g) => [g.id, lanes[lane(g.trackId) + shift].id])) : {};
+        next.top = rows.current.get(next.ghostTrack)?.offsetTop ?? d.top;
+        dragRef.current = next;
+        setDrag(next);
+        return;
       }
       if (!found) {
         const first = rows.current.get(ordered[0]?.id ?? "")?.getBoundingClientRect();
@@ -514,6 +623,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       next.ghostEnd = Math.round(en);
       next.snapAt = hit != null && Math.round(en) === hit ? hit : null;
     }
+    next.top = rows.current.get(next.ghostTrack === "new" ? (ordered[0]?.id ?? "") : next.ghostTrack)?.offsetTop ?? d.top;
     dragRef.current = next;
     setDrag(next);
   };
@@ -533,17 +643,20 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     if (d.mode === "move" && (copyKey(e) || d.copy)) {
       // ⌘/Ctrl/Alt + drag: copies where they were dropped; the clips themselves stay where they were
       const dt = d.ghostStart - d.start;
-      const all = [{ id: d.id, trackId: d.group.length ? d.trackId : d.ghostTrack, start: d.start }, ...d.group];
+      const all = [{ id: d.id, trackId: d.ghostTrack, start: d.start }, ...d.group.map((g) => ({ ...g, trackId: d.groupTrack[g.id] ?? g.trackId }))];
       run(all.map((g) => ({ type: "copy_clip" as const, clipId: g.id, trackId: g.trackId, start: Math.max(0, g.start + dt) })), { label: all.length > 1 ? `نسخت ${all.length} مقاطع` : "نسخت مقطعًا" });
       return;
     }
     if (d.mode === "move") {
       if (d.ghostTrack === d.trackId && d.ghostStart === d.start) return;
+      // moved by hand: its «ما تزامن» mark has done its job
+      const movedIds = [d.id, ...d.group.map((g) => g.id)];
+      if (flags && onFlags && movedIds.some((id) => flags[id])) onFlags(Object.fromEntries(Object.entries(flags).filter(([id]) => !movedIds.includes(id))));
       if (d.group.length) {
-        // all by the same time; the ones ahead first so none lands on another that hasn't moved yet
+        // all by the same time and the same number of tracks, in one step
         const dt = d.ghostStart - d.start;
-        const all = [{ id: d.id, trackId: d.trackId, start: d.start }, ...d.group].sort((a, b) => (dt > 0 ? b.start - a.start : a.start - b.start));
-        run(all.map((g) => ({ type: "move_clip" as const, clipId: g.id, trackId: g.trackId, start: Math.max(0, g.start + dt) })));
+        const all = [{ id: d.id, trackId: d.ghostTrack, start: d.start }, ...d.group.map((g) => ({ ...g, trackId: d.groupTrack[g.id] ?? g.trackId }))];
+        run({ type: "move_clips", moves: all.map((g) => ({ clipId: g.id, trackId: g.trackId, start: Math.max(0, g.start + dt) })) });
         onSelect(all.map((g) => g.id));
         return;
       }
@@ -627,6 +740,8 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   // ---------- files dropped from the computer or the library ----------
   const [dropAt, setDropAt] = useState<{ ms: number; trackId: string | null } | null>(null);
   const [adding, setAdding] = useState(false);
+  /** «مجلدات المسارات»: the menu of the folder button (`trackId: null`) or of a right-click on a track's head */
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; trackId: string | null } | null>(null);
   const carries = (e: React.DragEvent) => !readOnly && (e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes(ASSET_DRAG));
   const dropPoint = (e: React.DragEvent) => {
     let trackId: string | null = null;
@@ -684,15 +799,19 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     const missing = a && (a.status !== "ready" || !a.url);
     // «التلوين» (the colour page, and what حيدرا ماكس grades): a clip that has grading layers on shows it, like the simple filter does
     const graded = c.grades.filter((g) => g.on).length;
+    // «زامن الصوت» left it where it was (red) or is not sure of it (amber)
+    const flag = ghost ? undefined : flags?.[c.id];
     const handle = compact ? 18 : 10;
     return (
       <div
         key={c.id + (ghost ? "g" : "")}
+        data-clip={c.id}
         role="button"
         tabIndex={-1}
         aria-label={c.text ? `نص: ${c.text.body}` : nestName ? `متداخل: ${nestName}` : (a?.name ?? "مقطع")}
         aria-pressed={sel}
-        className={`absolute top-1 bottom-1 overflow-hidden text-[11px] text-white ${pro ? "rounded-[3px] border border-black/50" : "rounded-md shadow"} ${tone} ${sel ? (pro ? "z-10 outline outline-2 outline-white" : "z-10 ring-2 ring-jw-accent") : pro ? "" : "ring-1 ring-black/40"} ${(d?.moved && d.mode === "move") || along ? "opacity-80" : ""} ${missing ? "outline-2 outline-dashed outline-jw-danger" : ""}`}
+        className={`absolute top-1 bottom-1 overflow-hidden text-[11px] text-white ${pro ? "rounded-[3px] border border-black/50" : "rounded-md shadow"} ${tone} ${sel ? (pro ? "z-10 outline outline-2 outline-white" : "z-10 ring-2 ring-jw-accent") : pro ? "" : "ring-1 ring-black/40"} ${(d?.moved && d.mode === "move") || along ? "opacity-80" : ""} ${missing ? "outline-2 outline-dashed outline-jw-danger" : ""} ${flag ? (flag.level === "bad" ? "outline outline-2 outline-red-500" : "outline outline-2 outline-amber-400") : ""}`}
+        title={flag ? `${flag.level === "bad" ? "ما تزامن" : "راجعه"}: ${flag.why}` : undefined}
         style={{
           left: X0 - HEAD + lanePx(start),
           width: Math.max(4, lanePx(end - start)),
@@ -729,6 +848,14 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
         }}
       >
         {!pro && track.color && <span className="pointer-events-none absolute inset-0 border-s-4" style={{ borderColor: track.color, background: `${track.color}33` }} />}
+        {flag && (
+          <>
+            <span className={`pointer-events-none absolute inset-0 ${flag.level === "bad" ? "bg-red-600/55" : "bg-amber-400/30"}`} />
+            <span className={`pointer-events-none absolute bottom-0.5 left-1 z-[1] whitespace-nowrap rounded-full px-1.5 py-px text-[9px] font-bold ${flag.level === "bad" ? "bg-red-600 text-white" : "bg-amber-400 text-black"}`} dir="rtl">
+              {flag.level === "bad" ? "✕ ما تزامن" : "؟ راجعه"}
+            </span>
+          </>
+        )}
         <span className={`pointer-events-none absolute truncate font-medium ${pro ? "inset-x-0 top-0 h-[14px] bg-black/35 px-1.5 py-0 text-[10px] leading-[14px]" : compact ? "inset-x-0 top-0 bg-gradient-to-b from-black/60 to-transparent px-1.5 py-0.5" : `start-1 top-1 max-w-[calc(100%-8px)] rounded bg-black/55 px-1.5 text-[10px] leading-4 backdrop-blur-[2px] ${lanePx(end - start) < 36 ? "hidden" : ""}`}`} dir="auto">
           {c.text ? c.text.body : nestName ? `🎞 ${nestName}` : compact ? formatTime(clipLength(c)) : (a?.name ?? "")} {c.ramp ? <b title="منحنى السرعة">↝</b> : c.speed !== 1 && <b>×{c.speed}</b>}
         </span>
@@ -784,13 +911,52 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   // while dragging: how far it went («+2.4 ث») next to the clip, and the guide line where it is stuck to something
   const dragging = drag?.moved ? drag : null;
   const rulerH = compact ? RULER_PHONE : RULER;
-  const rowTop = (id: string) => {
-    let y = rulerH + (compact ? 0 : GAP_TOP);
-    for (const t of ordered) {
-      if (t.id === id) return y;
-      y += height(t);
+  /** the track a clip is drawn on right now: its own, or the one a drag is taking it to */
+  const ghostOf = (clipId: string, own: string) => (moving ? (clipId === moving.id ? moving.ghostTrack : (moving.groupTrack[clipId] ?? own)) : own);
+  /** the clips a drag is bringing to this track from another one */
+  const arriving = (trackId: string) => (moving ? [{ id: moving.id, from: moving.trackId }, ...moving.group.map((g) => ({ id: g.id, from: g.trackId }))].filter((m) => m.from !== trackId && ghostOf(m.id, m.from) === trackId) : []);
+  // the marked clips that are still on the timeline
+  const marked = flags ? tl.tracks.flatMap((t) => t.clips.filter((c) => flags[c.id]).map((c) => ({ id: c.id, level: flags[c.id].level }))) : [];
+  const badIds = marked.filter((m) => m.level === "bad").map((m) => m.id);
+  const flagChip =
+    marked.length > 0 && onFlags ? (
+      <span className="flex items-center gap-1 rounded-full border border-red-500/60 bg-jw-surface px-2 py-0.5 text-[11px] shadow" dir="rtl">
+        {badIds.length > 0 && (
+          <button type="button" className="font-bold text-red-500 hover:underline" onClick={() => onSelect(badIds)} title="حدّد المقاطع اللي ما تزامنت">
+            🔴 {badIds.length} ما تزامنت · حدّدها
+          </button>
+        )}
+        {marked.length > badIds.length && (
+          <button type="button" className="font-bold text-amber-500 hover:underline" onClick={() => onSelect(marked.filter((m) => m.level === "weak").map((m) => m.id))} title="حدّد المقاطع اللي تطابقها متوسط الثقة">
+            🟡 {marked.length - badIds.length} للمراجعة
+          </button>
+        )}
+        <button type="button" className="text-jw-muted hover:text-jw-ink" onClick={() => onFlags({})} title="امسح علامات المزامنة" aria-label="امسح علامات المزامنة">
+          ✕
+        </button>
+      </span>
+    ) : null;
+  // «مجلدات المسارات»: what the folder button and a right-click on a track's head offer
+  const folders = tl.folders ?? [];
+  const loose = (kind: Track["kind"]) => tl.tracks.filter((t) => t.kind === kind && t.id !== main?.id && !t.folder);
+  const selTracks = tl.tracks.filter((t) => t.id !== main?.id && t.clips.some((c) => selected.includes(c.id)));
+  const folderItems = (trackId: string | null): { label: string; on: () => void }[] => {
+    const track = trackId ? tl.tracks.find((t) => t.id === trackId) : null;
+    if (track) {
+      return [
+        ...folders.filter((f) => f.id !== track.folder).map((f) => ({ label: `📁 انقله إلى «${f.name}»`, on: () => run({ type: "folder_tracks", trackIds: [track.id], folderId: f.id }) })),
+        { label: "📁 مجلد جديد من هذا المسار", on: () => run({ type: "folder_tracks", trackIds: [track.id] }) },
+        ...(track.folder ? [{ label: "↩ طلّعه من المجلد", on: () => run({ type: "folder_tracks", trackIds: [track.id], folderId: null }) }] : []),
+      ];
     }
-    return rulerH;
+    return [
+      ...(loose("video").length > 1 ? [{ label: `📁 مسارات الفيديو في مجلد (${loose("video").length})`, on: () => run({ type: "folder_tracks", trackIds: loose("video").map((t) => t.id), name: "الفيديو" }) }] : []),
+      ...(loose("audio").length > 1 ? [{ label: `📁 مسارات الصوت في مجلد (${loose("audio").length})`, on: () => run({ type: "folder_tracks", trackIds: loose("audio").map((t) => t.id), name: "الصوت" }) }] : []),
+      ...(loose("text").length > 1 ? [{ label: `📁 مسارات النصوص في مجلد (${loose("text").length})`, on: () => run({ type: "folder_tracks", trackIds: loose("text").map((t) => t.id), name: "النصوص" }) }] : []),
+      ...(selTracks.length ? [{ label: `📁 مسارات المقاطع المحددة في مجلد (${selTracks.length})`, on: () => run({ type: "folder_tracks", trackIds: selTracks.map((t) => t.id) }) }] : []),
+      ...(folders.some((f) => !f.closed) ? [{ label: "▸ اطوِ كل المجلدات", on: () => run(folders.filter((f) => !f.closed).map((f) => ({ type: "update_folder" as const, folderId: f.id, patch: { closed: true } })), { label: "طويت كل المجلدات" }) }] : []),
+      ...(folders.some((f) => f.closed) ? [{ label: "▾ افتح كل المجلدات", on: () => run(folders.filter((f) => f.closed).map((f) => ({ type: "update_folder" as const, folderId: f.id, patch: { closed: false } })), { label: "فتحت كل المجلدات" }) }] : []),
+    ];
   };
   const dragBadge = dragging
     ? dragging.mode === "move"
@@ -812,14 +978,16 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
               {syncing ? "أزامن…" : `🎯 زامن ${selected.length} مقاطع`}
             </button>
           )}
+          {flagChip}
         </div>
       )}
+      {!compact && flagChip && <div className="absolute right-3 z-40" style={{ top: RULER + 3 }}>{flagChip}</div>}
       <div ref={scroller} className="jw-scroll relative min-h-0 flex-1 overflow-auto overscroll-contain" style={{ touchAction: "pan-x pan-y" }} onDragOver={dragOver} onDragLeave={dragLeave} onDrop={drop}>
         <div ref={content} className="relative" style={{ width: contentW, minWidth: "100%", minHeight: "100%" }}>
           {/* ruler */}
           <div className="sticky top-0 z-20 flex" style={{ height: compact ? RULER_PHONE : RULER }}>
             {!compact && <div className="sticky left-0 z-30 flex items-center gap-0.5 border-b border-e border-jw-line bg-jw-surface px-1" style={{ width: HEAD, minWidth: HEAD }}>
-              <button type="button" className="grid h-6 w-6 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink" onClick={() => zoomTo(pps / 1.6)} aria-label="تصغير" title="تصغير">
+              <button type="button" className="grid h-6 w-6 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink" onClick={() => zoomTo(ppsNow() / 1.6)} aria-label="تصغير" title="تصغير">
                 <Icon name="zoomOut" size={14} />
               </button>
               {!compact && (
@@ -827,7 +995,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
                   <Icon name="expand" size={13} />
                 </button>
               )}
-              <button type="button" className="grid h-6 w-6 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink" onClick={() => zoomTo(pps * 1.6)} aria-label="تكبير" title="تكبير">
+              <button type="button" className="grid h-6 w-6 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink" onClick={() => zoomTo(ppsNow() * 1.6)} aria-label="تكبير" title="تكبير">
                 <Icon name="zoomIn" size={14} />
               </button>
               {/* the zoom as a slider (on a log scale: from hours on one screen to single frames) */}
@@ -900,19 +1068,141 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
 
           {/* room above the tracks: drop a clip here to make a new track */}
           {!compact && (
-            <div className="flex" style={{ height: GAP_TOP }} aria-hidden>
-              <div className="sticky left-0 z-10 shrink-0 border-e border-jw-line bg-jw-surface" style={{ width: HEAD, minWidth: HEAD }} />
-              <div className="flex-1 border-b border-dashed border-jw-line/70" />
+            <div className="flex" style={{ height: GAP_TOP }}>
+              <div className="sticky left-0 z-10 flex shrink-0 items-center gap-0.5 border-e border-jw-line bg-jw-surface px-1" style={{ width: HEAD, minWidth: HEAD }}>
+                <button type="button" className="grid h-6 w-6 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink" onClick={() => zoomTall(vz / 1.25)} disabled={vz <= MIN_VZ} aria-label="قصّر المسارات" title="قصّر المسارات (⌥ + العجلة)">
+                  <Icon name="chevronUp" size={13} />
+                </button>
+                <input
+                  type="range"
+                  className="h-1 w-10 min-w-0 flex-1 cursor-pointer accent-[var(--jw-accent)]"
+                  min={MIN_VZ * 100}
+                  max={MAX_VZ * 100}
+                  value={Math.round(vz * 100)}
+                  onChange={(e) => zoomTall(Number(e.target.value) / 100)}
+                  onDoubleClick={() => zoomTall(1)}
+                  aria-label="ارتفاع المسارات"
+                  title="تكبير طولي: طوّل المسارات أو قصّرها (⌥ + العجلة · ضغطتين: الأصلي)"
+                />
+                <button type="button" className="grid h-6 w-6 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink" onClick={() => zoomTall(vz * 1.25)} disabled={vz >= MAX_VZ} aria-label="طوّل المسارات" title="طوّل المسارات (⌥ + العجلة)">
+                  <Icon name="chevronDown" size={13} />
+                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    className={`grid h-6 w-6 place-items-center rounded hover:bg-jw-surface-2 hover:text-jw-ink ${folderMenu && !folderMenu.trackId ? "bg-jw-accent/15 text-jw-accent" : "text-jw-muted"}`}
+                    onClick={(e) => {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setFolderMenu((v) => (v ? null : { x: r.left, y: r.bottom + 4, trackId: null }));
+                    }}
+                    aria-label="مجلدات المسارات"
+                    title="مجلدات المسارات: ضم المسارات في مجلد ينطوي وينفتح"
+                    aria-expanded={!!folderMenu}
+                  >
+                    <Icon name="folder" size={13} />
+                  </button>
+                )}
+                {onFull && (
+                  <button type="button" className={`grid h-6 w-6 place-items-center rounded hover:bg-jw-surface-2 hover:text-jw-ink ${full ? "bg-jw-accent/15 text-jw-accent" : "text-jw-muted"}`} onClick={onFull} aria-pressed={full} aria-label={full ? "رجّع التايملاين لحجمه" : "التايملاين على الشاشة كاملة"} title={full ? "رجّع التايملاين لحجمه (Esc)" : "التايملاين على الشاشة كاملة"}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d={full ? "M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" : "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"} />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              <div className="flex-1 border-b border-dashed border-jw-line/70" aria-hidden />
             </div>
           )}
+          {folderMenu &&
+            createPortal(
+              <>
+                <div className="fixed inset-0 z-[79]" onPointerDown={() => setFolderMenu(null)} onContextMenu={(e) => (e.preventDefault(), setFolderMenu(null))} />
+                <div role="menu" aria-label="مجلدات المسارات" dir="rtl" className="fixed z-[80] w-64 space-y-0.5 rounded-xl border border-jw-line bg-jw-surface p-1.5 shadow-xl" style={{ left: Math.min(folderMenu.x, window.innerWidth - 270), top: Math.min(folderMenu.y, window.innerHeight - 220) }}>
+                  {folderItems(folderMenu.trackId).length === 0 && <p className="px-2 py-1.5 text-[11px] text-jw-muted">المجلد يحتاج مسارين أو أكثر من نفس النوع (غير الرئيسي)، أو حدّد مقاطع وضم مساراتها.</p>}
+                  {folderItems(folderMenu.trackId).map((it) => (
+                    <button key={it.label} type="button" role="menuitem" className="flex w-full items-center rounded-lg px-2 py-1.5 text-start text-xs hover:bg-jw-surface-2" onClick={() => (setFolderMenu(null), it.on())}>
+                      {it.label}
+                    </button>
+                  ))}
+                </div>
+              </>,
+              document.querySelector("[data-ed-theme]") ?? document.body,
+            )}
           {/* tracks */}
-          {ordered.map((track) => {
+          {display.map((row) => {
+            if (!row.track) {
+              const f = row.folder;
+              const all = (k: "muted" | "hidden" | "locked") => row.tracks.filter((t) => (k === "muted" ? t.kind !== "text" : k === "hidden" ? t.kind !== "audio" : true));
+              const on = (k: "muted" | "hidden" | "locked") => all(k).length > 0 && all(k).every((t) => t[k]);
+              const flip = (k: "muted" | "hidden" | "locked") => run({ type: "update_tracks", trackIds: all(k).map((t) => t.id), patch: { [k]: !on(k) } });
+              const fbtn = "grid h-5 w-5 place-items-center rounded hover:bg-jw-surface-3";
+              const fold = () => run({ type: "update_folder", folderId: f.id, patch: { closed: !f.closed } });
+              return (
+                <div key={`f${f.id}`} data-folder={f.id} className="flex border-b border-jw-line bg-jw-accent/[0.07]" style={{ height: FOLDER_H }}>
+                  {!compact && (
+                    <div className="sticky left-0 z-10 flex shrink-0 items-center gap-0.5 border-e border-jw-line bg-jw-surface px-1 text-jw-muted" style={{ width: HEAD, minWidth: HEAD, boxShadow: "inset 3px 0 0 var(--jw-accent)" }} dir="rtl">
+                      <button type="button" className={`${fbtn} text-jw-ink`} onClick={fold} aria-expanded={!f.closed} aria-label={f.closed ? `افتح المجلد ${f.name}` : `اطوِ المجلد ${f.name}`} title={f.closed ? "افتح المجلد" : "اطوِ المجلد"}>
+                        <Icon name={f.closed ? "chevronLeft" : "chevronDown"} size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center gap-1 text-start text-[11px] font-bold text-jw-ink"
+                        onClick={fold}
+                        onDoubleClick={() => {
+                          if (readOnly) return;
+                          const name = window.prompt("اسم المجلد", f.name);
+                          if (name?.trim()) run({ type: "update_folder", folderId: f.id, patch: { name } });
+                        }}
+                        title={`${f.name} · ${row.tracks.length} مسارات (ضغطتين: غيّر الاسم)`}
+                      >
+                        <span className="truncate">{f.name}</span>
+                        <span className="shrink-0 font-normal text-jw-muted">{row.tracks.length}</span>
+                      </button>
+                      {all("muted").length > 0 && (
+                        <button type="button" disabled={readOnly} className={`${fbtn} ${on("muted") ? "text-jw-danger" : ""}`} onClick={() => flip("muted")} aria-label={on("muted") ? "شغّل صوت المجلد" : "اكتم المجلد"} title={on("muted") ? "شغّل صوت كل مسارات المجلد" : "اكتم كل مسارات المجلد"}>
+                          <Icon name={on("muted") ? "volumeOff" : "volume"} size={12} />
+                        </button>
+                      )}
+                      {all("hidden").length > 0 && (
+                        <button type="button" disabled={readOnly} className={`${fbtn} ${on("hidden") ? "text-jw-warn" : ""}`} onClick={() => flip("hidden")} aria-label={on("hidden") ? "أظهر المجلد" : "أخفِ المجلد"} title={on("hidden") ? "أظهر كل مسارات المجلد" : "أخفِ كل مسارات المجلد"}>
+                          <Icon name={on("hidden") ? "eyeOff" : "eye"} size={12} />
+                        </button>
+                      )}
+                      <button type="button" disabled={readOnly} className={`${fbtn} ${on("locked") ? "text-jw-accent" : ""}`} onClick={() => flip("locked")} aria-label={on("locked") ? "افتح قفل المجلد" : "اقفل المجلد"} title={on("locked") ? "افتح قفل كل مسارات المجلد" : "اقفل كل مسارات المجلد"}>
+                        <Icon name={on("locked") ? "lock" : "unlock"} size={12} />
+                      </button>
+                      {!readOnly && (
+                        <button type="button" className={fbtn} onClick={() => run({ type: "remove_folder", folderId: f.id })} aria-label="فك المجلد" title="فك المجلد (مساراته تبقى)">
+                          <Icon name="x" size={12} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <div className="relative flex-1" onPointerDown={laneDown} onPointerMove={laneMove} onPointerUp={laneUp} onPointerCancel={() => setBox(null)}>
+                    {compact && (
+                      <button type="button" className="sticky left-1 top-0 z-10 mt-0.5 flex h-5 items-center gap-1 rounded-full border border-jw-line bg-jw-surface px-2 text-[10px] font-bold shadow" onClick={fold} aria-expanded={!f.closed} dir="rtl">
+                        <Icon name="folder" size={11} /> {f.name} · {row.tracks.length} <Icon name={f.closed ? "chevronLeft" : "chevronDown"} size={11} />
+                      </button>
+                    )}
+                    {/* folded: where its tracks have clips, as one thin strip */}
+                    {f.closed &&
+                      row.tracks.flatMap((t) =>
+                        t.clips.map((c) => (
+                          <span key={c.id} className={`pointer-events-none absolute bottom-1 top-1 rounded-sm ${t.kind === "audio" ? "bg-emerald-500/40" : t.kind === "text" ? "bg-violet-500/40" : "bg-sky-500/40"} ${flags?.[c.id]?.level === "bad" ? "!bg-red-600/80" : ""}`} style={{ left: X0 - HEAD + lanePx(c.start), width: Math.max(2, lanePx(clipEnd(c) - c.start)) }} />
+                        )),
+                      )}
+                  </div>
+                </div>
+              );
+            }
+            const track = row.track;
             const isMain = track.id === main?.id;
-            const target = moving && moving.ghostTrack === track.id && moving.trackId !== track.id;
+            const target = moving && arriving(track.id).length > 0;
             return (
               <div
                 key={track.id}
                 data-track={track.kind}
+                data-track-id={track.id}
                 ref={(el) => {
                   if (el) rows.current.set(track.id, el);
                   else rows.current.delete(track.id);
@@ -920,7 +1210,20 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
                 className={`flex border-b border-jw-line ${pro ? (ordered.indexOf(track) % 2 ? "bg-black/[0.06]" : "bg-black/[0.02]") : isMain ? "bg-jw-surface-2/40" : ""} ${target || dropAt?.trackId === track.id ? "bg-jw-accent/10" : ""}`}
                 style={{ height: height(track) }}
               >
-                {!compact && <TrackHead track={track} isMain={isMain} width={HEAD} compact={compact} readOnly={readOnly} run={run} label={pro ? labels.get(track.id) : undefined} />}
+                {!compact && (
+                  <TrackHead
+                    track={track}
+                    tracks={tl.tracks}
+                    inFolder={!!row.folder}
+                    isMain={isMain}
+                    width={HEAD}
+                    compact={compact}
+                    readOnly={readOnly}
+                    run={run}
+                    label={pro ? labels.get(track.id) : undefined}
+                    onMenu={readOnly || isMain ? undefined : (x, y) => setFolderMenu({ x, y, trackId: track.id })}
+                  />
+                )}
                 <div
                   className="relative flex-1"
                   onPointerDown={laneDown}
@@ -939,12 +1242,12 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
                       <Icon name="plus" size={18} strokeWidth={2.5} />
                     </button>
                   )}
-                  {track.clips.map((c) => (moving?.id === c.id && moving.ghostTrack !== track.id ? null : clipView(track, c)))}
-                  {/* a clip being dragged here from another track */}
-                  {moving && moving.ghostTrack === track.id && moving.trackId !== track.id && (() => {
-                    const c = findOwn(moving.id);
+                  {track.clips.map((c) => (ghostOf(c.id, track.id) !== track.id ? null : clipView(track, c)))}
+                  {/* the clips being dragged here from another track */}
+                  {arriving(track.id).map((m) => {
+                    const c = findOwn(m.id);
                     return c ? clipView(track, c, true) : null;
-                  })()}
+                  })}
                   {track.hidden && <span className="pointer-events-none absolute inset-0 bg-black/40" />}
                   {/* the cuts between touching clips: their transition, or a button to add one */}
                   {track.kind !== "audio" &&
@@ -996,7 +1299,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
           {dragging && dragBadge && (
             <div
               className="pointer-events-none absolute z-40 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-0.5 text-xs font-bold text-white shadow-lg"
-              style={{ left: X0 + lanePx(dragBadge.at), top: Math.max(rulerH, rowTop(dragging.ghostTrack === "new" ? (ordered[0]?.id ?? "") : dragging.ghostTrack) - 20) }}
+              style={{ left: X0 + lanePx(dragBadge.at), top: Math.max(rulerH, dragging.top - 20) }}
               dir="rtl"
               aria-live="off"
             >
@@ -1043,14 +1346,25 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   );
 }
 
-function TrackHead({ track, isMain, width, compact, readOnly, run, label }: { track: Track; isMain: boolean; width: number; compact: boolean; readOnly: boolean; run: Props["run"]; label?: string }) {
+function TrackHead({ track, tracks, inFolder, isMain, width, compact, readOnly, run, label, onMenu }: { track: Track; tracks: Track[]; inFolder: boolean; isMain: boolean; width: number; compact: boolean; readOnly: boolean; run: Props["run"]; label?: string; onMenu?: (x: number, y: number) => void }) {
   // the colours open over the editor (the timeline's own box would cut them off)
   const [painting, setPainting] = useState<{ x: number; y: number } | null>(null);
-  const toggle = (patch: Partial<Pick<Track, "muted" | "hidden" | "locked">>) => run({ type: "update_track", trackId: track.id, patch });
+  // ⌥ (Alt) held: the same switch on EVERY track that has it (all eyes shut or open, all sound off or on, all locks)
+  const toggle = (patch: Partial<Pick<Track, "muted" | "hidden" | "locked">>, all = false) => (all ? run({ type: "update_tracks", trackIds: tracks.map((t) => t.id), patch }) : run({ type: "update_track", trackId: track.id, patch }));
+  const ALL = " (⌥ + ضغطة: كل المسارات)";
   const btn = "grid h-6 w-6 place-items-center rounded hover:bg-jw-surface-3";
   const icon = track.kind === "audio" ? "music" : track.motion ? "sparkles" : track.kind === "text" ? "type" : isMain ? "film" : "layers";
   return (
-    <div className="sticky left-0 z-10 flex shrink-0 items-center gap-0.5 border-e border-jw-line bg-jw-surface px-1 text-jw-muted" style={{ width, minWidth: width }} dir="rtl">
+    <div
+      className="sticky left-0 z-10 flex shrink-0 items-center gap-0.5 border-e border-jw-line bg-jw-surface px-1 text-jw-muted"
+      style={{ width, minWidth: width, boxShadow: inFolder ? "inset 3px 0 0 color-mix(in srgb, var(--jw-accent) 55%, transparent)" : undefined }}
+      dir="rtl"
+      onContextMenu={(e) => {
+        if (!onMenu) return;
+        e.preventDefault();
+        onMenu(e.clientX, e.clientY);
+      }}
+    >
       {!compact && (
         <span className="flex min-w-0 flex-1 items-center gap-1 truncate text-[11px]" title={track.name}>
           {label ? (
@@ -1104,16 +1418,16 @@ function TrackHead({ track, isMain, width, compact, readOnly, run, label }: { tr
           document.querySelector("[data-ed-theme]") ?? document.body,
           )}
         {track.kind !== "text" && (
-          <button type="button" disabled={readOnly} className={`${btn} ${track.muted ? "text-jw-danger" : ""}`} onClick={() => toggle({ muted: !track.muted })} aria-label={track.muted ? "شغّل الصوت" : "اكتم"} title={track.muted ? "شغّل الصوت" : "اكتم"}>
+          <button type="button" disabled={readOnly} className={`${btn} ${track.muted ? "text-jw-danger" : ""}`} onClick={(e) => toggle({ muted: !track.muted }, e.altKey)} aria-label={track.muted ? "شغّل الصوت" : "اكتم"} title={(track.muted ? "شغّل الصوت" : "اكتم") + ALL}>
             <Icon name={track.muted ? "volumeOff" : "volume"} size={13} />
           </button>
         )}
         {track.kind !== "audio" && !compact && (
-          <button type="button" disabled={readOnly} className={`${btn} ${track.hidden ? "text-jw-warn" : ""}`} onClick={() => toggle({ hidden: !track.hidden })} aria-label={track.hidden ? "أظهر" : "أخفِ"} title={track.hidden ? "أظهر" : "أخفِ"}>
+          <button type="button" disabled={readOnly} className={`${btn} ${track.hidden ? "text-jw-warn" : ""}`} onClick={(e) => toggle({ hidden: !track.hidden }, e.altKey)} aria-label={track.hidden ? "أظهر" : "أخفِ"} title={(track.hidden ? "أظهر" : "أخفِ") + ALL}>
             <Icon name={track.hidden ? "eyeOff" : "eye"} size={13} />
           </button>
         )}
-        <button type="button" disabled={readOnly} className={`${btn} ${track.locked ? "text-jw-accent" : ""}`} onClick={() => toggle({ locked: !track.locked })} aria-label={track.locked ? "افتح القفل" : "اقفل المسار"} title={track.locked ? "افتح القفل" : "اقفل المسار"}>
+        <button type="button" disabled={readOnly} className={`${btn} ${track.locked ? "text-jw-accent" : ""}`} onClick={(e) => toggle({ locked: !track.locked }, e.altKey)} aria-label={track.locked ? "افتح القفل" : "اقفل المسار"} title={(track.locked ? "افتح القفل" : "اقفل المسار") + ALL}>
           <Icon name={track.locked ? "lock" : "unlock"} size={13} />
         </button>
         {!isMain && !compact && !readOnly && track.clips.length === 0 && (

@@ -119,3 +119,87 @@ describe("syncedStart", () => {
     expect(syncedStart({ id: "a", start: 0, in: 0, speed: 1 }, { id: "b", start: 0, in: 0, speed: 2 }, -4000)).toBe(2000);
   });
 });
+
+/** A poem on a beat: a thump on every beat and a chanted syllable on every half beat (new words every time). */
+function poem(seconds: number, seed: number, bpm = 96) {
+  const r = rng(seed);
+  const n = seconds * RATE;
+  const x = new Float32Array(n);
+  const beat = (60 / bpm) * RATE;
+  for (let b = 0; b * beat < n; b++) {
+    const at = Math.round(b * beat);
+    for (let k = 0; k < 0.08 * RATE && at + k < n; k++) x[at + k] += 0.9 * Math.exp(-k / (0.02 * RATE)) * Math.sin((2 * Math.PI * 70 * k) / RATE);
+  }
+  for (let h = 0; (h * beat) / 2 < n; h++) {
+    const at = Math.round((h * beat) / 2);
+    const len = Math.round(((0.6 + 0.35 * r()) * beat) / 2);
+    const lvl = 0.25 + 0.35 * r();
+    const f = 140 + 60 * Math.sin((h / 16) * 2 * Math.PI) + 30 * r();
+    if (r() < 0.12) continue;
+    for (let k = 0; k < len && at + k < n; k++) x[at + k] += lvl * Math.sin((Math.PI * k) / len) * (Math.sin((2 * Math.PI * f * k) / RATE) + 0.4 * Math.sin((2 * Math.PI * f * 2.02 * k) / RATE) + 0.25 * (r() * 2 - 1));
+  }
+  return x;
+}
+
+/** A camera in the room: `len` seconds of the master from `from`, with echoes, duller, and its own noise (`snr`: signal over noise). */
+function camera(master: Float32Array, from: number, len: number, seed: number, snr: number) {
+  const r = rng(seed);
+  const a = Math.round(from * RATE);
+  const n = Math.round(len * RATE);
+  const y = new Float32Array(n);
+  const taps: [number, number][] = [[0, 0.5], [Math.round(0.013 * RATE), 0.3], [Math.round(0.031 * RATE), 0.22], [Math.round(0.07 * RATE), 0.15], [Math.round(0.12 * RATE), 0.1]];
+  let p = 0;
+  for (let i = 0; i < n; i++) {
+    let v = 0;
+    for (const [d, g] of taps) v += g * (master[a + i - d] ?? 0);
+    y[i] = v;
+    p += v * v;
+  }
+  const noise = Math.sqrt(p / n) / snr;
+  let lp = 0;
+  for (let i = 0; i < n; i++) {
+    lp += 0.35 * (y[i] - lp);
+    y[i] = lp + noise * (r() * 2 - 1) * 1.7;
+  }
+  return y;
+}
+
+describe("findLag on a poem with a beat (the loudness fits at every beat)", () => {
+  const master = poem(180, 7);
+
+  it("finds every camera clip of the poem, to the right beat", () => {
+    for (const snr of [3, 1]) {
+      for (let i = 0; i < 6; i++) {
+        const from = 5 + i * 23.37;
+        const f = findLag(master, camera(master, from, 12 + (i % 4) * 4, 100 + i, snr), RATE);
+        expect(f.confidence, `clip ${i} at snr ${snr}`).not.toBe("none");
+        expect(Math.abs(f.lag + from), `clip ${i} at snr ${snr}`).toBeLessThan(0.02);
+      }
+    }
+  }, 60_000);
+
+  it("the same whichever of the two is given first", () => {
+    const f = findLag(camera(master, 40, 16, 5, 3), master, RATE);
+    expect(f.confidence).not.toBe("none");
+    expect(Math.abs(f.lag - 40)).toBeLessThan(0.02);
+  }, 30_000);
+
+  it("refuses a clip of another poem, on the same beat or on another", () => {
+    for (const [seed, bpm] of [[99, 96], [55, 104]] as const) {
+      const other = poem(180, seed, bpm);
+      for (let i = 0; i < 5; i++) expect(findLag(master, camera(other, 5 + i * 23.37, 12 + (i % 4) * 4, 300 + i, 1), RATE).confidence, `${bpm} bpm, clip ${i}`).toBe("none");
+    }
+  }, 60_000);
+});
+
+describe("pickAnchor: which clip the others line up to", () => {
+  it("is the first when the files are about as long as each other", async () => {
+    const { pickAnchor } = await import("@/components/jawad/editor/sync");
+    expect(pickAnchor([{ id: "a", fileMs: 60_000 }, { id: "b", fileMs: 70_000 }])).toBe("a");
+  });
+  it("is the long master under many short clips, wherever it stands", async () => {
+    const { pickAnchor } = await import("@/components/jawad/editor/sync");
+    expect(pickAnchor([{ id: "cam1", fileMs: 20_000 }, { id: "poem", fileMs: 240_000 }, { id: "cam2", fileMs: 31_000 }])).toBe("poem");
+    expect(pickAnchor([{ id: "poem", fileMs: 240_000 }, { id: "cam1", fileMs: 20_000 }])).toBe("poem");
+  });
+});

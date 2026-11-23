@@ -35,9 +35,11 @@ import {
   type TextStyle,
   type Timeline,
   type Track,
+  type TrackFolder,
   type TrackKind,
   type Sequence,
   seqLength,
+  MAX_FOLDERS,
   MAX_SEQS,
   FIRST_SEQ,
   type Transform,
@@ -172,6 +174,15 @@ export type Command =
   /** the same transition at every cut of a track */
   | { type: "transition_all"; trackId?: string; kind: TransitionKind | null; ms?: number }
   | { type: "remove_track"; trackId: string }
+  /** the same switch on several tracks at once (⌥ on a track's eye, speaker or lock; a folder's own switches) */
+  | { type: "update_tracks"; trackIds: string[]; patch: Partial<Pick<Track, "muted" | "hidden" | "locked">> }
+  /** «مجلد مسارات»: these tracks into a new folder (`name`) or an existing one (`folderId`); `folderId: null` takes them out */
+  | { type: "folder_tracks"; trackIds: string[]; name?: string; folderId?: string | null }
+  | { type: "update_folder"; folderId: string; patch: Partial<Pick<TrackFolder, "name" | "closed">> }
+  /** the folder goes, its tracks stay */
+  | { type: "remove_folder"; folderId: string }
+  /** several clips moved in one step, each to its own track and moment (a selection dragged across tracks) */
+  | { type: "move_clips"; moves: { clipId: string; trackId: string; start: number }[] }
   | { type: "set_ratio"; ratio: Ratio }
   | { type: "set_background"; color: string }
   | { type: "set_magnetic"; on: boolean }
@@ -372,6 +383,13 @@ const bare = (t: Timeline): Timeline => {
 const seqsOf = (t: Timeline): Sequence[] => (t.seqs?.length ? t.seqs : [{ id: FIRST_SEQ, name: "تسلسل 1", tl: null }]);
 /** The list with the open timeline's content parked in its own place (before another one opens). */
 const parked = (t: Timeline, seqs: Sequence[]): Sequence[] => seqs.map((x) => (x.tl ? x : { ...x, tl: bare(t) }));
+
+/** A folder with no track left in it goes. */
+function dropEmptyFolders(t: Timeline) {
+  const left = (t.folders ?? []).filter((f) => t.tracks.some((x) => x.folder === f.id));
+  if (left.length) t.folders = left;
+  else delete t.folders;
+}
 
 const FRESH_FIX: Fix = { note: "", mode: "parts", job: null, from: null, state: "draft", generatorId: null, settings: {} };
 
@@ -1191,7 +1209,81 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const track = editable(t, cmd.trackId);
       if (mainTrack(t)?.id === track.id) fail("المسار الرئيسي ما ينحذف.");
       t.tracks = t.tracks.filter((x) => x.id !== track.id);
+      dropEmptyFolders(t);
       return { timeline: t, label: "حذفت مسارًا" };
+    }
+
+    case "update_tracks": {
+      const p = cmd.patch;
+      const tracks = t.tracks.filter((x) => cmd.trackIds.includes(x.id));
+      if (!tracks.length) fail("ما لقينا هذي المسارات.");
+      for (const track of tracks) {
+        // sound has no eye, text has no speaker
+        if (p.muted != null && track.kind !== "text") track.muted = !!p.muted;
+        if (p.hidden != null && track.kind !== "audio") track.hidden = !!p.hidden;
+        if (p.locked != null) track.locked = !!p.locked;
+      }
+      const n = tracks.length;
+      const label = p.locked != null ? (p.locked ? `قفلت ${n} مسارات` : `فتحت ${n} مسارات`) : p.muted != null ? (p.muted ? `كتمت ${n} مسارات` : `شغّلت صوت ${n} مسارات`) : p.hidden ? `أخفيت ${n} مسارات` : `أظهرت ${n} مسارات`;
+      return { timeline: t, label };
+    }
+
+    case "folder_tracks": {
+      const tracks = t.tracks.filter((x) => cmd.trackIds.includes(x.id));
+      if (!tracks.length) fail("اختر مسارًا واحدًا على الأقل.");
+      if (cmd.folderId === null) {
+        for (const track of tracks) delete track.folder;
+        dropEmptyFolders(t);
+        return { timeline: t, label: tracks.length > 1 ? `طلّعت ${tracks.length} مسارات من المجلد` : "طلّعت مسارًا من المجلد" };
+      }
+      let folder = cmd.folderId ? (t.folders ?? []).find((f) => f.id === cmd.folderId) ?? fail("ما لقينا هذا المجلد.") : null;
+      if (!folder) {
+        if ((t.folders?.length ?? 0) >= MAX_FOLDERS) fail(`أكثر شي ${MAX_FOLDERS} مجلد.`);
+        folder = { id: newId("f"), name: String(cmd.name ?? "").trim().slice(0, 40) || `مجلد ${(t.folders?.length ?? 0) + 1}`, closed: false };
+        t.folders = [...(t.folders ?? []), folder];
+      }
+      for (const track of tracks) track.folder = folder.id;
+      dropEmptyFolders(t);
+      return { timeline: t, label: `حطّيت ${tracks.length} ${tracks.length > 1 ? "مسارات" : "مسار"} في «${folder.name}»` };
+    }
+
+    case "update_folder": {
+      const folder = (t.folders ?? []).find((f) => f.id === cmd.folderId) ?? fail("ما لقينا هذا المجلد.");
+      if (cmd.patch.name != null) folder.name = String(cmd.patch.name).trim().slice(0, 40) || folder.name;
+      if (cmd.patch.closed != null) folder.closed = !!cmd.patch.closed;
+      return { timeline: t, label: cmd.patch.closed != null ? (folder.closed ? `طويت «${folder.name}»` : `فتحت «${folder.name}»`) : `سمّيت المجلد «${folder.name}»` };
+    }
+
+    case "remove_folder": {
+      const folder = (t.folders ?? []).find((f) => f.id === cmd.folderId) ?? fail("ما لقينا هذا المجلد.");
+      for (const track of t.tracks) if (track.folder === folder.id) delete track.folder;
+      dropEmptyFolders(t);
+      return { timeline: t, label: `فكّيت المجلد «${folder.name}» (مساراته باقية)` };
+    }
+
+    case "move_clips": {
+      // every clip is lifted first, then each is put down: none lands on another that has not left yet
+      const moves = cmd.moves.map((m) => {
+        const { track: from, clip } = owned(t, m.clipId);
+        const kind = from.kind === "audio" ? "audio" : trackFor(clip, assets);
+        const to = editable(t, m.trackId);
+        if (to.kind !== kind) fail(to.kind === "audio" ? "هذا المسار للصوت فقط." : to.kind === "text" ? "هذا المسار للنصوص فقط." : "هذا المسار للصور والفيديو.");
+        if (to.kind === "text" && !sameSort(to, clip)) fail(clip.motion ? "عناصر الموشن تبقى على مسار الموشن." : "مسار الموشن لعناصر الموشن بس.");
+        if (to.role === "fix" && from !== to) fail("المسار الأحمر ينرفع له مقطع مقطع.");
+        return { from, to, clip, start: m.start };
+      });
+      if (!moves.length) fail("ما فيه مقاطع تتحرك.");
+      for (const m of moves) m.from.clips = m.from.clips.filter((c) => c.id !== m.clip.id);
+      for (const m of [...moves].sort((a, b) => a.start - b.start)) {
+        if (m.to.role !== "fix") m.clip.fix = null;
+        if (magnet(t, m.to)) insertMain(m.to, m.clip, m.start);
+        else {
+          m.clip.start = m.start;
+          place(m.to, m.clip);
+        }
+      }
+      for (const track of new Set(moves.flatMap((m) => [m.from, m.to]))) tidy(t, track);
+      return { timeline: t, label: `حرّكت ${moves.length} مقاطع`, select: moves.map((m) => m.clip.id) };
     }
 
     case "set_ratio": {

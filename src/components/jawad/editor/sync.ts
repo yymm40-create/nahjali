@@ -74,18 +74,32 @@ async function read(url: string): Promise<Float32Array | null> {
   return acc.done();
 }
 
+/** Why a clip is marked on the timeline after «زامن الصوت»: red = left where it was, amber = moved but worth a listen. */
+export interface SyncFlag {
+  level: "bad" | "weak";
+  why: string;
+}
+
 export interface SyncPlan {
   cmds: Command[];
-  /** what happened to each clip, in words, to show the person */
+  /** what happened, in words, to show the person */
   notes: string[];
   moved: number;
+  /** every clip that was compared (their old marks are replaced by `flags`) */
+  tried: string[];
+  /** the clips to mark: the ones that did not line up (red) and the ones lined up with medium confidence (amber) */
+  flags: Record<string, SyncFlag>;
 }
 
 /**
- * Lines the chosen clips up by their sound: the one that starts first stays, the others move so that what they hear lands on what it
- * hears. A clip whose sound does not clearly match is left where it is, and said so.
+ * Lines the chosen clips up by their sound. The one that starts first stays and the others move so that what they hear
+ * lands on what it hears — unless one of them is much longer than it (the whole poem or song under many short camera
+ * clips): then that long one is the reference. A clip that does not match the reference is tried against the clips
+ * already lined up (two cameras that heard each other but not the master). One that still matches nothing is left where
+ * it is and marked.
  */
 export async function planSync(tl: Timeline, ids: string[], assets: Map<string, EditorAsset>, onStep?: (text: string) => void): Promise<SyncPlan> {
+  const none = (note: string): SyncPlan => ({ cmds: [], notes: [note], moved: 0, tried: [], flags: {} });
   const picked = ids
     .map((id) => findClip(tl, id))
     .filter((f): f is NonNullable<typeof f> => !!f && !!f.clip.assetId && !f.clip.text && !f.clip.seq)
@@ -93,54 +107,96 @@ export async function planSync(tl: Timeline, ids: string[], assets: Map<string, 
       const a = assets.get(f.clip.assetId!);
       return !!a && a.kind !== "image" && (a.kind === "audio" || a.hasAudio) && !!a.url;
     });
-  if (picked.length < 2) return { cmds: [], notes: ["اختر مقطعين على الأقل فيهم صوت (اضغط على الأول، ثم Shift واضغط على الباقي)."], moved: 0 };
+  if (picked.length < 2) return none("اختر مقطعين على الأقل فيهم صوت (اضغط على الأول، ثم Shift واضغط على الباقي).");
   picked.sort((x, y) => x.clip.start - y.clip.start || tl.tracks.indexOf(x.track) - tl.tracks.indexOf(y.track));
-  const anchor = picked[0];
-  const name = (f: (typeof picked)[number]) => assets.get(f.clip.assetId!)?.name || "مقطع";
-  onStep?.(`أقرأ صوت «${name(anchor)}»…`);
-  const monoA = await monoOf(anchor.clip.assetId!, assets.get(anchor.clip.assetId!)!.url!);
-  if (!monoA) return { cmds: [], notes: [`ما قدرت أقرأ صوت «${name(anchor)}».`], moved: 0 };
+  type Picked = (typeof picked)[number];
+  const fileMs = (f: Picked) => assets.get(f.clip.assetId!)?.durationMs ?? 0;
+  const name = (f: Picked) => assets.get(f.clip.assetId!)?.name || "مقطع";
+  const anchor = pickAnchor(picked.map((f) => ({ id: f.clip.id, fileMs: fileMs(f) })));
+  const ref = picked.find((f) => f.clip.id === anchor)!;
+  const rest = picked.filter((f) => f !== ref);
+  onStep?.(`أقرأ صوت «${name(ref)}»…`);
+  const monoRef = await monoOf(ref.clip.assetId!, assets.get(ref.clip.assetId!)!.url!);
+  if (!monoRef) return none(`ما قدرت أقرأ صوت «${name(ref)}».`);
 
-  const notes: string[] = [];
-  const plan: { f: (typeof picked)[number]; start: number }[] = [];
-  for (const f of picked.slice(1)) {
-    onStep?.(`أطابق «${name(f)}»…`);
-    if (f.clip.assetId === anchor.clip.assetId) {
-      notes.push(`«${name(f)}» نفس ملف المقطع الأول؛ ما فيه شي يتزامن.`);
+  const flags: Record<string, SyncFlag> = {};
+  const plan: { f: Picked; start: number; mono: Float32Array }[] = [];
+  const later: { f: Picked; mono: Float32Array }[] = [];
+  let n = 0;
+  for (const f of rest) {
+    onStep?.(`أطابق «${name(f)}» (${++n} من ${rest.length})…`);
+    if (f.clip.assetId === ref.clip.assetId) {
+      flags[f.clip.id] = { level: "bad", why: `نفس ملف «${name(ref)}»؛ ما فيه شي يتزامن.` };
       continue;
     }
     const mono = await monoOf(f.clip.assetId!, assets.get(f.clip.assetId!)!.url!);
     if (!mono) {
-      notes.push(`ما قدرت أقرأ صوت «${name(f)}».`);
+      flags[f.clip.id] = { level: "bad", why: "ما قدرت أقرأ صوته." };
       continue;
     }
     // let the browser breathe between the heavy steps
     await new Promise((r) => setTimeout(r, 0));
-    const found = findLag(monoA, mono, SYNC_RATE);
+    const found = findLag(monoRef, mono, SYNC_RATE);
     if (found.confidence === "none") {
-      notes.push(`«${name(f)}» ما يشبه صوته صوت «${name(anchor)}» بما يكفي (يمكن ما سُجّلا في نفس اللحظة، أو الصوت ضعيف). تركته مكانه.`);
+      later.push({ f, mono });
       continue;
     }
-    const start = syncedStart(anchor.clip, f.clip, Math.round(found.lag * 1000));
-    plan.push({ f, start });
-    if (found.confidence === "low") notes.push(`«${name(f)}»: التطابق متوسط الثقة؛ راجعه بالسماع.`);
+    plan.push({ f, start: syncedStart(ref.clip, f.clip, Math.round(found.lag * 1000)), mono });
+    if (found.confidence === "low") flags[f.clip.id] = { level: "weak", why: "التطابق متوسط الثقة؛ راجعه بالسماع." };
   }
-  if (!plan.length) return { cmds: [], notes, moved: 0 };
+  // a second chance: against the clips already in step (the longest first), a few each
+  for (let round = 0; round < 2 && later.length && plan.length; round++) {
+    const placed = [...plan].sort((x, y) => y.mono.length - x.mono.length).slice(0, CHAIN_TRIES);
+    for (const l of [...later]) {
+      onStep?.(`أجرّب «${name(l.f)}» مع المقاطع المتزامنة…`);
+      for (const p of placed) {
+        if (p.f.clip.assetId === l.f.clip.assetId) continue;
+        await new Promise((r) => setTimeout(r, 0));
+        const found = findLag(p.mono, l.mono, SYNC_RATE);
+        if (found.confidence === "none") continue;
+        plan.push({ f: l.f, start: syncedStart({ ...p.f.clip, start: p.start }, l.f.clip, Math.round(found.lag * 1000)), mono: l.mono });
+        flags[l.f.clip.id] = { level: "weak", why: `تزامن على صوت «${name(p.f)}» (مو على «${name(ref)}»)؛ راجعه بالسماع.` };
+        later.splice(later.indexOf(l), 1);
+        break;
+      }
+    }
+  }
+  for (const l of later) flags[l.f.clip.id] = { level: "bad", why: `صوته ما يشبه صوت «${name(ref)}» بما يكفي (يمكن ما سُجّل في نفس اللحظة، أو صوته ضعيف).` };
+
+  const tried = rest.map((f) => f.clip.id);
+  const bad = Object.values(flags).filter((x) => x.level === "bad").length;
+  const weak = Object.values(flags).filter((x) => x.level === "weak").length;
+  const tail = [
+    ...(weak ? [`${weak} منها تطابقها متوسط الثقة (معلّمة بالأصفر): راجعها بالسماع.`] : []),
+    ...(bad ? [`${bad} ما تزامنت وتركتها مكانها، معلّمة بالأحمر (وقّف عليها تشوف السبب).`] : []),
+  ];
+  if (!plan.length) return { cmds: [], notes: [`ما تزامن شي على صوت «${name(ref)}».`, ...tail], moved: 0, tried, flags };
 
   // nothing may start before the project does: everything moves later together
-  const min = Math.min(...plan.map((p) => p.start), anchor.clip.start);
+  const min = Math.min(...plan.map((p) => p.start), ref.clip.start);
   const shift = min < 0 ? -min : 0;
-  const magnetic = (f: (typeof picked)[number]) => tl.magnetic && mainTrack(tl)?.id === f.track.id;
-  if (shift && magnetic(anchor)) {
-    return { cmds: [], notes: [...notes, "المقطع الثاني يحتاج يبدأ قبل بداية المشروع. حرّك المقطع الأول لقدّام (أو انقله لمسار فوق الرئيسي) وأعد المزامنة."], moved: 0 };
+  const magnetic = (f: Picked) => tl.magnetic && mainTrack(tl)?.id === f.track.id;
+  if (shift && magnetic(ref)) {
+    return { cmds: [], notes: [`فيه مقطع يحتاج يبدأ قبل بداية المشروع. حرّك «${name(ref)}» لقدّام (أو انقله لمسار فوق الرئيسي) وأعد المزامنة.`], moved: 0, tried: [], flags: {} };
   }
   const cmds: Command[] = [];
-  if (shift) cmds.push({ type: "move_clip", clipId: anchor.clip.id, trackId: anchor.track.id, start: anchor.clip.start + shift });
+  if (shift) cmds.push({ type: "move_clip", clipId: ref.clip.id, trackId: ref.track.id, start: ref.clip.start + shift });
   for (const p of plan) {
     // the main track packs its clips edge to edge: a clip meant to sit at its own moment goes to a track of its own
     cmds.push({ type: "move_clip", clipId: p.f.clip.id, trackId: magnetic(p.f) ? "new" : p.f.track.id, start: p.start + shift });
   }
-  const names = plan.map((p) => `«${name(p.f)}»`).join("، ");
-  notes.unshift(`زامنت ${names} على صوت «${name(anchor)}».`);
-  return { cmds, notes, moved: plan.length };
+  return { cmds, notes: [`زامنت ${plan.length} مقطع على صوت «${name(ref)}».`, ...tail], moved: plan.length, tried, flags };
+}
+
+/** How many of the clips already in step a clip that missed the reference is tried against. */
+const CHAIN_TRIES = 4;
+
+/**
+ * Which clip the others line up to: the first (they are given in timeline order), unless another's file is at least
+ * one and a half times as long as the first's — the master recording under many short clips — then the longest.
+ */
+export function pickAnchor(clips: { id: string; fileMs: number }[]): string {
+  const first = clips[0];
+  const longest = clips.reduce((m, c) => (c.fileMs > m.fileMs ? c : m), first);
+  return longest.fileMs >= first.fileMs * 1.5 && longest.fileMs > 0 ? longest.id : first.id;
 }
