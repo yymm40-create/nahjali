@@ -63,6 +63,7 @@ import CommandBar from "./CommandBar";
 import ClipStrip from "./ClipStrip";
 import ScopesPanel from "./ScopesPanel";
 import "./workspaces.css";
+import "./glass.css";
 import { PAGE_INFO, PRO, WS_BY_ID, wsVars, type PageId } from "./workspaces";
 import { TL_ZOOM } from "./Timeline";
 import { BIG_STEP, comboOf, KEYS_STORE, keyTable, readProgram, type ActionId, type ProgramId } from "@/lib/editor/shortcuts";
@@ -291,6 +292,23 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   };
   // the timeline's height, dragged by its top edge (null: the usual share of the screen); kept on this device
   const [tlH, setTlH] = useState<number | null>(null);
+  // «المظهر»: the pro workspace as sheets of glass (the look it opens in), or flat as it was; kept on this device
+  const [skin, setSkin] = useState<"glass" | "flat">("glass");
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("jw-editor-skin") === "flat") {
+        const t = setTimeout(() => setSkin("flat"), 0);
+        return () => clearTimeout(t);
+      }
+    } catch {}
+  }, []);
+  const flipSkin = () => {
+    const next = skin === "glass" ? "flat" : "glass";
+    setSkin(next);
+    try {
+      localStorage.setItem("jw-editor-skin", next);
+    } catch {}
+  };
   // «التايملاين على الشاشة كاملة»: it covers the whole editor to work on many tracks (its own button; Esc leaves)
   const [tlFull, setTlFull] = useState(false);
   useEffect(() => {
@@ -2073,6 +2091,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       data-ed-theme={ws ? "ws" : theme}
       data-ed-page={bigPage ? "big" : undefined}
       data-ed-bars={bars}
+      // (not in the colour room: colour is judged against neutral greys, never against coloured light)
+      data-ed-skin={ws && skin === "glass" && !colorRoom ? "glass" : undefined}
       // a phone: the editor takes the whole screen (JAWAD AI's header steps aside, sections.css)
       data-ed-full=""
       style={{ ...(bars !== "open" ? ({ "--jw-header-h": "0px", "--jw-bar-h": "0px" } as React.CSSProperties) : {}), ...(ws ? (wsVars(ws) as React.CSSProperties) : {}), ...(T.font ? { fontFamily: `"${familyOf(T.font!)}", var(--jw-font)` } : {}), ...(sideChat ? ({ "--jw-chat-pad": chatPad } as React.CSSProperties) : {}) }}
@@ -2143,9 +2163,14 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           ctx={pluginCtx} run={run} flash={flash} readOnly={readOnly} className="lg:hidden" />
         {/* «⌨️ الاختصارات»: every key, and whose program wins a clash */}
         {ws && wide && (
+          <>
+          <button type="button" className="jw-btn jw-3d hidden shrink-0 text-xs lg:inline-flex" onClick={flipSkin} aria-pressed={skin === "glass"} aria-label={skin === "glass" ? "المظهر: زجاجي (اضغط للمسطّح)" : "المظهر: مسطّح (اضغط للزجاجي)"} title={skin === "glass" ? "المظهر زجاجي. اضغط يرجع المسطّح" : "المظهر مسطّح. اضغط يصير زجاجي"}>
+            <span aria-hidden>{skin === "glass" ? "💎" : "▦"}</span> <span className="hidden xl:inline">{skin === "glass" ? "زجاجي" : "مسطّح"}</span>
+          </button>
           <button type="button" className={`jw-btn jw-3d hidden shrink-0 text-xs lg:inline-flex ${big ? "pro-on" : ""}`} onClick={() => setBig((v) => !v)} aria-pressed={big} title="وضع التركيز: الشاشة والتايملاين بس (⇧F)">
             <Icon name="focus" size={15} /> <span className="hidden xl:inline">تركيز</span>
           </button>
+          </>
         )}
         {making.length > 0 && (
           <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-jw-accent/40 bg-jw-accent/10 px-2.5 py-1 text-[11px] font-semibold text-jw-accent" title={making.map((m) => m.name).join("، ")} aria-live="polite">
