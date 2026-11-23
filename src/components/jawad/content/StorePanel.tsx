@@ -5,6 +5,7 @@
 // and the references they liked. «محمد باقر» reads it before every answer, «حيدرا ماكس» with every slide.
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 
@@ -88,7 +89,9 @@ export default function StorePanel({ chatId, onClose }: { chatId: string; onClos
     if (added.length) await save({ ...store, refs: [...store.refs, ...added] });
   }
 
-  return (
+  // over the whole page (inside the chat's glass box a fixed layer is held and clipped by it)
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div className="ct-store-wrap" role="dialog" aria-modal="true" aria-label="خزان المراجع والثوابت" onClick={onClose}>
       <div className="ct-store ct-glass" onClick={(e) => e.stopPropagation()}>
         <header className="ct-store-head">
@@ -165,6 +168,7 @@ export default function StorePanel({ chatId, onClose }: { chatId: string; onClos
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

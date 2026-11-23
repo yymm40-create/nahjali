@@ -785,7 +785,8 @@
 .ct-thread-one { color: #b8ad9c; font-size: 13px; padding: 6px 4px; }
 .ct-thread-store { margin-inline-start: auto; border-color: color-mix(in srgb, var(--ct-amber) 55%, transparent); }
 .ct-msg.handoff { border: 1px solid color-mix(in srgb, var(--ct-amber) 50%, transparent); background: color-mix(in srgb, var(--ct-amber) 8%, transparent); }
-.ct-store-wrap { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0, 0, 0, 0.55); padding: 16px; }
+/* (put on the page's body, outside .ct: it carries the page's colours itself) */
+.ct-store-wrap { --ct-ink: #f5efe6; --ct-amber: #f6b73c; --ct-coral: #ff7a59; --ct-teal: #35c4b5; --ct-paper: #fff7e8; --ct-bg: #141018; color: var(--ct-ink); position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: rgba(0, 0, 0, 0.6); padding: 16px; direction: rtl; }
 .ct-store { width: min(640px, 100%); max-height: min(86vh, 900px); overflow: auto; border-radius: 20px; padding: 16px; display: grid; gap: 12px; }
 .ct-store-head { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
 .ct-store-head b { display: block; font-size: 17px; }
