@@ -11,9 +11,11 @@ import { stylePicturesSafe } from "@/lib/film/style-pictures";
 import SheetsWorkspace from "../[id]/sheets/SheetsWorkspace";
 import { projectKind } from "@config/film";
 import { castLinks, castOf } from "@/lib/film/series-cast";
+import { projectBrand } from "@/lib/film/ad-brand";
 
 
 import { storage } from "@/lib/storage";
+import { createAdminClient } from "@/lib/supabase/admin";
 export default async function SheetsView({ id, base }: { id: string; base: string }) {
   const { user, allowed } = await requireFilmUser(`${base}/${id}/sheets`);
   if (!allowed) redirect(base);
@@ -32,8 +34,16 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
   // a series' scene: its series' ready characters, places and style, to take as they are on the map
   const series = project.series_id ? (await castOf(project.series_id)).filter((c) => c.status === "ready") : [];
   const seriesLinks = series.length ? await castLinks(series) : {};
+  // an ad («📣 إعلان»): its brand's pictures (the project's «مراجع»), for the map's logo and product items
+  const ad = projectKind(project) === "ad";
+  const brand = ad ? (await projectBrand(id)).brand : [];
+  const brandPaths: Record<string, string> = {};
+  if (brand.length) {
+    const { data } = await createAdminClient().from("film_assets").select("id,storage_path").in("id", brand.map((b) => b.assetId));
+    for (const r of data ?? []) if (r.storage_path) brandPaths[r.id] = r.storage_path;
+  }
   // Short-lived links: every picture stays private
-  const paths = assets.filter((a) => a.storage_path).map((a) => a.storage_path!);
+  const paths = [...assets.filter((a) => a.storage_path).map((a) => a.storage_path!), ...Object.values(brandPaths)];
   const signed = paths.length ? ((await storage.from(FILM_BUCKET).createSignedUrls(paths, 3600)).data ?? []) : [];
   const url: Record<string, string> = {};
   signed.forEach((s, i) => s.signedUrl && (url[paths[i]] = s.signedUrl));
@@ -53,6 +63,7 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
         projectId={id}
         stage={project.stage}
         lesson={projectKind(project) === "lesson"}
+        brand={brand.map((b) => ({ id: b.assetId, role: b.role, name: b.name, url: url[brandPaths[b.assetId]] ?? "" }))}
         versions={versions}
         assets={assets.map((a) => ({ id: a.id, kind: a.kind, ref_key: a.ref_key, status: a.status, error: a.error, meta: a.meta, url: a.storage_path ? (url[a.storage_path] ?? "") : "", created_at: a.created_at, version_id: a.version_id ?? null }))}
         job={job ? { status: job.status, error: job.error } : null}

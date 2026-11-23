@@ -17,10 +17,11 @@ export default function JourneyIntakeCard({ intake, busy, confirmLabel = "صح،
       </header>
       <p className="whitespace-pre-wrap text-sm font-bold leading-7">{intake.understanding}</p>
       {intake.lesson && <LessonPlanCard plan={intake.lesson} />}
+      {intake.ad && <AdPlanCard plan={intake.ad} />}
       {intake.fixedFacts.length > 0 && <List title="ثوابت ما تتغير" items={intake.fixedFacts} />}
       {intake.characters.length > 0 && <List title="الشخصيات" items={intake.characters.map((item) => `${item.name}: ${item.description}`)} />}
       {intake.places.length > 0 && <List title="البيئات" items={intake.places.map((item) => `${item.name}: ${item.description}`)} />}
-      {intake.scenePlan.length > 0 && !intake.lesson && (
+      {intake.scenePlan.length > 0 && !intake.lesson && !intake.ad && (
         <details className="rounded-xl bg-[var(--film-soft)] p-3" open={intake.scenePlan.length <= 8}>
           <summary className="cursor-pointer text-sm font-black">خريطة المشاهد ({intake.scenePlan.length})</summary>
           <ol className="mt-2 space-y-2 text-xs font-bold leading-6">{intake.scenePlan.map((scene) => <li key={scene.number}><b>{scene.number}. {scene.title}</b> — {scene.summary}{scene.goal && <> · الهدف: {scene.goal}</>}{scene.transition && <> · الانتقال: {scene.transition}</>}</li>)}</ol>
@@ -69,6 +70,27 @@ function LessonPlanCard({ plan }: { plan: NonNullable<JourneyIntake["lesson"]> }
       {plan.question && <p>❓ سؤال الدرس: {plan.question}</p>}
       {plan.audience && <p>👥 الطلاب: {plan.audience}</p>}
       {plan.points.length > 0 && <ol className="list-inside list-decimal space-y-0.5 text-xs">{plan.points.map((p) => <li key={p}>{p}</li>)}</ol>}
+    </div>
+  );
+}
+
+/** «📣 إعلان»: the ad as سجاد understood it — only what the person said and showed, and the reference ad's style. */
+function AdPlanCard({ plan }: { plan: NonNullable<JourneyIntake["ad"]> }) {
+  return (
+    <div className="space-y-1.5 rounded-xl bg-[var(--film-soft)] p-3 text-sm font-bold leading-7">
+      <p className="font-black">📣 خطة الإعلان</p>
+      {plan.brand && <p>🏷️ البراند: {plan.brand}</p>}
+      {plan.product && <p>📦 المنتج: {plan.product}</p>}
+      {plan.message && <p>💬 الرسالة: {plan.message}</p>}
+      {plan.audience && <p>👥 الجمهور: {plan.audience}</p>}
+      {plan.ending && <p>🎬 النهاية: {plan.ending}</p>}
+      {plan.reference && <p>🔁 الإعلان المرجعي: {plan.reference}</p>}
+      {plan.imitate && (
+        <details className="text-xs">
+          <summary className="cursor-pointer font-black">وش بننقل منه (اللقطات، الكاميرا، الإيقاع)</summary>
+          <p className="mt-1 whitespace-pre-wrap leading-6">{plan.imitate}</p>
+        </details>
+      )}
     </div>
   );
 }

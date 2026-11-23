@@ -28,6 +28,7 @@ const toDigits = (s: string) =>
  * (a new film only, `withLink`) as «🔗 رابط يوتيوب»: a YouTube link and the person's note under it (lib/film/story-link),
  * which «سجاد» downloads, looks at and hears before he builds the film on it. A lesson («🎓 درس لطلابك») is given written,
  * as a PDF, as a video or as a YouTube link, with only what a lesson needs (no story map, facts or length: سجاد picks).
+ * An ad («📣 إعلان») is given written, or as a reference ad to follow (a YouTube link or a video), the same way.
  */
 export default function ProjectFields({
   values,
@@ -41,7 +42,7 @@ export default function ProjectFields({
   onChange: (v: FieldValues) => void;
   disabled?: boolean;
   /** a short scene shows each station's seconds (its length, or a minute); a whole film does not */
-  kind?: "scene" | "film" | "series" | "lesson" | "";
+  kind?: "scene" | "film" | "series" | "lesson" | "ad" | "";
   /** open on the story map even when nothing is written yet (a link like /film/new?map=1) */
   startOnMap?: boolean;
   /** offer «🔗 رابط يوتيوب» as a third way (the new-film page) */
@@ -50,8 +51,11 @@ export default function ProjectFields({
   const set = (key: keyof FieldValues) => (e: { target: { value: string } }) => onChange({ ...values, [key]: e.target.value });
   // a story already written on the map opens on the map
   const lesson = kind === "lesson";
+  const ad = kind === "ad";
+  // a lesson and an ad ask only for what they need (no story map, facts or length: سجاد picks, or the person says)
+  const short = lesson || ad;
   const [way, setWay] = useState<StoryWayKey>(() =>
-    withLink && storyLink(values.story) ? "link" : withLink && storyUpload(values.story) ? "upload" : lesson && storyPdf(values.story) ? "pdf" : !lesson && (startOnMap || parseStory(values.story) !== null) ? "map" : "free",
+    withLink && storyLink(values.story) ? "link" : withLink && storyUpload(values.story) ? "upload" : lesson && storyPdf(values.story) ? "pdf" : !short && (startOnMap || parseStory(values.story) !== null) ? "map" : "free",
   );
   const map = way === "map";
   const link = withLink && way === "link" ? (storyLink(values.story) ?? { url: "", note: "" }) : null;
@@ -64,7 +68,9 @@ export default function ProjectFields({
   // what the person is asked to write under a video, a link or a file
   const notePlaceholder = lesson
     ? "مثلًا: سوّ منه درس للصف الرابع عن كيف يشتغل القلب، أو ركّز على الصمامات، أو سوّه مجسم ثلاثي الأبعاد"
-    : "مثلًا: أبي نفس القصة بستايل كرتوني، أو خذ فكرته بس وغيّر الشخصيات، أو انسخ حركة الكاميرا والإضاءة";
+    : ad
+      ? "مثلًا: نفس أسلوب هالإعلان وكاميرته على منتجي، ٢٠ ثانية، وفي النهاية الشعار"
+      : "مثلًا: أبي نفس القصة بستايل كرتوني، أو خذ فكرته بس وغيّر الشخصيات، أو انسخ حركة الكاميرا والإضاءة";
   // switching ways: a link's story is not carried into the free text (nor the free text into the link)
   const chooseWay = (w: StoryWayKey) => {
     if (w === way) return;
@@ -79,12 +85,12 @@ export default function ProjectFields({
   return (
     <div className="card space-y-4 p-5">
       <label className="block space-y-1">
-        <span className="font-extrabold">{lesson ? <>عنوان الدرس <span className="text-sm text-muted">(اختياري: سجاد يحطه لو تركته)</span></> : "عنوان المشروع"}</span>
-        <input className="field" value={values.title} onChange={set("title")} maxLength={FILM_LIMITS.titleMax} disabled={disabled} placeholder={lesson ? "مثلًا: كيف يشتغل القلب؟" : "مثلًا: ليلة الفداء"} />
+        <span className="font-extrabold">{short ? <>{ad ? "عنوان الإعلان" : "عنوان الدرس"} <span className="text-sm text-muted">(اختياري: سجاد يحطه لو تركته)</span></> : "عنوان المشروع"}</span>
+        <input className="field" value={values.title} onChange={set("title")} maxLength={FILM_LIMITS.titleMax} disabled={disabled} placeholder={lesson ? "مثلًا: كيف يشتغل القلب؟" : ad ? "مثلًا: إعلان قهوتي" : "مثلًا: ليلة الفداء"} />
       </label>
       <div className="space-y-2">
-        <span className="block font-extrabold">{lesson ? "الدرس" : "فكرتك وقصتك"}</span>
-        {!disabled && <StoryWay way={way} onWay={chooseWay} withLink={withLink} lesson={lesson} />}
+        <span className="block font-extrabold">{lesson ? "الدرس" : ad ? "إعلانك" : "فكرتك وقصتك"}</span>
+        {!disabled && <StoryWay way={way} onWay={chooseWay} withLink={withLink} lesson={lesson} ad={ad} />}
         {pdf && !disabled ? (
           <div className="space-y-2">
             <StoryPdfUpload pdf={pdf.pdf} onPdf={(f) => setPdf(f, pdf.note)} />
@@ -95,7 +101,7 @@ export default function ProjectFields({
           </div>
         ) : upload && !disabled ? (
           <div className="space-y-2">
-            <StoryVideoUpload video={upload.video} onVideo={(v) => setUpload(v, upload.note)} lesson={lesson} />
+            <StoryVideoUpload video={upload.video} onVideo={(v) => setUpload(v, upload.note)} lesson={lesson} ad={ad} />
             <label className="block space-y-1">
               <span className="text-sm font-extrabold">وضّح لسجاد وش تبي منه <span className="text-xs text-muted">(اختياري)</span></span>
               <textarea
@@ -121,7 +127,7 @@ export default function ProjectFields({
             {link.url && !isYoutubeLink(link.url) ? (
               <p className="text-xs font-bold text-red-600">هذا مو رابط فيديو يوتيوب. المتاح الحين روابط يوتيوب بس.</p>
             ) : (
-              <p className="text-xs leading-6 text-muted">المتاح الحين روابط يوتيوب بس. سجاد ينزّل الفيديو ويشوف صوره ويسمع كلامه، ويقول لك وش فهم منه قبل ما يبني عليه {lesson ? "الدرس" : "فيلمك"}.</p>
+              <p className="text-xs leading-6 text-muted">المتاح الحين روابط يوتيوب بس. سجاد ينزّل الفيديو ويشوف صوره ويسمع كلامه، ويقول لك وش فهم منه قبل ما يبني عليه {lesson ? "الدرس" : ad ? "إعلانك" : "فيلمك"}.</p>
             )}
             <label className="block space-y-1">
               <span className="text-sm font-extrabold">وضّح لسجاد وش تبي منه <span className="text-xs text-muted">(اختياري)</span></span>
@@ -143,12 +149,12 @@ export default function ProjectFields({
             onChange={set("story")}
             maxLength={FILM_LIMITS.storyMax}
             disabled={disabled}
-            placeholder={lesson ? "اكتب الدرس أو الصقه، أو فكرته بس: مثلًا «كيف يشتغل القلب؟ للصف الرابع، أبيه مجسم ثلاثي الأبعاد»" : "فكرتي في جملة، ثم قصتي: من الشخصيات؟ كيف تبدأ؟ وش يصير؟ وشلون تنتهي؟"}
+            placeholder={ad ? "اكتب فكرة إعلانك: البراند والمنتج، وش تبي الناس تحس، والمدة لو تبي" : lesson ? "اكتب الدرس أو الصقه، أو فكرته بس: مثلًا «كيف يشتغل القلب؟ للصف الرابع، أبيه مجسم ثلاثي الأبعاد»" : "فكرتي في جملة، ثم قصتي: من الشخصيات؟ كيف تبدأ؟ وش يصير؟ وشلون تنتهي؟"}
           />
         )}
       </div>
       {/* a lesson asks nothing more: سجاد picks its facts and its length (45–75 s) */}
-      {!lesson && (<>
+      {!short && (<>
       <label className="block space-y-1">
         <span className="font-extrabold">أشياء ثابتة ما تبيها تتغير <span className="text-sm text-muted">(اختياري)</span></span>
         <textarea

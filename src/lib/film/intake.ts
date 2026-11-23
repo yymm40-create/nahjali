@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, type ClaudePart } from "./anthropic";
 import { storyLink, storyPdf, storyUpload, isYoutubeLink } from "./story-link";
 import { LESSON_INTAKE_RULES, lessonFormat, type LessonFormat } from "@config/film-lesson";
+import { AD_INTAKE_RULES, adBrandLines, adBrandRole, type AdBrandRole } from "@config/film-ad";
 import { listenToFiles, listenToLinks } from "@/lib/link-listen";
 import { isUuid, uploadViews, type UploadRow } from "@/lib/jawad/server/uploads";
 import { getOwnedProject } from "./access";
@@ -10,7 +11,7 @@ import { requireSeries } from "./series";
 
 const db = () => createAdminClient();
 const text = (value: unknown, max: number) => (typeof value === "string" ? value.trim().slice(0, max) : "");
-const KINDS = ["scene", "film", "series", "lesson"] as const;
+const KINDS = ["scene", "film", "series", "lesson", "ad"] as const;
 export type JourneyKind = (typeof KINDS)[number];
 
 export interface JourneyIntake {
@@ -26,6 +27,21 @@ export interface JourneyIntake {
   questions: { id: string; question: string; why: string; options: string[]; required: boolean }[];
   /** «🎓 درس لطلابك» (config/film-lesson.ts): the lesson's plan — only a lesson has it, and it marks the project as one */
   lesson?: LessonPlan | null;
+  /** «📣 إعلان» (config/film-ad.ts): the ad's plan — only an ad has it, and it marks the project as one */
+  ad?: AdPlan | null;
+}
+
+/** An ad's plan as سجاد understood it, only from the person's words and pictures (empty where they said nothing). */
+export interface AdPlan {
+  brand: string;
+  product: string;
+  message: string;
+  audience: string;
+  ending: string;
+  /** the reference ad's shots, camera, cuts, rhythm and mood, for the director to follow (empty without one) */
+  imitate: string;
+  /** where the reference ad came from (a YouTube link or the name of the person's video); empty without one */
+  reference: string;
 }
 
 /** A lesson's plan as سجاد understood it: its one question, its points in order, the students, and its visual shape. */
@@ -51,6 +67,8 @@ export interface JourneyIntakeBody {
   action?: unknown;
   /** the Claude model the person chose (config/claude-models.ts) */
   model?: unknown;
+  /** «📣 إعلان»: the brand's pictures (the person's own image uploads) and what each one is */
+  brand?: unknown;
   /** the story given as a YouTube link (lib/film/story-link): the person's upload of the video's frames, when the page
    * could download it */
   youtube?: { sheetId?: unknown } | null;
@@ -90,6 +108,44 @@ const LESSON_SCHEMA = {
   },
 } as const;
 
+/** An ad's gate: the same reply, plus the ad's plan. */
+const AD_SCHEMA = {
+  ...SCHEMA,
+  required: [...SCHEMA.required, "ad"],
+  properties: {
+    ...SCHEMA.properties,
+    ad: {
+      type: "object",
+      additionalProperties: false,
+      required: ["brand", "product", "message", "audience", "ending", "imitate"],
+      properties: { brand: string, product: string, message: string, audience: string, ending: string, imitate: string },
+    },
+  },
+} as const;
+
+/** An ad plan as stored (null when there is none). */
+export function normalizeAdPlan(value: unknown): AdPlan | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  return {
+    brand: text(raw.brand, 200),
+    product: text(raw.product, 1000),
+    message: text(raw.message, 1000),
+    audience: text(raw.audience, 300),
+    ending: text(raw.ending, 500),
+    imitate: text(raw.imitate, 6000),
+    reference: text(raw.reference, 400),
+  };
+}
+
+/** The brand's pictures sent to the gate: the person's own ready image uploads, each with its role. */
+export function readBrand(value: unknown): { fileId: string; role: AdBrandRole; name: string }[] {
+  return (Array.isArray(value) ? value : [])
+    .map((b) => (b && typeof b === "object" ? (b as Record<string, unknown>) : {}))
+    .flatMap((b) => (isUuid(b.fileId) && adBrandRole(b.role) ? [{ fileId: String(b.fileId).toLowerCase(), role: adBrandRole(b.role)!.id, name: text(b.name, 120) }] : []))
+    .slice(0, 12);
+}
+
 /** A lesson plan as stored (null when there is none, or it is not one). */
 export function normalizeLessonPlan(value: unknown): LessonPlan | null {
   if (!value || typeof value !== "object") return null;
@@ -121,6 +177,7 @@ export function normalizeJourneyIntake(value: unknown): JourneyIntake {
     episodePlan: rows(raw.episodePlan, (item, index) => ({ number: index + 1, title: text(item.title, 100) || `حلقة ${index + 1}`, summary: text(item.summary, 2000), scenes: (Array.isArray(item.scenes) ? item.scenes : []).map((scene) => text(scene, 500)).filter(Boolean).slice(0, 60) })),
     questions: rows(raw.questions, (item, index) => ({ id: text(item.id, 80) || `q${index + 1}`, question: text(item.question, 500), why: text(item.why, 500), options: (Array.isArray(item.options) ? item.options : []).map((option) => text(option, 200)).filter(Boolean).slice(0, 3), required: item.required !== false })).filter((item) => item.question).slice(0, 4),
     ...(normalizeLessonPlan(raw.lesson) ? { lesson: normalizeLessonPlan(raw.lesson) } : {}),
+    ...(normalizeAdPlan(raw.ad) ? { ad: normalizeAdPlan(raw.ad) } : {}),
   };
 }
 
@@ -151,14 +208,15 @@ export async function understandJourney(user: { id: string; email?: string | nul
   const answers = body.answers && typeof body.answers === "object" ? JSON.stringify(body.answers).slice(0, 8000) : "{}";
   const previous = body.previous && typeof body.previous === "object" ? JSON.stringify(body.previous).slice(0, 16000) : "{}";
   const lesson = kind === "lesson";
-  const prompt = `نوع العمل: ${kind === "scene" ? "مشهد قصير مستقل" : kind === "film" ? "فيلم سينمائي كامل" : lesson ? "درس تعليمي لطلاب" : "مسلسل كامل"}
+  const ad = kind === "ad";
+  const prompt = `نوع العمل: ${kind === "scene" ? "مشهد قصير مستقل" : kind === "film" ? "فيلم سينمائي كامل" : lesson ? "درس تعليمي لطلاب" : ad ? "إعلان لبراند" : "مسلسل كامل"}
 العنوان المبدئي: ${text(body.title, 80)}
 فكرة المستخدم/قصته: ${text(body.story, 20000)}
 الثوابت التي كتبها: ${text(body.fixedFacts, 5000)}
 المدة المقترحة: ${text(body.targetDurationSec, 20) || "غير محددة"}
 إجابات المستخدم على أسئلتك السابقة: ${answers}
 فهمك السابق الذي يجب تحديثه بدل البدء من الصفر: ${previous}
-${context ? `\n${context}` : ""}${lesson ? `\n\n${LESSON_INTAKE_RULES}` : ""}`;
+${context ? `\n${context}` : ""}${lesson ? `\n\n${LESSON_INTAKE_RULES}` : ""}${ad ? `\n\n${AD_INTAKE_RULES}` : ""}`;
 
   // one plain call: the rules are the (cached) system, the reply's shape is enforced by the schema. The Managed Agent path
   // added the whole prompt + schema to a session that kept every earlier pass, was priced as Opus whatever the person
@@ -174,11 +232,26 @@ ${context ? `\n${context}` : ""}${lesson ? `\n\n${LESSON_INTAKE_RULES}` : ""}`;
     if (video.sheetUrl) content.push({ type: "image", url: video.sheetUrl });
   }
   if (pdf) content.push({ type: "text", text: pdf.text }, { type: "doc", url: pdf.url, name: pdf.name });
-  const r = await callClaudeJson<JourneyIntake>({ system: INTAKE_RULES, turns: [{ role: "user", content: video || pdf ? content : prompt }], schema: lesson ? LESSON_SCHEMA : SCHEMA, maxTokens: 12000, effort: "medium" });
+  // «📣 إعلان»: the brand's pictures, looked at as they are (the logo, the product, the colours)
+  const brand = ad ? await brandPictures(user.id, body.brand) : [];
+  if (brand.length) {
+    content.push({ type: "text", text: `${adBrandLines(brand.map((b) => ({ role: b.role, name: b.name, assetId: null })))}\n\nالصور مرفقة بنفس الترتيب:` });
+    for (const b of brand) content.push({ type: "image", url: b.url });
+  }
+  const r = await callClaudeJson<JourneyIntake>({ system: INTAKE_RULES, turns: [{ role: "user", content: video || pdf || brand.length ? content : prompt }], schema: lesson ? LESSON_SCHEMA : ad ? AD_SCHEMA : SCHEMA, maxTokens: 12000, effort: "medium" });
   const intake = normalizeJourneyIntake(r.data);
-  // a lesson always carries its plan (it marks the project as a lesson); anything else never does
+  // a lesson / an ad always carries its plan (it marks the project as one); anything else never does
   if (lesson) intake.lesson = intake.lesson ?? normalizeLessonPlan({});
   else delete intake.lesson;
+  if (ad) {
+    // the reference ad (a link or the person's video): where it came from; without one there is nothing to imitate
+    const story = text(body.story, 20000);
+    const link = storyLink(story);
+    const upload = link ? null : storyUpload(story);
+    const reference = link ? `رابط يوتيوب: ${link.url}` : upload?.video ? `فيديو من جهازه: «${upload.video.name}»` : "";
+    const plan = intake.ad ?? normalizeAdPlan({})!;
+    intake.ad = { ...plan, reference, imitate: reference ? plan.imitate : "" };
+  } else delete intake.ad;
   return { intake, usd: claudeCost(r.usage) + (video?.usd ?? 0) };
 }
 
@@ -198,6 +271,35 @@ async function readPdf(userId: string, story: string): Promise<{ text: string; u
     "الملف مرفق بعد هذا النص: اقرأه كله (نصه وصوره وجداوله) وابنِ فهمك عليه بأمانة. لا تنسخ اسم الملف ولا رقمه في concept.",
   ].join("\n\n");
   return { text, url: file.url, name: given.pdf.name || file.name };
+}
+
+const IMITATE_SCHEMA = { type: "object", additionalProperties: false, required: ["imitate"], properties: { imitate: string } } as const;
+
+/**
+ * «📣 إعلان» for a project already started: سجاد looks at a reference ad (a YouTube link or the person's video, with the
+ * frames the page laid out) and hears it, and writes its style for the director to follow — its shots in order, the
+ * camera, the cuts, the rhythm and the mood. The ad's own story is not re-read.
+ */
+export async function imitateReference(userId: string, story: string, youtube: JourneyIntakeBody["youtube"]) {
+  const video = await watchLink(userId, story, youtube);
+  if (!video) throw new UserError("حط رابط يوتيوب أو ارفع فيديو الإعلان المرجعي.", 400);
+  const rules = AD_INTAKE_RULES.split("\n").find((l) => l.startsWith("- ad.imitate:")) ?? "";
+  const content: ClaudePart[] = [
+    { type: "text", text: `هذا إعلان مرجعي يبي صاحب البراند إعلانه يشابهه.\n\n${video.text}\n\nالمطلوب الحين imitate فقط، بالعربي:\n${rules}` },
+  ];
+  if (video.sheetUrl) content.push({ type: "image", url: video.sheetUrl });
+  const r = await callClaudeJson<{ imitate: string }>({ system: INTAKE_RULES, turns: [{ role: "user", content }], schema: IMITATE_SCHEMA, maxTokens: 4000, effort: "medium" });
+  return { imitate: text(r.data.imitate, 6000), usd: claudeCost(r.usage) + video.usd };
+}
+
+/** The brand's pictures given at the gate: each one the person's own ready image, with a short-lived link. */
+async function brandPictures(userId: string, value: unknown) {
+  const out: { role: AdBrandRole; name: string; url: string }[] = [];
+  for (const b of readBrand(value)) {
+    const file = await ownUpload(userId, b.fileId, "image");
+    if (file) out.push({ role: b.role, name: b.name || file.name, url: file.url });
+  }
+  return out;
 }
 
 /** One of the person's own uploads (owned, ready, of this kind), with a short-lived link. */
@@ -277,6 +379,21 @@ export function journeyIntakeText(intake: JourneyIntake) {
         l.question ? `- سؤال الدرس: ${l.question}` : "",
         l.audience ? `- الطلاب: ${l.audience}` : "",
         l.points.length ? `- النقاط بالترتيب:\n${l.points.map((p, i) => `  ${i + 1}. ${p}`).join("\n")}` : "",
+      ].filter(Boolean).join("\n"),
+    );
+  }
+  if (intake.ad) {
+    const a = intake.ad;
+    parts.push(
+      [
+        "خطة الإعلان المعتمدة (من كلام صاحب البراند وصوره فقط):",
+        a.brand ? `- البراند: ${a.brand}` : "",
+        a.product ? `- المنتج: ${a.product}` : "",
+        a.message ? `- الرسالة: ${a.message}` : "",
+        a.audience ? `- الجمهور: ${a.audience}` : "",
+        a.ending ? `- النهاية: ${a.ending}` : "",
+        a.reference ? `- الإعلان المرجعي: ${a.reference}` : "",
+        a.imitate ? `- أسلوب الإعلان المرجعي اللي ننقله (اللقطات، الكاميرا، الإيقاع):\n${a.imitate}` : "",
       ].filter(Boolean).join("\n"),
     );
   }
