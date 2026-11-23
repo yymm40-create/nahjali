@@ -3,7 +3,8 @@ import { handle } from "@/lib/api";
 import { robotTurn } from "@/lib/claude-run";
 import { getOwnedProject, requireFilmApiUser } from "@/lib/film/access";
 import { imitateReference } from "@/lib/film/intake";
-import { makeAd } from "@/lib/film/ad-brand";
+import { adPlanOf, dropAdReferenceVideo, keepAdReferenceVideo, makeAd } from "@/lib/film/ad-brand";
+import { UserError } from "@/lib/api";
 import { storyLink, storyUpload } from "@/lib/film/story-link";
 
 export const maxDuration = 300;
@@ -17,7 +18,16 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
   const user = await requireFilmApiUser();
   const { id } = await params;
   const project = await getOwnedProject(id, user.id, "screenwriter");
-  const body = (await req.json().catch(() => ({}))) as { story?: unknown; youtube?: { sheetId?: unknown } | null; model?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { story?: unknown; youtube?: { sheetId?: unknown } | null; model?: unknown; videoFileId?: unknown; removeVideo?: unknown };
+  // «📼 فيديو المرجع مع التوليد»: the reference ad's own clip (≤ 15 s), kept for the generations — any step of an ad
+  if (body.videoFileId !== undefined || body.removeVideo) {
+    if (!adPlanOf(project)) throw new UserError("حوّل المشروع لإعلان أول.", 409);
+    if (body.removeVideo) {
+      await dropAdReferenceVideo(project.id);
+      return NextResponse.json({ ok: true });
+    }
+    return NextResponse.json(await keepAdReferenceVideo(project, user.id, body.videoFileId));
+  }
   const story = typeof body.story === "string" ? body.story.trim().slice(0, 4000) : "";
   const link = storyLink(story);
   const upload = link ? null : storyUpload(story);

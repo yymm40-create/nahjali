@@ -62,7 +62,9 @@ export async function filmLibrary(project: FilmProject): Promise<LibraryItem[]> 
     const title = a.kind === "video" ? (isScene ? "المشهد الناجح" : `فيديو ${ref}`) : a.kind === "audio" ? `صوت ${ref.replace(/^line:/, "").replace(/^track:/, "حوار ")}` : ref === "STYLE-TEST" ? `اختبار ستايل${a.meta?.styleId ? ` · ${a.meta.styleId}` : ""}` : a.kind === "upload" ? `صورتك لـ${ref}` : `صورة ${ref}`;
     const state: LibraryItem["state"] = archived ? "archived" : a.status === "approved" ? "approved" : a.status === "failed" ? "failed" : a.status === "generated" || a.status === "uploaded" ? "current" : "older";
     const note = [typeof a.meta?.at_name === "string" ? a.meta.at_name : "", a.meta?.resolution ? String(a.meta.resolution) : "", a.meta?.durationSec ? `${a.meta.durationSec} ث` : ""].filter(Boolean).join(" · ");
-    out.push({ id: a.id, kind: a.kind === "upload" ? "image" : a.kind, step, title, note, url, state, at: a.created_at });
+    // «📣 إعلان»: the reference ad's own clip is a video, not a picture
+    const refClip = a.kind === "upload" && Boolean(a.meta?.ad_reference_video);
+    out.push({ id: a.id, kind: refClip ? "video" : a.kind === "upload" ? "image" : a.kind, step, title: refClip ? "📼 الإعلان المرجعي" : title, note, url, state, at: a.created_at });
   }
   return out.sort((x, y) => y.at.localeCompare(x.at));
 }

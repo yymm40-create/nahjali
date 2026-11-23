@@ -7,7 +7,7 @@ import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
 import { forTask, keepClaude } from "./claude-model";
 import { addMessage, stageTurns } from "./conversation";
 import { adDirectorNote } from "@config/film-ad";
-import { adPlanOf, projectBrand } from "./ad-brand";
+import { adPlanOf, adReferenceVideo, projectBrand } from "./ad-brand";
 import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { approvedImages, latestJob, sheetAssets } from "./sheets";
@@ -17,7 +17,7 @@ import { filmVideoToStudio, studioVideoToFilm } from "./studio-link";
 import { checkLipsyncs } from "./lipsync";
 import { buildVoiceTrack, OWN_TRACK, uploadedVoiceTrack, voiceTrackNote, wavSeconds } from "./voice-track";
 import { checkMp3 } from "@/lib/jawad/student/audio";
-import { clampVideoSeconds, DEFAULT_VIDEO_RESOLUTION, projectKind, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_OPEN_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
+import { clampVideoSeconds, DEFAULT_VIDEO_RESOLUTION, projectKind, videoCostUsd, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_OPEN_RESOLUTIONS, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
 import {
   DIRECTOR_APP_INTEGRATION,
   DIRECTOR_PROMPT,
@@ -654,11 +654,14 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
     prompt += voiceTrackNote(t);
     durationSec = Math.min(VIDEO_MODELS[model].maxSeconds, Math.max(durationSec, Math.ceil(t.seconds) + 1));
   }
+  // «📣 إعلان» on Wan 3.0: the reference ad's own video goes with the generation, to be recreated shot for shot; its
+  // seconds are charged like the video's own (fal's price), so they are in the reservation and the final cost
+  const refVideo = model === "wan-3.0" && projectKind(project) === "ad" ? await adReferenceVideo(project.id) : null;
   // a code that allows only some Seedance 2.0 generations (the owner's «الأكواد»): checked before anything is made
   if (model === "seedance-2.0" && !isAdmin(user.email)) await requireSeedanceRoom(user);
   const { count } = await db().from("film_jobs").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("operation", VIDEO_OP).eq("status", "running");
   if ((count ?? 0) >= MAX_VIDEOS_AT_ONCE) throw new UserError(`فيه ${MAX_VIDEOS_AT_ONCE} فيديوهات تتولد الحين، انتظر واحد يخلص.`, 409);
-  const meta = { model, durationSec, resolution, ratio: ratio || v.data.ratio || "16:9", generateAudio: v.data.generate_audio ?? true, ...(voiceTrack ? { voiceTrack } : {}) };
+  const meta = { model, durationSec, resolution, ratio: ratio || v.data.ratio || "16:9", generateAudio: v.data.generate_audio ?? true, ...(voiceTrack ? { voiceTrack } : {}), ...(refVideo ? { refVideo: refVideo.path, refVideoSec: refVideo.seconds } : {}) };
   const { data: asset, error } = await db()
     .from("film_assets")
     .insert({ project_id: project.id, kind: "video", ref_key: v.ref_key, version_id: v.id, status: "generating", meta })
@@ -671,7 +674,7 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
     service: "seedance",
     operation: VIDEO_OP,
     idempotencyKey: `video:${asset.id}`,
-    estimateUsd: videoEstimateUsd(model, resolution, durationSec),
+    estimateUsd: videoCostUsd(model, resolution, durationSec, refVideo?.seconds),
     units: durationSec,
     unit: "seconds",
     assetId: asset.id,
@@ -690,7 +693,7 @@ async function submitVideo(
   project: FilmProject,
   jobId: string,
   assetId: string,
-  o: { prompt: string; refs: FilmAsset[]; model: VideoModel; durationSec: number; resolution: VideoResolution; ratio: string; generateAudio: boolean; voiceTrack?: string | null },
+  o: { prompt: string; refs: FilmAsset[]; model: VideoModel; durationSec: number; resolution: VideoResolution; ratio: string; generateAudio: boolean; voiceTrack?: string | null; refVideo?: string; refVideoSec?: number },
 ) {
   const client = db();
   try {
@@ -698,7 +701,10 @@ async function submitVideo(
     const signed = paths.length ? (await storage.from(FILM_BUCKET).createSignedUrls(paths, 7200)).data ?? [] : [];
     const imageUrls = signed.map((s) => s.signedUrl).filter(Boolean) as string[];
     const track = o.voiceTrack ? (await storage.from(FILM_BUCKET).createSignedUrl(o.voiceTrack, 7200)).data?.signedUrl : null;
-    const taskId = await createVideoTask({ model: o.model, prompt: o.prompt, imageUrls, audioUrls: track ? [track] : [], durationSec: o.durationSec, resolution: o.resolution, ratio: o.ratio, generateAudio: o.generateAudio });
+    // the reference ad's video: if it cannot be signed the generation stops (never made and charged without it)
+    const refVideo = o.refVideo ? (await storage.from(FILM_BUCKET).createSignedUrl(o.refVideo, 7200)).data?.signedUrl : null;
+    if (o.refVideo && !refVideo) throw new Error("فيديو الإعلان المرجعي ما انقرا؛ ما انرسل التوليد.");
+    const taskId = await createVideoTask({ model: o.model, prompt: o.prompt, imageUrls, audioUrls: track ? [track] : [], videoUrls: refVideo ? [refVideo] : [], durationSec: o.durationSec, resolution: o.resolution, ratio: o.ratio, generateAudio: o.generateAudio });
     await client.from("film_jobs").update({ provider_task_id: taskId }).eq("id", jobId);
     // Keep watching for a while; the page's polling (checkVideos) finishes the rest
     const until = Date.now() + WATCH_MS;
@@ -724,7 +730,7 @@ async function finishVideo(
   project: FilmProject,
   jobId: string,
   assetId: string,
-  { model, durationSec, resolution }: { model: VideoModel; durationSec: number; resolution: VideoResolution },
+  { model, durationSec, resolution, refVideoSec }: { model: VideoModel; durationSec: number; resolution: VideoResolution; refVideoSec?: number },
   task: VideoTask,
 ) {
   const client = db();
@@ -741,7 +747,7 @@ async function finishVideo(
     if (up.error) throw up.error;
     await client.from("film_assets").update({ status: "generated", storage_path: path, mime: "video/mp4", bytes: file.length, error: null }).eq("id", assetId);
     // The real token count when the provider reports it, otherwise the estimate
-    const cost = task.tokens ? videoUsd(model, resolution, task.tokens) : videoEstimateUsd(model, resolution, durationSec);
+    const cost = task.tokens ? videoUsd(model, resolution, task.tokens) + videoCostUsd(model, resolution, 0, refVideoSec) : videoCostUsd(model, resolution, durationSec, refVideoSec);
     await succeedJob(jobId, { costUsd: cost, units: task.tokens ?? durationSec });
   } catch (err) {
     console.error("film video finish failed", err);
@@ -792,8 +798,8 @@ export async function checkVideos(project: FilmProject) {
       const task = await getVideoTask(j.provider_task_id).catch(() => null);
       if (task && ["succeeded", "failed", "cancelled", "expired"].includes(task.status)) {
         const { data: a } = await db().from("film_assets").select("meta").eq("id", j.asset_id).single();
-        const meta = (a?.meta ?? {}) as { model?: VideoModel; durationSec?: number; resolution?: VideoResolution };
-        await finishVideo(project, j.id, j.asset_id, { model: meta.model ?? "seedance-2.5", durationSec: meta.durationSec ?? 10, resolution: meta.resolution ?? DEFAULT_VIDEO_RESOLUTION }, task);
+        const meta = (a?.meta ?? {}) as { model?: VideoModel; durationSec?: number; resolution?: VideoResolution; refVideoSec?: number };
+        await finishVideo(project, j.id, j.asset_id, { model: meta.model ?? "seedance-2.5", durationSec: meta.durationSec ?? 10, resolution: meta.resolution ?? DEFAULT_VIDEO_RESOLUTION, refVideoSec: meta.refVideoSec }, task);
         continue;
       }
     }

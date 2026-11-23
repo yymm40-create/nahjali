@@ -17,6 +17,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { dialogueSource, startingMode } from "@/lib/film/dialogue-source";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import VideosWorkspace from "../[id]/videos/VideosWorkspace";
+import { projectKind } from "@config/film";
+import { adReferenceVideo } from "@/lib/film/ad-brand";
 
 
 import { storage } from "@/lib/storage";
@@ -38,6 +40,8 @@ export default async function VideosView({ id, base }: { id: string; base: strin
     // «مصدر الحوار»: the person's answer to the screenwriter's question, every shot starts on it
     createAdminClient().from("film_versions").select("body").eq("project_id", id).eq("stage", "screenwriter").eq("kind", "handoff").eq("status", "approved").order("version", { ascending: false }).limit(1).maybeSingle(),
   ]);
+  // «📣 إعلان»: the reference ad's own video, sent with every Wan 3.0 generation
+  const refVideo = projectKind(project) === "ad" ? await adReferenceVideo(id) : null;
   const source = dialogueSource((handoff.data as { body?: string } | null)?.body);
   const map = versions.filter((v) => v.kind === "dir_map" && v.status === "approved").at(-1)?.data.generation_map ?? [];
   const approved = versions.filter((v) => v.kind === "dir_generation" && v.status === "approved");
@@ -106,7 +110,9 @@ export default async function VideosView({ id, base }: { id: string; base: strin
           download: links[v.id]?.download ?? "",
           note: typeof v.meta?.montage_note === "string" ? (v.meta.montage_note as string) : "",
           edited: Boolean(v.meta?.edited),
+          refVideoSec: Number(v.meta?.refVideoSec) || 0,
         }))}
+        adRefVideoSec={refVideo?.seconds ?? 0}
         videosRunning={videosRunning}
         job={job ? { status: job.status, error: job.error } : null}
         trialVideosLeft={null}
