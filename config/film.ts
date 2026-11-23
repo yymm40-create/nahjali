@@ -2,6 +2,7 @@
 // Spending caps (USD) are edited from /admin/film and stored in the database (film_settings).
 
 import { LESSON_BRIEF, LESSON_SECONDS } from "./film-lesson";
+import { AD_BRIEF, AD_SECONDS } from "./film-ad";
 
 /** The film branch's stages, in order. */
 export const FILM_STAGES = [
@@ -133,6 +134,16 @@ export const FILM_KINDS = [
     seconds: [LESSON_SECONDS.min, LESSON_SECONDS.max] as [number, number],
   },
   {
+    // «📣 إعلان» (config/film-ad.ts): an ad for the person's brand, with its pictures from the start and a reference ad
+    // to follow — kept in the database as a scene, its plan in the project's intake («ad»)
+    id: "ad",
+    ar: "إعلان",
+    icon: "📣",
+    hint: "إعلان لبراندك بصور شعارك ومنتجك، ولو تبي على أسلوب إعلان تحبه (رابط أو فيديو)",
+    brief: AD_BRIEF,
+    seconds: [AD_SECONDS.min, AD_SECONDS.max] as [number, number],
+  },
+  {
     id: "series",
     ar: "مسلسل كامل",
     icon: "📺",
@@ -144,11 +155,13 @@ export const FILM_KINDS = [
 export type FilmKind = (typeof FILM_KINDS)[number]["id"];
 export const filmKind = (v: unknown) => FILM_KINDS.find((k) => k.id === v) ?? null;
 /** The shape a project is made in (a scene when nothing was chosen, which is how every old project was made). A lesson
- * is kept as a scene: see projectKind for the shape the person chose. */
-export const readFilmKind = (v: unknown): Exclude<FilmKind, "series" | "lesson"> => (v === "film" ? "film" : "scene");
-/** A project's shape as the person chose it: a lesson when its intake carries a lesson plan, else its stored kind. */
-export const projectKind = (p: { kind?: unknown; intake?: unknown }): Exclude<FilmKind, "series"> =>
-  p.intake && typeof p.intake === "object" && (p.intake as { lesson?: unknown }).lesson ? "lesson" : readFilmKind(p.kind);
+ * and an ad are kept as scenes: see projectKind for the shape the person chose. */
+export const readFilmKind = (v: unknown): Exclude<FilmKind, "series" | "lesson" | "ad"> => (v === "film" ? "film" : "scene");
+/** A project's shape as the person chose it: a lesson or an ad when its intake carries that plan, else its stored kind. */
+export const projectKind = (p: { kind?: unknown; intake?: unknown }): Exclude<FilmKind, "series"> => {
+  const intake = p.intake && typeof p.intake === "object" ? (p.intake as { lesson?: unknown; ad?: unknown }) : null;
+  return intake?.lesson ? "lesson" : intake?.ad ? "ad" : readFilmKind(p.kind);
+};
 
 export const FILM_LIMITS = {
   titleMax: 80,

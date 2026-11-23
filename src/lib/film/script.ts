@@ -20,6 +20,7 @@ import {
 } from "@config/film-prompts/screenwriter";
 import { filmKind, projectKind } from "@config/film";
 import { completeHandoff } from "./handoff-guard";
+import { brandText } from "./ad-brand";
 import { journeyIntakeText, normalizeJourneyIntake } from "./intake";
 
 const STAGE = "screenwriter";
@@ -58,7 +59,7 @@ interface Message {
 const db = () => createAdminClient();
 
 /** The user's first message: their own story, facts and duration, exactly as they wrote them. */
-export function storyMessage(p: FilmProject) {
+export function storyMessage(p: FilmProject, brand = "") {
   // a lesson («🎓 درس لطلابك») is kept as a scene and known by its intake's plan: the screenwriter gets the lesson brief
   const kind = filmKind(projectKind(p as { kind?: unknown; intake?: unknown }))!;
   const parts = [`نوع العمل: ${kind.ar}`, kind.brief, "", `عنوان المشروع: ${p.title}`, "", p.story];
@@ -71,6 +72,8 @@ export function storyMessage(p: FilmProject) {
       // A malformed legacy value must not block the existing screenplay journey.
     }
   }
+  // «📣 إعلان»: the brand's pictures (sent as themselves: this is the screenwriter's first message)
+  if (brand) parts.push("", brand);
   // what سجاد found and the person approved
   const research = researchText(readResearch(p.research));
   if (research) parts.push("", research);
@@ -140,7 +143,7 @@ export async function scriptAction(project: FilmProject, user: { id: string; ema
     case "start": {
       if (msgs.length > 0) throw new UserError("المحادثة مع السيناريست بدأت من قبل.", 409);
       if (project.story.trim().length < 10) throw new UserError("اكتب قصتك أول (ولو بأسطر قليلة).", 400);
-      userText = storyMessage(project);
+      userText = storyMessage(project, projectKind(project) === "ad" ? await brandText(project.id) : "");
       break;
     }
     case "approve": {

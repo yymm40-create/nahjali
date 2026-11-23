@@ -29,7 +29,7 @@ const order = (s: Stage) => FILM_STAGES.findIndex((x) => x.key === s);
 export interface StageProps {
   projectId: string;
   title: string;
-  kind: "scene" | "film" | "lesson";
+  kind: "scene" | "film" | "lesson" | "ad";
   stage: Stage;
   /** the generation page and what follows open once the director approved a shot */
   videosOpen: boolean;
@@ -102,7 +102,7 @@ export default function FilmStage({ projectId, title, kind, stage, videosOpen, c
             <FilmBackButton fallback={filmBase} className="fs-back" />
             <Meter percent={progress.percent} busy={running} />
             <div className="fs-title">
-              <span className="fs-kicker">{kind === "film" ? "فيلم سينمائي" : kind === "lesson" ? "🎓 درس" : "مشهد قصير"}</span>
+              <span className="fs-kicker">{kind === "film" ? "فيلم سينمائي" : kind === "lesson" ? "🎓 درس" : kind === "ad" ? "📣 إعلان" : "مشهد قصير"}</span>
               <h1 title={title}>{title}</h1>
               <p><Coined text={cost} /> · {FILM_STAGES.find((s) => s.key === stage)?.label}</p>
             </div>
@@ -112,7 +112,7 @@ export default function FilmStage({ projectId, title, kind, stage, videosOpen, c
           </div>
           <RunningList items={progress.running} />
           {running && <BellAsk />}
-          <nav className="fs-glass fs-rail" aria-label={kind === "film" ? "خطوات الفيلم" : kind === "lesson" ? "خطوات الدرس" : "خطوات المشهد"} ref={rail}>
+          <nav className="fs-glass fs-rail" aria-label={kind === "film" ? "خطوات الفيلم" : kind === "lesson" ? "خطوات الدرس" : kind === "ad" ? "خطوات الإعلان" : "خطوات المشهد"} ref={rail}>
             {STEPS.map((s, i) => {
               const href = base + s.path;
               const open = order(stage) >= order(s.reached) && (!["videos", "voices", "edit"].includes(s.key) || videosOpen);

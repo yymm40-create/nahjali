@@ -6,6 +6,8 @@ import { filmPathsInUse } from "@/lib/editor/server";
 import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
 import { forTask, keepClaude } from "./claude-model";
 import { addMessage, stageTurns } from "./conversation";
+import { adDirectorNote } from "@config/film-ad";
+import { adPlanOf, projectBrand } from "./ad-brand";
 import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { approvedImages, latestJob, sheetAssets } from "./sheets";
@@ -15,7 +17,7 @@ import { filmVideoToStudio, studioVideoToFilm } from "./studio-link";
 import { checkLipsyncs } from "./lipsync";
 import { buildVoiceTrack, OWN_TRACK, uploadedVoiceTrack, voiceTrackNote, wavSeconds } from "./voice-track";
 import { checkMp3 } from "@/lib/jawad/student/audio";
-import { clampVideoSeconds, DEFAULT_VIDEO_RESOLUTION, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_OPEN_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
+import { clampVideoSeconds, DEFAULT_VIDEO_RESOLUTION, projectKind, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_OPEN_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
 import {
   DIRECTOR_APP_INTEGRATION,
   DIRECTOR_PROMPT,
@@ -209,6 +211,15 @@ export const readChoice = (c: VideoChoice) => ({
   model: videoModelOf(c),
 });
 
+/** «📣 إعلان»: the reference ad the director follows (its frame sheets and سجاد's reading), as message parts. */
+async function adReferenceNote(project: FilmProject): Promise<string[]> {
+  if (projectKind(project) !== "ad") return [];
+  const plan = adPlanOf(project);
+  const { frames } = await projectBrand(project.id);
+  const note = adDirectorNote({ imitate: plan?.imitate ?? "", frames, source: plan?.reference ?? "" });
+  return note ? ["---", note] : [];
+}
+
 export async function directorAction(project: FilmProject, user: User, input: DirectorAction): Promise<{ jobId: string | null; studioJobId?: string; warning?: string; upload?: { path: string; token: string } }> {
   if (project.stage === "screenwriter" || project.stage === "sheets") throw new UserError("اعتمد كل صور الشيتات أول.", 409);
   const versions = await directorVersions(project.id);
@@ -253,6 +264,8 @@ export async function directorAction(project: FilmProject, user: User, input: Di
         ...refs,
         "---",
         VIDEO_GENERATOR_FACTS,
+        // an ad («📣 إعلان») on a reference ad: its frames and سجاد's reading of it, so the shots follow it
+        ...(await adReferenceNote(project)),
       ].join("\n\n");
       const id = await addUserMessage(project.id, text);
       return { jobId: await queueReply(project, user, id) };

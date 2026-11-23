@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getOwnedProject, requireFilmApiUser } from "@/lib/film/access";
 import { FILM_BUCKET, projectDir } from "@/lib/film/types";
 import { FILM_LIMITS } from "@config/film";
+import { brandMeta, tellScreenwriterOfBrand } from "@/lib/film/ad-brand";
+import type { AdBrandRole } from "@config/film-ad";
 
 import { storage } from "@/lib/storage";
 /** Step 2 of a reference upload: checks the stored file and records it in the project. */
@@ -12,7 +14,7 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
   const { id } = await params;
   const project = await getOwnedProject(id, user.id);
 
-  const { path, fileName } = (await req.json().catch(() => ({}))) as { path?: string; fileName?: string };
+  const { path, fileName, brand } = (await req.json().catch(() => ({}))) as { path?: string; fileName?: string; brand?: unknown };
   const dir = `${projectDir(project)}/uploads`;
   if (!path || !path.startsWith(`${dir}/`) || path.includes("..")) throw new UserError("ملف غير صحيح.", 400);
 
@@ -44,9 +46,13 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
       mime,
       bytes: size,
       status: "uploaded",
+      // «📣 إعلان»: what this brand picture is (the logo, the product, the colours…)
+      meta: brandMeta(brand),
     })
     .select("id")
     .single();
   if (e2) throw e2;
+  const meta = brandMeta(brand);
+  if (meta.brand) await tellScreenwriterOfBrand(project, data.id, meta.brand as AdBrandRole, (fileName ?? "").slice(0, 120)).catch((e) => console.error("brand note not added", e));
   return NextResponse.json({ id: data.id });
 });

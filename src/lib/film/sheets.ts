@@ -12,6 +12,8 @@ import { STYLE_TEST_KEY, promptWithTestStyle, sheetEditHead, sheetEdits, styleTe
 import { findStyle } from "@config/film-styles";
 import { projectKind } from "@config/film";
 import { LESSON_SHEETS_NOTE, LESSON_STYLE_ID } from "@config/film-lesson";
+import { adSheetsNote } from "@config/film-ad";
+import { brandText } from "./ad-brand";
 import { sheetImpact } from "./impact";
 import { withCharacterLayout } from "@config/film-prompts/character-sheet";
 import { completeHandoff } from "./handoff-guard";
@@ -303,7 +305,9 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       handoff.body = completeHandoff(handoff.body, screenplay?.body);
       // a lesson («🎓 درس لطلابك»): its fixed style and what its map holds are said before the map is planned
       const lesson = projectKind(project) === "lesson" ? `\n\n---\n${LESSON_SHEETS_NOTE}` : "";
-      const id = await addUserMessage(project.id, `${handoff.body}\n\n---\n${GENERATOR_FACTS}${lesson}`);
+      // an ad («📣 إعلان»): the brand's pictures (sent as themselves) and where they go on the map
+      const ad = projectKind(project) === "ad" ? `\n\n---\n${adSheetsNote(await brandText(project.id))}` : "";
+      const id = await addUserMessage(project.id, `${handoff.body}\n\n---\n${GENERATOR_FACTS}${lesson}${ad}`);
       return { jobId: await queueReply(project, user, id) };
     }
 

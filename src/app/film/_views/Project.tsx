@@ -10,6 +10,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { FILM_STAGES, STATUS_LABELS } from "@config/film";
 import ProjectEditor from "../[id]/ProjectEditor";
 import References from "../[id]/References";
+import AdConvert from "../[id]/AdConvert";
+import { projectKind } from "@config/film";
+import { adBrandRole } from "@config/film-ad";
+import { adPlanOf } from "@/lib/film/ad-brand";
 
 import { storage } from "@/lib/storage";
 import JourneyUpgrade from "../JourneyUpgrade";
@@ -34,7 +38,13 @@ export default async function ProjectView({ id, base }: { id: string; base: stri
   const urls = uploads.length
     ? (await storage.from(FILM_BUCKET).createSignedUrls(uploads.map((u) => u.storage_path!), 3600)).data ?? []
     : [];
-  const references = uploads.map((u, i) => ({ id: u.id, name: u.file_name ?? "", url: urls[i]?.signedUrl ?? "" }));
+  // «📣 إعلان»: the brand's pictures are the project's own references, each marked with what it is; the reference ad's
+  // frames are kept for the director and not listed
+  const references = uploads
+    .map((u, i) => ({ id: u.id, name: u.file_name ?? "", url: urls[i]?.signedUrl ?? "", brand: adBrandRole(u.meta?.brand)?.id ?? null }))
+    .filter((_, i) => !uploads[i].meta?.ad_reference);
+  const kind = projectKind(project);
+  const adPlan = adPlanOf(project);
 
   const cost = await projectCost(project.id);
   const { count: messageCount } = await db.from("film_messages").select("id", { count: "exact", head: true }).eq("project_id", project.id);
@@ -86,7 +96,10 @@ export default async function ProjectView({ id, base }: { id: string; base: stri
 
       {!stage && project.stage !== "screenwriter" && <RewindCard projectId={project.id} />}
 
-      <References projectId={project.id} initial={references} />
+      {/* «📣 خلّه إعلان»: a scene or a film becomes an ad before the screenwriter hands over (or an ad changes its reference) */}
+      {!project.series_id && kind !== "lesson" && project.stage === "screenwriter" && <AdConvert projectId={project.id} ad={kind === "ad"} reference={adPlan?.reference ?? ""} />}
+
+      <References projectId={project.id} initial={references} ad={kind === "ad"} />
 
       <section className="card space-y-2 p-4">
         <h2 className="text-lg font-extrabold">تكلفة المشروع إلى الآن</h2>

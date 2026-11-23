@@ -17,6 +17,7 @@ import SheetCards from "./SheetCards";
 import ConvertCards from "./ConvertCards";
 import { styleTestCandidate, styleTestPictures, styleTestRef, testRefOn } from "@/lib/film/style-test-ref";
 import { LESSON_MAP_QUESTION } from "@config/film-lesson";
+import { AD_MAP_QUESTION, adBrandRole, type AdBrandRole } from "@config/film-ad";
 import StyleBrowser, { StyleThumb, type StyleCardView } from "@/components/style-map/StyleBrowser";
 
 const MAX_REFERENCE_UPLOADS = 4; // same as lib/film/sheets.ts (that file is server-only)
@@ -50,6 +51,17 @@ interface Props {
   seriesCast?: SeriesCast[];
   /** «🎓 درس لطلابك»: the style is fixed (no style test), and the map asks about the teacher's own characters first */
   lesson?: boolean;
+  /** «📣 إعلان»: the brand's pictures (the project's «مراجع»), put on the map's logo and product items as they are */
+  brand?: BrandRef[];
+}
+
+type BrandRef = { id: string; role: AdBrandRole; name: string; url: string };
+
+/** The brand picture standing for a map item of an ad: LOG-01 the first logo, PRD-02 the second product… */
+function brandFor(m: MapItem, brand: BrandRef[]) {
+  const hit = /^(LOG|PRD)-(\d{2})$/.exec(m.id);
+  if (!hit) return null;
+  return brand.filter((b) => b.role === (hit[1] === "LOG" ? "logo" : "product"))[Number(hit[2]) - 1] ?? null;
 }
 
 type SeriesCast = { id: string; kind: "style" | "character" | "place"; name: string; url: string };
@@ -66,7 +78,7 @@ function castFor(m: MapItem, cast: SeriesCast[]) {
 const MASTER = "STY-00";
 const TEST = "STYLE-TEST";
 
-export default function SheetsWorkspace({ projectId, stage, versions, assets, job, imagesRunning, styles, editsLeft, seriesCast = [], lesson = false }: Props) {
+export default function SheetsWorkspace({ projectId, stage, versions, assets, job, imagesRunning, styles, editsLeft, seriesCast = [], lesson = false, brand = [] }: Props) {
   const router = useRouter();
   const filmBase = useFilmBase();
   const [writing, setWriting] = useState(job?.status === "running");
@@ -233,6 +245,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
             projectId={projectId}
             map={map}
             lesson={lesson}
+            brand={brand}
             locked={understanding.status !== "awaiting_approval"}
             savedChoices={choices}
             assets={assets}
@@ -386,9 +399,11 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
 
 /** Per map item: generate it, or use the user's own picture (as is / as a reference for a new sheet). */
 function MapChoices({
-  projectId, map, lesson, locked, savedChoices, assets, seriesCast, busy, onRefresh, onRemove, onApprove, onSend, warning,
+  projectId, map, lesson, brand = [], locked, savedChoices, assets, seriesCast, busy, onRefresh, onRemove, onApprove, onSend, warning,
 }: {
   projectId: string;
+  /** «📣 إعلان»: the brand's pictures, taken as they are (the logo and the products by themselves, any other by a tap) */
+  brand?: BrandRef[];
   /** «🎓 درس لطلابك»: asked first whether the teacher has characters of his own to use or turn into the style */
   lesson?: boolean;
   map: MapItem[];
@@ -441,6 +456,34 @@ function MapChoices({
     }
   });
 
+  // an ad: one of the brand's pictures as an item's picture, as it is (goes to every generation as a reference)
+  async function takeFromBrand(items: { sheetId: string; assetId: string }[]) {
+    setError("");
+    try {
+      for (const it of items) {
+        setUploading(it.sheetId);
+        await postJson(`/api/film/projects/${projectId}/sheets`, { action: "use_brand", sheetId: it.sheetId, assetId: it.assetId });
+      }
+      setChoices((c) => ({ ...c, ...Object.fromEntries(items.map((it) => [it.sheetId, "as_is" as MapChoice])) }));
+      onRefresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setUploading("");
+    }
+  }
+  // the logo and the products are put on their items by themselves the first time the map shows
+  const autoBrand = useRef(false);
+  useEffect(() => {
+    if (locked || autoBrand.current || !brand.length) return;
+    autoBrand.current = true;
+    const items = map.flatMap((m) => {
+      const b = brandFor(m, brand);
+      return b && !savedChoices[m.id] && !assets.some((a) => a.kind === "upload" && a.ref_key === m.id && a.status !== "rejected") ? [{ sheetId: m.id, assetId: b.id }] : [];
+    });
+    if (items.length) setTimeout(() => void takeFromBrand(items), 0);
+  });
+
   async function upload(files: File[]) {
     const sheetId = fileFor.current;
     if (!files.length || !sheetId) return;
@@ -470,8 +513,9 @@ function MapChoices({
   return (
     <div className="space-y-2">
       <h3 className="font-extrabold">خريطة الشيتات: وش تبي نصنع؟</h3>
+      {!locked && brand.length > 0 && <p className="rounded-xl border-2 border-[var(--film-hl)] bg-[var(--film-soft)] p-3 text-sm font-black leading-7">🏷️ {AD_MAP_QUESTION}</p>}
       {!locked && lesson && <p className="rounded-xl border-2 border-[var(--film-hl)] bg-[var(--film-soft)] p-3 text-sm font-black leading-7">❓ {LESSON_MAP_QUESTION}</p>}
-      {!locked && !lesson && <p className="text-sm font-bold text-muted">💡 هذي الشخصيات والأماكن اللي بنرسمها. ما عندك صورة؟ خلّها على «اصنعه لي» واضغط «اعتمد» تحت.</p>}
+      {!locked && !lesson && !brand.length && <p className="text-sm font-bold text-muted">💡 هذي الشخصيات والأماكن اللي بنرسمها. ما عندك صورة؟ خلّها على «اصنعه لي» واضغط «اعتمد» تحت.</p>}
       <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(e) => upload(Array.from(e.target.files ?? []))} />
       {map.map((m) => {
         const c = (locked ? savedChoices[m.id] : choices[m.id]) ?? "make";
@@ -495,6 +539,13 @@ function MapChoices({
                 {([["make", "🎨 اصنعه لي"], ["as_is", "📤 عندي جاهز (كما هو)"], ["reference", "🖼️ عندي صورة، اصنع منها شيت"], ["convert", "🔄 حوّل شخصية واقعية إلى ستايل الفيلم (حتى ٤ صور، كل صورة تتحول لحالها)"]] as const).map(([k, label]) => (
                   <button key={k} className={`chip ${c === k ? "bg-gold text-on-gold" : ""}`} onClick={() => setChoices({ ...choices, [m.id]: k })}>{label}</button>
                 ))}
+                {brand.map((b) => (
+                  <button key={b.id} className="chip border-2 border-[var(--film-blue)]" disabled={!!uploading} onClick={() => takeFromBrand([{ sheetId: m.id, assetId: b.id }])} title={b.name}>
+                    {adBrandRole(b.role)?.icon} من براندك: {adBrandRole(b.role)?.ar}
+                    {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL */}
+                    {b.url && <img src={b.url} alt="" className="ms-1 inline size-6 rounded object-cover" />}
+                  </button>
+                ))}
                 {castFor(m, seriesCast) && (
                   <button className="chip border-2 border-[var(--film-blue)]" disabled={!!uploading} onClick={() => takeFromSeries([{ sheetId: m.id, castId: castFor(m, seriesCast)!.id }])}>
                     📚 من المسلسل: {castFor(m, seriesCast)!.name}
@@ -514,6 +565,7 @@ function MapChoices({
                   </div>
                 ))}
                 {shown.some((u) => u.meta?.series_cast) && <span className="chip text-xs">📚 من شخصيات المسلسل</span>}
+                {shown.some((u) => u.meta?.brand_asset) && <span className="chip text-xs">🏷️ من صور براندك</span>}
                 {!locked && (c !== "convert" || ups.length < MAX_REFERENCE_UPLOADS) && (
                   <button className="btn btn-ghost min-h-10 px-3 text-sm" disabled={Boolean(uploading)} onClick={() => { fileFor.current = m.id; input.current?.click(); }}>
                     {uploading === m.id ? "نرفع…" : c === "convert" ? `أضف صور (${ups.length}/${MAX_REFERENCE_UPLOADS})` : ups.length ? "غيّر الصورة" : "ارفع الصورة"}

@@ -7,6 +7,8 @@ import { FILM_LIMITS } from "@config/film";
 import { normalizeJourneyIntake } from "@/lib/film/intake";
 import { setProjectJourney } from "@/lib/film/journey";
 import { isFilmJourney } from "@config/film-journey";
+import { keepAdPictures } from "@/lib/film/ad-brand";
+import type { FilmProject } from "@/lib/film/types";
 
 /** Creates a new film project from the user's title and story. */
 export const POST = handle(async (req: Request) => {
@@ -38,5 +40,10 @@ export const POST = handle(async (req: Request) => {
   // «اختر رحلتك»: the mind that writes this film, kept with it (a film whose choice could not be kept is still made: it
   // answers with the person's own pick, and the choice can be made again from its pages)
   if (isFilmJourney(body.journey)) await setProjectJourney(made.data.id, body.journey).catch((e) => console.error("film journey not kept", e));
+  // «📣 إعلان»: the brand's pictures and the reference ad's frames, given before there was a project, become its references
+  if (intake?.ad) {
+    const project = { id: made.data.id, user_id: user.id } as FilmProject;
+    await keepAdPictures(project, user.id, body.brand, body.adReferenceSheetId).catch((e) => console.error("ad pictures not kept", e));
+  }
   return NextResponse.json({ id: made.data.id });
 });
