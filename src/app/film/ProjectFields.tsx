@@ -95,7 +95,7 @@ export default function ProjectFields({
           </div>
         ) : upload && !disabled ? (
           <div className="space-y-2">
-            <StoryVideoUpload video={upload.video} onVideo={(v) => setUpload(v, upload.note)} />
+            <StoryVideoUpload video={upload.video} onVideo={(v) => setUpload(v, upload.note)} lesson={lesson} />
             <label className="block space-y-1">
               <span className="text-sm font-extrabold">وضّح لسجاد وش تبي منه <span className="text-xs text-muted">(اختياري)</span></span>
               <textarea
