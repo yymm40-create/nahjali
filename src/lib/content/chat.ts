@@ -28,7 +28,9 @@ import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
 import { askedSlides, attachedPictures, CAROUSEL_QUESTION, carouselHold, pathOf, pickedCarousel, pureGatePick, siteStep, pickedFont, pickedKind, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "./maker";
-import { chatEditPatch, lastSlidesAt, planRetryWords, planSoundTime } from "./produce";
+import { chatEditPatch, lastSlidesAt, planPictureRedo, planRetryWords, planSoundTime } from "./produce";
+import { addToStore, getStore, handOff, hasDesign, lookLines, saveStore, storeNote, threadTurns, type Thread } from "./project";
+import { slidePicture } from "./files";
 import { listenToFiles, listenToLinks } from "@/lib/link-listen";
 import { billYoutube } from "./youtube";
 import { chatSound } from "./sound";
@@ -39,8 +41,13 @@ const db = () => createAdminClient();
 export const ANSWER_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "questions", "record", "produce", "generate", "handoff", "sound_times", "motion_style"],
+  required: ["reply", "questions", "record", "produce", "generate", "handoff", "sound_times", "motion_style", "store"],
   properties: {
+    store: {
+      type: "array",
+      description: "إضافات لخزان المراجع والثوابت في هذا المشروع، فقط عندما يقولها العميل بوضوح: approved = شيء ثبّته أو اعتمده ويريده في كل الشرائح (لون، شخصية، عبارة، أسلوب)؛ removed = شيء قال إنه لا يريده أبدًا؛ note = توصية عامة كتبها للمشروع. سطر قصير واضح لكل واحدة. فارغة غالبًا.",
+      items: { type: "object", additionalProperties: false, required: ["kind", "text"], properties: { kind: { type: "string", enum: ["approved", "removed", "note"] }, text: { type: "string" } } },
+    },
     reply: { type: "string", description: "ردّك للعميل بالعربية الفصحى (ماركداون خفيف)." },
     motion_style: {
       type: "string",
@@ -152,6 +159,7 @@ interface Answer {
   handoff: { on: boolean; title: string; shape: string; package: string; storyboard?: string };
   sound_times?: { n: number; from: number; to: number }[];
   motion_style?: string;
+  store?: { kind: string; text: string }[];
 }
 
 export interface Reply {
@@ -167,6 +175,9 @@ export interface Reply {
   /** what this conversation had taken from the wallet BEFORE this turn (halalas); the route adds this turn's own
    * charge and sends the person the new total */
   spentHalalas: number;
+  /** the project's chats changed (the pictures handed on to the second chat, or a picture being made again in the first):
+   * the page opens the conversation again */
+  reopen?: boolean;
 }
 
 const KIND_AR = { image: "صورة", video: "فيديو", audio: "صوت", doc: "ملف PDF" } as const;
@@ -280,7 +291,7 @@ export const isContinue = (t: string) => /^(يلا\s+)?(كمل|كمّل|كملي
 export const madePictures = (turns: Turn[]) => turns.flatMap((t) => (t.media?.items ?? []).filter((x) => x.kind === "image" && x.state === "done" && x.fileId).map((x) => x.fileId!));
 
 /** The person says something in a conversation (a new one when `chatId` is null). */
-export async function say(userId: string, chatId: string | null, message: string, attachmentIds: unknown, email: string | null = null, opts: { verbose?: boolean; from?: number } = {}): Promise<Reply> {
+export async function say(userId: string, chatId: string | null, message: string, attachmentIds: unknown, email: string | null = null, opts: { verbose?: boolean; from?: number; thread?: Thread } = {}): Promise<Reply> {
   const said = message.trim().slice(0, CONTENT.messageMax);
   const { list: files } = await attachmentsOf(userId, attachmentIds);
   if (!said && !files.length) throw new Error("empty message");
@@ -289,21 +300,27 @@ export async function say(userId: string, chatId: string | null, message: string
   // an old message of theirs was edited: the talk goes on from there (what came after it is dropped, and so are the pending carousel and the record kept for it: what he decided is in the marks and the messages that stay)
   const cut = full && Number.isInteger(opts.from) && opts.from! >= 0 && opts.from! < full.messages.length && full.messages[opts.from!].role === "user" ? opts.from! : -1;
   const before = full && cut >= 0 ? { ...full, messages: full.messages.slice(0, cut), record: "", pending: null } : full;
-  const history = cleanHistory([...(before?.messages ?? []), { role: "user", text: said || "(ملفات مرفقة)", files: files.length ? files : undefined }]);
+  // the project's chat this is said in: its second one («✍️ الكتابة والموشن») only once it exists
+  const thread: Thread = opts.thread === "design" && hasDesign(before?.messages ?? []) ? "design" : "pictures";
+  const history = cleanHistory([...(before?.messages ?? []), { role: "user", text: said || "(ملفات مرفقة)", files: files.length ? files : undefined, ...(thread === "design" ? { thread: "design" as const } : {}) }]);
   // the site's own steps (colours, font, still or motion, motion style, the way of making it): a press that answers one
   // while another still waits is answered by the site itself, at once and for nothing (the owner, 17 Nov 2026: each
   // press was a whole paid answer of «محمد باقر» that re-wrote every slide only for the site to hold it)
   const step = chatId && !before?.pending ? siteStep(history) : null;
   if (step) {
-    const reply: Turn = { role: "assistant", text: step.note, questions: [step.question] };
+    const reply: Turn = { role: "assistant", text: step.note, questions: [step.question], ...(thread === "design" ? { thread: "design" as const } : {}) };
     const id = await saveChat(userId, chatId, { messages: [...history, reply], ...(cut >= 0 ? { record: "", pending: null } : {}) });
     return { chatId: id, text: reply.text, questions: reply.questions!, usd: 0, pending: null, editor: null, media: null, spentHalalas: full?.spentHalalas ?? 0 };
   }
   // a long conversation: his own handoff of everything before, then the latest turns (lib/robot-handoff)
-  const mem = await remember({ key: `content:${chatId ?? ""}`, userId, robot: "محمد باقر (صانع المحتوى)", turns: history, window: CONTENT.historyTurns });
+  // (each chat of the project on its own: the second starts from the delivery message)
+  const mem = await remember({ key: `content:${chatId ?? ""}${thread === "design" ? ":design" : ""}`, userId, robot: "محمد باقر (صانع المحتوى)", turns: threadTurns(history, thread), window: CONTENT.historyTurns });
   const turns = mem.kept;
+  // «خزان المراجع والثوابت»: read before every answer; the references the person liked are looked at with the last message
+  const store = chatId ? await getStore(chatId).catch(() => null) : null;
+  const likedRefs = (store?.refs ?? []).slice(0, 3);
   // pictures of this conversation, by short-lived link, so he can look at them
-  const links = await uploadLinks(userId, turns.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image" || f.kind === "doc").map((f) => f.id)));
+  const links = await uploadLinks(userId, [...turns.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image" || f.kind === "doc").map((f) => f.id)), ...likedRefs.map((r) => r.id)]);
   const persona = await getPersona();
   // what the person picked in the galleries (all their messages), and the closest worked examples
   const ids = chosenIds(history.filter((t) => t.role === "user").map((t) => t.text));
@@ -382,7 +399,13 @@ export async function say(userId: string, chatId: string | null, message: string
   const lookNote = look?.carouselId
     ? `[خيارات العميل الأساسية في هذه المحادثة (ثابتة): ستايل الكاروسيل ${look.carouselId}${look.paletteId ? `، الألوان ${look.paletteId}` : "، ألوان الستايل"}${look.fontId ? `، الخط ${look.fontId}` : ""}${look.motion ? `، موشن كاروسيل بحركة ${look.motion.styleId}` : "، كاروسيل ثابت"}، المقاس ${look.aspect}. أي شرائح أو كاروسيل بعده في هذه المحادثة بنفسها: لا تسأل عنها ولا تعرض جداولها، إلا إذا طلب العميل تغيير واحد منها صراحةً (حركة الكاروسيل كله: ضع motion_style؛ حركة شريحة وحدة: تعديل تلك الشريحة). وإكمال شرائح هذا الكاروسيل أو تعديلها mode="fix". أي طلب يكتبه العميل يُنفَّذ كما كتبه، والأزرار مساعدة فقط: لا تقل له أبدًا إن عليه الضغط على زر.]`
     : "";
-  const turnNote = [lookNote, gateNote, turnText(parts, before?.record ?? "")].filter(Boolean).join("\n\n");
+  const stored = store ? storeNote(store, look ? lookLines(look) : []) : "";
+  const chatNote = hasDesign(history)
+    ? thread === "design"
+      ? "[أنت في المحادثة الثانية للمشروع «✍️ الكتابة والموشن»: الصور معتمدة في المحادثة الأولى. هنا تعديل الكتابة والتصميم والحركة والصوت. إذا طلب العميل تغيير صورة نفسها فقل له في سطر إنه يقدر يغيّرها من محادثة «🖼️ الصور» أو اكتب produce بصورة جديدة للشريحة.]"
+      : "[أنت في المحادثة الأولى للمشروع «🖼️ الصور»: الصور اعتُمدت وسُلّمت للمحادثة الثانية «✍️ الكتابة والموشن». هنا تغيير الصور فقط: إذا طلب العميل تغيير صورة شريحة فاكتب produce (mode=fix) لتلك الشرائح بوصف الصورة الجديدة في picture، والموقع يرسمها وينتظر اعتمادها ثم يسلّمها للمحادثة الثانية. تعديل الكتابة أو الحركة يكون في المحادثة الثانية.]"
+    : "";
+  const turnNote = [chatNote, stored, lookNote, gateNote, turnText(parts, before?.record ?? "")].filter(Boolean).join("\n\n");
   // a carousel that stopped half way (a wallet ran out, a closed page): «كمّل» goes on drawing it as it was — no new
   // answer, no new plan (a new plan drew the characters again, different, and the person had to explain it all again)
   const unfinished = before?.pending && cut < 0 ? before.pending : null;
@@ -390,12 +413,28 @@ export async function say(userId: string, chatId: string | null, message: string
   // the pictures approved in words: the same as the button, no reply from him needed (and nothing paid for one)
   const waitsApproval = !!unfinished && unfinished.maker === "code" && !unfinished.picturesOk && Object.keys(unfinished.arts ?? {}).length > 0;
   if (unfinished && waitsApproval && left.length && !files.length && (isApproveWords(said) || isContinue(said))) {
+    if (unfinished.split && chatId) {
+      // a two-chat project: the approved pictures are handed to the second chat with the delivery message
+      const reply: Turn = { role: "assistant", text: `تمام، اعتمدت الصور ✅ وانتقل الشغل لمحادثة «✍️ الكتابة والموشن»: هناك حيدرا ماكس ${unfinished.motion ? "يكتب ويحرّك" : "يكتب ويصمّم"} الشرائح فوق صورها. تقدر ترجع هنا وتغيّر أي صورة.`, ...(thread === "design" ? { thread: "design" as const } : {}) };
+      const p = { ...unfinished };
+      const messages = handOff(before!, [...history, reply], p, store ?? (await getStore(chatId)));
+      const id = await saveChat(userId, chatId, { messages, pending: p });
+      return { chatId: id, text: reply.text, questions: null, usd: 0, pending: { total: p.slides.length, mode: p.mode, todo: left }, editor: null, media: null, spentHalalas: full?.spentHalalas ?? 0, reopen: true };
+    }
     const reply: Turn = { role: "assistant", text: `تمام، اعتمدت الصور ✅ وبدأ حيدرا ماكس يصمّم ${unfinished.motion ? "ويحرّك " : ""}${left.length === 1 ? `الشريحة ${left[0]}` : `الشرائح (${left.join("، ")})`}. تظهر لك هنا وحدة وحدة، لا تقفل الصفحة.` };
     const id = await saveChat(userId, chatId, { messages: [...history, reply], pending: { ...unfinished, picturesOk: true } });
     return { chatId: id, text: reply.text, questions: null, usd: 0, pending: { total: unfinished.slides.length, mode: unfinished.mode, todo: left }, editor: null, media: null, spentHalalas: full?.spentHalalas ?? 0 };
   }
   // the retry buttons asked in words, on a carousel that is not being made now: the same as the press, no paid reply
   const retryAsk = !files.length && !(unfinished && left.length) ? readRetryAsk(said) : null;
+  // the first chat of a project whose pictures were handed on: «أعد الشريحة ٣» there draws that slide's PICTURE again
+  if (retryAsk && Array.isArray(retryAsk) && full && chatId && thread === "pictures" && hasDesign(history) && !full.pending) {
+    const reply: Turn = { role: "assistant", text: `تمام، أرسم من جديد صورة ${retryAsk.length === 1 ? `الشريحة ${retryAsk[0]}` : `الشرائح (${retryAsk.join("، ")})`}. اعتمدها إذا عجبتك، وتنتقل للكتابة والموشن.` };
+    const id = await saveChat(userId, chatId, { messages: [...history, reply] });
+    const saved = await getChat(userId, id);
+    const planned = saved ? await planPictureRedo(userId, saved, retryAsk.map((n) => ({ n }))).catch(() => null) : null;
+    if (planned?.pending) return { chatId: id, text: reply.text, questions: null, usd: 0, pending: { total: planned.pending.slides.length, mode: "fix", todo: planned.pending.slides.map((x) => x.n) }, editor: null, media: null, spentHalalas: full.spentHalalas ?? 0, reopen: true };
+  }
   const lastBlock = retryAsk && full ? full.messages[lastSlidesAt(full)]?.slides : null;
   if (retryAsk && full && lastBlock && (retryAsk !== "failed" || lastBlock.failed.length)) {
     const ns = retryAsk === "failed" ? lastBlock.failed.map((f) => f.n) : retryAsk.filter((n) => lastBlock.items.some((x) => x.n === n) || lastBlock.failed.some((f) => f.n === n));
@@ -422,12 +461,30 @@ export async function say(userId: string, chatId: string | null, message: string
   // a slide's sound time written in the message: the site sets it itself (he had no way to, and said it was done)
   const askedTime = readSoundAsk(said);
   const timeNote = askedTime ? `[الموقع ثبّت بنفسه وقت صوت الشريحة ${askedTime.n}: من ${askedTime.from} إلى ${askedTime.to} ثانية من الملف، ويطبّقه عند صنع فيديوها. لا تكتب produce لأجل الوقت وحده، وقل للعميل في سطر إن الوقت انضبط كما كتبه. والكلام اللي في الوقت الجديد غالبًا يختلف عن نص الشريحة الحالي: اذكر له في سطر الكلام اللي ينقال في الوقت الجديد (من التفريغ بأوقاته)، واسأله سؤالًا واحدًا بأزرار: «تبي نص الشريحة يتغيّر للكلام الجديد؟» بالخيارات «إيه غيّره» و«لا خلّه مثل ما هو» و«غيّره بصياغة مختصرة». إذا اختار التغيير فهو تعديل لتلك الشريحة (mode="fix" بنصها الجديد).]` : "";
-  const r = await callClaudeJson<Answer>({ system, turnNote: [timeNote, picturesNote || waitingNote, turnNote].filter(Boolean).join("\n\n"), turns: [...mem.lead, ...turns.map((t) => toClaudeTurn(t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email), systemExtra: extra, stableNote: stable.join("\n\n"), systemTtl: "1h", cacheTail: false });
+  const r = await callClaudeJson<Answer>({ system, turnNote: [timeNote, picturesNote || waitingNote, turnNote].filter(Boolean).join("\n\n"), turns: [...mem.lead, ...turns.map((t, i) => toClaudeTurn(i === turns.length - 1 && t.role === "user" && likedRefs.length ? { ...t, files: [...(t.files ?? []), ...likedRefs.map((r) => ({ id: r.id, kind: "image" as const, name: `مرجع عجب العميل من الخزان: ${r.name}${r.note ? ` (${r.note})` : ""}`, durationMs: null }))] } : t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email), systemExtra: extra, stableNote: stable.join("\n\n"), systemTtl: "1h", cacheTail: false });
   const a = r.data;
   let usd = claudeCost(r.usage) + mem.usd + listened.usd + heardFiles.usd + yt.usd;
   const questions = readQuestions(a.questions);
-  const reply: Turn = { role: "assistant", text: withNote(a.reply.trim() || "…", mem.fresh), ...(questions ? { questions } : {}) };
+  const reply: Turn = { role: "assistant", text: withNote(a.reply.trim() || "…", mem.fresh), ...(questions ? { questions } : {}), ...(thread === "design" ? { thread: "design" as const } : {}) };
   const messages = [...history, reply];
+  // what he added to the project's store (said by the person in words)
+  if (chatId && store && Array.isArray(a.store) && a.store.length) {
+    const added = addToStore(store, a.store);
+    if (added.changed) await saveStore(chatId, added.store).catch(() => undefined);
+  }
+  // the first chat of a project whose pictures were handed on: the slides he names get their PICTURES made again there
+  // (then approved and handed on again); nothing else of the carousel is planned here
+  const repaint = thread === "pictures" && hasDesign(history) && !unfinished && a.produce?.on && Array.isArray(a.produce.slides)
+    ? a.produce.slides.filter((x) => x && Number(x.n) > 0).map((x) => ({ n: Number(x.n), ...(typeof x.picture === "string" && x.picture.trim() ? { picture: x.picture.trim().slice(0, 3000) } : {}) }))
+    : [];
+  if (repaint.length && chatId && full) {
+    const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : undefined, addUsd: usd });
+    const planned = await planPictureRedo(userId, { ...full, id, messages }, repaint).catch((e: unknown) => {
+      console.error("content picture redo", e instanceof Error ? e.message : e);
+      return null;
+    });
+    return { chatId: id, text: reply.text, questions: reply.questions ?? null, usd, pending: planned?.pending ? { total: planned.pending.slides.length, mode: "fix", todo: planned.pending.slides.map((x) => x.n) } : null, editor: null, media: null, spentHalalas: full.spentHalalas ?? 0, ...(planned?.pending ? { reopen: true } : {}) };
+  }
   const at = messages.length - 1;
 
   // a carousel to make: kept with the conversation; the page asks for the produce step right after
@@ -561,12 +618,26 @@ export async function say(userId: string, chatId: string | null, message: string
       const newPalette = pal ? (pal.palette?.id ?? "") : undefined;
       const fnt = pickedFont(history);
       const newFont = fnt ? (fnt.font?.id ?? "") : undefined;
-      pending = { id: randomUUID(), ...(fixRefs.length ? { refs: fixRefs } : {}), aspect: block.aspect, slides, at: fixAt, styleId: styleId || block.styleId, templateId: templateId || block.templateId, ...(block.carouselId ? { carouselId: block.carouselId } : {}), ...(newFont !== undefined ? (newFont ? { fontId: newFont } : {}) : block.fontId ? { fontId: block.fontId } : {}), ...(newPalette !== undefined ? (newPalette ? { paletteId: newPalette } : {}) : block.paletteId ? { paletteId: block.paletteId } : {}), mode: "fix", ...code, ...moving, made: [], failed: [], carry: block.failed.filter((f) => !slides.some((x) => x.n === f.n)) };
+      pending = { id: randomUUID(), ...(block.split ? { split: true } : {}), ...(fixRefs.length ? { refs: fixRefs } : {}), aspect: block.aspect, slides, at: fixAt, styleId: styleId || block.styleId, templateId: templateId || block.templateId, ...(block.carouselId ? { carouselId: block.carouselId } : {}), ...(newFont !== undefined ? (newFont ? { fontId: newFont } : {}) : block.fontId ? { fontId: block.fontId } : {}), ...(newPalette !== undefined ? (newPalette ? { paletteId: newPalette } : {}) : block.paletteId ? { paletteId: block.paletteId } : {}), mode: "fix", ...code, ...moving, made: [], failed: [], carry: block.failed.filter((f) => !slides.some((x) => x.n === f.n)) };
       // a change to made motion slides asked here, with no new picture or attachment: their programs are patched by the
       // person's words over the same approved pictures (the owner, 17 Nov 2026: an edit in the chat wrote the slide from zero)
       const patch = !files.length ? await chatEditPatch(userId, chatId ?? "", block, slides, said).catch(() => null) : null;
       if (patch) pending = { ...pending, ...patch };
-      else if (block.motion) {
+      else if (block.split && history[fixAt]?.thread === "design") {
+        // the second chat of a project: every slide keeps the picture approved in the first, unless he wrote a NEW picture
+        const arts: Record<string, string> = {};
+        for (const sl of slides) {
+          const it = block.items.find((x) => x.n === sl.n);
+          const row = it ? await producedRow(userId, it.fileId).catch(() => null) : null;
+          const batch = typeof row?.meta.batch === "string" ? row.meta.batch : "";
+          const before = String(row?.meta.picture ?? "").trim();
+          if (sl.picture && before && sl.picture.trim() !== before) continue;
+          const art = chatId && batch ? await slidePicture(userId, chatId, sl.n, batch).catch(() => null) : null;
+          if (art) arts[String(sl.n)] = art;
+        }
+        if (Object.keys(arts).length) pending = { ...pending, arts: { ...(pending.arts ?? {}), ...arts } };
+        if (pending.slides.every((x) => pending!.arts?.[String(x.n)])) pending.picturesOk = true;
+      } else if (block.motion) {
         // a slide that stands in the carousel as its approved picture (never animated yet) keeps that picture: it is not
         // painted again unless he wrote a NEW picture for it (18 Nov 2026: slides asked again were repainted and approved again)
         const arts: Record<string, string> = {};
@@ -619,7 +690,7 @@ export async function say(userId: string, chatId: string | null, message: string
       const named = (Array.isArray(a.produce.refs) ? a.produce.refs : []).filter((r) => mine.has(r));
       // they chose to add their own pictures: those go with the slides even if the answer forgot to name them
       const refs = (named.length || pickedPhotos(history) !== "mine" ? named : attachedPictures(history).map((f) => f.id)).slice(0, 6);
-      pending = { id: randomUUID(), aspect, slides, at, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...(refs.length ? { refs } : {}), mode: "all", ...code, ...moving, made: [], failed: [], carry: [] };
+      pending = { id: randomUUID(), aspect, slides, at, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...(refs.length ? { refs } : {}), mode: "all", ...code, ...moving, ...(code.maker === "code" && thread === "pictures" ? { split: true } : {}), made: [], failed: [], carry: [] };
       await ownArts(pending);
       if (reuse) reply.text += `\n\n🎨 بنفس ستايلك وألوانك وخطك${reuse.motion ? " وحركتك" : ""} من الكاروسيل السابق. تبي تغيّر شي منها؟ قل لي «غيّر الستايل» أو «غيّر الألوان».`;
       reply.slides = { aspect, items: [], todo: slides.map((x) => x.n), failed: [], running: true, total: slides.length, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...code, ...moving };

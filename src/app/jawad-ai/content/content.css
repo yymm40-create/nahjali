@@ -776,3 +776,31 @@
 .ct-all small { display: block; opacity: .75; }
 .ct-retext { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 6px 0; }
 .ct-retext > span { font-weight: 700; }
+
+/* a project's chats («🖼️ الصور» / «✍️ الكتابة والموشن») and its «🗄️ خزان المراجع والثوابت» */
+.ct-threads { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px 0; align-items: center; }
+.ct-thread { border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.04); color: inherit; border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 13.5px; cursor: pointer; transition: background 0.2s, border-color 0.2s; }
+.ct-thread[aria-selected="true"] { background: color-mix(in srgb, var(--ct-teal) 24%, transparent); border-color: var(--ct-teal); font-weight: 600; }
+.ct-thread:hover { background: color-mix(in srgb, var(--ct-teal) 14%, transparent); }
+.ct-thread-one { color: #b8ad9c; font-size: 13px; padding: 6px 4px; }
+.ct-thread-store { margin-inline-start: auto; border-color: color-mix(in srgb, var(--ct-amber) 55%, transparent); }
+.ct-msg.handoff { border: 1px solid color-mix(in srgb, var(--ct-amber) 50%, transparent); background: color-mix(in srgb, var(--ct-amber) 8%, transparent); }
+.ct-store-wrap { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0, 0, 0, 0.55); padding: 16px; }
+.ct-store { width: min(640px, 100%); max-height: min(86vh, 900px); overflow: auto; border-radius: 20px; padding: 16px; display: grid; gap: 12px; }
+.ct-store-head { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
+.ct-store-head b { display: block; font-size: 17px; }
+.ct-store-head small, .ct-store-hint { color: #b8ad9c; font-size: 12.5px; }
+.ct-store-err { color: #fca5a5; font-size: 13px; }
+.ct-store-body { display: grid; gap: 14px; }
+.ct-store-body section { display: grid; gap: 6px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px; }
+.ct-store-body h4 { margin: 0; font-size: 14.5px; }
+.ct-store-body ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.ct-store-body li { display: flex; gap: 8px; align-items: center; justify-content: space-between; background: rgba(255, 255, 255, 0.04); border-radius: 10px; padding: 6px 10px; font-size: 13.5px; }
+.ct-store-add { display: flex; gap: 6px; }
+.ct-store-add .ct-input { flex: 1; min-width: 0; min-height: 38px; }
+.ct-store-pics { display: flex; gap: 6px; overflow-x: auto; }
+.ct-store-pics img { height: 72px; border-radius: 8px; }
+.ct-store-refs { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.ct-store-refs figure { margin: 0; display: grid; gap: 4px; }
+.ct-store-refs img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; }
+.ct-store-refs .ct-input { min-height: 34px; font-size: 12.5px; }

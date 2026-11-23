@@ -33,6 +33,7 @@ import { drawnPng } from "@/lib/jawad/server/uploads";
 import { storage } from "@/lib/storage";
 import { JAWAD_BUCKET } from "@/lib/jawad/server/runtime";
 import { addProduced, addProducedFromOutput, addProducedVideo, attachmentsOf, deleteProduced, producedBytes, producedLinks, producedRow, slidePicture, uploadLinks } from "./files";
+import { designAt, EMPTY_STORE, getStore, handOff, picturesAt, storeBrief } from "./project";
 import { checkSlide, fixNote, showsRealWoman, WOMAN_PROBLEM, type SlideCheck } from "./verify";
 
 /** GPT Image 2 for the slides: the standard sizes (a 1:1 slide is 1024×1024), high quality for readable Arabic. */
@@ -69,6 +70,10 @@ export interface Produced {
   deferred?: number[];
   /** a motion carousel (the page shows its own progress words in every stage) */
   motion?: true;
+  /** the pictures were approved and handed to the project's second chat: the page opens the chat again and goes on there */
+  reopen?: true;
+  /** the message the carousel is on (its index in the chat) */
+  at?: number;
 }
 
 /** One slide «حيدرا ماكس» draws in the person's browser: its full brief (the exact writing in it), shape, references,
@@ -85,8 +90,9 @@ export interface CodeSlide {
   mix?: boolean;
   /** a motion carousel's slide: he writes it as a moving scene of `seconds`, and the page renders it to MP4 */
   motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number; exact?: boolean } };
-  /** stage 1 of a motion carousel: draw this slide as a STILL (the final frame of its motion), at the motion size */
-  stage?: "still";
+  /** stage 1 of a motion carousel: draw this slide as a STILL (the final frame of its motion), at the motion size;
+   * "picture": a two-chat project's first chat — draw only the slide's PICTURE, with no writing (it waits for approval) */
+  stage?: "still" | "picture";
   /** set aside once (it ran past the time): this time with lighter thinking */
   light?: true;
   /** this slide's program kept before (it already ran): the page goes on from it without writing again */
@@ -275,6 +281,66 @@ export async function wordsBetween(userId: string, messages: Chat["messages"], f
   return (snd?.phrases ?? []).filter((x) => x.to > from + 0.05 && x.from < to - 0.05).map((x) => x.text.trim()).filter(Boolean).join(" ").slice(0, 1500);
 }
 
+/**
+ * A two-chat project, after its pictures were handed on: the person changes a picture in the first chat («🖼️ الصور»).
+ * Those slides' pictures are made again there (GPT Image 2 or «حيدرا ماكس» in code, with what they asked to change), wait
+ * for the approval, and are then handed on again: the second chat makes those slides again over the new pictures.
+ */
+export async function planPictureRedo(userId: string, chat: Chat, asks: { n: number; note?: string; picture?: string }[]): Promise<Chat> {
+  if (chat.pending) throw new UserError("استنى لين يخلص اللي يتصنّع الحين، وبعدها غيّر الصورة.", 409);
+  const pAt = picturesAt(chat.messages);
+  const dAt = designAt(chat.messages);
+  const pics = pAt >= 0 ? chat.messages[pAt].slides : null;
+  const design = dAt >= 0 ? chat.messages[dAt].slides : null;
+  if (!pics || !design) throw new UserError("ما فيه صور معتمدة في هذا المشروع نعيد رسمها.", 409);
+  const slides: PendingProduce["slides"] = [];
+  let refs: string[] = [];
+  for (const ask of [...asks].sort((a, b) => a.n - b.n)) {
+    if (slides.some((x) => x.n === ask.n)) continue;
+    const item = design.items.find((x) => x.n === ask.n);
+    const row = item ? await producedRow(userId, item.fileId) : null;
+    const f = design.failed.find((x) => x.n === ask.n);
+    const prompt = typeof row?.meta.prompt === "string" ? row.meta.prompt : (f?.prompt ?? "");
+    if (!prompt) continue;
+    const picture = (ask.picture ?? "").trim() || (typeof row?.meta.picture === "string" ? row.meta.picture : "");
+    if (!refs.length && Array.isArray(row?.meta.refs)) refs = (row!.meta.refs as unknown[]).filter((r): r is string => typeof r === "string");
+    slides.push({ n: ask.n, text: item?.text ?? f?.text ?? "", prompt, ...(picture ? { picture } : {}) });
+  }
+  if (!slides.length) throw new UserError("ما لقينا هذي الشرائح في المشروع.", 409);
+  const pending: PendingProduce = {
+    id: randomUUID(),
+    aspect: design.aspect,
+    slides,
+    at: pAt,
+    styleId: design.styleId,
+    templateId: design.templateId,
+    ...(refs.length ? { refs } : {}),
+    mode: "fix",
+    maker: "code",
+    ...(design.mix ? { mix: true } : {}),
+    split: true,
+    ...(design.carouselId ? { carouselId: design.carouselId } : {}),
+    ...(design.fontId ? { fontId: design.fontId } : {}),
+    ...(design.paletteId ? { paletteId: design.paletteId } : {}),
+    ...(design.motion ? { motion: design.motion } : {}),
+    made: [],
+    failed: [],
+    carry: [],
+  };
+  // what they asked to change goes with the picture: in its painting brief, or in the code brief of a picture he draws
+  for (const ask of asks) {
+    const note = (ask.note ?? "").trim().slice(0, 600);
+    const sl = pending.slides.find((x) => x.n === ask.n);
+    if (!note || !sl) continue;
+    if (pictureBrief(pending, sl).brief) sl.picture = `${sl.picture ?? pictureFrom(sl.prompt)}\n\nCHANGE THE PERSON ASKED FOR (follow it): ${note}`;
+    else sl.prompt = `${sl.prompt}\n\nCHANGE THE PERSON ASKED FOR IN THE PICTURE (follow it): ${note}`;
+  }
+  const messages = [...chat.messages];
+  messages[pAt] = { ...messages[pAt], slides: { ...pics, approved: undefined, todo: slides.map((x) => x.n), running: true, report: undefined } };
+  await saveChat(userId, chat.id, { messages, pending });
+  return { ...chat, messages, pending };
+}
+
 /** «أعد المحاولة» / «أعد الشريحة ٤» written: the same as the 🔁 / «أعد المحاولة» buttons. */
 export const planRetryWords = (userId: string, chat: Chat, ns: number[] | "failed") => planRetry(userId, chat, ns);
 
@@ -307,7 +373,8 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed", ti
     if (item && prompt) slides.push({ n, text: item.text, prompt, ...(picture ? { picture } : {}) });
     // a made motion slide drawn again keeps the picture it was drawn over (approved already): only its motion is made again
     const batch = typeof row?.meta.batch === "string" ? row.meta.batch : "";
-    const art = item && prompt && block.motion && batch ? await slidePicture(userId, chat.id, n, batch) : null;
+    // (so does any slide of a two-chat project's second chat: its picture was approved in the first)
+    const art = item && prompt && (block.motion || block.split) && batch ? await slidePicture(userId, chat.id, n, batch) : null;
     if (art) madeArts[String(n)] = art;
     if (((time && time.n === n) || (change && change.ns.includes(n))) && item && batch) keptPrograms[String(n)] = programPath(userId, chat.id, batch, n);
   }
@@ -347,6 +414,7 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed", ti
     mode: "fix",
     ...(block.maker === "code" ? { maker: "code" as const } : {}),
     ...(block.mix ? { mix: true } : {}),
+    ...(block.split ? { split: true } : {}),
     ...(block.carouselId ? { carouselId: block.carouselId } : {}),
     ...(block.fontId ? { fontId: block.fontId } : {}),
     ...(block.paletteId ? { paletteId: block.paletteId } : {}),
@@ -365,7 +433,7 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed", ti
  * One call of the produce step: draws the next few slides, saves what exists, and says what is left. `retry` first
  * plans the drawing again of the given slides (or «failed»: all that failed) of the last carousel.
  */
-export async function produce(userId: string, chatId: string, o: { editSlide?: { ns: number[]; said: string }; soundTime?: { n: number; from: number; to: number; retext?: boolean }; retry?: number[] | "failed"; owner?: boolean; email?: string | null; origin?: string; approvePictures?: boolean; redoPicture?: { n: number; note: string }; deferSlide?: number; exclude?: number[] } = {}): Promise<Produced> {
+export async function produce(userId: string, chatId: string, o: { redoApproved?: { n: number; note?: string }[]; editSlide?: { ns: number[]; said: string }; soundTime?: { n: number; from: number; to: number; retext?: boolean }; retry?: number[] | "failed"; owner?: boolean; email?: string | null; origin?: string; approvePictures?: boolean; redoPicture?: { n: number; note: string }; deferSlide?: number; exclude?: number[] } = {}): Promise<Produced> {
   let chat = await getChat(userId, chatId);
   if (!chat) throw new Error("chat not found");
   if (o.editSlide) chat = await planRetry(userId, chat, o.editSlide.ns, undefined, o.editSlide);
@@ -382,9 +450,28 @@ export async function produce(userId: string, chatId: string, o: { editSlide?: {
       }
     }
   }
-  else if (o.retry && (o.retry === "failed" || o.retry.length)) chat = await planRetry(userId, chat, o.retry);
+  else if (o.redoApproved?.length) {
+    chat = await planPictureRedo(userId, chat, o.redoApproved);
+    const m = chat.messages[chat.pending!.at]?.slides;
+    return { chatId, aspect: chat.pending!.aspect, slides: m?.items ?? [], todo: m?.todo ?? [], failed: [], running: true, total: m?.total ?? 0, report: null, usd: 0, reopen: true, at: chat.pending!.at };
+  } else if (o.retry && (o.retry === "failed" || o.retry.length) && chat.pending?.split && !chat.pending.picturesOk) {
+    // the pictures of a two-chat project still wait: the failed ones are drawn again in the SAME carousel (a new plan
+    // of those slides alone would leave the others behind when the pictures are handed on)
+    const p0 = chat.pending;
+    const ns = o.retry === "failed" ? p0.failed.map((f) => f.n) : o.retry;
+    p0.failed = p0.failed.filter((f) => !ns.includes(f.n));
+    await saveChat(userId, chat.id, { messages: chat.messages, pending: p0 });
+  } else if (o.retry && (o.retry === "failed" || o.retry.length)) chat = await planRetry(userId, chat, o.retry);
   const p = chat.pending;
   if (!p) throw new UserError("ما فيه كاروسيل ينتظر الإنتاج في هذي المحادثة.", 409);
+  // a two-chat project: the pictures approved are handed to the second chat (the delivery message), and made on there
+  if (o.approvePictures && p.split && !p.picturesOk) {
+    const store = await getStore(chatId).catch(() => EMPTY_STORE);
+    chat.messages = handOff(chat, chat.messages, p, store);
+    await saveChat(userId, chatId, { messages: chat.messages, pending: p });
+    const m = chat.messages[p.at]?.slides;
+    return { chatId, aspect: p.aspect, slides: m?.items ?? [], todo: m?.todo ?? [], failed: m?.failed ?? [], running: true, total: m?.total ?? p.slides.length, report: null, usd: 0, reopen: true, at: p.at };
+  }
 
   const t0 = Date.now();
   const messages = [...chat.messages];
@@ -401,10 +488,12 @@ export async function produce(userId: string, chatId: string, o: { editSlide?: {
     // STAGE 0, the pictures first: GPT Image 2 paints every slide that has a picture, then they wait for the person's approval
     if (o.approvePictures) p.picturesOk = true;
     const withPicture = todo.filter((s) => !!pictureBrief(p, s).brief);
-    if (!p.picturesOk && withPicture.length) {
+    // a two-chat project: the slides with no painted picture get theirs drawn by «حيدرا ماكس» in code first, with no writing
+    const codePictures = p.split ? todo.filter((s) => !pictureBrief(p, s).brief) : [];
+    if (!p.picturesOk && (withPicture.length || codePictures.length)) {
       // a picture the person asked to redraw (with what to change)
       if (o.redoPicture) {
-        const s = withPicture.find((x) => x.n === o.redoPicture!.n);
+        const s = [...withPicture, ...codePictures].find((x) => x.n === o.redoPicture!.n);
         const old = s ? p.arts?.[String(s.n)] : null;
         if (s && old) {
           const rest = { ...(p.arts ?? {}) };
@@ -412,9 +501,12 @@ export async function produce(userId: string, chatId: string, o: { editSlide?: {
           p.arts = rest;
           await deleteProduced(userId, old).catch(() => undefined);
           const note = o.redoPicture.note.trim().slice(0, 600);
-          if (note) s.picture = `${s.picture ?? pictureFrom(s.prompt)}\n\nCHANGE THE PERSON ASKED FOR (follow it): ${note}`;
+          if (note && withPicture.includes(s)) s.picture = `${s.picture ?? pictureFrom(s.prompt)}\n\nCHANGE THE PERSON ASKED FOR (follow it): ${note}`;
+          else if (note) s.prompt = `${s.prompt}\n\nCHANGE THE PERSON ASKED FOR IN THE PICTURE (follow it): ${note}`;
+          await saveChat(userId, chatId, { messages: chat.messages, pending: p });
         }
       }
+      const codeMissing = codePictures.filter((s) => !p.arts?.[String(s.n)]).sort((a, b) => a.n - b.n);
       const missing = withPicture.filter((s) => !p.arts?.[String(s.n)]).sort((a, b) => a.n - b.n);
       if (missing.length) {
         // slide 1 first (it sets the look), then a few side by side
@@ -429,8 +521,17 @@ export async function produce(userId: string, chatId: string, o: { editSlide?: {
             }
           }),
         );
-        const stillMissing = withPicture.some((s) => !p.arts?.[String(s.n)] && !results.some((r) => r.failed?.n === s.n));
+        const stillMissing = codeMissing.length > 0 || withPicture.some((s) => !p.arts?.[String(s.n)] && !results.some((r) => r.failed?.n === s.n));
         return finish(results, stillMissing ? "pictures" : "approve");
+      }
+      if (codeMissing.length) {
+        // «حيدرا ماكس» draws the pictures in the person's browser, slide 1 first (it sets the look), then side by side
+        const free = codeMissing.filter((s) => !(o.exclude ?? []).includes(s.n));
+        const next = free.find((s) => s.n === 1) ?? (p.arts?.["1"] || !codeMissing.some((s) => s.n === 1) ? free[0] : undefined);
+        const state = await finish([], "pictures");
+        if (!next) return state;
+        const slide1 = p.arts?.["1"] ? { n: 1, fileId: p.arts["1"], name: "picture-01", text: "" } : null;
+        return { ...state, code: await codeSlide(userId, chatId, messages, p, next, c.total, next.n === 1 ? null : slide1, who, "picture") };
       }
       return finish([], "approve");
     }
@@ -522,6 +623,8 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
     templateId: p.templateId,
     ...(p.maker === "code" ? { maker: "code" as const } : {}),
     ...(p.mix ? { mix: true } : {}),
+    ...(p.split ? { split: true } : {}),
+    ...(old?.approved && messages[at]?.thread !== "design" ? { approved: true } : {}),
     ...(p.carouselId ? { carouselId: p.carouselId } : {}),
     ...(p.fontId ? { fontId: p.fontId } : {}),
     ...(p.paletteId ? { paletteId: p.paletteId } : {}),
@@ -536,7 +639,7 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
   if (messages[at]) messages[at] = { ...messages[at], slides: block };
   await saveChat(userId, chatId, { messages, pending: left.length ? p : null, addUsd: usd });
 
-  return { chatId, aspect: p.aspect, slides: sorted, todo: left, failed: block.failed, running: left.length > 0 && phase !== "approve", total: block.total, report, usd: Math.round(usd * 10000) / 10000, ...(phase && left.length ? { phase } : {}), ...(block.deferred?.length ? { deferred: block.deferred } : {}), ...(p.motion ? { motion: true } : {}) };
+  return { chatId, at, aspect: p.aspect, slides: sorted, todo: left, failed: block.failed, running: left.length > 0 && phase !== "approve", total: block.total, report, usd: Math.round(usd * 10000) / 10000, ...(phase && left.length ? { phase } : {}), ...(block.deferred?.length ? { deferred: block.deferred } : {}), ...(p.motion ? { motion: true } : {}) };
 }
 
 // ───────── «Claude Code»: the slides drawn in code in the person's browser ─────────
@@ -551,6 +654,11 @@ export const PLACE_RULE = "PLACEMENT: the layers are background, then the pictur
 /** A motion slide's painted picture: the scene he moves (push, parallax, light) and writes over. */
 const PICTURE_NOTE = "photo1 is this slide's PICTURE, painted by GPT Image 2 with no writing in it: make it the moving heart of the slide (full-bleed or framed, with a slow camera push, a parallax drift, a light sweep, graded to the carousel's look) and set EVERY word yourself in code over its calm area. Never paint text into it. " + PLACE_RULE;
 /** A motion slide's element: a cut-out on a transparent background, moved over the background he draws. */
+/** A two-chat project's first chat: the slide's picture only, drawn in code; its writing comes after the approval. */
+const PICTURE_ONLY_NOTE = "STAGE 1 — THE PICTURE ONLY: draw this slide's full visual in code exactly as the slide asks (its scene, illustration, shapes, icons, background, colours and composition), leaving calm empty areas where its writing will go. Write NO text at all: no words, letters, numbers or logos in any language. The person approves this picture first; the writing is set over it later, in stage 2.";
+/** The picture «حيدرا ماكس» drew in stage 1 and the person approved: kept as it is, only the writing set over it. */
+const CODE_ART_NOTE = "photo1 is this slide's PICTURE that you drew in code in stage 1 and the person APPROVED (it has no writing in it): draw it full-bleed filling the frame with K.picture, untouched — never redraw, move or change it. Your job now is the writing: set EVERY word exactly as given, in the calm areas it leaves, in the carousel's font and colours, large and perfectly readable (a soft scrim behind the words only if the picture is busy there). " + PLACE_RULE;
+const CODE_PICTURE_NOTE = "photo1 is this slide's PICTURE that you drew in code in stage 1 and the person APPROVED (no writing in it): make it the moving heart of the slide (full-bleed, with a slow camera push, a parallax drift or a light sweep) without redrawing or changing what is in it, and set EVERY word yourself in code over its calm area. " + PLACE_RULE;
 const ELEMENT_NOTE = "photo1 is this slide's ELEMENT, painted by GPT Image 2 and cut out of its background (a transparent PNG): draw the slide's background yourself in code, then bring the element in with motion (a soft pop, a slide, a float) with a soft contact shadow, and set EVERY word yourself in code. Never redraw or distort the element. " + PLACE_RULE;
 /** What a picture for an element asks of GPT Image 2: one clear object, alone, on a plain background, so it cuts out clean. */
 const ELEMENT_RULE = "ONE single clear subject (a product, a character, an object or an icon), whole and centred with space around it, alone on a plain flat light-grey background with no shadow, no floor, no scene and no other object, so it can be cut out cleanly.";
@@ -602,8 +710,10 @@ async function paintArt(userId: string, chatId: string, messages: Chat["messages
     const { list } = await attachmentsOf(userId, p.refs ?? []);
     const refs = list.filter((a) => a.kind === "image").slice(0, 6).map((a, i) => ({ uploadId: a.id, name: `ref${i + 1}` }));
     const style = p.styleId ? findStyle(p.styleId) : null;
+    // the project's store (a two-chat project): its fixed rules, what was removed, the person's recommendations
+    const rules = p.split ? storeBrief(await getStore(chatId).catch(() => EMPTY_STORE)) : "";
     try {
-      const paint = (extra: string) => deskImage(who, { key: `c-${randomUUID().replace(/-/g, "")}`, kind: "image", prompt: [brief, element ? ELEMENT_RULE : "", pal ? paletteBlock(pal) : "", car ? `LOOK OF THE CAROUSEL (for the picture only): ${pal ? `${withoutColours(car.look)} ${COLOURS_ARE_THE_CLIENTS}` : car.look}` : "", style ? `ILLUSTRATION STYLE (verbatim): ${style.text}` : "", car && (pal || refs.length) ? CLIENT_FIRST : "", NO_REALISTIC_WOMEN, extra, NO_TEXT_RULE].filter(Boolean).join("\n\n"), aspect: p.aspect, resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
+      const paint = (extra: string) => deskImage(who, { key: `c-${randomUUID().replace(/-/g, "")}`, kind: "image", prompt: [brief, rules, element ? ELEMENT_RULE : "", pal ? paletteBlock(pal) : "", car ? `LOOK OF THE CAROUSEL (for the picture only): ${pal ? `${withoutColours(car.look)} ${COLOURS_ARE_THE_CLIENTS}` : car.look}` : "", style ? `ILLUSTRATION STYLE (verbatim): ${style.text}` : "", car && (pal || refs.length) ? CLIENT_FIRST : "", NO_REALISTIC_WOMEN, extra, NO_TEXT_RULE].filter(Boolean).join("\n\n"), aspect: p.aspect, resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
       let r = await paint("");
       // a picture that came out with a realistic adult woman is painted once more; a second one stops the slide
       if ((await showsRealWoman(r.bytes)).woman) {
@@ -629,13 +739,19 @@ async function paintArt(userId: string, chatId: string, messages: Chat["messages
   return art;
 }
 
-async function codeSlide(userId: string, chatId: string, messages: Chat["messages"], p: PendingProduce, s: PendingProduce["slides"][number], total: number, slide1: Slide | null, who: DeskWho, stage: "still" | "motion" = "motion"): Promise<CodeSlide> {
+async function codeSlide(userId: string, chatId: string, messages: Chat["messages"], p: PendingProduce, s: PendingProduce["slides"][number], total: number, slide1: Slide | null, who: DeskWho, stage: "still" | "motion" | "picture" = "motion"): Promise<CodeSlide> {
   const car = p.carouselId ? findCarouselStyle(p.carouselId) : null;
   const font = p.fontId ? findContentFont(p.fontId) : null;
   const pal = p.paletteId ? findPalette(p.paletteId) : null;
-  const { element } = pictureBrief(p, s);
-  const art = await paintArt(userId, chatId, messages, p, s, who);
+  const { element, brief: gptBrief } = pictureBrief(p, s);
+  // the first chat of a two-chat project: only the picture, drawn in code (never painted, never with writing)
+  const picOnly = stage === "picture";
+  const art = picOnly ? null : await paintArt(userId, chatId, messages, p, s, who);
+  // a picture «حيدرا ماكس» drew himself in the first chat (not painted by GPT Image 2)
+  const codeArt = !!art && !gptBrief;
   const links = await producedLinks(userId, chatId);
+  // the project's store: its fixed rules with every slide, and the references the person liked as looks to follow
+  const store = p.split ? await getStore(chatId).catch(() => EMPTY_STORE) : EMPTY_STORE;
   const refs: string[] = [];
   if (slide1 && s.n !== 1) {
     const url = links.get(slide1.fileId);
@@ -647,7 +763,15 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
   const { list } = artUrl && p.motion ? { list: [] } : await attachmentsOf(userId, p.refs ?? []);
   const mine = [...(await uploadLinks(userId, list.filter((a) => a.kind === "image").map((a) => a.id))).values()];
   refs.push(...mine);
-  const prompt = slidePrompt({ n: s.n, total, prompt: s.prompt, styleId: p.styleId, carouselId: p.carouselId, fontId: p.fontId, paletteId: p.paletteId, withRef: refs.length > mine.length, userRefs: mine.length });
+  const liked = store.refs.length && refs.length < 4 ? [...(await uploadLinks(userId, store.refs.map((r) => r.id))).values()].slice(0, 4 - refs.length) : [];
+  refs.push(...liked);
+  const base0 = slidePrompt({ n: s.n, total, prompt: s.prompt, styleId: p.styleId, carouselId: p.carouselId, fontId: p.fontId, paletteId: p.paletteId, withRef: refs.length - liked.length > mine.length, userRefs: mine.length });
+  const prompt = [
+    base0,
+    storeBrief(store),
+    liked.length ? `The last ${liked.length} reference image(s) are LOOKS THE PERSON LIKED (from the project's store): follow their feel, never copy their content or writing.` : "",
+    picOnly ? PICTURE_ONLY_NOTE : "",
+  ].filter(Boolean).join("\n\n");
   const motion: CodeSlide["motion"] | null = p.motion && stage === "motion" ? { seconds: p.motion.seconds, style: motionStyleForCode(p.motion.styleId === "own" ? null : findMotionCarouselStyle(p.motion.styleId), p.motion.own ?? ""), first: s.n === 1, total } : null;
   // the person's own sound under the carousel: this slide's part of it (as long as its part, moving on its phrases)
   let soundNote = "";
@@ -674,16 +798,17 @@ async function codeSlide(userId: string, chatId: string, messages: Chat["message
       soundNote = sliceNote(slice, p.sound.speech);
     }
   }
-  const body = artUrl ? `${prompt}\n\n${motion ? (element ? ELEMENT_NOTE : PICTURE_NOTE) : p.mix ? MIX_NOTE : ART_NOTE}` : prompt;
+  const body = artUrl ? `${prompt}\n\n${motion ? (element ? ELEMENT_NOTE : codeArt ? CODE_PICTURE_NOTE : PICTURE_NOTE) : codeArt ? CODE_ART_NOTE : p.mix ? MIX_NOTE : ART_NOTE}` : prompt;
   // a program kept before a refresh (it already ran): the page goes on from it
   const kept = motion ? await keptProgram(p.programs?.[String(s.n)]) : null;
   // stage 2: the approved still he animates
   const still = motion && !kept ? await stillProgram(p.stills?.[String(s.n)]?.program) : null;
   return {
     n: s.n,
-    text: s.text,
+    ...(picOnly ? {} : { text: s.text }),
     prompt: soundNote ? `${body}\n\n${soundNote}` : body,
     ...(p.motion && stage === "still" ? { stage: "still" as const } : {}),
+    ...(picOnly ? { stage: "picture" as const } : {}),
     ...(still ? { still } : {}),
     ...(kept ? { program: kept } : {}),
     ...(kept && p.edits?.[String(s.n)] ? { change: p.edits[String(s.n)] } : {}),
@@ -810,6 +935,19 @@ async function keepStill(userId: string, chatId: string, chat: Chat, p: PendingP
   return settle({ userId, chatId, chat, p, messages, at, base }, []);
 }
 
+/** A two-chat project's first chat: the picture «حيدرا ماكس» drew (no writing) becomes the slide's picture, kept as a
+ * painted one is («picture-NN» of the batch), and the carousel waits for the person's approval once all are drawn. */
+async function keepPicture(userId: string, chatId: string, chat: Chat, p: PendingProduce, s: PendingProduce["slides"][number], bytes: Buffer, meta: { width: number; height: number }): Promise<Produced> {
+  const file = await addProduced({ userId, chatId, bytes, name: `picture-${String(s.n).padStart(2, "0")}`, width: meta.width, height: meta.height, meta: { slide: s.n, aspect: p.aspect, batch: p.id, maker: "code", stage: "picture", prompt: s.prompt } });
+  p.arts = { ...(p.arts ?? {}), [String(s.n)]: file.id };
+  const messages = [...chat.messages];
+  const at = Math.min(p.at, messages.length - 1);
+  const base = new Map((messages[at]?.slides?.items ?? []).map((x) => [x.n, x]));
+  const done = new Set([...p.made.map((x) => x.n), ...p.failed.map((x) => x.n)]);
+  const missing = p.slides.some((x) => !done.has(x.n) && !p.arts?.[String(x.n)]);
+  return settle({ userId, chatId, chat, p, messages, at, base }, [], missing ? "pictures" : "approve");
+}
+
 /** The PNG the page drew from «حيدرا ماكس»'s program becomes slide `n` of the carousel being made. */
 export async function produceFromCode(userId: string, chatId: string, b: { n?: unknown; png?: unknown; pngUpload?: unknown; rounds?: unknown; scores?: unknown; video?: unknown; stage?: unknown; program?: unknown; fonts?: unknown }): Promise<Produced> {
   const chat = await getChat(userId, chatId);
@@ -833,6 +971,8 @@ export async function produceFromCode(userId: string, chatId: string, b: { n?: u
     const base = new Map((messages[at]?.slides?.items ?? []).map((x) => [x.n, x]));
     return settle({ userId, chatId, chat, p, messages, at, base }, [{ failed: { n: s.n, reason: `${WOMAN_PROBLEM}. غيّر الصورة أو وصفها ثم أعد المحاولة.`, text: s.text, prompt: s.prompt }, usd: seen.usd }]);
   }
+  // a two-chat project's picture, drawn in code with no writing: kept as the slide's picture, waiting for approval
+  if (p.split && b.stage === "picture" && !p.picturesOk) return keepPicture(userId, chatId, chat, p, s, bytes, { width: meta.width, height: meta.height });
   // stage 1 of a motion carousel: the still is kept, and the slide waits for its motion
   if (p.motion && b.stage === "still") return keepStill(userId, chatId, chat, p, s, bytes, { width: meta.width, height: meta.height }, b);
   // a motion carousel's slide comes with its MP4 (put up by the page as the person's upload, then recorded here)
