@@ -144,10 +144,23 @@ export function chosenIds(userTexts: string[]): Required<Chosen> {
  * The talk's rules (short by default, longer when the person asks), how edits are read, and the steps of the path the person is on.
  * «جرافكس على ريل» also gets the skills for a talking video (the catalogue of motion on the speaker).
  */
+/**
+ * The cover's WORDS (slide 1), from the research on the best carousel covers (23 Nov 2026): the design rules go to
+ * «حيدرا ماكس» with the slide (produce.ts COVER_RULE); what is written on it is his.
+ */
+export const COVER_COPY = `نص الغلاف (الشريحة ١) هو الهوك، فاكتبه بهذه القواعد:
+- عنوان واحد قصير: ٢ إلى ٦ كلمات، ولا يزيد على ٨، ومعه عند الحاجة سطر صغير فوقه (تصنيف أو مناسبة) أو تحته.
+- محدد لا عام: لمن هو، أو رقم، أو الفائدة، أو سؤال يسأله الجمهور فعلًا، أو رقم صادم واحد، أو عبارة تعاكس الشائع. «نصائح عن كذا» ضعيف.
+- يفتح فضولًا يعرف القارئ أن جوابه داخل الكاروسيل دون أن يخمّنه، ولا يعد بشيء لا يقدّمه الكاروسيل.
+- كلمة واحدة فيه هي المفتاح (تُبرز في التصميم).
+- لا طُعم تفاعل («علّق نعم»، «منشن صديقك»، «شارك لتؤجر»)، ولا مبالغات رخيصة («لن تصدق»).
+- في المحتوى الديني والعزاء: وقار وهدوء، الاسم أو المناسبة هي العنوان الضخم، بلا مبالغة.
+- الشريحة ٢ هوك ثانٍ يعمل وحده: إنستقرام يعيد عرض الكاروسيل لمن لم يسحب بادئًا منها.`;
+
 export function pathBlock(ids: Chosen, verbose: boolean): string {
   const p = findPath(ids.path);
   const talk = p?.id === "reel-graphics" ? `مهارات الموشن على المتكلم (للعرض كخيارات):\n${MOTION_STYLES.filter((x) => x.talk).map((x) => `- ${x.id} — ${x.ar} ${x.icon} — ${x.hint}.`).join("\n")}` : "";
-  return [PATH_TALK_RULES, verbose ? PATH_VERBOSE_RULES : "", p ? `${p.flow}${talk ? `\n\n${talk}` : ""}` : "", PATH_EDIT_RULES].filter(Boolean).join("\n\n");
+  return [PATH_TALK_RULES, verbose ? PATH_VERBOSE_RULES : "", p ? `${p.flow}${talk ? `\n\n${talk}` : ""}` : "", p?.id === "carousel" || p?.id === "motion-carousel" ? COVER_COPY : "", PATH_EDIT_RULES].filter(Boolean).join("\n\n");
 }
 
 /** The full details of what was picked (the design system to copy into every slide, the style's meaning). */

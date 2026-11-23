@@ -16,7 +16,8 @@ describe("the fixes after the Umm al-Banin carousel", () => {
     const one = slidePrompt({ n: 1, total: 8, prompt: "x", styleId: "", withRef: false });
     const two = slidePrompt({ n: 2, total: 8, prompt: "x", styleId: "", withRef: true });
     expect(one).toContain(COVER_RULE);
-    expect(COVER_RULE).toContain("HUGE");
+    expect(COVER_RULE).toContain("SAFE AREA");
+    expect(COVER_RULE).toContain("FIRST frame");
     expect(two).not.toContain(COVER_RULE);
   });
 
@@ -25,5 +26,14 @@ describe("the fixes after the Umm al-Banin carousel", () => {
     expect(soundOnlyAsk("هذي لطمية حطها تحت الشرائح")).toBe(true);
     expect(soundOnlyAsk("لخص لي هذا الفيديو")).toBe(false);
     expect(soundOnlyAsk("خذ صوته وصور من الفيديو")).toBe(false);
+  });
+});
+
+import { pathBlock, COVER_COPY } from "@/lib/content/persona";
+describe("the cover's words", () => {
+  it("are taught on the carousel paths only", () => {
+    expect(pathBlock({ path: "carousel" } as never, false)).toContain(COVER_COPY);
+    expect(pathBlock({ path: "motion-carousel" } as never, false)).toContain(COVER_COPY);
+    expect(pathBlock({ path: "reel-graphics" } as never, false)).not.toContain(COVER_COPY);
   });
 });
