@@ -11,9 +11,10 @@ import { FILM_STAGES, STATUS_LABELS } from "@config/film";
 import ProjectEditor from "../[id]/ProjectEditor";
 import References from "../[id]/References";
 import AdConvert from "../[id]/AdConvert";
+import AdReferenceVideo from "../[id]/AdReferenceVideo";
 import { projectKind } from "@config/film";
 import { adBrandRole } from "@config/film-ad";
-import { adPlanOf } from "@/lib/film/ad-brand";
+import { adPlanOf, adReferenceVideo } from "@/lib/film/ad-brand";
 
 import { storage } from "@/lib/storage";
 import JourneyUpgrade from "../JourneyUpgrade";
@@ -42,9 +43,10 @@ export default async function ProjectView({ id, base }: { id: string; base: stri
   // frames are kept for the director and not listed
   const references = uploads
     .map((u, i) => ({ id: u.id, name: u.file_name ?? "", url: urls[i]?.signedUrl ?? "", brand: adBrandRole(u.meta?.brand)?.id ?? null }))
-    .filter((_, i) => !uploads[i].meta?.ad_reference);
+    .filter((_, i) => !uploads[i].meta?.ad_reference && !uploads[i].meta?.ad_reference_video);
   const kind = projectKind(project);
   const adPlan = adPlanOf(project);
+  const refVideo = kind === "ad" ? await adReferenceVideo(project.id) : null;
 
   const cost = await projectCost(project.id);
   const { count: messageCount } = await db.from("film_messages").select("id", { count: "exact", head: true }).eq("project_id", project.id);
@@ -98,6 +100,9 @@ export default async function ProjectView({ id, base }: { id: string; base: stri
 
       {/* «📣 خلّه إعلان»: a scene or a film becomes an ad before the director starts (or an ad changes its reference) */}
       {!project.series_id && kind !== "lesson" && (project.stage === "screenwriter" || project.stage === "sheets") && <AdConvert projectId={project.id} ad={kind === "ad"} reference={adPlan?.reference ?? ""} />}
+
+      {/* «📼»: an ad's reference clip, sent with every Wan 3.0 generation (any step) */}
+      {kind === "ad" && <AdReferenceVideo projectId={project.id} current={refVideo ? { seconds: refVideo.seconds, name: refVideo.name } : null} />}
 
       <References projectId={project.id} initial={references} ad={kind === "ad"} />
 

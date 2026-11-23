@@ -25,6 +25,7 @@ import {
   VIDEO_OPEN_RESOLUTIONS,
   VIDEO_RESOLUTIONS,
   videoEstimateUsd,
+  videoCostUsd,
   type VideoModel,
   type VideoResolution,
 } from "@config/film";
@@ -74,6 +75,8 @@ interface Video {
   note: string;
   /** the person's own edited version, uploaded */
   edited: boolean;
+  /** «📣 إعلان»: seconds of the reference ad's video sent with this take (written by the server only when it was) */
+  refVideoSec?: number;
 }
 
 const RESOLUTIONS = Object.keys(VIDEO_RESOLUTIONS) as VideoResolution[];
@@ -96,8 +99,10 @@ interface StudioVideo {
 }
 
 export default function VideosWorkspace({
-  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null, voicesOn = false, realFaceOn = false, wanOn = false, lastModel, dialogueStart, dialogueSource = null, rewind = true,
+  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null, voicesOn = false, realFaceOn = false, wanOn = false, lastModel, dialogueStart, dialogueSource = null, rewind = true, adRefVideoSec = 0,
 }: {
+  /** «📣 إعلان»: seconds of the reference ad's video that goes with every Wan 3.0 generation (0: none) */
+  adRefVideoSec?: number;
   /** the old «ارجع بمشروعك لنقطة» card (a series' scene); a film edits any step directly instead */
   rewind?: boolean;
   /** ElevenLabs is configured on the server: the voices block is shown. */
@@ -439,6 +444,7 @@ export default function VideosWorkspace({
                     {v.ratio ? ` · ${v.ratio === "9:16" ? "طولي" : "عرضي"}` : ""}
                     {v.url && !v.removed ? ` · يبقى ${daysLeft(v.createdAt)} يوم` : ""}
                   </span>
+                  {(v.refVideoSec ?? 0) > 0 && <span className="chip text-xs">📼 انرسل مع الإعلان المرجعي ({v.refVideoSec} ث)</span>}
                   {!busy && (
                     <div className="flex flex-wrap gap-2">
                       {v.download && !v.removed && (
@@ -553,6 +559,11 @@ export default function VideosWorkspace({
         {model === "wan-3.0" && (
           <p className="rounded-2xl border-2 border-gold bg-gold/10 p-3 text-sm font-bold">Wan 3.0: يقبل لين {VIDEO_MODELS["wan-3.0"].maxImages} صور مرجعية و١٥ ثانية صوت للحوار في الفيديو الواحد. ممتاز للأنيميشن والمشاهد الطويلة لين ٣٠ ثانية بلقطة وحدة.</p>
         )}
+        {adRefVideoSec > 0 && (
+          <p className="rounded-2xl border-2 border-[var(--film-blue)] bg-[var(--film-blue)]/10 p-3 text-sm font-bold">
+            📼 الإعلان المرجعي ({adRefVideoSec} ث) {model === "wan-3.0" ? "ينرسل مع كل توليد، والمولّد يقلّده لقطة بلقطة (نفس اللقطات والكاميرا والتسريع والتبطيء) على براندك. ثوانيه تنحسب مع السعر تحت." : "ينرسل مع Wan 3.0 بس؛ هالمولّد ما يقبل فيديو مرجعي."}
+          </p>
+        )}
         {model === "seedance-real-face" && (
           <div className="space-y-1 rounded-2xl border-2 border-gold bg-gold/10 p-3 text-sm font-bold">
             <p>{REALFACE_WARNING}</p>
@@ -613,7 +624,8 @@ export default function VideosWorkspace({
         const attempts = videos.filter((v) => v.ref_key === g.id && v.id !== main?.id).reverse();
         const generating = mine.some((v) => v.status === "generating");
         const sec = secOf(g);
-        const cost = videoEstimateUsd(model, resolution, sec);
+        // an ad's reference video goes with Wan 3.0 and its seconds are charged too
+        const cost = videoCostUsd(model, resolution, sec, model === "wan-3.0" ? adRefVideoSec : 0);
         return (
           <article key={g.id} className="card w-[90%] max-w-[560px] shrink-0 snap-center space-y-3 p-4">
             <header className="flex flex-wrap items-center justify-between gap-2">

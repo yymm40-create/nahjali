@@ -92,3 +92,12 @@ export const AD_CONVERT_NOTE = "تحويل: هذا المشروع صار إعل�
 
 /** The question on the sheet map of an ad, before anything is drawn. */
 export const AD_MAP_QUESTION = "صور براندك انحطت على عناصرها «كما هي» وتروح مرجع مع التوليد. تبي تغيّر شي؟ اختر لكل وحدة تحت، أو اعتمد.";
+
+/**
+ * The reference ad's own video, sent with the generation (Wan 3.0 takes reference videos: up to 15 s in all, 16 fps or
+ * more; fal charges its seconds like the video's own). The owner, 23 Nov 2026: «وبيّن ان نبي نقلد الفيديو المرجعي تماما».
+ */
+export const AD_REF_VIDEO_MAX_SEC = 15;
+
+/** What the generator is told about the reference ad's video (named «Video 1» at Wan). */
+export const AD_REF_VIDEO_PROMPT = `REFERENCE AD = Video 1. Recreate Video 1 EXACTLY, shot for shot: the same shots in the same order and at the same timing, the same shot sizes and angles, the same camera moves, cuts and transitions, the same speed ramps (speed-ups and slow motion) and rhythm, the same lighting, contrast, colour and mood. Change ONLY the brand: use this brand's product, logo and characters exactly as in the reference images (and as the prompt above says). Never copy Video 1's logo, text, brand or any person's face.`;

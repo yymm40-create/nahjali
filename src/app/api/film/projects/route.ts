@@ -43,7 +43,7 @@ export const POST = handle(async (req: Request) => {
   // «📣 إعلان»: the brand's pictures and the reference ad's frames, given before there was a project, become its references
   if (intake?.ad) {
     const project = { id: made.data.id, user_id: user.id } as FilmProject;
-    await keepAdPictures(project, user.id, body.brand, body.adReferenceSheetId).catch((e) => console.error("ad pictures not kept", e));
+    await keepAdPictures(project, user.id, body.brand, body.adReferenceSheetId, body.adReferenceVideoId).catch((e) => console.error("ad pictures not kept", e));
   }
   return NextResponse.json({ id: made.data.id });
 });

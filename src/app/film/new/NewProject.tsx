@@ -143,7 +143,7 @@ export default function NewProject() {
     setError("");
     try {
       // a lesson's or an ad's title may be left to سجاد
-      const { id } = await postJson<{ id: string }>("/api/film/projects", { ...values, title: intake.title || values.title || (lesson ? "درسي" : ad ? "إعلاني" : ""), story: intake.concept || values.story, targetDurationSec: intake.targetDurationSec ?? values.targetDurationSec, fixedFacts: intake.fixedFacts.join("\n") || values.fixedFacts, research, kind, intake, workflowVersion: 2, journey, ...(ad ? { brand: brandBody(), adReferenceSheetId: referenceSheet() } : {}) });
+      const { id } = await postJson<{ id: string }>("/api/film/projects", { ...values, title: intake.title || values.title || (lesson ? "درسي" : ad ? "إعلاني" : ""), story: intake.concept || values.story, targetDurationSec: intake.targetDurationSec ?? values.targetDurationSec, fixedFacts: intake.fixedFacts.join("\n") || values.fixedFacts, research, kind, intake, workflowVersion: 2, journey, ...(ad ? { brand: brandBody(), adReferenceSheetId: referenceSheet(), adReferenceVideoId: storyUpload(values.story)?.video?.videoId ?? null } : {}) });
       // straight to the screenwriter, who starts by himself; «نعم»: سجاد opens there too and asks for the research's scope
       router.push(`${filmBase}/${id}/script?start=1${research === "yes" ? "&research=1" : ""}`);
     } catch (e) {

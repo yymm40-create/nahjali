@@ -12,7 +12,7 @@ import { JAWAD_BUCKET } from "@/lib/jawad/server/runtime";
 import { addMessage } from "./conversation";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmProject } from "./types";
 import { normalizeAdPlan, readBrand, type AdPlan } from "./intake";
-import { AD_BRIEF, AD_BRAND_ROLES, AD_CONVERT_NOTE, adBrandLines, adBrandRole, adSheetsNote, type AdBrandPicture, type AdBrandRole } from "@config/film-ad";
+import { AD_REF_VIDEO_MAX_SEC, AD_BRIEF, AD_BRAND_ROLES, AD_CONVERT_NOTE, adBrandLines, adBrandRole, adSheetsNote, type AdBrandPicture, type AdBrandRole } from "@config/film-ad";
 
 const db = () => createAdminClient();
 const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
@@ -35,6 +35,56 @@ export async function projectBrand(projectId: string): Promise<{ brand: (AdBrand
   // grouped by role (logo, product, colours, others), each group in the order given
   brand.sort((a, b) => AD_BRAND_ROLES.findIndex((r) => r.id === a.role) - AD_BRAND_ROLES.findIndex((r) => r.id === b.role));
   return { brand, frames: rows.filter((r) => r.meta?.ad_reference).map((r) => r.id) };
+}
+
+/** The reference ad's own video kept with the project (the latest), sent with the generation; null without one. */
+export async function adReferenceVideo(projectId: string): Promise<{ id: string; path: string; seconds: number; name: string } | null> {
+  const { data } = await db()
+    .from("film_assets")
+    .select("id,storage_path,meta,file_name")
+    .eq("project_id", projectId)
+    .eq("kind", "upload")
+    .eq("ref_key", "")
+    .neq("status", "rejected")
+    .contains("meta", { ad_reference_video: true })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const seconds = Number(data?.meta?.seconds);
+  if (!data?.storage_path || !(seconds > 0)) return null;
+  return { id: data.id, path: data.storage_path, seconds, name: String(data.file_name ?? "") };
+}
+
+/**
+ * The reference ad's own video (one of the person's ready video uploads, 15 s at most — what Wan 3.0 takes) kept with
+ * the project as its reference video, replacing the one before. Refused with a clear message when it is too long.
+ */
+export async function keepAdReferenceVideo(project: FilmProject, userId: string, fileId: unknown) {
+  if (!isUuid(fileId)) throw new UserError("ارفع فيديو الإعلان المرجعي أول.", 400);
+  const { data: row } = await db().from("jawad_uploads").select("*").eq("id", String(fileId)).eq("user_id", userId).maybeSingle();
+  if (!row || row.kind !== "video" || row.status !== "ready" || !row.storage_path) throw new UserError("الفيديو ما انلقى أو ما جهز. ارفعه من جديد.", 400);
+  const seconds = Math.round(Number(row.duration_ms) / 100) / 10;
+  if (!(seconds > 0)) throw new UserError("ما قدرنا نعرف طول الفيديو. ارفعه MP4.", 400);
+  if (seconds > AD_REF_VIDEO_MAX_SEC + 0.2) throw new UserError(`الفيديو ${seconds} ثانية، والمولّد يقبل لين ${AD_REF_VIDEO_MAX_SEC} ثانية. قصّه للقطعة اللي تبيها وارفعه.`, 400);
+  const { data: blob, error: dl } = await storage.from(JAWAD_BUCKET).download(row.storage_path);
+  if (dl || !blob) throw new UserError("تعذّر نسخ الفيديو للمشروع؛ جرّب مرة ثانية.", 502);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const mime = String(row.mime ?? "video/mp4");
+  const path = `${projectDir(project)}/uploads/ad-reference-video-${Date.now()}.${mime.includes("quicktime") ? "mov" : "mp4"}`;
+  const up = await storage.from(FILM_BUCKET).upload(path, bytes, { contentType: mime, upsert: false });
+  if (up.error) throw up.error;
+  await db().from("film_assets").update({ status: "rejected" }).eq("project_id", project.id).eq("kind", "upload").eq("ref_key", "").contains("meta", { ad_reference_video: true });
+  const { error } = await db().from("film_assets").insert({
+    project_id: project.id, kind: "upload", storage_path: path, file_name: String(row.file_name ?? "").slice(0, 120) || "reference.mp4", mime, bytes: bytes.length, status: "uploaded",
+    meta: { ad_reference_video: true, seconds },
+  });
+  if (error) throw error;
+  return { seconds };
+}
+
+/** The reference video taken off (the generations go without it). */
+export async function dropAdReferenceVideo(projectId: string) {
+  await db().from("film_assets").update({ status: "rejected" }).eq("project_id", projectId).eq("kind", "upload").eq("ref_key", "").contains("meta", { ad_reference_video: true });
 }
 
 /** The brand's pictures as text with their marks (empty without any). */
@@ -68,9 +118,11 @@ async function copyUpload(project: FilmProject, userId: string, fileId: string, 
  * A new ad: the brand's pictures given on the new project page (the person's uploads) and the reference ad's frame
  * sheet become the project's references. A picture that is no longer there is skipped.
  */
-export async function keepAdPictures(project: FilmProject, userId: string, brand: unknown, referenceSheetId: unknown) {
+export async function keepAdPictures(project: FilmProject, userId: string, brand: unknown, referenceSheetId: unknown, referenceVideoId?: unknown) {
   for (const b of readBrand(brand)) await copyUpload(project, userId, b.fileId, { brand: b.role }, `brand-${b.role}`);
   if (isUuid(referenceSheetId)) await copyUpload(project, userId, String(referenceSheetId), { ad_reference: true }, "ad-reference");
+  // a reference ad uploaded from the device, short enough for the generator: it goes with the generations too
+  if (isUuid(referenceVideoId)) await keepAdReferenceVideo(project, userId, referenceVideoId).catch(() => null);
 }
 
 /** A role for a picture uploaded to the project's «مراجع» of an ad (none: an ordinary reference). */

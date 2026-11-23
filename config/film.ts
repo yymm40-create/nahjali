@@ -64,6 +64,10 @@ export const videoUsd = (model: VideoModel, resolution: VideoResolution, tokens:
 /** Estimated USD for one video (used for the reservation and shown before generating). */
 export const videoEstimateUsd = (model: VideoModel, resolution: VideoResolution, seconds: number) =>
   videoUsd(model, resolution, videoTokens(resolution, seconds));
+/** USD for one video with a reference video sent along (an ad's reference ad on Wan 3.0): fal charges the reference
+ * seconds like the video's own, so they are added at the same rate. */
+export const videoCostUsd = (model: VideoModel, resolution: VideoResolution, seconds: number, referenceSeconds = 0) =>
+  (seconds > 0 ? videoEstimateUsd(model, resolution, seconds) : 0) + (referenceSeconds > 0 ? videoEstimateUsd(model, resolution, referenceSeconds) : 0);
 
 /**
  * Public trial: while `open`, the first `users` people (the owner excluded) to start a film project can use

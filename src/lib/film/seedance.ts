@@ -2,6 +2,7 @@
 // never reaches the browser. API: POST/GET {base}/contents/generations/tasks (docs.byteplus.com, ModelArk
 // "Create / Retrieve a video generation task", checked 2026-10).
 
+import { AD_REF_VIDEO_PROMPT } from "@config/film-ad";
 import { randomUUID } from "crypto";
 import { VIDEO_MODELS, type VideoModel, type VideoResolution } from "@config/film";
 import { realFaceSubmit, realFaceTask } from "@/lib/jawad/server/providers/realface";
@@ -38,6 +39,8 @@ export interface VideoRequest {
   imageUrls: string[];
   /** Short-lived URLs of reference audio (the shot's spoken dialogue): the model lip-syncs to it and keeps it. */
   audioUrls?: string[];
+  /** Short-lived URLs of reference videos (an ad's reference ad, to recreate shot for shot; Wan 3.0 only). */
+  videoUrls?: string[];
   durationSec: number;
   ratio: string;
   generateAudio: boolean;
@@ -57,9 +60,11 @@ export function wanFilmRequest(r: VideoRequest): { model: string; input: Record<
   const prompt = r.prompt.replace(/<<<\s*(image|audio|video)_(\d+)\s*>>>/gi, (_m, kind: string, n: string) => `${kind[0].toUpperCase()}${kind.slice(1).toLowerCase()} ${n}`);
   const images = r.imageUrls.slice(0, VIDEO_MODELS["wan-3.0"].maxImages);
   const audios = r.audioUrls ?? [];
-  const common = { prompt, duration: Math.max(2, Math.min(30, Math.round(r.durationSec))), resolution: r.resolution, aspect_ratio: r.ratio || "16:9", audio: r.generateAudio };
-  if (!images.length && !audios.length) return { model: `${WAN_APP}/text-to-video`, input: common };
-  return { model: `${WAN_APP}/reference-to-video`, input: { ...common, ...(images.length ? { reference_image_urls: images } : {}), ...(audios.length ? { reference_audio_urls: audios } : {}) } };
+  // «📣 إعلان»: the reference ad's own video, recreated shot for shot (config/film-ad.ts)
+  const videos = (r.videoUrls ?? []).slice(0, 1);
+  const common = { prompt: videos.length ? `${prompt}\n\n${AD_REF_VIDEO_PROMPT}` : prompt, duration: Math.max(2, Math.min(30, Math.round(r.durationSec))), resolution: r.resolution, aspect_ratio: r.ratio || "16:9", audio: r.generateAudio };
+  if (!images.length && !audios.length && !videos.length) return { model: `${WAN_APP}/text-to-video`, input: common };
+  return { model: `${WAN_APP}/reference-to-video`, input: { ...common, ...(images.length ? { reference_image_urls: images } : {}), ...(videos.length ? { reference_video_urls: videos } : {}), ...(audios.length ? { reference_audio_urls: audios } : {}) } };
 }
 
 /** Starts a generation and returns the provider's task ID. */
