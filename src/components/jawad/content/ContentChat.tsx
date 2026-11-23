@@ -23,6 +23,7 @@ import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { drawWithCode, pngBody, smallJpeg } from "@/components/claude-code/draw";
 import { downloadYoutube, sheetOf, youtubeLinks } from "./media-prep";
 import { joinSlidesToReel } from "./slides-reel";
+import StorePanel from "./StorePanel";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean; video?: string; videoUrl?: string | null; videoDownload?: string | null }
@@ -41,7 +42,7 @@ const SAVING_TIPS = [
   "إذا عندك صوت المقطع ارفعه ملف صوت (MP3/M4A) بدل فيديو طويل.",
 ];
 
-interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code"; mix?: boolean; motion?: unknown; phase?: "pictures" | "approve"; deferred?: number[] }
+interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code"; mix?: boolean; motion?: unknown; phase?: "pictures" | "approve"; deferred?: number[] ; approved?: boolean; split?: boolean }
 interface MediaView {
   id: string; kind: "image" | "video"; name: string; aspect: string; refs?: string[]; state: "todo" | "running" | "done" | "failed";
   url?: string | null; download?: string | null; error?: string; detail?: string; transient?: boolean; tries?: number;
@@ -59,6 +60,10 @@ interface Msg {
   error?: boolean;
   /** written on this page (the opening of a path), never saved with the conversation */
   local?: boolean;
+  /** the project's second chat («✍️ الكتابة والموشن») */
+  thread?: "design";
+  /** the delivery message the first chat handed to the second */
+  handoff?: boolean;
 }
 interface ChatItem { id: string; title: string }
 interface Pending { total: number; mode: "all" | "fix"; todo: number[] }
@@ -489,7 +494,7 @@ export function parseClock(v: string): number | null {
   return Number.isFinite(all) ? all : null;
 }
 
-export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, onApprove, onRedoPicture, onSoundTime, onEditSlide, fonts, reelGo, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; onApprove?: () => void; onRedoPicture?: (n: number, note: string) => void; onSoundTime?: (n: number, from: number, to: number, retext: boolean) => void; onEditSlide?: (ns: number[], said: string) => void; fonts?: FontItem[]; reelGo?: number; step?: string | null }) {
+export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, onApprove, onRedoPicture, onChangeApproved, onSoundTime, onEditSlide, fonts, reelGo, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; onResume?: () => void; onApprove?: () => void; onRedoPicture?: (n: number, note: string) => void; onChangeApproved?: (n: number, note: string) => void; onSoundTime?: (n: number, from: number, to: number, retext: boolean) => void; onEditSlide?: (ns: number[], said: string) => void; fonts?: FontItem[]; reelGo?: number; step?: string | null }) {
   const ns = [...new Set([...s.items.map((i) => i.n), ...s.todo])].sort((a, b) => a - b);
   const done = s.items.filter((i) => !s.todo.includes(i.n)).length;
   // which picture is being asked again, and what should change in it (a field here: a browser popup does nothing in the
@@ -521,7 +526,7 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
           <div>
             {s.phase === "pictures" ? (
               <>
-                <b>🖼️ المرحلة ١: GPT Image 2 يرسم صور الشرائح… ({s.items.length} من {s.total})</b>
+                <b>🖼️ المرحلة ١: نرسم صور الشرائح بدون كتابة… ({s.items.length} من {s.total})</b>
                 <small>نرسم صور كل الشرائح أول (بدون كتابة). لما تخلص تشوفها هنا وتعتمدها أو تعيد أي صورة، وبعدها يبدأ حيدرا ماكس بالتصميم{s.motion ? " والحركة" : ""}. لا تقفل الصفحة.</small>
               </>
             ) : s.motion ? (
@@ -599,6 +604,29 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
             </div>
           )}
           <button type="button" className="ct-mini ct-go" disabled={busy} onClick={onApprove}>✅ اعتمد الصور وابدأ التصميم</button>
+        </div>
+      )}
+      {s.approved && !s.running && (
+        <div className="ct-failed ct-approve">
+          <b>✅ الصور معتمدة وانتقلت لمحادثة «✍️ الكتابة والموشن»</b>
+          <small> تبي تغيّر صورة؟ اختر رقمها واكتب وش يتغير: تنرسم هنا من جديد، تعتمدها، وتنتقل للكتابة والموشن.</small>
+          {onChangeApproved && (
+            <div className="ct-actions">
+              {s.items.map((i) => (
+                <button key={i.n} type="button" className="ct-mini" disabled={busy} aria-expanded={redoN === i.n} onClick={() => { setRedoN(redoN === i.n ? null : i.n); setRedoNote(""); }}>
+                  🔄 غيّر صورة {i.n}
+                </button>
+              ))}
+            </div>
+          )}
+          {onChangeApproved && redoN !== null && (
+            <div className="ct-actions" style={{ alignItems: "stretch" }}>
+              <input className="ct-input" style={{ flex: 1, minWidth: 0, minHeight: 40 }} value={redoNote} onChange={(e) => setRedoNote(e.target.value)} placeholder={`وش يتغير في صورة الشريحة ${redoN}؟`} aria-label={`وش يتغير في صورة الشريحة ${redoN}`} />
+              <button type="button" className="ct-mini ct-go" disabled={busy} onClick={() => { onChangeApproved(redoN, redoNote.trim()); setRedoN(null); setRedoNote(""); }}>
+                ارسم صورة {redoN} من جديد
+              </button>
+            </div>
+          )}
         </div>
       )}
       <div className="ct-slides">
@@ -821,6 +849,12 @@ const store = {
 export default function ContentChat({ name, persona, loginHref, owner }: { name: string; persona: string; loginHref: string | null; owner?: boolean }) {
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
+  // the project's chat on screen: the first («🖼️ الصور», or the only one) or the second («✍️ الكتابة والموشن»)
+  const [thread, setThread] = useState<"pictures" | "design">("pictures");
+  const nextThread = useRef<"pictures" | "design" | null>(null);
+  const reopenRef = useRef<(id: string) => Promise<void>>(async () => undefined);
+  // «🗄️ خزان المراجع والثوابت»
+  const [storeOpen, setStoreOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   // exactly what was taken from the wallet in THIS conversation so far (halalas, not an estimate); read back from
   // the server with the chat, so it survives a reload — 0 for a new one
@@ -882,9 +916,10 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   };
 
   /** The last answer that carries a carousel gets this block (the produce step reports into it). */
-  const putSlides = (fn: (old: SlidesView | undefined) => SlidesView) =>
+  const putSlides = (fn: (old: SlidesView | undefined) => SlidesView, at?: number) =>
     setMsgs((m) => {
-      const i = m.map((x) => !!x.slides).lastIndexOf(true);
+      // the message the carousel is on (a project's first chat can be making a picture while the second has later slides)
+      const i = typeof at === "number" && m[at]?.slides ? at : m.map((x) => !!x.slides).lastIndexOf(true);
       if (i < 0) return m;
       const copy = [...m];
       copy[i] = { ...copy[i], slides: fn(copy[i].slides) };
@@ -902,8 +937,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     if (looping.current.has(`p:${id}`)) return;
     looping.current.add(`p:${id}`);
     setBusy("producing");
-    type Step = { spent?: number; aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; phase?: "pictures" | "approve"; motion?: true; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number; exact?: boolean } }; sfx?: Record<string, string>; stage?: "still"; still?: { code: string; fonts: { head: string; body: string } }; light?: true; program?: { code: string; fonts: { head: string; body: string }; size: [number, number] }; change?: string; text?: string }; deferred?: number[] };
-    const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, phase: r.phase, deferred: r.deferred, ...(r.motion && !old?.motion ? { motion: true } : {}), ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}), ...(r.code?.mix || old?.mix ? { mix: true } : {}), ...(r.code?.motion || old?.motion ? { motion: r.code?.motion ?? old?.motion } : {}) }));
+    type Step = { spent?: number; aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; phase?: "pictures" | "approve"; motion?: true; reopen?: true; at?: number; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[]; style?: string; mix?: boolean; motion?: { seconds: number; style: string; first: boolean; total: number; voice?: { url: string; from: number; to: number; exact?: boolean } }; sfx?: Record<string, string>; stage?: "still" | "picture"; still?: { code: string; fonts: { head: string; body: string } }; light?: true; program?: { code: string; fonts: { head: string; body: string }; size: [number, number] }; change?: string; text?: string }; deferred?: number[] };
+    const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, phase: r.phase, deferred: r.deferred, ...(r.motion && !old?.motion ? { motion: true } : {}), ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}), ...(r.code?.mix || old?.mix ? { mix: true } : {}), ...(r.code?.motion || old?.motion ? { motion: r.code?.motion ?? old?.motion } : {}) }), r.at);
     // up to three slides at the same time (the owner, 17 Nov 2026: «سو الاسرع… شكله ٣»): each worker asks for a slide nobody
     // is drawing, draws it here and sends it back. The calls to the produce step go one at a time (the carousel is saved by
     // each), only the drawing itself runs side by side; the others start after slide 1 is done (it is the reference).
@@ -937,8 +972,10 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       const motion = code.motion ? { n, ...code.motion, sfx: code.sfx } : null;
       // a motion carousel in two stages: first every slide's still (sent back with its program), then each still animated
       const stillStage = code.stage === "still";
+      // a project's first chat: only the slide's picture, drawn in code with no writing (approved before the writing)
+      const pictureStage = code.stage === "picture";
       const lighter = code.light === true;
-      stepOf(n, lighter ? "↩️ رجعنا لها بطريقة أخف وأسرع…" : stillStage ? "🖼️ المرحلة ١: تصميمها الثابت…" : code.still ? "🎬 المرحلة ٢: تحريك تصميمها الجاهز…" : "حيدرا ماكس يبدأ…");
+      stepOf(n, lighter ? "↩️ رجعنا لها بطريقة أخف وأسرع…" : pictureStage ? "🖼️ يرسم صورتها بالكود (بدون كتابة)…" : stillStage ? "🖼️ المرحلة ١: تصميمها الثابت…" : code.still ? "🎬 المرحلة ٢: تحريك تصميمها الجاهز…" : "حيدرا ماكس يبدأ…");
       const extra = { ...(stillStage ? { stillFor: "motion" } : code.still ? { still: code.still.code, stillFonts: code.still.fonts } : {}), ...(lighter ? { light: true } : {}), ...(code.program ? { program: code.program } : {}), ...(code.program && code.change ? { change: code.change } : {}), ...(code.text && code.motion ? { expectText: code.text } : {}) };
       // each slide on its own (16 Nov 2026): a slide that cannot be drawn is recorded as failed and the others go on;
       // stopped by the person, or no balance left: everything stops as before
@@ -949,7 +986,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
           stepOf(n, "⬆️ أرفع الفيديو…");
           video = await putVideo(drawn.video, `slide-${String(n).padStart(2, "0")}.mp4`);
         }
-        return { n, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(video ? { video } : {}), ...(stillStage ? { stage: "still", program: drawn.program?.code ?? "", fonts: drawn.program?.fonts ?? null } : {}) };
+        return { n, ...(await pngBody(drawn.png)), rounds: drawn.rounds, scores: drawn.scores, ...(video ? { video } : {}), ...(stillStage ? { stage: "still", program: drawn.program?.code ?? "", fonts: drawn.program?.fonts ?? null } : pictureStage ? { stage: "picture" } : {}) };
       } catch (e) {
         const why = e instanceof Error ? e.message : "";
         if ((e instanceof Error && e.name === "AbortError") || /رصيد|اشحن|الاتصال|متصفحك/.test(why)) throw e;
@@ -998,8 +1035,16 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
         cur = undefined;
       }
     };
+    let reopen = false;
     try {
       const r0 = await produceCall({ ...(retry ? { retry } : {}), ...(more ? more : {}) });
+      // the project's chats changed (the pictures handed to the second chat, or a picture being made again in the
+      // first): the conversation is opened again and the making goes on there
+      if (r0.reopen) {
+        reopen = true;
+        nextThread.current = more?.approvePictures ? "design" : "pictures";
+        return;
+      }
       take(r0);
       const one = worker(r0);
       // the others join once slide 1 is drawn (straight away when slide 1 is not the one being drawn first)
@@ -1016,6 +1061,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     } finally {
       looping.current.delete(`p:${id}`);
       setBusy("");
+      if (reopen) void reopenRef.current(id);
     }
   }, []);
 
@@ -1059,6 +1105,10 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       const r = await api<{ chat: { id: string; messages: Msg[]; pending: Pending | null; spent?: number } }>(`/api/content/chats?id=${id}`);
       setChatId(r.chat.id);
       setMsgs(r.chat.messages);
+      // the chat asked for (after a handoff), else the one the project's last message is in
+      const saved = r.chat.messages.filter((m) => !m.error);
+      setThread(nextThread.current ?? (saved[saved.length - 1]?.thread === "design" ? "design" : "pictures"));
+      nextThread.current = null;
       setSpent(Math.max(0, Number(r.chat.spent) || 0));
       setQ(store.get(draftKey(r.chat.id)) ?? "");
       // a carousel ordered before the page was left: drawn on from where it stopped
@@ -1074,7 +1124,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       setMsgs([{ role: "assistant", text: e instanceof Error ? e.message : "تعذّر فتح المحادثة.", error: true }]);
     }
   }
-  const fresh = () => { setPathId(null); setPathMenu(false); setEditFrom(null); setChatId(null); setMsgs([]); setQ(store.get(draftKey(null)) ?? ""); setPending([]); setSide(false); setSpent(0); };
+  reopenRef.current = (id: string) => open(id, true);
+  const fresh = () => { setThread("pictures"); setStoreOpen(false); setPathId(null); setPathMenu(false); setEditFrom(null); setChatId(null); setMsgs([]); setQ(store.get(draftKey(null)) ?? ""); setPending([]); setSide(false); setSpent(0); };
 
   // back on the page: the conversation of the address (?chat=) or of the last visit opens again
   useEffect(() => {
@@ -1189,9 +1240,11 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     setPending([]);
     setEditFrom(null);
     setBusy("writing");
-    const mine: Msg = { role: "user", text: message || "(ملفات مرفقة)", files: files.length ? files : undefined };
+    const inDesign = thread === "design" && msgs.some((x) => x.thread === "design");
+    const mine: Msg = { role: "user", text: message || "(ملفات مرفقة)", files: files.length ? files : undefined, ...(inDesign ? { thread: "design" as const } : {}) };
     setMsgs((m) => (editing != null ? [...m.slice(0, editing), mine] : [...m, mine]));
     let produceId: string | null = null;
+    let reopenId: string | null = null;
     let mediaId: string | null = null;
     let dlNote = "";
     try {
@@ -1210,12 +1263,12 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
           setPrep(null);
         }
       }
-      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string; lab?: string } | null; media: MediaView[] | null; spent?: number }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id), model: claude.id, verbose, ...(from !== undefined ? { from } : {}) });
+      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string; lab?: string } | null; media: MediaView[] | null; spent?: number; reopen?: boolean }>("/api/content/chat", { chatId, message, ...(inDesign ? { thread: "design" } : {}), attachments: files.map((f) => f.id), model: claude.id, verbose, ...(from !== undefined ? { from } : {}) });
       setChatId(r.chatId);
       setSpent(Math.max(0, Number(r.spent) || 0));
       setMsgs((m) => {
         const copy = [...m];
-        const reply: Msg = { role: "assistant", text: r.text, questions: r.questions ?? undefined, editor: r.editor ?? undefined, ...(r.media ? { media: { items: r.media } } : {}) };
+        const reply: Msg = { role: "assistant", text: r.text, questions: r.questions ?? undefined, editor: r.editor ?? undefined, ...(r.media ? { media: { items: r.media } } : {}), ...(inDesign ? { thread: "design" as const } : {}) };
         // a new carousel: the placeholders of its slides appear at once; a fix: the slides being redrawn are marked
         if (r.pending?.mode === "all") reply.slides = { aspect: "", items: [], todo: r.pending.todo, failed: [], running: true, total: r.pending.total };
         if (r.pending?.mode === "fix") {
@@ -1225,7 +1278,11 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
         return [...copy, ...(dlNote ? [{ role: "assistant" as const, text: dlNote, error: true }] : []), reply];
       });
       void refresh();
-      if (r.pending) produceId = r.chatId;
+      // the pictures were approved in words and handed on (or a picture is being made again): opened again, there
+      if (r.reopen) {
+        nextThread.current = inDesign ? "pictures" : /اعتمد|كمل|كمّل/.test(typed) ? "design" : "pictures";
+        reopenId = r.chatId;
+      } else if (r.pending) produceId = r.chatId;
       else if (r.media) mediaId = r.chatId;
     } catch (e) {
       // not answered (the wallet ran out, the network…): the message goes back into the box with its files, ready to
@@ -1240,12 +1297,13 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     } finally {
       setBusy("");
     }
-    if (produceId) await runProduce(produceId);
+    if (reopenId) await open(reopenId, true);
+    else if (produceId) await runProduce(produceId);
     else if (mediaId) await runMedia(mediaId);
   }
 
   async function remove(id: string) {
-    if (!confirm("نحذف هذي المحادثة وصورها؟")) return;
+    if (!confirm("نحذف هذا المشروع بمحادثاته وصوره وخزانه؟")) return;
     await fetch(`/api/content/chats?id=${id}`, { method: "DELETE" }).catch(() => null);
     if (id === chatId) fresh();
     void refresh();
@@ -1265,7 +1323,10 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     });
   };
 
-  const lastAssistant = msgs.map((x) => x.role).lastIndexOf("assistant");
+  // a project of two chats: each shows its own messages (what is written here only, errors in both)
+  const twoChats = msgs.some((x) => x.thread === "design");
+  const shown = (m: Msg) => !twoChats || m.error || m.local || (thread === "design") === (m.thread === "design");
+  const lastAssistant = msgs.map((x) => (shown(x) ? x.role : "")).lastIndexOf("assistant");
   // what they decided so far, from the marks of their messages (the path opened but not yet sent counts too)
   const decisions = (() => {
     const d = decisionsOf(msgs.filter((m) => m.role === "user").map((m) => m.text));
@@ -1285,7 +1346,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
 
       <div className="ct-wrap">
         <aside className={`ct-side ct-glass ${side ? "open" : ""}`}>
-          <button className="ct-send" style={{ minWidth: 0, width: "100%" }} onClick={fresh}>＋ محادثة جديدة</button>
+          <button className="ct-send" style={{ minWidth: 0, width: "100%" }} onClick={fresh}>＋ مشروع جديد</button>
+          <small style={{ color: "#b8ad9c", fontSize: 12 }}>مشاريعك</small>
           <div className="ct-chats">
             {chats.map((c) => (
               <div key={c.id} className="ct-chat-item" aria-current={c.id === chatId} onClick={() => open(c.id)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && open(c.id)}>
@@ -1293,20 +1355,35 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                 <button className="ct-mini" aria-label="احذف" onClick={(e) => { e.stopPropagation(); void remove(c.id); }}>✕</button>
               </div>
             ))}
-            {!loginHref && chats.length === 0 && <p style={{ color: "#b8ad9c", fontSize: 13 }}>محادثاتك تظهر هنا.</p>}
+            {!loginHref && chats.length === 0 && <p style={{ color: "#b8ad9c", fontSize: 13 }}>مشاريعك تظهر هنا: كل مشروع بمحادثاته وخزانه.</p>}
           </div>
           <Link href="/jawad-ai" className="ct-mini" style={{ textAlign: "center" }}>← الرئيسية</Link>
         </aside>
 
         <section className="ct-main ct-glass">
           <header className="ct-head">
-            <button className="ct-burger ct-mini" onClick={() => setSide((s) => !s)} aria-label="المحادثات">☰</button>
+            <button className="ct-burger ct-mini" onClick={() => setSide((s) => !s)} aria-label="المشاريع">☰</button>
             <div className="ct-scene-pen"><div className={`ct-pen ${busy ? "writing" : ""}`} /></div>
             <div>
               <div className="ct-title">{name}</div>
               <div style={{ color: "#b8ad9c", fontSize: 12 }}>تكلّم مع {persona}</div>
             </div>
           </header>
+
+          {!loginHref && chatId && (
+            <div className="ct-threads" role="tablist" aria-label="محادثات المشروع">
+              {twoChats ? (
+                <>
+                  <button type="button" role="tab" aria-selected={thread === "pictures"} className="ct-thread" onClick={() => setThread("pictures")}>🖼️ الصور</button>
+                  <button type="button" role="tab" aria-selected={thread === "design"} className="ct-thread" onClick={() => setThread("design")}>✍️ الكتابة والموشن</button>
+                </>
+              ) : (
+                <span className="ct-thread-one">💬 محادثة المشروع</span>
+              )}
+              <button type="button" className="ct-thread ct-thread-store" onClick={() => setStoreOpen(true)}>🗄️ خزان المراجع والثوابت</button>
+            </div>
+          )}
+          {storeOpen && chatId && <StorePanel chatId={chatId} onClose={() => setStoreOpen(false)} />}
 
           {!loginHref && decisions.length > 0 && (
             <div className="ct-decs" role="group" aria-label="قراراتك (اضغط أي واحد لتغيّره)">
@@ -1348,8 +1425,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                 </div>
               </>
             ) : (
-              msgs.map((m, i) => (
-                <div key={i} className={`ct-msg ${m.role === "user" ? "user" : "bot"} ${m.error ? "err" : ""}`}>
+              msgs.map((m, i) => !shown(m) ? null : (
+                <div key={i} className={`ct-msg ${m.role === "user" ? "user" : "bot"} ${m.error ? "err" : ""} ${m.handoff ? "handoff" : ""}`}>
                   {m.role === "user" ? <p style={{ whiteSpace: "pre-wrap" }}>{stripMarks(m.text)}</p> : <Rich text={m.text} />}
                   {m.files && m.files.length > 0 && (
                     <div className="ct-files">
@@ -1371,6 +1448,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                       onResume={() => chatId && void runProduce(chatId)}
                       onApprove={() => chatId && void runProduce(chatId, undefined, { approvePictures: true })}
                       onRedoPicture={(n, note) => chatId && void runProduce(chatId, undefined, { redoPicture: n, note })}
+                      onChangeApproved={m.slides.approved && thread === "pictures" ? (n, note) => chatId && void runProduce(chatId, undefined, { redoApproved: { n, note } }) : undefined}
                       onEditSlide={(ns, said) => chatId && void runProduce(chatId, undefined, { editSlide: { ns, said } })}
                       fonts={gal?.fonts}
                       reelGo={reelGo.at === i ? reelGo.n : 0}

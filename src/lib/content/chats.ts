@@ -71,6 +71,10 @@ export interface SlidesBlock {
   motion?: MotionPlan;
   /** "pictures": GPT Image 2 is painting the slides' pictures; "approve": they are painted and wait for the person's approval */
   phase?: "pictures" | "approve";
+  /** the pictures of a two-chat project, approved and handed to the second chat («الكتابة والموشن») */
+  approved?: boolean;
+  /** made in a two-chat project (its pictures first, then its writing in the second chat) */
+  split?: boolean;
   /** slides set aside after running past the time (done after the rest) */
   deferred?: number[];
 }
@@ -139,6 +143,14 @@ export interface Turn {
   /** the edit room in «حيدرة كت» (and, for a motion piece, the «مختبر الموشن» conversation it opens on) */
   editor?: { id: string; title: string; lab?: string };
   error?: boolean;
+  /**
+   * the project's second chat («✍️ الكتابة والموشن»): a carousel «حيدرا ماكس» writes or moves is made in two chats (the
+   * owner, 23 Nov 2026) — the pictures in the first, then, once approved, the writing and the motion in this one.
+   * Absent: the first chat (or a project of one chat).
+   */
+  thread?: "design";
+  /** the delivery message («رسالة التسليم») the first chat hands to the second: built by the site from what was approved */
+  handoff?: boolean;
 }
 
 /** A carousel ordered and being made: the produce step takes it a few slides at a time. */
@@ -187,6 +199,11 @@ export interface PendingProduce {
    * «حيدرا ماكس» design and move the slides
    */
   picturesOk?: boolean;
+  /**
+   * a project of two chats (the owner, 23 Nov 2026): every slide's picture is made and approved first — by GPT Image 2,
+   * or by «حيدرا ماكس» in code with no writing — and only then, in the second chat, does he write (and move) the slides
+   */
+  split?: boolean;
   /** a motion slide's program once it runs, by slide number (storage path): a refresh goes on from it, never writes again */
   programs?: Record<string, string>;
   /** slides whose work ran past the time once: set aside, done after the others with lighter thinking (17 Nov 2026) */
@@ -302,6 +319,8 @@ export function cleanHistory(raw: unknown): Turn[] {
     const turn: Turn = { role, text };
     if (files) turn.files = files;
     if (m.error === true) turn.error = true;
+    if (m.thread === "design") turn.thread = "design";
+    if (m.handoff === true && role === "assistant") turn.handoff = true;
     if (role === "assistant") {
       const questions = readQuestions(m.questions);
       if (questions) turn.questions = questions;
@@ -318,6 +337,8 @@ export function cleanHistory(raw: unknown): Turn[] {
         styleId: str(s.styleId, 60),
         ...(s.maker === "code" ? { maker: "code" as const } : {}),
         ...(s.mix === true ? { mix: true } : {}),
+        ...(s.approved === true ? { approved: true } : {}),
+        ...(s.split === true ? { split: true } : {}),
         ...(typeof s.carouselId === "string" && findCarouselStyle(s.carouselId) ? { carouselId: s.carouselId } : {}),
         ...(typeof s.fontId === "string" && findContentFont(s.fontId) ? { fontId: s.fontId } : {}),
         ...(typeof s.paletteId === "string" && findPalette(s.paletteId) ? { paletteId: s.paletteId } : {}),
@@ -363,6 +384,7 @@ export function readPending(v: unknown): PendingProduce | null {
     ...(readMotion(p.motion) ? { motion: readMotion(p.motion)! } : {}),
     ...(p.sound === false ? { sound: false as const } : p.sound && typeof p.sound === "object" && typeof (p.sound as { uploadId?: unknown }).uploadId === "string" && Array.isArray((p.sound as { slices?: unknown }).slices) ? { sound: p.sound as NonNullable<Exclude<PendingProduce["sound"], false>> } : {}),
     ...(p.picturesOk === true ? { picturesOk: true } : {}),
+    ...(p.split === true ? { split: true } : {}),
     ...(p.edits && typeof p.edits === "object" && !Array.isArray(p.edits) ? { edits: Object.fromEntries(Object.entries(p.edits as Record<string, unknown>).filter(([, v]) => typeof v === "string" && v.trim()).map(([k, v]) => [k, String(v).slice(0, 1000)])) } : {}),
     ...(p.soundTimes && typeof p.soundTimes === "object" && !Array.isArray(p.soundTimes) ? { soundTimes: Object.fromEntries(Object.entries(p.soundTimes as Record<string, { from?: unknown; to?: unknown }>).filter(([, v]) => v && Number.isFinite(Number(v.from)) && Number(v.to) > Number(v.from)).map(([k, v]) => [k, { from: Number(v.from), to: Number(v.to) }])) } : {}),
     ...(p.programs && typeof p.programs === "object" && !Array.isArray(p.programs) ? { programs: Object.fromEntries(Object.entries(p.programs as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> } : {}),
@@ -427,5 +449,7 @@ export async function saveChat(userId: string, id: string | null, patch: { messa
 }
 
 export async function deleteChat(userId: string, id: string) {
-  await db().from("content_chats").delete().eq("id", id).eq("user_id", userId);
+  const { data } = await db().from("content_chats").delete().eq("id", id).eq("user_id", userId).select("id");
+  // the project's store goes with it
+  if (data?.length) await db().from("content_kv").delete().eq("key", `content-store:${id}`);
 }
