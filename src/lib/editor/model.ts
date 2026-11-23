@@ -569,9 +569,23 @@ export interface Track {
   motion?: boolean;
   /** «بدّل الكاميرات تلقائياً»: a video track holding one synced camera's original clip (the cuts are made from it) */
   angles?: boolean;
+  /** «مجلد المسارات» this track is shown in (a TrackFolder's id); none = on its own */
+  folder?: string;
   /** clips never overlap and are kept sorted by `start` */
   clips: Clip[];
 }
+
+/**
+ * «مجلد مسارات»: tracks shown together under one row that folds, so a timeline with many tracks stays short. Only how
+ * the timeline is drawn: the picture, the sound and the tracks' order are the same folded or not.
+ */
+export interface TrackFolder {
+  id: string;
+  name: string;
+  /** folded: its tracks are drawn as one thin row */
+  closed: boolean;
+}
+export const MAX_FOLDERS = 20;
 
 export interface Timeline {
   v: number;
@@ -590,6 +604,8 @@ export interface Timeline {
   /** beat marks (timeline ms) the cuts snap to */
   markers: number[];
   tracks: Track[];
+  /** «مجلدات المسارات» (absent = none); every one has at least one track */
+  folders?: TrackFolder[];
   /**
    * The project's timelines («تسلسلات»), in their order. The one being edited has `tl: null` (it is this object);
    * absent or empty = a project with one timeline.
@@ -1170,6 +1186,12 @@ export function readTimeline(raw: unknown, assets: Set<string> | null = null, ne
   let clips = 0;
   const seen = new Set<string>();
   const tracks: Track[] = [];
+  const folders: TrackFolder[] = [];
+  for (const fv of Array.isArray(o.folders) ? o.folders.slice(0, MAX_FOLDERS) : []) {
+    const f = fv && typeof fv === "object" ? (fv as Record<string, unknown>) : {};
+    const fid = str(f.id, 40, "");
+    if (fid && ID.test(fid) && !folders.some((x) => x.id === fid)) folders.push({ id: fid, name: str(f.name, 40, "") || `مجلد ${folders.length + 1}`, closed: f.closed === true });
+  }
   for (const tv of tracksIn) {
     if (!tv || typeof tv !== "object") continue;
     const t = tv as Record<string, unknown>;
@@ -1187,12 +1209,14 @@ export function readTimeline(raw: unknown, assets: Set<string> | null = null, ne
       list.push(c);
       clips++;
     }
-    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, color: TRACK_COLORS.includes(String(t.color)) ? String(t.color) : null, role: kind === "video" && (t.role === "fix" || t.role === "fixed" || t.role === "cont") ? t.role : null, ...(kind === "text" && t.motion === true ? { motion: true } : {}), ...(kind === "video" && t.angles === true ? { angles: true } : {}), clips: settle(list) });
+    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, color: TRACK_COLORS.includes(String(t.color)) ? String(t.color) : null, role: kind === "video" && (t.role === "fix" || t.role === "fixed" || t.role === "cont") ? t.role : null, ...(kind === "text" && t.motion === true ? { motion: true } : {}), ...(kind === "video" && t.angles === true ? { angles: true } : {}), ...(typeof t.folder === "string" && folders.some((x) => x.id === t.folder) ? { folder: t.folder } : {}), clips: settle(list) });
   }
   if (!tracks.some((t) => t.kind === "video")) tracks.unshift({ id: "main", kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] });
   const width = int(o.width, 144, 4096, 1080);
   const height = int(o.height, 144, 4096, 1920);
   const out: Timeline = { v: EDITOR_VERSION, width: width - (width % 2), height: height - (height % 2), fps: pick<number>(Number(o.fps), [24, 25, 30, 60], 30), background: color(o.background, "#000000"), magnetic: o.magnetic !== false, magnetAll: o.magnetic !== false && o.magnetAll === true, markers: readMarkers(o.markers), tracks };
+  const used = folders.filter((f) => tracks.some((t) => t.folder === f.id));
+  if (used.length) out.folders = used;
   const main = mainTrack(out);
   if (main && out.magnetic) main.clips = pack(main.clips);
   // the other timelines (one level: theirs are dropped), exactly one of them the open one

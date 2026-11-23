@@ -35,6 +35,36 @@ export function nearestPoint(points: number[], ms: number, tol: number, skip: nu
   return best;
 }
 
+/**
+ * The magnet for everything being dragged: `edges` are the starts and ends of every moving clip as they were before
+ * the drag (the held clip's first), `dt` how far the drag has gone, `points` what they can stick to (the clips that
+ * stay, the playhead, the beats). The edge that comes nearest to a point within `tol` wins — whichever clip it belongs
+ * to, so a selection sticks by its far end as well as by the clip under the pointer. Returns the move that makes it
+ * touch and the point, or null. An edge never sticks to the spot it started from.
+ */
+export function groupSnap(points: number[], edges: number[], dt: number, tol: number): { dt: number; at: number } | null {
+  let best: { dt: number; at: number } | null = null;
+  let gap = tol;
+  for (const e of edges) {
+    const p = nearestPoint(points, e + dt, gap, [e]);
+    if (p == null) continue;
+    gap = Math.abs(p - (e + dt));
+    best = { dt: p - e, at: p };
+  }
+  return best;
+}
+
+/**
+ * A selection dragged to another track: every clip moves by the same number of tracks among the `lanes` tracks of its
+ * kind. `from` / `to`: the lane the held clip was on and the one under the pointer; `members`: the lanes of all the
+ * moving clips of that kind. The shift is pulled back toward 0 until every one of them still has a lane to land on.
+ */
+export function trackShift(lanes: number, from: number, to: number, members: number[]): number {
+  const lo = Math.min(from, ...members);
+  const hi = Math.max(from, ...members);
+  return Math.max(-lo, Math.min(lanes - 1 - hi, to - from));
+}
+
 /** «+2.4 ث» / «−0.8 ث» / «٠ ث» for a move or trim of `ms` milliseconds (digits as written elsewhere in the editor). */
 export function movedLabel(ms: number): string {
   const s = Math.abs(ms) / 1000;

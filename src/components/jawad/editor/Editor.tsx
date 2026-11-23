@@ -41,7 +41,7 @@ import ShortsPanel from "./ShortsPanel";
 import { askShorts } from "./shorts-ask";
 import TemplatesPanel from "./TemplatesPanel";
 import type { Template } from "@/lib/editor/templates";
-import { planSync } from "./sync";
+import { planSync, type SyncFlag } from "./sync";
 import { defaultSound, multicamCameras, planMulticam } from "./multicam-run";
 import { nextAngle } from "./MulticamBox";
 import { MULTICAM } from "@/lib/editor/multicam";
@@ -291,6 +291,16 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   };
   // the timeline's height, dragged by its top edge (null: the usual share of the screen); kept on this device
   const [tlH, setTlH] = useState<number | null>(null);
+  // «التايملاين على الشاشة كاملة»: it covers the whole editor to work on many tracks (its own button; Esc leaves)
+  const [tlFull, setTlFull] = useState(false);
+  useEffect(() => {
+    if (!tlFull) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTlFull(false);
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [tlFull]);
   // the conversation over the whole editor (a computer), and its text size (kept on this device)
   const [chatBig, setChatBig] = useState(false);
   // JAWAD AI's two top bars (the header and the sections bar) on a computer: tiny by default, one press brings them out,
@@ -1175,6 +1185,24 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   };
   // «زامن الصوت»: the chosen clips are lined up by what they hear (a camera and a phone, a camera and a microphone track)
   const [syncing, setSyncing] = useState(false);
+  // the clips «زامن الصوت» could not line up (red) or lined up with medium confidence (amber), marked on the timeline
+  // until they sync, are moved by hand or the marks are cleared (kept on this device)
+  const [syncFlags, setSyncFlags] = useState<Record<string, SyncFlag>>({});
+  const flagsKey = `editor-sync-flags:${project.id}`;
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(flagsKey) ?? "{}") as Record<string, SyncFlag>;
+      const t = setTimeout(() => setSyncFlags(saved && typeof saved === "object" ? saved : {}), 0);
+      return () => clearTimeout(t);
+    } catch {}
+  }, [flagsKey]);
+  const keepFlags = (next: Record<string, SyncFlag>) => {
+    setSyncFlags(next);
+    try {
+      if (Object.keys(next).length) localStorage.setItem(flagsKey, JSON.stringify(next));
+      else localStorage.removeItem(flagsKey);
+    } catch {}
+  };
   const syncClips = async (ids: string[]) => {
     if (syncing) return;
     track("editor.sync");
@@ -1182,6 +1210,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     try {
       const plan = await planSync(tlRef.current, ids, new Map(assets.map((x) => [x.id, x])), (text) => flash(text));
       if (plan.cmds.length) run(plan.cmds, { label: `زامنت ${plan.moved} مقطع بالصوت` });
+      if (plan.tried.length) keepFlags({ ...Object.fromEntries(Object.entries(syncFlags).filter(([id]) => !plan.tried.includes(id))), ...plan.flags });
       flash(plan.notes.join(" "), !plan.cmds.length);
     } catch (e) {
       flash(e instanceof Error ? e.message : "تعذّرت المزامنة.", true);
@@ -2421,9 +2450,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </aside>
       )}
       {!(big && !wide) && <Guard name="التعديل الذكي"><SmartFix projectId={project.id} tl={tl} assets={assetMap} selected={selected} run={run} player={player} onAssets={addAssets} flash={flash} readOnly={readOnly} studioPath={studioPath} /></Guard>}
-      <div className={`jw-glass relative mx-2 mb-2 shrink-0 flex-col overflow-hidden rounded-2xl ${big ? (ws ? "hidden lg:flex lg:h-[36%] lg:min-h-[200px]" : "hidden lg:flex lg:h-[16%] lg:min-h-[110px]") : colorRoom ? "hidden" : bigPage ? "hidden lg:flex lg:h-[16%] lg:min-h-[110px]" : "flex h-[42%] min-h-[190px] lg:h-[36%] lg:min-h-[240px]"}`} style={tlH && wide && !big && !bigPage ? { height: tlH, minHeight: 0 } : undefined}>
+      <div className={`jw-glass shrink-0 flex-col overflow-hidden ${tlFull ? "absolute inset-0 z-[55] flex !bg-jw-bg-2" : "relative mx-2 mb-2 rounded-2xl"} ${tlFull ? "" : big ? (ws ? "hidden lg:flex lg:h-[36%] lg:min-h-[200px]" : "hidden lg:flex lg:h-[16%] lg:min-h-[110px]") : colorRoom ? "hidden" : bigPage ? "hidden lg:flex lg:h-[16%] lg:min-h-[110px]" : "flex h-[42%] min-h-[190px] lg:h-[36%] lg:min-h-[240px]"}`} style={tlH && wide && !big && !bigPage && !tlFull ? { height: tlH, minHeight: 0 } : undefined}>
         {/* its top edge: drag to make the timeline taller or shorter (double-click: the usual height) */}
-        {wide && !big && (
+        {wide && !big && !tlFull && (
           <div role="separator" aria-orientation="horizontal" aria-label="غيّر ارتفاع التايملاين" title="اسحب لتطويل التايملاين أو تقصيره (ضغطتين: الارتفاع الأصلي)" className="absolute inset-x-8 top-0 z-20 h-2 cursor-row-resize rounded-full hover:bg-jw-accent/40" onPointerDown={dragTimeline} onDoubleClick={resetTimeline} />
         )}
         {wide && <SequenceTabs tl={tl} run={run} readOnly={readOnly} />}
@@ -2433,7 +2462,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           if (n) player?.seek(n.at);
           setReviewFocus(id);
           setReviewOpen(true);
-        }} range={exportRange} tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} run={handRun} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onMenu={wide ? openMenu : undefined} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
+        }} range={exportRange} flags={syncFlags} onFlags={keepFlags} full={tlFull} onFull={wide ? () => setTlFull((v) => !v) : undefined} tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} run={handRun} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onMenu={wide ? openMenu : undefined} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
           setWantTab("transition");
           pick([id]);
           if (!wide) setSheet("inspector");
