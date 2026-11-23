@@ -29,7 +29,7 @@ import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
 import { askedSlides, attachedPictures, CAROUSEL_QUESTION, carouselHold, pathOf, pickedCarousel, pureGatePick, siteStep, pickedFont, pickedKind, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "./maker";
 import { chatEditPatch, lastSlidesAt, planPictureRedo, planRetryWords, planSoundTime } from "./produce";
-import { addToStore, getStore, handOff, hasDesign, lookLines, saveStore, storeNote, threadTurns, type Thread } from "./project";
+import { addToStore, getStore, handOff, hasDesign, lookLines, saveStore, storeNote, threadTurns, twoChats, type Thread } from "./project";
 import { slidePicture } from "./files";
 import { listenToFiles, listenToLinks } from "@/lib/link-listen";
 import { billYoutube } from "./youtube";
@@ -690,7 +690,7 @@ export async function say(userId: string, chatId: string | null, message: string
       const named = (Array.isArray(a.produce.refs) ? a.produce.refs : []).filter((r) => mine.has(r));
       // they chose to add their own pictures: those go with the slides even if the answer forgot to name them
       const refs = (named.length || pickedPhotos(history) !== "mine" ? named : attachedPictures(history).map((f) => f.id)).slice(0, 6);
-      pending = { id: randomUUID(), aspect, slides, at, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...(refs.length ? { refs } : {}), mode: "all", ...code, ...moving, ...(code.maker === "code" && thread === "pictures" ? { split: true } : {}), made: [], failed: [], carry: [] };
+      pending = { id: randomUUID(), aspect, slides, at, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...(refs.length ? { refs } : {}), mode: "all", ...code, ...moving, ...(thread === "pictures" && twoChats({ ...code, ...moving }) ? { split: true } : {}), made: [], failed: [], carry: [] };
       await ownArts(pending);
       if (reuse) reply.text += `\n\n🎨 بنفس ستايلك وألوانك وخطك${reuse.motion ? " وحركتك" : ""} من الكاروسيل السابق. تبي تغيّر شي منها؟ قل لي «غيّر الستايل» أو «غيّر الألوان».`;
       reply.slides = { aspect, items: [], todo: slides.map((x) => x.n), failed: [], running: true, total: slides.length, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...code, ...moving };
