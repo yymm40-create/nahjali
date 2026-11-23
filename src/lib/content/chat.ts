@@ -38,6 +38,12 @@ import { randomUUID } from "crypto";
 
 const db = () => createAdminClient();
 
+/** Every turn: his answer is never empty, whatever the notes ask him not to say. */
+const NEVER_EMPTY = "[قاعدة ثابتة: حقل reply لا يكون فارغًا أبدًا ولا نقاطًا فقط. حتى حين تقول لك ملاحظة لا تعلّق على شيء، اكتب للعميل سطرًا واحدًا على الأقل يقول ما فهمته وما سيحدث الآن.]";
+
+/** An answer with no words in it (empty, or only dots). */
+export const isEmptyReply = (t: string) => !t.replace(/[.…\s]/g, "");
+
 export const ANSWER_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -361,6 +367,10 @@ export async function say(userId: string, chatId: string | null, message: string
   // a YouTube video the page downloaded for this message: paid with this reply (once); its words come through the link
   const yt = await billYoutube(userId, files.map((f) => f.id)).catch(() => ({ usd: 0, ids: new Set<string>() }));
   const nowAv = av(files).filter((f) => !yt.ids.has(f.id));
+  // (the page downloaded it: he said «رابط يوتيوب لا أستطيع تحميله» while its file was attached, 23 Nov 2026)
+  const ytNote = files.some((f) => yt.ids.has(f.id) || /youtube|يوتيوب/i.test(f.name)) || /youtu\.?be/i.test(said)
+    ? "[الموقع نزّل فيديو يوتيوب الذي في الرسالة وأرفقه ملفًا (فيديو وصوته): استعمله كما طلب العميل، ولا تقل أبدًا إنك لا تستطيع تحميل رابط يوتيوب.]"
+    : "";
   const avLinks = nowAv.length ? await uploadLinks(userId, nowAv.map((f) => f.id)) : new Map<string, string>();
   const heardFiles = await listenToFiles(
     nowAv.map((f) => ({ id: f.id, kind: f.kind as "audio" | "video", name: f.name, url: avLinks.get(f.id) })),
@@ -457,13 +467,20 @@ export async function say(userId: string, chatId: string | null, message: string
   // he was told not to plan the carousel again and had no other way: the person asked, the page turned, and nothing was
   // drawn (a customer, 17 Nov 2026)
   const inPictures = !!unfinished && unfinished.maker === "code" && !unfinished.picturesOk && Object.keys(unfinished.arts ?? {}).length > 0;
-  const picturesNote = !inPictures ? "" : `[الكاروسيل في مرحلة اعتماد الصور (رُسمت صور الشرائح ${Object.keys(unfinished!.arts ?? {}).sort().join("، ")} وتنتظر اعتماد العميل بزر «اعتمد الصور» أو بكتابته «اعتمد»: الموقع يعتمدها بنفسه في الحالتين، فلا تقل له أبدًا إن كتابته لا تكفي. وإذا كان طلبه عن مكان الصورة أو الكتابة في الشريحة فقط (الصورة تحت، الكلام فوق، لا تقصها) وليس عن محتوى الصورة: اكتب الشريحة في "slides" بنفس "picture" حرفيًا كما هي، وضع المكان المطلوب في "prompt" — الموقع يبقي الصورة المعتمدة كما هي، وحيدرا ماكس يرتّبها بهذا المكان عند التصميم، فلا تُرسم من جديد). إذا طلب العميل إعادة صورة أو تعديلها: ضع produce.on=true وmode="fix"، وفي "slides" تلك الشرائح فقط بأرقامها، ولكل واحدة "picture" = توجيه صورتها الجديدة كاملًا بالإنجليزية بعد التعديل الذي طلبه (بلا أي كتابة)، و"text" و"prompt" كما هي. الموقع يعيد رسم صورها فقط بنفس الكاروسيل، ثم تعود للاعتماد. وقل له في سطر إنك أعدت رسم صورة الشريحة كذا، وإن زر «🔄 أعد صورة» تحت الصور يسويها بعد.]`;
+  const picturesNote = !inPictures ? "" : `[الكاروسيل في مرحلة اعتماد الصور (رُسمت صور الشرائح ${Object.keys(unfinished!.arts ?? {}).sort().join("، ")} وتنتظر اعتماد العميل بزر «اعتمد الصور» أو بكتابته «اعتمد»: الموقع يعتمدها بنفسه في الحالتين، فلا تقل له أبدًا إن كتابته لا تكفي. وإذا كان طلبه عن مكان الصورة أو الكتابة في الشريحة فقط (الصورة تحت، الكلام فوق، لا تقصها) وليس عن محتوى الصورة: اكتب الشريحة في "slides" بنفس "picture" حرفيًا كما هي، وضع المكان المطلوب في "prompt" — الموقع يبقي الصورة المعتمدة كما هي، وحيدرا ماكس يرتّبها بهذا المكان عند التصميم، فلا تُرسم من جديد). إذا طلب العميل إعادة صورة أو تعديلها: ضع produce.on=true وmode="fix"، وفي "slides" تلك الشرائح فقط بأرقامها، ولكل واحدة "picture" = توجيه صورتها الجديدة كاملًا بالإنجليزية بعد التعديل الذي طلبه (بلا أي كتابة)، و"text" و"prompt" كما هي. الموقع يعيد رسم صورها فقط بنفس الكاروسيل، ثم تعود للاعتماد. وقل له في سطر إنك أعدت رسم صورة الشريحة كذا، وإن زر «🔄 أعد صورة» تحت الصور يسويها بعد. وإذا طلب تغيير عدد الشرائح (تقسيم شريحة، إضافة، حذف، دمج): اكتب produce كاملًا mode="all" بكل الشرائح بأرقامها الجديدة، وكل شريحة بقيت صورتها كما هي اكتب لها "picture" و"prompt" حرفيًا كما كانا، فيحتفظ الموقع بصورتها ولا يعيد رسمها، وتُرسم صور الشرائح الجديدة فقط.]`;
   // a slide's sound time written in the message: the site sets it itself (he had no way to, and said it was done)
   const askedTime = readSoundAsk(said);
   const timeNote = askedTime ? `[الموقع ثبّت بنفسه وقت صوت الشريحة ${askedTime.n}: من ${askedTime.from} إلى ${askedTime.to} ثانية من الملف، ويطبّقه عند صنع فيديوها. لا تكتب produce لأجل الوقت وحده، وقل للعميل في سطر إن الوقت انضبط كما كتبه. والكلام اللي في الوقت الجديد غالبًا يختلف عن نص الشريحة الحالي: اذكر له في سطر الكلام اللي ينقال في الوقت الجديد (من التفريغ بأوقاته)، واسأله سؤالًا واحدًا بأزرار: «تبي نص الشريحة يتغيّر للكلام الجديد؟» بالخيارات «إيه غيّره» و«لا خلّه مثل ما هو» و«غيّره بصياغة مختصرة». إذا اختار التغيير فهو تعديل لتلك الشريحة (mode="fix" بنصها الجديد).]` : "";
-  const r = await callClaudeJson<Answer>({ system, turnNote: [timeNote, picturesNote || waitingNote, turnNote].filter(Boolean).join("\n\n"), turns: [...mem.lead, ...turns.map((t, i) => toClaudeTurn(i === turns.length - 1 && t.role === "user" && likedRefs.length ? { ...t, files: [...(t.files ?? []), ...likedRefs.map((r) => ({ id: r.id, kind: "image" as const, name: `مرجع عجب العميل من الخزان: ${r.name}${r.note ? ` (${r.note})` : ""}`, durationMs: null }))] } : t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email), systemExtra: extra, stableNote: stable.join("\n\n"), systemTtl: "1h", cacheTail: false });
-  const a = r.data;
+  const ask1 = (more: string) => callClaudeJson<Answer>({ system, turnNote: [timeNote, picturesNote || waitingNote, ytNote, turnNote, NEVER_EMPTY, more].filter(Boolean).join("\n\n"), turns: [...mem.lead, ...turns.map((t, i) => toClaudeTurn(i === turns.length - 1 && t.role === "user" && likedRefs.length ? { ...t, files: [...(t.files ?? []), ...likedRefs.map((r) => ({ id: r.id, kind: "image" as const, name: `مرجع عجب العميل من الخزان: ${r.name}${r.note ? ` (${r.note})` : ""}`, durationMs: null }))] } : t, links))], schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email), systemExtra: extra, stableNote: stable.join("\n\n"), systemTtl: "1h", cacheTail: false });
+  let r = await ask1("");
   let usd = claudeCost(r.usage) + mem.usd + listened.usd + heardFiles.usd + yt.usd;
+  // an empty answer («…»: the notes told him what NOT to say, and he said nothing — 23 Nov 2026, three times in one
+  // carousel): asked once more, plainly
+  if (isEmptyReply(r.data.reply) && !holdNow) {
+    r = await ask1("[ردك السابق وصل للعميل فارغًا. اكتب الآن ردًا واضحًا قصيرًا ينفّذ ما طلبه العميل في رسالته الأخيرة.]");
+    usd += claudeCost(r.usage);
+  }
+  const a = r.data;
   const questions = readQuestions(a.questions);
   const reply: Turn = { role: "assistant", text: withNote(a.reply.trim() || "…", mem.fresh), ...(questions ? { questions } : {}), ...(thread === "design" ? { thread: "design" as const } : {}) };
   const messages = [...history, reply];
@@ -511,7 +528,10 @@ export async function say(userId: string, chatId: string | null, message: string
   };
 
   // the pictures stage: the slides he named get their pictures drawn again (nothing else of the carousel changes)
-  const redo = inPictures && a.produce?.on && Array.isArray(a.produce.slides) ? a.produce.slides.filter((x) => x && unfinished!.slides.some((y) => y.n === Number(x.n)) && !unfinished!.made.some((m) => m.n === Number(x.n))) : [];
+  // the slides' NUMBER changed while the pictures wait (a slide split in two, one added or taken out — the owner, 23 Nov
+  // 2026: «خل الكاروسيل ٩»): the carousel is planned again with all its slides, and the pictures that stay the same are kept
+  const resized = inPictures && a.produce?.on && a.produce.mode !== "fix" && Array.isArray(a.produce.slides) && a.produce.slides.filter((x) => x && typeof x.prompt === "string" && x.prompt.trim()).length !== unfinished!.slides.length;
+  const redo = inPictures && !resized && a.produce?.on && Array.isArray(a.produce.slides) ? a.produce.slides.filter((x) => x && unfinished!.slides.some((y) => y.n === Number(x.n)) && !unfinished!.made.some((m) => m.n === Number(x.n))) : [];
   if (redo.length) {
     const p = unfinished!;
     for (const x of redo) {
@@ -559,7 +579,7 @@ export async function say(userId: string, chatId: string | null, message: string
     const now = history[history.length - 1];
     const freshPick = history.slice(lastAt + 1, -1).some((t) => t.role === "user" && picksIn([t])) || (!!now && picksIn([now]) && !/(كم[ّ]?ل|بقي[ةه]|باقي|الباقي|خل[ّ]?ص)/.test(said)) || /(ستايل|الستايل|شكل|ألوان|الوان|خط)\s*(جديد|ثاني|آخر|اخر|مختلف)|غي[ّ]?ر\s*(ال)?(ستايل|شكل|ألوان|الوان|خط)/.test(said);
     const newCarousel = /(كاروسيل|كاروسل|سلايدات|شرائح)\s*(جديد|جديدة|ثاني|ثانية|آخر|اخر|أخرى|اخرى)|موضوع\s*(جديد|ثاني|آخر|اخر)/.test(said);
-    const goesOn = a.produce.mode !== "fix" && !freshPick && !newCarousel && notFinished && slides.length > 0 && slides.length <= lastBlock!.total && slides.every((x) => x.n >= 1 && x.n <= lastBlock!.total);
+    const goesOn = !resized && a.produce.mode !== "fix" && !freshPick && !newCarousel && notFinished && slides.length > 0 && slides.length <= lastBlock!.total && slides.every((x) => x.n >= 1 && x.n <= lastBlock!.total);
     const fixAt = a.produce.mode === "fix" || goesOn ? lastAt : -1;
     // who makes the slides is the person's pick, asked as the last step before a new carousel (the owner's order: «حيدرا ماكس» in code, GPT Image 2 painting each whole slide,
     // or GPT Image 2's pictures with «حيدرا ماكس»'s writing; no default): the server decides from the answer they pressed, not from what the model says. A fix goes back to the way the carousel was made
@@ -677,7 +697,7 @@ export async function say(userId: string, chatId: string | null, message: string
       // the colour step is always the site's own (its first button keeps the style's colours)
       const theirs = (questions ?? []).filter((q) => q.label !== hold.question.label && !(hold.question.kind === "palettes" && q.kind === "palettes"));
       reply.questions = own ? questions : [...theirs, hold.question].slice(-6);
-      reply.text += `\n\n${hold.note}`;
+      reply.text = isEmptyReply(reply.text) ? hold.note : `${reply.text}\n\n${hold.note}`;
     } else if (slides.length) {
       const pick = pickedCarousel(history);
       const carouselId = pick?.style?.id ?? reuse?.carouselId ?? (a.produce.carousel_id && findCarouselStyle(a.produce.carousel_id) ? a.produce.carousel_id : "");
@@ -692,6 +712,16 @@ export async function say(userId: string, chatId: string | null, message: string
       const refs = (named.length || pickedPhotos(history) !== "mine" ? named : attachedPictures(history).map((f) => f.id)).slice(0, 6);
       pending = { id: randomUUID(), aspect, slides, at, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...(refs.length ? { refs } : {}), mode: "all", ...code, ...moving, ...(thread === "pictures" && twoChats({ ...code, ...moving }) ? { split: true } : {}), made: [], failed: [], carry: [] };
       await ownArts(pending);
+      if (resized && unfinished) {
+        const p0 = unfinished;
+        const arts: Record<string, string> = { ...(pending.arts ?? {}) };
+        for (const sl of pending.slides) {
+          const same = p0.slides.find((o) => (sl.picture && o.picture ? o.picture.trim() === sl.picture.trim() : !sl.picture && !o.picture && o.prompt.trim() === sl.prompt.trim()));
+          const art = same ? p0.arts?.[String(same.n)] : undefined;
+          if (art && !arts[String(sl.n)]) arts[String(sl.n)] = art;
+        }
+        if (Object.keys(arts).length) pending.arts = arts;
+      }
       if (reuse) reply.text += `\n\n🎨 بنفس ستايلك وألوانك وخطك${reuse.motion ? " وحركتك" : ""} من الكاروسيل السابق. تبي تغيّر شي منها؟ قل لي «غيّر الستايل» أو «غيّر الألوان».`;
       reply.slides = { aspect, items: [], todo: slides.map((x) => x.n), failed: [], running: true, total: slides.length, styleId, templateId, ...(carouselId ? { carouselId } : {}), ...(fontId ? { fontId } : {}), ...(paletteId ? { paletteId } : {}), ...code, ...moving };
     }
@@ -707,7 +737,7 @@ export async function say(userId: string, chatId: string | null, message: string
       const own = (hold.question.kind === "carousels" || hold.question.kind === "fonts" || hold.question.kind === "motioncarousels") && questions?.some((q) => q.kind === hold.question.kind);
       const theirs = (questions ?? []).filter((q) => q.label !== hold.question.label && !(hold.question.kind === "palettes" && q.kind === "palettes"));
       reply.questions = own ? questions! : [...theirs, hold.question].slice(-6);
-      reply.text += `\n\n${hold.note}`;
+      reply.text = isEmptyReply(reply.text) ? hold.note : `${reply.text}\n\n${hold.note}`;
     }
   }
 

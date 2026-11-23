@@ -99,7 +99,13 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * Downloads a YouTube link for the message: its video and sound as the person's uploads, plus the video's frame sheet.
  * null when the download is not turned on; throws with the reason when it failed.
  */
-export async function downloadYoutube(url: string, onStep: (s: string) => void): Promise<PreparedFile[] | null> {
+/**
+ * The message wants only the video's SOUND (a background, a nasheed, a latmiya): no sheet of its frames is attached
+ * (the owner, 23 Nov 2026: «مانبيه ناخذ منه فريمز»).
+ */
+export const soundOnlyAsk = (text: string) => /(صوت|الصوت|صوته|خلفي[ةه]\s*صوتي[ةه]|موسيقى|موسيقا|لطمي[ةه]|نشيد|قصيد[ةه]|رادود|اوديو|أوديو|audio|sound|music)/i.test(text) && !/(فريم|لقطات|صور\s*من\s*الفيديو|frames?)/i.test(text);
+
+export async function downloadYoutube(url: string, onStep: (s: string) => void, o: { frames?: boolean } = {}): Promise<PreparedFile[] | null> {
   const start = await postJson<{ enabled: boolean; key?: string }>("/api/content/youtube", { url });
   if (!start.enabled || !start.key) return null;
   onStep("⬇️ أنزّل الفيديو وصوته من يوتيوب…");
@@ -110,7 +116,7 @@ export async function downloadYoutube(url: string, onStep: (s: string) => void):
     if (s.state === "ready") {
       const files = s.files ?? [];
       const video = files.find((f) => f.kind === "video");
-      if (video?.url) {
+      if (video?.url && o.frames !== false) {
         onStep("🎞️ أطلّع صور الفيديو…");
         const sheet = await sheetOf(video.url, video.name);
         if (sheet) files.push(sheet);

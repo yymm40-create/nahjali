@@ -139,7 +139,8 @@ async function loadImage(url: string): Promise<HTMLImageElement> {
 export async function joinSlidesToReel(slides: ReelSlide[], onProgress: (p: number) => void, signal?: AbortSignal): Promise<Blob> {
   const list = slides.filter((s) => s.video || s.image);
   if (!list.length) throw new Error("ما فيه شرائح جاهزة.");
-  const bitrate = Math.round(W * H * FPS * 0.32);
+  // about 8 Mbps: Instagram's own ceiling for a reel; at 0.32 bits a pixel a 49 s reel came out 114 MB (23 Nov 2026)
+  const bitrate = Math.round(W * H * FPS * 0.13);
   const codec = await getFirstEncodableVideoCodec(["avc", "vp9", "av1"], { width: W, height: H, bitrate });
   if (!codec) throw new Error("متصفحك ما يقدر يطلّع فيديو بمقاس الريل. جرّب Chrome أو Edge على الكمبيوتر.");
   const canvas = document.createElement("canvas");
