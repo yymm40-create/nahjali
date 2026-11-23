@@ -730,7 +730,11 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
           const drawing = s.todo.includes(n) && s.running;
           return (
             <figure key={n} className={`ct-slide ${drawing ? "drawing" : ""} ${item?.flag ? "flag" : ""}`} style={{ aspectRatio: aspect }}>
-              {item?.videoUrl ? <video src={item.videoUrl} poster={item.url ?? undefined} autoPlay muted loop playsInline controls preload="metadata" aria-label={item.text} /> : item?.url && <img src={item.url} alt={item.text} loading="lazy" />}
+              {item?.videoUrl ? (
+                // the slide's finished still shows (eight videos playing at once stayed paused on their dark first
+                // frame, 23 Nov 2026); it plays under the pointer, or with its own ▶
+                <video src={item.videoUrl} poster={item.url ?? undefined} muted loop playsInline controls preload="none" aria-label={item.text} onMouseEnter={(e) => void e.currentTarget.play().catch(() => undefined)} onMouseLeave={(e) => e.currentTarget.pause()} />
+              ) : item?.url && <img src={item.url} alt={item.text} loading="lazy" />}
               <span className="n">{n}</span>
               {drawing && <span className="shimmer" aria-label={`الشريحة ${n} قيد الرسم`}><span className="ct-spin" /></span>}
               {item && !drawing && (

@@ -705,6 +705,8 @@ button.ct-chip:hover { border-color: var(--ct-ink); }
 .ct-slide .tools a { position: static; }
 .ct-slide .tools a, .ct-slide .tools button { background: #000b; color: #fff; border: 0; font-size: 13px; padding: 4px 9px; border-radius: 999px; text-decoration: none; cursor: pointer; }
 .ct-slide .tools button:disabled { opacity: 0.4; cursor: not-allowed; }
+/* a video slide: its buttons sit above the player's own control bar, never on it */
+.ct-slide:has(video) .tools { bottom: 54px; }
 .ct-flags { margin: 0; padding-inline-start: 18px; font-size: 13px; color: var(--ct-ask-ink); }
 .ct-failed { border: 1px solid #fecaca; background: var(--ct-bad-soft); color: #7f1d1d; border-radius: 16px; padding: 12px 14px; font-size: 14px; }
 .ct-failed b { color: #7f1d1d; }
