@@ -472,14 +472,16 @@ function MapChoices({
       setUploading("");
     }
   }
-  // the logo and the products are put on their items by themselves the first time the map shows
-  const autoBrand = useRef(false);
+  // the logo and the products are put on their items by themselves the first time each item shows (also on a new
+  // version of the map that adds them — once per item, so the person's own change afterwards is kept)
+  const autoBrand = useRef(new Set<string>());
   useEffect(() => {
-    if (locked || autoBrand.current || !brand.length) return;
-    autoBrand.current = true;
+    if (locked || !brand.length) return;
     const items = map.flatMap((m) => {
       const b = brandFor(m, brand);
-      return b && !savedChoices[m.id] && !assets.some((a) => a.kind === "upload" && a.ref_key === m.id && a.status !== "rejected") ? [{ sheetId: m.id, assetId: b.id }] : [];
+      if (!b || autoBrand.current.has(m.id)) return [];
+      autoBrand.current.add(m.id);
+      return !savedChoices[m.id] && !assets.some((a) => a.kind === "upload" && a.ref_key === m.id && a.status !== "rejected") ? [{ sheetId: m.id, assetId: b.id }] : [];
     });
     if (items.length) setTimeout(() => void takeFromBrand(items), 0);
   });

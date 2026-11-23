@@ -26,6 +26,11 @@ export default function References({ projectId, initial, ad = false }: { project
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [role, setRole] = useState<AdBrandRole>("logo");
+  // shown at once, without waiting for the page to refresh: each picture as soon as it is saved (a later failure in
+  // the same batch never hides an earlier one, so nothing is uploaded twice), and gone as soon as it is deleted
+  const [added, setAdded] = useState<Ref[]>([]);
+  const [removed, setRemoved] = useState<string[]>([]);
+  const shown = [...initial, ...added.filter((a) => !initial.some((r) => r.id === a.id))].filter((r) => !removed.includes(r.id));
 
   async function upload(files: FileList | null) {
     if (!files?.length) return;
@@ -42,7 +47,8 @@ export default function References({ projectId, initial, ad = false }: { project
         });
         const put = await fetch(token, { method: "PUT", headers: { "content-type": file.type }, body: file });
         if (!put.ok) throw new Error("تعذّر رفع الصورة. جرّب مرة ثانية.");
-        await postJson(`/api/film/projects/${projectId}/uploads/confirm`, { path, fileName: file.name, ...(ad ? { brand: role } : {}) });
+        const { id } = await postJson<{ id: string }>(`/api/film/projects/${projectId}/uploads/confirm`, { path, fileName: file.name, ...(ad ? { brand: role } : {}) });
+        setAdded((a) => [...a, { id, name: file.name, url: URL.createObjectURL(file), brand: ad ? role : null }]);
       }
       router.refresh();
     } catch (e) {
@@ -57,6 +63,7 @@ export default function References({ projectId, initial, ad = false }: { project
     setError("");
     try {
       await api(`/api/film/projects/${projectId}/assets/${id}`, { method: "DELETE" });
+      setRemoved((r) => [...r, id]);
       router.refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -72,9 +79,9 @@ export default function References({ projectId, initial, ad = false }: { project
           : "صور أماكن أو أغراض أو ستايل تحب يشوفها المساعدون."}{" "}
         الصور خاصة فيك وما يشوفها أحد غيرك.
       </p>
-      {initial.length > 0 && (
+      {shown.length > 0 && (
         <ul className="grid grid-cols-3 gap-2">
-          {initial.map((r) => (
+          {shown.map((r) => (
             <li key={r.id} className="relative overflow-hidden rounded-2xl border border-line">
               {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL */}
               <img src={r.url} alt={r.name} className="aspect-square w-full object-cover" />
