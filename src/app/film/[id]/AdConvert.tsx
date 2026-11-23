@@ -9,7 +9,7 @@ import StoryVideoUpload from "../StoryVideoUpload";
 import { prepareLinkFrames } from "../prepare-link";
 
 /**
- * «📣 خلّه إعلان» (config/film-ad.ts): a project made before (the screenwriter not yet handed over) becomes an ad — the
+ * «📣 خلّه إعلان» (config/film-ad.ts): a project made before (before the director starts) becomes an ad — the
  * brand's pictures go in «🏷️ صور براندك» under it — optionally on a reference ad (a YouTube link or a video from the
  * device): سجاد looks at it and hears it, and the director follows its shots, camera and rhythm. On an ad, the same card
  * changes (or adds) its reference ad.
