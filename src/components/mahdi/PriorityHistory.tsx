@@ -3,6 +3,8 @@
 // «أولوياتي» of past days: a priority isn't lost when its day ends. For a stretch of days (the last week in «حاسبوا
 // أنفسكم», a week or a month report, one past day) it shows how many were done of how many, and each day with what was
 // done ✓ and what was not ✗. Read through the person's own session (/api/mahdi/tasks?priorities=1).
+// A past priority can still be ticked or unticked here (the owner, 23 November 2026: someone did hers on Saturday but
+// the tick never reached us) — one tied to a habit fills (or empties) that habit on its own day, as today's list does.
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -17,8 +19,8 @@ import { usePriorityDone } from "./usePriorityDone";
 
 type Load = { state: "loading" } | { state: "off" } | { state: "error" } | { state: "ready"; tasks: DayTask[] };
 
-/** The priorities of `from`..`to` from the server (kept per range while the page is open). */
-function usePriorities(from: ISODate, to: ISODate): Load {
+/** The priorities of `from`..`to` from the server (kept per range while the page is open), and a way to change them here. */
+function usePriorities(from: ISODate, to: ISODate): [Load, (tasks: DayTask[]) => void] {
   const key = `${from}:${to}`;
   const [res, setRes] = useState<{ key: string; load: Load }>({ key: "", load: { state: "loading" } });
   useEffect(() => {
@@ -30,7 +32,8 @@ function usePriorities(from: ISODate, to: ISODate): Load {
       live = false;
     };
   }, [from, to, key]);
-  return res.key === key ? res.load : { state: "loading" };
+  const set = (tasks: DayTask[]) => setRes({ key, load: { state: "ready", tasks } });
+  return [res.key === key ? res.load : { state: "loading" }, set];
 }
 
 /**
@@ -38,13 +41,41 @@ function usePriorities(from: ISODate, to: ISODate): Load {
  * list straight away.
  */
 export default function PriorityHistory({ from, to, title, hint }: { from: ISODate; to: ISODate; title?: string; hint?: string }) {
-  const { state } = useMahdi();
+  const { state, store, toast } = useMahdi();
   const end = to < state.today ? to : state.today;
-  const load = usePriorities(from, end);
-  const { isDone } = usePriorityDone();
+  const [load, setTasks] = usePriorities(from, end);
+  const { isDone, habitOf, want } = usePriorityDone();
   const sum = useMemo(() => (load.state === "ready" ? summarizePriorities(load.tasks, isDone) : null), [load, isDone]);
   const oneDay = from === end;
   const [open, setOpen] = useState<ISODate | null>(null);
+
+  /** Ticks or unticks a priority of its own day; a habit is filled (or emptied) on that day with it, with an undo. */
+  const tick = async (id: string) => {
+    if (load.state !== "ready") return;
+    const before = load.tasks;
+    const x = before.find((y) => y.id === id);
+    if (!x) return;
+    const done = !isDone(x);
+    setTasks(before.map((y) => (y.id === id ? { ...y, doneAt: done ? new Date().toISOString() : null } : y)));
+    try {
+      navigator.vibrate?.(8);
+    } catch {}
+    const h = habitOf(x);
+    if (h) {
+      const w = want(h, x.date);
+      const now = state.logs[h.id]?.[x.date] ?? 0;
+      if ((done && w !== null && now < w) || (!done && now > 0)) {
+        const prev = store.setLog(h.id, x.date, done ? w! : 0);
+        toast(t.habit.logged(h.name), { label: t.habit.undo, run: () => store.setLog(h.id, x.date, prev) }, h.id);
+      }
+    }
+    try {
+      await mahdiFetch("/api/mahdi/tasks", { method: "PATCH", json: { id, done } });
+    } catch (e) {
+      setTasks(before);
+      toast(e instanceof Error ? e.message : t.common.syncFailed);
+    }
+  };
 
   if (end < from) return null;
   return (
@@ -80,7 +111,7 @@ export default function PriorityHistory({ from, to, title, hint }: { from: ISODa
 
           {/* each day: done ✓ and not done ✗ */}
           {oneDay ? (
-            <Items items={sum.days[0].items} />
+            <Items items={sum.days[0].items} onTick={tick} />
           ) : (
             <ul className="divide-y" style={{ borderColor: "var(--m-line)" }}>
               {sum.days.map((d) => {
@@ -102,7 +133,7 @@ export default function PriorityHistory({ from, to, title, hint }: { from: ISODa
                     </button>
                     {isOpen && (
                       <div className="pb-2 ps-1">
-                        <Items items={d.items} />
+                        <Items items={d.items} onTick={tick} />
                         <Link href={`/mahdi/day/${d.date}`} className="mt-1 inline-block text-xs font-semibold m-gold">
                           {t.priorityHistory.openDay} ←
                         </Link>
@@ -119,36 +150,37 @@ export default function PriorityHistory({ from, to, title, hint }: { from: ISODa
   );
 }
 
-function Items({ items }: { items: { id: string; title: string; done: boolean; habitId: string | null }[] }) {
+function Items({ items, onTick }: { items: { id: string; title: string; done: boolean; habitId: string | null }[]; onTick: (id: string) => void }) {
   const done = items.filter((i) => i.done), left = items.filter((i) => !i.done);
+  const row = (i: (typeof items)[number]) => (
+    <li key={i.id}>
+      <button type="button" role="checkbox" aria-checked={i.done} aria-label={i.title} onClick={() => onTick(i.id)} className="flex w-full items-center gap-2 rounded-lg py-1 text-start text-sm">
+        <span
+          className="grid size-6 shrink-0 place-items-center rounded-full border-2 text-xs font-bold"
+          style={i.done ? { borderColor: "var(--m-gold)", background: "var(--m-gold)", color: "var(--m-bg, #fff)" } : { borderColor: "var(--m-error)", color: "var(--m-error)" }}
+          aria-hidden="true"
+        >
+          {i.done ? "✓" : "✗"}
+        </span>
+        <span className={`min-w-0 flex-1 ${i.done ? "" : "m-muted"}`}>{i.title}{i.habitId && <span className="m-muted"> ↺</span>}</span>
+      </button>
+    </li>
+  );
   return (
     <div className="space-y-2">
       {done.length > 0 && (
         <div>
           <p className="text-xs font-semibold m-muted">{t.priorityHistory.doneList}</p>
-          <ul className="mt-1 space-y-1">
-            {done.map((i) => (
-              <li key={i.id} className="flex items-start gap-2 text-sm">
-                <span className="m-gold font-bold" aria-hidden="true">✓</span>
-                <span className="min-w-0 flex-1">{i.title}{i.habitId && <span className="m-muted"> ↺</span>}</span>
-              </li>
-            ))}
-          </ul>
+          <ul className="mt-1 space-y-0.5">{done.map(row)}</ul>
         </div>
       )}
       {left.length > 0 && (
         <div>
           <p className="text-xs font-semibold m-muted">{t.priorityHistory.leftList}</p>
-          <ul className="mt-1 space-y-1">
-            {left.map((i) => (
-              <li key={i.id} className="flex items-start gap-2 text-sm">
-                <span className="font-bold" style={{ color: "var(--m-error)" }} aria-hidden="true">✗</span>
-                <span className="min-w-0 flex-1 m-muted">{i.title}{i.habitId && <span> ↺</span>}</span>
-              </li>
-            ))}
-          </ul>
+          <ul className="mt-1 space-y-0.5">{left.map(row)}</ul>
         </div>
       )}
+      <p className="text-xs m-muted">{t.priorityHistory.tapHint}</p>
     </div>
   );
 }
@@ -157,7 +189,7 @@ function Items({ items }: { items: { id: string; title: string; done: boolean; h
 export function YesterdayPriorities() {
   const { state } = useMahdi();
   const y = addDays(state.today, -1);
-  const load = usePriorities(y, y);
+  const [load] = usePriorities(y, y);
   const { isDone } = usePriorityDone();
   if (load.state !== "ready") return null;
   const sum = summarizePriorities(load.tasks, isDone);

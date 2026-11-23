@@ -1252,6 +1252,7 @@ export const ar = {
     noneDay: "ما كان فيه أولويات في هاليوم.",
     doneList: "خلّصتها",
     leftList: "ما خلّصتها",
+    tapHint: "اضغط على أي أولوية تعلّمها إنك خلّصتها، أو ترجعها.",
     openDay: "افتح اليوم",
     error: "ما قدرنا نجيب الأولويات، جرّب بعد شوي.",
     yesterday: (day: string, n: number, of: number) => `${day}: خلّصت ${n} من ${of} أولوياتك`,
