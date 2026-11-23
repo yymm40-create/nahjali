@@ -30,6 +30,12 @@ export default function StorePanel({ chatId, onClose }: { chatId: string; onClos
   const picker = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+
+  useEffect(() => {
     let live = true;
     api<{ store: Store; look: string[]; pictures: { n: number; url: string | null }[] }>(`/api/content/store?chatId=${chatId}`)
       .then((r) => {
@@ -89,18 +95,20 @@ export default function StorePanel({ chatId, onClose }: { chatId: string; onClos
     if (added.length) await save({ ...store, refs: [...store.refs, ...added] });
   }
 
-  // over the whole page (inside the chat's glass box a fixed layer is held and clipped by it)
+  // a drawer on the side of the whole page (like the film maker's library), over everything
   if (typeof document === "undefined") return null;
   return createPortal(
-    <div className="ct-store-wrap" role="dialog" aria-modal="true" aria-label="خزان المراجع والثوابت" onClick={onClose}>
-      <div className="ct-store ct-glass" onClick={(e) => e.stopPropagation()}>
-        <header className="ct-store-head">
+    <div className="ct-drawer-wrap ct-store-wrap" onClick={onClose}>
+      <aside className="ct-drawer ct-store" role="dialog" aria-modal="true" aria-label="خزان المراجع والثوابت" onClick={(e) => e.stopPropagation()}>
+        <header className="ct-drawer-head">
+          <span className="ic" aria-hidden>🗄️</span>
           <div>
-            <b>🗄️ خزان المراجع والثوابت</b>
+            <b>خزان المراجع والثوابت</b>
             <small>خاص بهذا المشروع. محمد باقر يقراه قبل كل رد، وحيدرا ماكس مع كل شريحة.{saving ? " · يحفظ…" : ""}</small>
           </div>
-          <button type="button" className="ct-mini" onClick={onClose} aria-label="سكّر">✕</button>
+          <button type="button" className="ct-tool" onClick={onClose} aria-label="سكّر">✕</button>
         </header>
+        <div className="ct-drawer-body">
         {error && <p className="ct-store-err">{error}</p>}
         {!store ? (
           !error && <p className="ct-store-hint">يفتح الخزان…</p>
@@ -167,7 +175,8 @@ export default function StorePanel({ chatId, onClose }: { chatId: string; onClos
             </section>
           </div>
         )}
-      </div>
+        </div>
+      </aside>
     </div>,
     document.body,
   );

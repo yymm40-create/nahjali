@@ -2,7 +2,8 @@ import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import QuickReplies from "@/components/jawad/QuickReplies";
-import { Gallery, Questions, SlidesBox } from "@/components/jawad/content/ContentChat";
+import { Answer, Gallery, Questions, SlidesBox, splitAnswer, stagesOf } from "@/components/jawad/content/ContentChat";
+import { libraryOf } from "@/components/jawad/content/ContentLibrary";
 import CarouselTable from "@/components/jawad/content/CarouselTable";
 
 // What the page draws, server-rendered (no browser here): the buttons, the swatches, the galleries, the carousel while
@@ -119,5 +120,49 @@ describe("the carousel", () => {
     // the technical reason is for the owner only
     expect(html).not.toContain("429 busy");
     expect(renderToStaticMarkup(h(SlidesBox, { ...props, owner: true, s: { ...base, failed: [{ n: 4, reason: "r", text: "t", detail: "429 busy" }] } }))).toContain("429 busy");
+  });
+});
+
+describe("the project's stages, its answers and its library (the film maker's layout, 23 Nov 2026)", () => {
+  const sl = (n: number, o: Record<string, unknown> = {}) => ({ n, fileId: `f${n}`, name: `slide-0${n}`, text: "t", url: `/s/${n}.png`, download: `/d/${n}.png`, ...o });
+  const block = (o: Record<string, unknown> = {}) => ({ aspect: "4:5", items: [sl(1), sl(2)], todo: [], failed: [], running: false, total: 2, ...o });
+  const ask = [{ label: "كم شريحة؟", kind: "choice" as const, options: ["٥"], multi: false }];
+  const states = (r: ReturnType<typeof stagesOf>) => r.map((x) => `${x.key}:${x.state}${x.ask ? "!" : ""}`);
+
+  it("a new carousel: the idea is open and waits for the answers, the rest locked", () => {
+    expect(states(stagesOf([{ role: "assistant", text: "o", questions: ask, local: true }], "carousel"))).toEqual(["idea:open!", "design:locked", "delivery:locked"]);
+  });
+  it("one chat made: everything done", () => {
+    expect(states(stagesOf([{ role: "user", text: "u" }, { role: "assistant", text: "a", slides: block() }], "carousel"))).toEqual(["idea:done", "design:done", "delivery:done"]);
+  });
+  it("two chats: pictures to approve pulse, then the writing and motion, then the delivery", () => {
+    const waiting = stagesOf([{ role: "assistant", text: "a", slides: block({ phase: "approve" }) }, { role: "assistant", text: "b", thread: "design", handoff: true }], "motion-carousel");
+    expect(states(waiting)).toEqual(["idea:done", "pictures:open!", "design:open", "delivery:locked"]);
+    const made = stagesOf([{ role: "assistant", text: "a", slides: block({ approved: true }) }, { role: "assistant", text: "b", thread: "design", slides: block() }], "motion-carousel");
+    expect(states(made)).toEqual(["idea:done", "pictures:done", "design:done", "delivery:done"]);
+    expect(made.map((x) => x.label)).toEqual(["الفكرة والنصوص", "🖼️ الصور", "✍️ الكتابة والموشن", "🎬 التسليم"]);
+  });
+  it("motion graphics: the idea, then the edit room", () => {
+    expect(states(stagesOf([{ role: "assistant", text: "a" }], "motion-graphics"))).toEqual(["idea:open", "editor:locked"]);
+    expect(states(stagesOf([{ role: "assistant", text: "a", editor: { id: "e", title: "t" } }], "reel-graphics"))).toEqual(["idea:done", "editor:done"]);
+  });
+  it("a long answer opens one section at a time; a short one is shown whole", () => {
+    const long = ["مقدمة", ...[1, 2, 3].map((i) => `## القسم ${i}\n${"كلام ".repeat(80)}`)].join("\n");
+    expect(splitAnswer(long).sections.map((x) => x.title)).toEqual(["القسم 1", "القسم 2", "القسم 3"]);
+    const html = renderToStaticMarkup(h(Answer, { text: long }));
+    expect(html).toContain("افتح كل الأقسام");
+    expect(html.match(/<details/g)?.length).toBe(3);
+    expect(html.match(/<details[^>]* open/g)?.length).toBe(1);
+    expect(renderToStaticMarkup(h(Answer, { text: "## عنوان\nكلام قصير" }))).not.toContain("<details");
+  });
+  it("the library holds the pictures, the made slides and the media, once each", () => {
+    const lib = libraryOf([
+      { slides: { items: [sl(1), sl(2)], approved: true } },
+      { thread: "design", slides: { items: [sl(1, { fileId: "v1", videoUrl: "/v/1.mp4", videoDownload: "/dv/1.mp4" })] } },
+      { media: { items: [{ id: "m", kind: "image", name: "صورة", state: "done", url: "/m.png", download: "/dm.png" }, { id: "x", kind: "video", name: "ف", state: "running" }] } },
+      { error: true, slides: { items: [sl(9)] } },
+    ]);
+    expect(lib.map((x) => `${x.group}:${x.title}`)).toEqual(["pictures:الشريحة 1", "pictures:الشريحة 2", "design:الشريحة 1", "media:صورة"]);
+    expect(lib[2]).toMatchObject({ video: "/v/1.mp4", download: "/dv/1.mp4", file: "slide-01.mp4" });
   });
 });
