@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FILM_KINDS, filmKind, readFilmKind } from "@config/film";
+import { FILM_KINDS, filmKind, projectKind, readFilmKind } from "@config/film";
 import { storyMessage } from "@/lib/film/script";
 import { projectFields } from "@/lib/film/validate";
 import type { FilmProject } from "@/lib/film/types";
@@ -10,8 +10,9 @@ const project = (kind?: unknown): FilmProject =>
   ({ id: "p1", user_id: "u1", title: "الرسالة", story: "رجل يرجع لبيته بعد عشرين سنة.", fixed_facts: "", target_duration_sec: null, stage: "screenwriter", video_model: "seedance-2.5", created_at: "", updated_at: "", ...(kind === undefined ? {} : { kind }) }) as FilmProject;
 
 describe("what is being made", () => {
-  it("names three shapes, and the series has its own place", () => {
-    expect(FILM_KINDS.map((k) => k.id)).toEqual(["scene", "film", "series"]);
+  it("names four shapes, and the series has its own place", () => {
+    expect(FILM_KINDS.map((k) => k.id)).toEqual(["scene", "film", "lesson", "series"]);
+    expect(filmKind("lesson")!.brief).toContain("تخطَّ المرحلة 2 والمرحلة 3");
     expect(filmKind("film")!.ar).toBe("فيلم سينمائي");
     expect(filmKind("nope")).toBeNull();
     // a scene and a film each carry what the screenwriter is told; the series is made elsewhere
@@ -47,5 +48,21 @@ describe("what is being made", () => {
   it("a project made before the choice existed is a scene, not a film", () => {
     expect(storyMessage(project()).startsWith("نوع العمل: مشهد قصير")).toBe(true);
     expect(storyMessage(project("series")).startsWith("نوع العمل: مشهد قصير")).toBe(true);
+  });
+
+  it("a lesson is kept as a scene and known by its intake's plan («🎓 درس لطلابك»)", () => {
+    expect(projectFields({ title: "ت", kind: "lesson" }, { requireTitle: true }).kind).toBe("scene");
+    expect(readFilmKind("lesson")).toBe("scene");
+    const plan = { format: "model", question: "كيف يشتغل القلب؟", points: ["الحجرات الأربع"], audience: "الصف الرابع" };
+    const intake = { title: "القلب", concept: "درس القلب", understanding: "فهمت", fixedFacts: [], targetDurationSec: 60, characters: [], places: [], scenePlan: [], episodePlan: [], questions: [], lesson: plan };
+    expect(projectKind({ kind: "scene", intake })).toBe("lesson");
+    expect(projectKind({ kind: "scene", intake: { ...intake, lesson: null } })).toBe("scene");
+    expect(projectKind({ kind: "film" })).toBe("film");
+    const msg = storyMessage({ ...project("scene"), workflow_version: 2, intake } as FilmProject);
+    expect(msg.startsWith("نوع العمل: درس لطلابك")).toBe(true);
+    expect(msg).toContain("الكلام مختصر جدًا");
+    expect(msg).toContain("خطة الدرس المعتمدة:");
+    expect(msg).toContain("مجسم ثلاثي الأبعاد يشتغل (model)");
+    expect(msg).toContain("كيف يشتغل القلب؟");
   });
 });

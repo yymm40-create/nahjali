@@ -9,6 +9,7 @@ import { FILM_BUCKET } from "@/lib/film/types";
 import { FILM_STYLES } from "@config/film-styles";
 import { stylePicturesSafe } from "@/lib/film/style-pictures";
 import SheetsWorkspace from "../[id]/sheets/SheetsWorkspace";
+import { projectKind } from "@config/film";
 import { castLinks, castOf } from "@/lib/film/series-cast";
 
 
@@ -51,6 +52,7 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
         editsLeft={null}
         projectId={id}
         stage={project.stage}
+        lesson={projectKind(project) === "lesson"}
         versions={versions}
         assets={assets.map((a) => ({ id: a.id, kind: a.kind, ref_key: a.ref_key, status: a.status, error: a.error, meta: a.meta, url: a.storage_path ? (url[a.storage_path] ?? "") : "", created_at: a.created_at, version_id: a.version_id ?? null }))}
         job={job ? { status: job.status, error: job.error } : null}

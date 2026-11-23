@@ -43,7 +43,8 @@ describe("«صورة الاختبار مرجع»", () => {
     // the converted real person returns before the test picture is attached
     expect(body.indexOf("convertUploads(assets, sheetId).length")).toBeLessThan(body.indexOf("if (test) refs.push(test);"));
     expect(body.indexOf("if (test) refs.push(test);")).toBeLessThan(body.indexOf("if (!master) refs.push(images[MASTER_ID]);"));
-    expect(body).toContain("promptWithTestStyle(prompt.data.prompt, { master, withTest: Boolean(test), styleText: style?.body, edits })");
+    // a character sheet carries the film maker's fixed three-panel layout (config/film-prompts/character-sheet)
+    expect(body).toContain("promptWithTestStyle(isCharacter ? withCharacterLayout(prompt.data.prompt) : prompt.data.prompt, { master, withTest: Boolean(test), styleText: style?.body, edits })");
     expect(src).toContain('case "set_test_ref"');
   });
 

@@ -19,6 +19,7 @@ import ProjectAccessBar, { type AccessBar } from "@/components/film/ProjectAcces
 import { accessOfProject } from "@/lib/film/admin-access";
 import { projectJourney } from "@/lib/film/journey";
 import { JourneyBar, JourneyProvider } from "../JourneyPicker";
+import { projectKind } from "@config/film";
 
 /**
  * Every page of a film project lives inside the scene's one shell («المشهد»: the steps' rail, the meter, the library,
@@ -44,7 +45,7 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
   if (!project.series_id) {
     const [progress, impacts, cost] = await Promise.all([filmProgress(project), impactsOf(project.id), projectCost(project.id)]);
     return (
-      <FilmStage projectId={id} title={project.title} kind={project.kind === "film" ? "film" : "scene"} stage={project.stage} videosOpen={Boolean(count)} cost={creditsByService(cost.byService)} progress={progress} impacts={impacts}>
+      <FilmStage projectId={id} title={project.title} kind={projectKind(project)} stage={project.stage} videosOpen={Boolean(count)} cost={creditsByService(cost.byService)} progress={progress} impacts={impacts}>
         {access}
         {journeyBar}
         <JourneyProvider journey={journey}>{children}</JourneyProvider>

@@ -55,12 +55,18 @@ export default function StoryMap({ story, durationSec, onChange, disabled }: { s
 }
 
 /** «✍️ أكتب بحرية» or «🗺️ ساعدني أكتبها»: the two ways of writing the story. */
-export type StoryWayKey = "free" | "map" | "link" | "upload";
+export type StoryWayKey = "free" | "map" | "link" | "upload" | "pdf";
 
 /** How the story is given: written freely, on the story map, or (a new film only) from a video — a YouTube link or one
  * uploaded from the device — with a note. */
-export function StoryWay({ way, onWay, withLink, disabled }: { way: StoryWayKey; onWay: (way: StoryWayKey) => void; withLink?: boolean; disabled?: boolean }) {
-  const ways: (readonly [StoryWayKey, string, string, string])[] = [
+export function StoryWay({ way, onWay, withLink, lesson, disabled }: { way: StoryWayKey; onWay: (way: StoryWayKey) => void; withLink?: boolean; lesson?: boolean; disabled?: boolean }) {
+  // a lesson: written, a PDF, a video or a YouTube link (no story map)
+  const ways: (readonly [StoryWayKey, string, string, string])[] = lesson ? [
+    ["free", "✍️", "اكتب الدرس", "الدرس أو فكرته بكلماتك"],
+    ["pdf", "📄", "ملف PDF", "درسك من ملف، وسجاد يقراه"],
+    ["upload", "📤", "ارفع فيديو", "من جهازك، وسجاد يشوفه"],
+    ["link", "🔗", "رابط يوتيوب", "سجاد يشوفه ويبني عليه الدرس"],
+  ] : [
     ["free", "✍️", "أكتب بحرية", "قصتك بكلماتك"],
     ["map", "🗺️", "ساعدني أكتبها", "سؤال لكل محطة، مع أمثلة"],
     ...(withLink
@@ -71,7 +77,7 @@ export function StoryWay({ way, onWay, withLink, disabled }: { way: StoryWayKey;
       : []),
   ];
   return (
-    <div className={`grid gap-2 ${withLink ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2"}`} role="group" aria-label="طريقة كتابة القصة">
+    <div className={`grid gap-2 ${withLink || lesson ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2"}`} role="group" aria-label="طريقة كتابة القصة">
       {ways.map(([w, icon, label, note]) => (
         <button key={w} type="button" disabled={disabled} aria-pressed={way === w} onClick={() => onWay(w)} className={`rounded-2xl border-2 p-3 text-start ${way === w ? "border-[var(--film-blue)] bg-[var(--film-blue)]/10" : "border-line"}`}>
           <span className="block text-2xl" aria-hidden>{icon}</span>

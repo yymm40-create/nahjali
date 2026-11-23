@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { JourneyIntake } from "@/lib/film/intake";
 import RobotFace from "@/components/RobotFace";
+import { lessonFormat } from "@config/film-lesson";
 
 export default function JourneyIntakeCard({ intake, busy, confirmLabel = "صح، اعتمد وابدأ الرحلة", onRecheck, onConfirm, onEdit }: { intake: JourneyIntake; busy: boolean; confirmLabel?: string; onRecheck: (answers: Record<string, string>) => void; onConfirm: () => void; onEdit: () => void }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -15,10 +16,11 @@ export default function JourneyIntakeCard({ intake, busy, confirmLabel = "صح،
         <div><p className="font-black">سجاد · هذا اللي فهمته</p><p className="text-xs font-bold text-muted">لن يبدأ السيناريو قبل تأكيدك.</p></div>
       </header>
       <p className="whitespace-pre-wrap text-sm font-bold leading-7">{intake.understanding}</p>
+      {intake.lesson && <LessonPlanCard plan={intake.lesson} />}
       {intake.fixedFacts.length > 0 && <List title="ثوابت ما تتغير" items={intake.fixedFacts} />}
       {intake.characters.length > 0 && <List title="الشخصيات" items={intake.characters.map((item) => `${item.name}: ${item.description}`)} />}
       {intake.places.length > 0 && <List title="البيئات" items={intake.places.map((item) => `${item.name}: ${item.description}`)} />}
-      {intake.scenePlan.length > 0 && (
+      {intake.scenePlan.length > 0 && !intake.lesson && (
         <details className="rounded-xl bg-[var(--film-soft)] p-3" open={intake.scenePlan.length <= 8}>
           <summary className="cursor-pointer text-sm font-black">خريطة المشاهد ({intake.scenePlan.length})</summary>
           <ol className="mt-2 space-y-2 text-xs font-bold leading-6">{intake.scenePlan.map((scene) => <li key={scene.number}><b>{scene.number}. {scene.title}</b> — {scene.summary}{scene.goal && <> · الهدف: {scene.goal}</>}{scene.transition && <> · الانتقال: {scene.transition}</>}</li>)}</ol>
@@ -54,4 +56,19 @@ export default function JourneyIntakeCard({ intake, busy, confirmLabel = "صح،
 
 function List({ title, items }: { title: string; items: string[] }) {
   return <div className="rounded-xl bg-surface-2 p-3"><p className="text-sm font-black">{title}</p><ul className="mt-1 list-inside list-disc space-y-1 text-xs font-bold leading-6">{items.map((item) => <li key={item}>{item}</li>)}</ul></div>;
+}
+
+/** «🎓 درس لطلابك»: the lesson as سجاد understood it — its shape, its one question and its points in order. */
+function LessonPlanCard({ plan }: { plan: NonNullable<JourneyIntake["lesson"]> }) {
+  const f = lessonFormat(plan.format);
+  return (
+    <div className="space-y-1.5 rounded-xl bg-[var(--film-soft)] p-3 text-sm font-bold leading-7">
+      <p className="font-black">🎓 خطة الدرس</p>
+      {f && <p>{f.icon} الشكل: {f.ar}</p>}
+      <p>🎨 الستايل: الانحراف الأسلوبي (بيكسار حديث)</p>
+      {plan.question && <p>❓ سؤال الدرس: {plan.question}</p>}
+      {plan.audience && <p>👥 الطلاب: {plan.audience}</p>}
+      {plan.points.length > 0 && <ol className="list-inside list-decimal space-y-0.5 text-xs">{plan.points.map((p) => <li key={p}>{p}</li>)}</ol>}
+    </div>
+  );
 }

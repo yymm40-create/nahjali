@@ -1,7 +1,8 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, type ClaudePart } from "./anthropic";
-import { storyLink, storyUpload, isYoutubeLink } from "./story-link";
+import { storyLink, storyPdf, storyUpload, isYoutubeLink } from "./story-link";
+import { LESSON_INTAKE_RULES, lessonFormat, type LessonFormat } from "@config/film-lesson";
 import { listenToFiles, listenToLinks } from "@/lib/link-listen";
 import { isUuid, uploadViews, type UploadRow } from "@/lib/jawad/server/uploads";
 import { getOwnedProject } from "./access";
@@ -9,7 +10,7 @@ import { requireSeries } from "./series";
 
 const db = () => createAdminClient();
 const text = (value: unknown, max: number) => (typeof value === "string" ? value.trim().slice(0, max) : "");
-const KINDS = ["scene", "film", "series"] as const;
+const KINDS = ["scene", "film", "series", "lesson"] as const;
 export type JourneyKind = (typeof KINDS)[number];
 
 export interface JourneyIntake {
@@ -23,6 +24,16 @@ export interface JourneyIntake {
   scenePlan: { number: number; title: string; summary: string; goal: string; transition: string }[];
   episodePlan: { number: number; title: string; summary: string; scenes: string[] }[];
   questions: { id: string; question: string; why: string; options: string[]; required: boolean }[];
+  /** «🎓 درس لطلابك» (config/film-lesson.ts): the lesson's plan — only a lesson has it, and it marks the project as one */
+  lesson?: LessonPlan | null;
+}
+
+/** A lesson's plan as سجاد understood it: its one question, its points in order, the students, and its visual shape. */
+export interface LessonPlan {
+  format: LessonFormat;
+  question: string;
+  points: string[];
+  audience: string;
 }
 
 export interface JourneyIntakeBody {
@@ -64,6 +75,34 @@ const SCHEMA = {
   },
 } as const;
 
+/** A lesson's gate: the same reply, plus the lesson's plan. */
+const LESSON_SCHEMA = {
+  ...SCHEMA,
+  required: [...SCHEMA.required, "lesson"],
+  properties: {
+    ...SCHEMA.properties,
+    lesson: {
+      type: "object",
+      additionalProperties: false,
+      required: ["format", "question", "points", "audience"],
+      properties: { format: { type: "string", enum: ["story", "model", "hypermotion"] }, question: string, points: { type: "array", items: string }, audience: string },
+    },
+  },
+} as const;
+
+/** A lesson plan as stored (null when there is none, or it is not one). */
+export function normalizeLessonPlan(value: unknown): LessonPlan | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const format = lessonFormat(raw.format)?.id ?? "story";
+  return {
+    format,
+    question: text(raw.question, 300),
+    points: (Array.isArray(raw.points) ? raw.points : []).map((p) => text(p, 400)).filter(Boolean).slice(0, 8),
+    audience: text(raw.audience, 200),
+  };
+}
+
 const cleanKind = (value: unknown): JourneyKind => (KINDS.includes(value as JourneyKind) ? (value as JourneyKind) : "scene");
 
 export function normalizeJourneyIntake(value: unknown): JourneyIntake {
@@ -81,6 +120,7 @@ export function normalizeJourneyIntake(value: unknown): JourneyIntake {
     scenePlan: rows(raw.scenePlan, (item, index) => ({ number: index + 1, title: text(item.title, 100) || `مشهد ${index + 1}`, summary: text(item.summary, 2000), goal: text(item.goal, 500), transition: text(item.transition, 500) })),
     episodePlan: rows(raw.episodePlan, (item, index) => ({ number: index + 1, title: text(item.title, 100) || `حلقة ${index + 1}`, summary: text(item.summary, 2000), scenes: (Array.isArray(item.scenes) ? item.scenes : []).map((scene) => text(scene, 500)).filter(Boolean).slice(0, 60) })),
     questions: rows(raw.questions, (item, index) => ({ id: text(item.id, 80) || `q${index + 1}`, question: text(item.question, 500), why: text(item.why, 500), options: (Array.isArray(item.options) ? item.options : []).map((option) => text(option, 200)).filter(Boolean).slice(0, 3), required: item.required !== false })).filter((item) => item.question).slice(0, 4),
+    ...(normalizeLessonPlan(raw.lesson) ? { lesson: normalizeLessonPlan(raw.lesson) } : {}),
   };
 }
 
@@ -110,14 +150,15 @@ export async function understandJourney(user: { id: string; email?: string | nul
   const context = await existingContext(user.id, targetType, targetId);
   const answers = body.answers && typeof body.answers === "object" ? JSON.stringify(body.answers).slice(0, 8000) : "{}";
   const previous = body.previous && typeof body.previous === "object" ? JSON.stringify(body.previous).slice(0, 16000) : "{}";
-  const prompt = `نوع العمل: ${kind === "scene" ? "مشهد قصير مستقل" : kind === "film" ? "فيلم سينمائي كامل" : "مسلسل كامل"}
+  const lesson = kind === "lesson";
+  const prompt = `نوع العمل: ${kind === "scene" ? "مشهد قصير مستقل" : kind === "film" ? "فيلم سينمائي كامل" : lesson ? "درس تعليمي لطلاب" : "مسلسل كامل"}
 العنوان المبدئي: ${text(body.title, 80)}
 فكرة المستخدم/قصته: ${text(body.story, 20000)}
 الثوابت التي كتبها: ${text(body.fixedFacts, 5000)}
 المدة المقترحة: ${text(body.targetDurationSec, 20) || "غير محددة"}
 إجابات المستخدم على أسئلتك السابقة: ${answers}
 فهمك السابق الذي يجب تحديثه بدل البدء من الصفر: ${previous}
-${context ? `\n${context}` : ""}`;
+${context ? `\n${context}` : ""}${lesson ? `\n\n${LESSON_INTAKE_RULES}` : ""}`;
 
   // one plain call: the rules are the (cached) system, the reply's shape is enforced by the schema. The Managed Agent path
   // added the whole prompt + schema to a session that kept every earlier pass, was priced as Opus whatever the person
@@ -125,22 +166,47 @@ ${context ? `\n${context}` : ""}`;
   // «🔗 رابط يوتيوب»: the video is looked at (its frames, downloaded by the page) and heard (its words), and the film is
   // built on it with the person's note — what he understood is shown for confirmation before anything is written
   const video = await watchLink(user.id, text(body.story, 20000), body.youtube);
+  // «📄 ملف PDF»: the lesson's file itself, read by Claude (its pages, text and pictures)
+  const pdf = await readPdf(user.id, text(body.story, 20000));
   const content: ClaudePart[] = [{ type: "text", text: prompt }];
   if (video) {
     content.push({ type: "text", text: video.text });
     if (video.sheetUrl) content.push({ type: "image", url: video.sheetUrl });
   }
-  const r = await callClaudeJson<JourneyIntake>({ system: INTAKE_RULES, turns: [{ role: "user", content: video ? content : prompt }], schema: SCHEMA, maxTokens: 12000, effort: "medium" });
-  return { intake: normalizeJourneyIntake(r.data), usd: claudeCost(r.usage) + (video?.usd ?? 0) };
+  if (pdf) content.push({ type: "text", text: pdf.text }, { type: "doc", url: pdf.url, name: pdf.name });
+  const r = await callClaudeJson<JourneyIntake>({ system: INTAKE_RULES, turns: [{ role: "user", content: video || pdf ? content : prompt }], schema: lesson ? LESSON_SCHEMA : SCHEMA, maxTokens: 12000, effort: "medium" });
+  const intake = normalizeJourneyIntake(r.data);
+  // a lesson always carries its plan (it marks the project as a lesson); anything else never does
+  if (lesson) intake.lesson = intake.lesson ?? normalizeLessonPlan({});
+  else delete intake.lesson;
+  return { intake, usd: claudeCost(r.usage) + (video?.usd ?? 0) };
+}
+
+/**
+ * «📄 ملف PDF» (the lesson path): the person's uploaded PDF and his note, for Claude to read as a document. null when the
+ * story is not a PDF; a PDF way with no file yet is the person's to finish.
+ */
+async function readPdf(userId: string, story: string): Promise<{ text: string; url: string; name: string } | null> {
+  const given = storyPdf(story);
+  if (!given) return null;
+  if (!given.pdf) throw new UserError("ارفع ملف الدرس (PDF) أول، وبعدها خل سجاد يفهمه.", 400);
+  const file = await ownUpload(userId, given.pdf.fileId, "doc");
+  if (!file) throw new UserError("ملف الدرس ما انلقى (ربما انحذف). ارفعه من جديد.", 400);
+  const text = [
+    "## الدرس ملف PDF",
+    `المعلم ما كتب الدرس: أرفق ملفه («${given.pdf.name || file.name}») وتحته توضيحه: ${given.note ? `«${given.note}»` : "(ما كتب توضيح — افهم الدرس من الملف واختر أنت)"}.`,
+    "الملف مرفق بعد هذا النص: اقرأه كله (نصه وصوره وجداوله) وابنِ فهمك عليه بأمانة. لا تنسخ اسم الملف ولا رقمه في concept.",
+  ].join("\n\n");
+  return { text, url: file.url, name: given.pdf.name || file.name };
 }
 
 /** One of the person's own uploads (owned, ready, of this kind), with a short-lived link. */
-async function ownUpload(userId: string, id: unknown, kind: "image" | "video") {
+async function ownUpload(userId: string, id: unknown, kind: "image" | "video" | "doc") {
   if (!isUuid(id)) return null;
   const { data } = await db().from("jawad_uploads").select("*").eq("id", id).eq("user_id", userId).maybeSingle();
   if (!data || (data as UploadRow).kind !== kind) return null;
   const view = (await uploadViews([data as UploadRow]))[0];
-  return view?.url ? { url: view.url, name: view.fileName || "فيديو" } : null;
+  return view?.url ? { url: view.url, name: view.fileName || (kind === "doc" ? "ملف" : "فيديو") } : null;
 }
 
 /**
@@ -200,6 +266,20 @@ const INTAKE_RULES = `أنت سجاد في بوابة الرحلة السينم�
 
 export function journeyIntakeText(intake: JourneyIntake) {
   const parts = [`فهم سجاد المعتمد للرحلة الجديدة:\n${intake.understanding}`, `الصياغة المعتمدة:\n${intake.concept}`];
+  if (intake.lesson) {
+    const l = intake.lesson;
+    const f = lessonFormat(l.format);
+    parts.push(
+      [
+        "خطة الدرس المعتمدة:",
+        `- الشكل: ${f ? `${f.ar} (${f.id})` : l.format}`,
+        "- الستايل: الانحراف الأسلوبي (ثابت)",
+        l.question ? `- سؤال الدرس: ${l.question}` : "",
+        l.audience ? `- الطلاب: ${l.audience}` : "",
+        l.points.length ? `- النقاط بالترتيب:\n${l.points.map((p, i) => `  ${i + 1}. ${p}`).join("\n")}` : "",
+      ].filter(Boolean).join("\n"),
+    );
+  }
   if (intake.fixedFacts.length) parts.push(`ثوابت لا تتغير:\n${intake.fixedFacts.map((fact) => `- ${fact}`).join("\n")}`);
   if (intake.characters.length) parts.push(`الشخصيات:\n${intake.characters.map((item) => `- ${item.name}: ${item.description}`).join("\n")}`);
   if (intake.places.length) parts.push(`البيئات:\n${intake.places.map((item) => `- ${item.name}: ${item.description}`).join("\n")}`);
