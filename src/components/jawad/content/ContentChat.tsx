@@ -1,12 +1,17 @@
 "use client";
 
-// «صانع المحتوى» — the desk and the conversation with «محمد باقر»: chats on the side, cards to start from, his
-// questions as buttons (the table of 104 carousel styles, the list of 50 fonts, and the galleries), the messages with the
-// person's attachments, the carousel's slides appearing as they are drawn (each downloadable, each with its check and
-// a way to draw it again), and the edit rooms he opens in «حيدرة كت». The look is content.css.
+// «صانع المحتوى» — the projects and the conversation with «محمد باقر», in the film maker's way and paper look (the owner,
+// 23 Nov 2026: «منطقة المحادثة صغيرة»): a home of big project cards with the four paths to start from; inside a project a
+// full-width page that scrolls as a whole — a top bar (back, title, what it cost, its ring, «📚 المكتبة», «🗄️ الخزان»),
+// the stages as a rail of pills, his answers as cards (long ones in sections), his questions as buttons (the table of 104
+// carousel styles, the list of 50 fonts, and the galleries), the carousel's slides appearing as they are drawn (each
+// downloadable, each with its check and a way to draw it again), the edit rooms he opens in «حيدرة كت», and the box to
+// write in held at the bottom of the screen. The look is content.css.
 
 import Link from "next/link";
-import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import Coined from "@/components/Coined";
+import { coinStr } from "@config/coins";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import MicButton from "@/components/robots/MicButton";
 import { useClaudeModel } from "@/components/robots/claude-model";
@@ -24,6 +29,7 @@ import { drawWithCode, pngBody, smallJpeg } from "@/components/claude-code/draw"
 import { downloadYoutube, sheetOf, soundOnlyAsk, youtubeLinks } from "./media-prep";
 import { joinSlidesToReel } from "./slides-reel";
 import StorePanel from "./StorePanel";
+import ContentLibrary from "./ContentLibrary";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean; video?: string; videoUrl?: string | null; videoDownload?: string | null }
@@ -65,7 +71,7 @@ interface Msg {
   /** the delivery message the first chat handed to the second */
   handoff?: boolean;
 }
-interface ChatItem { id: string; title: string }
+interface ChatItem { id: string; title: string; updatedAt?: string }
 interface Pending { total: number; mode: "all" | "fix"; todo: number[] }
 interface Palette { name: string; bg: string; text: string; primary: string; accent: string }
 interface GalleryItem { id: string; group: string; name: string; description: string; bestFor: string; image: string | null; icon?: string; palettes?: Palette[]; structures?: string[]; swatch?: string[] }
@@ -137,12 +143,99 @@ function Rich({ text }: { text: string }) {
   return <>{out}</>;
 }
 
-const FLOATERS: { s: number; c: string; t: number; d: number; top: string; left: string }[] = [
-  { s: 76, c: "#f6b73c", t: 18, d: 30, top: "10%", left: "5%" },
-  { s: 48, c: "#35c4b5", t: 14, d: 46, top: "60%", left: "3%" },
-  { s: 60, c: "#ff7a59", t: 22, d: 24, top: "18%", left: "90%" },
-  { s: 40, c: "#a78bfa", t: 12, d: 52, top: "72%", left: "92%" },
-];
+/** An answer cut at its headings: the words before the first heading, then each section (title and body). */
+export function splitAnswer(text: string): { intro: string; sections: { title: string; body: string }[] } {
+  const intro: string[] = [];
+  const sections: { title: string; lines: string[] }[] = [];
+  for (const line of text.replace(/\r/g, "").split("\n")) {
+    const h = /^#{1,4}\s+(.*)$/.exec(line);
+    if (h) sections.push({ title: h[1].replace(/\*\*/g, "").trim(), lines: [] });
+    else (sections.length ? sections[sections.length - 1].lines : intro).push(line);
+  }
+  return { intro: intro.join("\n").trim(), sections: sections.map((s) => ({ title: s.title, body: s.lines.join("\n").trim() })).filter((s) => s.title || s.body) };
+}
+
+const preview = (body: string) => body.replace(/[#*`>|_-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 90);
+
+/** «محمد باقر»'s answer on its card: a long one (several sections) opens one section at a time, like the film maker's replies. */
+export function Answer({ text }: { text: string }) {
+  const [all, setAll] = useState<boolean | null>(null);
+  const { intro, sections } = splitAnswer(text);
+  if (sections.length < 2 || (text.length <= 900 && sections.length <= 2)) return <Rich text={text} />;
+  return (
+    <div className="ct-secs">
+      <div className="ct-secs-all">
+        <button type="button" onClick={() => setAll(!(all ?? false))}>{all ? "سكّر الأقسام" : `افتح كل الأقسام (${sections.length.toLocaleString("ar")})`}</button>
+      </div>
+      {intro && <Rich text={intro} />}
+      {sections.map((s, i) => (
+        <details key={`${i}-${all}`} className="ct-sec" open={(all ?? i === 0) || undefined}>
+          <summary>
+            <span>{s.title}</span>
+            {s.body && <small>{preview(s.body)}</small>}
+          </summary>
+          {s.body && <Rich text={s.body} />}
+        </details>
+      ))}
+    </div>
+  );
+}
+
+/** The project's ring: how much of its stages is done (a conic ring like the film maker's). */
+function Ring({ percent, busy }: { percent: number; busy?: boolean }) {
+  return (
+    <div className="ct-ring" style={{ ["--p" as string]: percent }} data-busy={busy || undefined} role="meter" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label="اكتمال المشروع">
+      <span>{percent}%</span>
+    </div>
+  );
+}
+
+export type StageKey = "idea" | "pictures" | "design" | "delivery" | "editor";
+export interface StageView { key: StageKey; label: string; state: "done" | "open" | "locked"; ask: boolean }
+
+/**
+ * The project's stages as the rail shows them, read from its messages: a carousel of two chats (idea → pictures →
+ * writing and motion → delivery), of one chat (idea → design → delivery), or a motion piece (idea → the edit room).
+ * Each is done, open or locked, and `ask` when it waits for the person (pictures to approve, questions to answer).
+ */
+export function stagesOf(msgs: Msg[], path: string | null): StageView[] {
+  const real = msgs.filter((m) => !m.error);
+  const twoChats = real.some((m) => m.thread === "design");
+  const blocks = real.filter((m) => m.slides).map((m) => ({ s: m.slides!, design: m.thread === "design" }));
+  const lastBot = (design?: boolean) => [...real].reverse().find((m) => m.role === "assistant" && (design === undefined || (m.thread === "design") === design));
+  const asks = (m?: Msg) => !!m?.questions?.length;
+  const finished = (s: SlidesView) => !s.running && s.items.length > 0 && s.todo.length === 0 && s.phase !== "approve" && s.phase !== "pictures";
+  const approving = blocks.some((b) => !b.design && b.s.phase === "approve" && !b.s.running);
+  const st = (done: boolean, open: boolean): StageView["state"] => (done ? "done" : open ? "open" : "locked");
+
+  if ((path === "motion-graphics" || path === "reel-graphics") && !blocks.length) {
+    const room = real.some((m) => m.editor);
+    return [
+      { key: "idea", label: "الفكرة", state: st(room, true), ask: !room && asks(lastBot()) },
+      { key: "editor", label: "🎬 غرفة المونتاج", state: st(room, false), ask: false },
+    ];
+  }
+  const started = blocks.length > 0;
+  if (twoChats) {
+    const pics = blocks.filter((b) => !b.design);
+    const made = blocks.some((b) => b.design && finished(b.s));
+    return [
+      { key: "idea", label: "الفكرة والنصوص", state: st(started, true), ask: !started && asks(lastBot(false)) },
+      { key: "pictures", label: "🖼️ الصور", state: st(!approving && !pics.some((b) => b.s.running), pics.length > 0), ask: approving },
+      { key: "design", label: "✍️ الكتابة والموشن", state: st(made, true), ask: !made && asks(lastBot(true)) },
+      { key: "delivery", label: "🎬 التسليم", state: st(made, false), ask: false },
+    ];
+  }
+  const made = blocks.some((b) => finished(b.s));
+  return [
+    { key: "idea", label: "الفكرة والنصوص", state: st(started, true), ask: !started && asks(lastBot()) },
+    { key: "design", label: "🎨 التصميم", state: st(made, started), ask: approving || (started && !made && asks(lastBot())) },
+    { key: "delivery", label: "🎬 التسليم", state: st(made, false), ask: false },
+  ];
+}
+
+const DIGITS = ["١", "٢", "٣", "٤", "٥"];
+const PATHS_KEY = "jw-content-paths";
 
 /** A thumbnail of a gallery item: its picture, or (no picture yet) a template's palette or a style's family icon. */
 function Thumb({ item, big }: { item: GalleryItem; big?: boolean }) {
@@ -867,7 +960,16 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const [codeStep, setCodeStep] = useState<string | null>(null);
   /** the mind the person picked, for «Claude Code»'s drawing (read inside the produce loop) */
   const claudeId = useRef("");
-  const [side, setSide] = useState(false);
+  /** a new project opened before its first message (the greeting, the four paths and the box to write in) */
+  const [newOpen, setNewOpen] = useState(false);
+  /** the conversation being opened from the projects home */
+  const [opening, setOpening] = useState<string | null>(null);
+  /** «📚 المكتبة» open */
+  const [libOpen, setLibOpen] = useState(false);
+  /** the stage pressed on the rail (else the one the project is at) */
+  const [picked, setPicked] = useState<StageKey | null>(null);
+  /** each project's path on this device, for the icon on its card (the list carries only titles) */
+  const [pathOf, setPathOf] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<FileView[]>([]);
   const [uploading, setUploading] = useState(false);
   const [gal, setGal] = useState<Galleries | null>(null);
@@ -899,7 +1001,25 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     return () => window.clearTimeout(t);
   }, []);
   const toggleVerbose = () => setVerbose((v) => { store.set(VERBOSE_KEY, v ? null : "1"); return !v; });
-  useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs, busy]);
+  // the whole page scrolls now: it follows a new message (or his writing), and an update in place (a slide drawn) only
+  // when the person is already at the end — never pulling them away from what they read higher up
+  const seenLen = useRef(0);
+  const seenBusy = useRef(busy);
+  useEffect(() => {
+    const grew = msgs.length !== seenLen.current || busy !== seenBusy.current;
+    seenLen.current = msgs.length;
+    seenBusy.current = busy;
+    if (!msgs.length) return;
+    const atEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 420;
+    if (grew || atEnd) end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [msgs, busy]);
+  useEffect(() => {
+    try {
+      setPathOf(JSON.parse(store.get(PATHS_KEY) ?? "{}") as Record<string, string>);
+    } catch {
+      /* nothing kept */
+    }
+  }, []);
 
   // the galleries load once, when a message first asks for one
   const wantsGallery = msgs.some((m) => m.questions?.some((x) => x.kind !== "choice"));
@@ -907,13 +1027,6 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     if (!wantsGallery || gal || loginHref) return;
     api<Galleries>("/api/content/templates").then(setGal).catch(() => null);
   }, [wantsGallery, gal, loginHref]);
-
-  const move = (e: React.PointerEvent) => {
-    const r = root.current;
-    if (!r || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    r.style.setProperty("--mx", String((e.clientX / window.innerWidth - 0.5) * 2));
-    r.style.setProperty("--my", String((e.clientY / window.innerHeight - 0.5) * 2));
-  };
 
   /** The last answer that carries a carousel gets this block (the produce step reports into it). */
   const putSlides = (fn: (old: SlidesView | undefined) => SlidesView, at?: number) =>
@@ -1097,8 +1210,9 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   }, []);
 
   async function open(id: string, quiet = false) {
-    setSide(false);
     setPathId(null);
+    setPicked(null);
+    setOpening(id);
     setPathMenu(false);
     setEditFrom(null);
     try {
@@ -1122,10 +1236,16 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
         return;
       }
       setMsgs([{ role: "assistant", text: e instanceof Error ? e.message : "تعذّر فتح المحادثة.", error: true }]);
+    } finally {
+      setOpening(null);
     }
   }
   reopenRef.current = (id: string) => open(id, true);
-  const fresh = () => { setThread("pictures"); setStoreOpen(false); setPathId(null); setPathMenu(false); setEditFrom(null); setChatId(null); setMsgs([]); setQ(store.get(draftKey(null)) ?? ""); setPending([]); setSide(false); setSpent(0); };
+  const fresh = () => { setThread("pictures"); setStoreOpen(false); setLibOpen(false); setPicked(null); setNewOpen(false); setPathId(null); setPathMenu(false); setEditFrom(null); setChatId(null); setMsgs([]); setQ(store.get(draftKey(null)) ?? ""); setPending([]); setSpent(0); };
+  /** «＋ مشروع جديد»: an empty project (the four paths, or write to him straight away) */
+  const newProject = () => { fresh(); setNewOpen(true); window.scrollTo({ top: 0 }); };
+  /** «← مشاريعي»: back to the projects home */
+  const home = () => { fresh(); void refresh(); window.scrollTo({ top: 0 }); };
 
   // back on the page: the conversation of the address (?chat=) or of the last visit opens again
   useEffect(() => {
@@ -1333,101 +1453,218 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     const open = findPath(pathId);
     return !d.some((x) => x.key === "path") && open ? [{ key: "path" as const, label: "المسار", name: open.name, id: open.id, change: "" }, ...d] : d;
   })();
+  const pathKey = decisions.find((d) => d.key === "path")?.id ?? null;
+  const path = findPath(pathKey);
 
-  return (
-    <div className="ct" ref={root} onPointerMove={move}>
-      <div className="ct-scene" aria-hidden>
-        {FLOATERS.map((f, i) => (
-          <div key={i} className="ct-float" style={{ top: f.top, left: f.left, ["--depth" as string]: `${f.d}px` }}>
-            <div className="ct-sheet" style={{ "--s": `${f.s}px`, "--c": f.c, "--t": `${f.t}s` } as CSSProperties} />
-          </div>
-        ))}
-      </div>
+  // the project's path is kept on this device, for the icon on its card in the projects home
+  useEffect(() => {
+    if (!chatId || !pathKey) return;
+    setPathOf((m) => {
+      if (m[chatId] === pathKey) return m;
+      const next = { ...m, [chatId]: pathKey };
+      store.set(PATHS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, [chatId, pathKey]);
 
-      <div className="ct-wrap">
-        <aside className={`ct-side ct-glass ${side ? "open" : ""}`}>
-          <button className="ct-send" style={{ minWidth: 0, width: "100%" }} onClick={fresh}>＋ مشروع جديد</button>
-          <small style={{ color: "#b8ad9c", fontSize: 12 }}>مشاريعك</small>
-          <div className="ct-chats">
-            {chats.map((c) => (
-              <div key={c.id} className="ct-chat-item" aria-current={c.id === chatId} onClick={() => open(c.id)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && open(c.id)}>
-                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</span>
-                <button className="ct-mini" aria-label="احذف" onClick={(e) => { e.stopPropagation(); void remove(c.id); }}>✕</button>
-              </div>
-            ))}
-            {!loginHref && chats.length === 0 && <p style={{ color: "#b8ad9c", fontSize: 13 }}>مشاريعك تظهر هنا: كل مشروع بمحادثاته وخزانه.</p>}
-          </div>
-          <Link href="/jawad-ai" className="ct-mini" style={{ textAlign: "center" }}>← الرئيسية</Link>
-        </aside>
+  // the stages on the rail, the one on screen, and the ring
+  const stages = stagesOf(msgs, pathKey);
+  const now = stages.find((x) => x.state === "open")?.key ?? stages.filter((x) => x.state !== "locked").at(-1)?.key ?? "idea";
+  const viewKey: StageKey = picked && stages.some((x) => x.key === picked) ? picked : twoChats ? (thread === "design" ? (now === "delivery" ? "delivery" : "design") : now === "idea" ? "idea" : "pictures") : now;
+  const percent = Math.round((stages.filter((x) => x.state === "done").length / stages.length) * 100);
+  const title = chats.find((c) => c.id === chatId)?.title ?? (path ? `مشروع ${path.name}` : "مشروع جديد");
+  const inProject = !loginHref && (chatId !== null || msgs.length > 0 || newOpen);
 
-        <section className="ct-main ct-glass">
-          <header className="ct-head">
-            <button className="ct-burger ct-mini" onClick={() => setSide((s) => !s)} aria-label="المشاريع">☰</button>
-            <div className="ct-scene-pen"><div className={`ct-pen ${busy ? "writing" : ""}`} /></div>
-            <div>
-              <div className="ct-title">{name}</div>
-              <div style={{ color: "#b8ad9c", fontSize: 12 }}>تكلّم مع {persona}</div>
-            </div>
+  /** After the next paint: the last carousel (or edit room) shown, the top of the talk, or its end. */
+  const scrollSoon = (to: "top" | "slides" | "editor" | "end") =>
+    window.setTimeout(() => {
+      const all = root.current?.querySelectorAll<HTMLElement>(to === "editor" ? "[data-editor]" : "[data-slides]");
+      const target = to === "top" ? root.current?.querySelector<HTMLElement>(".ct-rail") : to === "end" ? end.current : all?.[all.length - 1] ?? end.current;
+      target?.scrollIntoView({ behavior: "smooth", block: to === "top" ? "start" : "end" });
+    }, 60);
+  /** A stage pressed: the chat it lives in, and the place in it. */
+  function goStage(k: StageKey) {
+    setPicked(k);
+    if (k === "idea") {
+      setThread("pictures");
+      scrollSoon("top");
+    } else if (k === "pictures") {
+      setThread("pictures");
+      scrollSoon("end");
+    } else if (k === "design") {
+      if (twoChats) {
+        setThread("design");
+        scrollSoon("end");
+      } else scrollSoon("slides");
+    } else if (k === "delivery") {
+      if (twoChats) setThread("design");
+      scrollSoon("slides");
+    } else scrollSoon("editor");
+  }
+
+  if (!inProject)
+    return (
+      <div className="ct" ref={root}>
+        <div className="ct-home">
+          <header className="ct-hero">
+            <p className="ct-kicker">صانع المحتوى · {persona}</p>
+            <h1>{name}</h1>
+            <p>كاروسيل ثابت أو متحرك، موشن جرافكس، أو نصوص ريلز: كل مشروع بمحادثاته وصوره وخزانه، وتكمّله متى ما تبي.</p>
           </header>
 
-          {!loginHref && chatId && (
-            <div className="ct-threads" role="tablist" aria-label="محادثات المشروع">
-              {twoChats ? (
-                <>
-                  <button type="button" role="tab" aria-selected={thread === "pictures"} className="ct-thread" onClick={() => setThread("pictures")}>🖼️ الصور</button>
-                  <button type="button" role="tab" aria-selected={thread === "design"} className="ct-thread" onClick={() => setThread("design")}>✍️ الكتابة والموشن</button>
-                </>
-              ) : (
-                <span className="ct-thread-one">💬 محادثة المشروع</span>
-              )}
-              <button type="button" className="ct-thread ct-thread-store" onClick={() => setStoreOpen(true)}>🗄️ خزان المراجع والثوابت</button>
+          {loginHref ? (
+            <div className="ct-msg bot ct-login">
+              <p>سجّل دخولك عشان تتكلم مع {persona}.</p>
+              <div className="ct-actions"><Link className="ct-btn" href={loginHref}>تسجيل الدخول</Link></div>
             </div>
-          )}
-          {storeOpen && chatId && <StorePanel chatId={chatId} onClose={() => setStoreOpen(false)} />}
-
-          {!loginHref && decisions.length > 0 && (
-            <div className="ct-decs" role="group" aria-label="قراراتك (اضغط أي واحد لتغيّره)">
-              {decisions.map((d) => (
-                <button key={d.key} type="button" className="ct-dec" disabled={!!busy} onClick={() => (d.key === "path" ? setPathMenu((v) => !v) : void send(d.change))} title="غيّره">
-                  {d.label}: <b>{d.name}</b> ✎
-                </button>
-              ))}
-              {pathMenu && (
-                <div className="ct-pathmenu" role="menu">
-                  {CONTENT_PATHS.map((x) => (
-                    <button key={x.id} type="button" role="menuitem" className="ct-mini" onClick={() => switchPath(x)}>{x.ic} {x.name}</button>
-                  ))}
+          ) : (
+            <>
+              <section className="ct-home-start" aria-labelledby="ct-start-h">
+                <h2 id="ct-start-h" className="ct-group">ابدأ مشروع</h2>
+                <div className="ct-home-row">
+                  <button type="button" className="ct-project-new" onClick={newProject}>
+                    <span className="ic" aria-hidden>＋</span>
+                    <b>مشروع جديد</b>
+                    <small>اختر مسارًا، أو اكتب لـ{persona} مباشرة (سكربت ريل، عناوين، إعادة توظيف…)</small>
+                  </button>
+                  <div className="ct-start">
+                    {CONTENT_PATHS.map((x, i) => (
+                      <button key={x.id} type="button" className="ct-card" style={{ ["--c" as string]: x.color, animationDelay: `${i * 70}ms` }} onClick={() => openPath(x)}>
+                        <span className="ic">{x.ic}</span>
+                        <b>{x.name}</b>
+                        <small>{x.short}</small>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
+              </section>
 
-          <div className="ct-feed">
-            {loginHref ? (
-              <div className="ct-msg bot">
-                <p>سجّل دخولك عشان تتكلم مع {persona}.</p>
-                <div className="ct-actions"><Link className="ct-mini" href={loginHref}>تسجيل الدخول</Link></div>
+              <section aria-labelledby="ct-mine-h">
+                <h2 id="ct-mine-h" className="ct-group">مشاريعي {chats.length > 0 && <small>({chats.length.toLocaleString("ar")})</small>}</h2>
+                {chats.length ? (
+                  <div className="ct-projects">
+                    {chats.map((c, i) => {
+                      const p = findPath(pathOf[c.id] ?? null);
+                      return (
+                        <div key={c.id} className="ct-project" style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}>
+                          <button type="button" className="ct-project-open" onClick={() => void open(c.id)} disabled={opening !== null} aria-busy={opening === c.id || undefined}>
+                            <span className="ic" aria-hidden>{opening === c.id ? "⏳" : (p?.ic ?? "📁")}</span>
+                            {p && <span className="st">{p.name}</span>}
+                            <b>{c.title}</b>
+                            {c.updatedAt && <small>آخر تعديل {new Date(c.updatedAt).toLocaleDateString("ar-SA")}</small>}
+                          </button>
+                          <button type="button" className="ct-project-x" aria-label={`احذف ${c.title}`} title="احذف المشروع" onClick={() => void remove(c.id)}>✕</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="ct-empty">ما عندك مشاريع للحين. ابدأ «مشروع جديد» أو اختر مسار فوق، ومشاريعك تطلع هنا: كل مشروع بمحادثاته وخزانه.</p>
+                )}
+              </section>
+            </>
+          )}
+          <Link href="/jawad-ai" className="ct-btn-ghost">← الرئيسية</Link>
+        </div>
+      </div>
+    );
+
+  return (
+    <div className="ct" ref={root}>
+      <div className="ct-proj">
+        <header className="ct-top ct-panel">
+          <button type="button" className="ct-back" onClick={home} aria-label="رجوع لمشاريعي">← <span>مشاريعي</span></button>
+          <Ring percent={percent} busy={!!busy} />
+          <div className="ct-top-title">
+            <span className="ct-kicker">{path ? `${path.ic} ${path.name}` : name}</span>
+            <h1 title={title}>{title}</h1>
+            <p>
+              {spent > 0 ? <>💰 قيمة هذي المحادثة <Coined text={coinStr(spent)} size={12} /></> : `تكلّم مع ${persona}`}
+              {busy === "producing" ? " · ⏳ يشتغل الحين" : ""}
+            </p>
+          </div>
+          <button type="button" className="ct-tool" aria-pressed={libOpen} onClick={() => setLibOpen(true)} title="كل صورة وشريحة وفيديو في المشروع">
+            📚 <span>المكتبة</span>
+          </button>
+          <button type="button" className="ct-tool" aria-pressed={storeOpen} disabled={!chatId} onClick={() => setStoreOpen(true)} title={chatId ? "خزان المراجع والثوابت" : "يفتح بعد أول رسالة"}>
+            🗄️ <span>الخزان</span>
+          </button>
+        </header>
+        {storeOpen && chatId && <StorePanel chatId={chatId} onClose={() => setStoreOpen(false)} />}
+        {libOpen && <ContentLibrary msgs={msgs} onClose={() => setLibOpen(false)} />}
+
+        {(chatId || msgs.length > 0) && (
+          <nav className="ct-rail ct-panel" aria-label="مراحل المشروع">
+            {stages.map((x, i) => (
+              <button
+                key={x.key}
+                type="button"
+                className="ct-stage"
+                aria-current={viewKey === x.key ? "step" : undefined}
+                data-done={x.state === "done" || undefined}
+                data-ask={x.ask || undefined}
+                disabled={x.state === "locked"}
+                title={x.state === "locked" ? "تفتح بعد ما تخلص اللي قبلها" : x.ask ? "ينتظرك" : undefined}
+                onClick={() => goStage(x.key)}
+              >
+                <span className="n">{x.state === "locked" ? "🔒" : x.state === "done" ? "✓" : DIGITS[i]}</span>
+                <b>{x.label}</b>
+              </button>
+            ))}
+          </nav>
+        )}
+
+        {decisions.length > 0 && (
+          <div className="ct-decs" role="group" aria-label="قراراتك (اضغط أي واحد لتغيّره)">
+            {decisions.map((d) => (
+              <button key={d.key} type="button" className="ct-dec" disabled={!!busy} onClick={() => (d.key === "path" ? setPathMenu((v) => !v) : void send(d.change))} title="غيّره">
+                {d.label}: <b>{d.name}</b> ✎
+              </button>
+            ))}
+            {pathMenu && (
+              <div className="ct-pathmenu" role="menu">
+                {CONTENT_PATHS.map((x) => (
+                  <button key={x.id} type="button" role="menuitem" className="ct-mini" onClick={() => switchPath(x)}>{x.ic} {x.name}</button>
+                ))}
               </div>
-            ) : msgs.length === 0 ? (
-              <>
-                <div className="ct-msg bot">
-                  <h3>أهلًا، أنا {persona} ✍️</h3>
-                  <p>اختر مسارك: أسألك أقل ما يمكن، وتجاوب بضغطة أو بكلامك، وتقدر تغيّر أي قرار في أي لحظة. ولو تبي سكربت ريل أو عناوين أو إعادة توظيف، اكتب لي مباشرة.</p>
-                </div>
-                <div className="ct-start">
-                  {CONTENT_PATHS.map((x, i) => (
-                    <button key={x.id} className="ct-card" style={{ ["--c" as string]: x.color, animationDelay: `${i * 90}ms` }} onClick={() => openPath(x)}>
-                      <span className="ic">{x.ic}</span>
-                      <b>{x.name}</b>
-                      <small>{x.short}</small>
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              msgs.map((m, i) => !shown(m) ? null : (
-                <div key={i} className={`ct-msg ${m.role === "user" ? "user" : "bot"} ${m.error ? "err" : ""} ${m.handoff ? "handoff" : ""}`}>
-                  {m.role === "user" ? <p style={{ whiteSpace: "pre-wrap" }}>{stripMarks(m.text)}</p> : <Rich text={m.text} />}
+            )}
+          </div>
+        )}
+
+        <div className="ct-feed">
+          {msgs.length === 0 ? (
+            <>
+              <div className="ct-msg bot">
+                <span className="ct-who">✍️ {persona}</span>
+                <h3>أهلًا، أنا {persona} ✍️</h3>
+                <p>اختر مسارك: أسألك أقل ما يمكن، وتجاوب بضغطة أو بكلامك، وتقدر تغيّر أي قرار في أي لحظة. ولو تبي سكربت ريل أو عناوين أو إعادة توظيف، اكتب لي مباشرة.</p>
+              </div>
+              <div className="ct-start">
+                {CONTENT_PATHS.map((x, i) => (
+                  <button key={x.id} type="button" className="ct-card" style={{ ["--c" as string]: x.color, animationDelay: `${i * 90}ms` }} onClick={() => openPath(x)}>
+                    <span className="ic">{x.ic}</span>
+                    <b>{x.name}</b>
+                    <small>{x.short}</small>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            msgs.map((m, i) => {
+              if (!shown(m)) return null;
+              const bot = m.role === "assistant";
+              // the card that waits for the person: his last questions, or pictures to approve
+              const waits = bot && !m.error && ((i === lastAssistant && !!m.questions?.length && !busy) || (m.slides?.phase === "approve" && !m.slides.running));
+              const wide = !!m.slides || !!m.media || !!m.questions?.some((x) => x.kind !== "choice");
+              return (
+                <div
+                  key={i}
+                  className={`ct-msg ${bot ? "bot" : "user"} ${m.error ? "err" : ""} ${m.handoff ? "handoff" : ""} ${waits ? "wait" : ""} ${wide ? "wide" : ""}`}
+                  data-slides={m.slides ? "" : undefined}
+                  data-editor={m.editor ? "" : undefined}
+                >
+                  {bot && !m.error && <span className="ct-who">{m.handoff ? "📨 التسليم من محادثة الصور" : waits ? `👉 ${persona} ينتظرك` : `✍️ ${persona}`}</span>}
+                  {m.role === "user" ? <p style={{ whiteSpace: "pre-wrap" }}>{stripMarks(m.text)}</p> : m.error ? <Rich text={m.text} /> : <Answer text={m.text} />}
                   {m.files && m.files.length > 0 && (
                     <div className="ct-files">
                       {m.files.map((f) => (
@@ -1459,86 +1696,84 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                   {m.media && <MediaBox items={m.media.items} busy={!!busy} owner={!!owner} onRetry={(ids) => chatId && void runMedia(chatId, ids)} onResume={() => chatId && void runMedia(chatId)} />}
                   {m.editor && (
                     <div className="ct-actions">
-                      <Link className="ct-mini" href={`/jawad-ai/editor/${m.editor.id}${m.editor.lab ? `?lab=${m.editor.lab}` : ""}`}>{m.editor.lab ? `🎬 افتح «${m.editor.title}» في مختبر الموشن` : `🎬 افتح غرفة المونتاج «${m.editor.title}» مع حيدرا ماكس`}</Link>
+                      <Link className="ct-btn" href={`/jawad-ai/editor/${m.editor.id}${m.editor.lab ? `?lab=${m.editor.lab}` : ""}`}>{m.editor.lab ? `🎬 افتح «${m.editor.title}» في مختبر الموشن` : `🎬 افتح غرفة المونتاج «${m.editor.title}» مع حيدرا ماكس`}</Link>
                     </div>
                   )}
-                  {i === lastAssistant && !busy && !loginHref && m.questions?.length ? (
+                  {i === lastAssistant && !busy && m.questions?.length ? (
                     <Questions key={`q${i}-${msgs.length}`} questions={m.questions} gal={gal} styleId={styleBefore(msgs, i)} disabled={!!busy} onSend={(t) => void send([q.trim(), t].filter(Boolean).join("\n"))} onWrite={() => box.current?.focus()} />
                   ) : null}
-                  {m.role === "assistant" && !m.error && !m.local && (
+                  {bot && !m.error && !m.local && (
                     <div className="ct-actions"><button className="ct-mini" onClick={() => navigator.clipboard?.writeText(m.text).catch(() => null)}>انسخ</button></div>
                   )}
-                  {m.role === "user" && !busy && !loginHref && !PICK_MARK.test(m.text) && (
+                  {m.role === "user" && !busy && !PICK_MARK.test(m.text) && (
                     <div className="ct-actions"><button className="ct-mini" onClick={() => startEdit(i)}>✏️ عدّل</button></div>
                   )}
                 </div>
-              ))
-            )}
-            {busy === "writing" && (
-              <div className="ct-think">
-                <span className="ct-dots"><span /><span /><span /></span>
-                {prep ?? `${persona} يكتب…`}
-              </div>
-            )}
-            <div ref={end} />
-          </div>
-
-          {!loginHref && (
-            <form className="ct-compose" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-              {pending.length > 0 && (
-                <div className="ct-pending">
-                  {pending.map((f) => (
-                    <span key={f.id} className="ct-file">
-                      {f.kind === "image" && f.url ? <img src={f.url} alt="" /> : <span>{KIND_IC[f.kind]}</span>}
-                      {f.name}
-                      <button type="button" aria-label="أزل" onClick={() => setPending((p) => p.filter((x) => x.id !== f.id))}>✕</button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              {editFrom != null && (
-                <div className="ct-editbar">
-                  ✏️ تعدّل رسالتك: المحادثة ترجع من هنا وتنحذف الردود اللي بعدها.
-                  <button type="button" className="ct-mini" onClick={cancelEdit}>إلغاء</button>
-                </div>
-              )}
-              <div className="ct-compose-opts">
-                <ClaudeModelPicker className="ct-claude" disabled={!!busy} spent={spent} fallback={CONTENT_CLAUDE_MODEL} />
-                <button type="button" className={`ct-mini ct-verbose${verbose ? " on" : ""}`} aria-pressed={verbose} onClick={toggleVerbose} title="الافتراضي مختصر لتوفير رصيدك؛ المفصّلة فيها شرح وبدائل وأسئلة أعمق">
-                  {verbose ? "📝 محادثة مفصّلة ✓" : "📝 خلّها مفصّلة"}
-                </button>
-                <button type="button" className={`ct-mini${tips ? " on" : ""}`} aria-expanded={tips} onClick={() => setTips((v) => !v)}>💡 وفّر رصيدك</button>
-              </div>
-              {tips && (
-                <div className="ct-tips" role="note">
-                  <b>💡 كيف توفّر رصيدك في صانع المحتوى</b>
-                  <ul>
-                    {SAVING_TIPS.map((t) => (
-                      <li key={t}>{t}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              <div className="ct-compose-row">
-                <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.oga,.flac,.amr,.aif,.aiff,.webm,application/pdf" onChange={(e) => void attach(e.target.files)} />
-                <button type="button" className="ct-attach" aria-label="أرفق حتى 20 ملفًا" title="أرفق حتى 20 صورة أو فيديو أو صوت أو PDF" disabled={uploading || !!busy || pending.length >= JAWAD_ATTACHMENT_LIMIT} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
-                <MicButton onText={(t) => setQ((v) => (v.trim() ? `${v.trim()} ${t}` : t))} disabled={!!busy || uploading} className="ct-attach" />
-                <textarea
-                  ref={box}
-                  className="ct-input"
-                  dir="auto"
-                  rows={1}
-                  value={q}
-                  maxLength={8000}
-                  placeholder={busy === "producing" ? "الشرائح قيد الرسم…" : !chatId && pathId ? "اكتب فكرتك أو الصق نصك هنا…" : `اكتب لـ${persona}…`}
-                  onChange={(e) => setQ(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }}
-                />
-                <button className="ct-send" disabled={!!busy || uploading || (!q.trim() && !pending.length)}>{busy ? "…" : "أرسل"}</button>
-              </div>
-            </form>
+              );
+            })
           )}
-        </section>
+          {busy === "writing" && (
+            <div className="ct-think">
+              <span className="ct-dots"><span /><span /><span /></span>
+              {prep ?? `${persona} يكتب…`}
+            </div>
+          )}
+        </div>
+
+        <form className="ct-compose" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+          {pending.length > 0 && (
+            <div className="ct-pending">
+              {pending.map((f) => (
+                <span key={f.id} className="ct-file">
+                  {f.kind === "image" && f.url ? <img src={f.url} alt="" /> : <span>{KIND_IC[f.kind]}</span>}
+                  {f.name}
+                  <button type="button" aria-label="أزل" onClick={() => setPending((p) => p.filter((x) => x.id !== f.id))}>✕</button>
+                </span>
+              ))}
+            </div>
+          )}
+          {editFrom != null && (
+            <div className="ct-editbar">
+              ✏️ تعدّل رسالتك: المحادثة ترجع من هنا وتنحذف الردود اللي بعدها.
+              <button type="button" className="ct-mini" onClick={cancelEdit}>إلغاء</button>
+            </div>
+          )}
+          <div className="ct-compose-opts">
+            <ClaudeModelPicker className="ct-claude" disabled={!!busy} spent={spent} fallback={CONTENT_CLAUDE_MODEL} />
+            <button type="button" className={`ct-mini ct-verbose${verbose ? " on" : ""}`} aria-pressed={verbose} onClick={toggleVerbose} title="الافتراضي مختصر لتوفير رصيدك؛ المفصّلة فيها شرح وبدائل وأسئلة أعمق">
+              {verbose ? "📝 محادثة مفصّلة ✓" : "📝 خلّها مفصّلة"}
+            </button>
+            <button type="button" className={`ct-mini${tips ? " on" : ""}`} aria-expanded={tips} onClick={() => setTips((v) => !v)}>💡 وفّر رصيدك</button>
+          </div>
+          {tips && (
+            <div className="ct-tips" role="note">
+              <b>💡 كيف توفّر رصيدك في صانع المحتوى</b>
+              <ul>
+                {SAVING_TIPS.map((t) => (
+                  <li key={t}>{t}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="ct-compose-row">
+            <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.oga,.flac,.amr,.aif,.aiff,.webm,application/pdf" onChange={(e) => void attach(e.target.files)} />
+            <button type="button" className="ct-attach" aria-label="أرفق حتى 20 ملفًا" title="أرفق حتى 20 صورة أو فيديو أو صوت أو PDF" disabled={uploading || !!busy || pending.length >= JAWAD_ATTACHMENT_LIMIT} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
+            <MicButton onText={(t) => setQ((v) => (v.trim() ? `${v.trim()} ${t}` : t))} disabled={!!busy || uploading} className="ct-attach" />
+            <textarea
+              ref={box}
+              className="ct-input"
+              dir="auto"
+              rows={1}
+              value={q}
+              maxLength={8000}
+              placeholder={busy === "producing" ? "الشرائح قيد الرسم…" : !chatId && pathId ? "اكتب فكرتك أو الصق نصك هنا…" : `اكتب لـ${persona}…`}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }}
+            />
+            <button className="ct-send" disabled={!!busy || uploading || (!q.trim() && !pending.length)}>{busy ? "…" : "أرسل"}</button>
+          </div>
+        </form>
+        <div ref={end} className="ct-end" />
       </div>
     </div>
   );
