@@ -883,7 +883,8 @@ async function runImage(project: FilmProject, jobId: string, assetId: string, o:
       prompt: o.prompt,
       references: refs,
       size: IMAGE_SIZES[o.kind],
-      quality: o.quality ?? (o.kind === "sheet" ? "high" : "medium"),
+      // every picture of the film maker in balanced (medium) quality — the owner, 23 Nov 2026: «دايم الصور تجي بجودة متوازنة متوسطة»
+      quality: o.quality ?? "medium",
     });
     const path = `${projectDir(project)}/sheets/${assetId}.png`;
     const up = await storage.from(FILM_BUCKET).upload(path, png, { contentType: "image/png", upsert: true });
