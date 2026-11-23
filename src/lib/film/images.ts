@@ -15,7 +15,8 @@ export const IMAGE_SIZES = {
 } as const;
 
 /** Reserved before a generation; the real cost from the response usage replaces it. */
-export const IMAGE_ESTIMATE_USD = { test: 0.07, sheet: 0.4, portrait: 0.08 } as const;
+// a sheet is drawn in medium quality (16:9, with its references) since 23 Nov 2026 — it was 0.4 in high
+export const IMAGE_ESTIMATE_USD = { test: 0.07, sheet: 0.12, portrait: 0.08 } as const;
 
 let client: OpenAI | null = null;
 const openai = () => (client ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));

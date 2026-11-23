@@ -177,7 +177,7 @@ export async function generateCast(series: FilmSeries, who: { id: string; email?
         refs.push(Buffer.from(await f.data.arrayBuffer()));
         prompt += `\n\n${MASTER_STYLE_ONLY}`;
       }
-      const img = await generateFilmImage({ prompt, references: refs, size: IMAGE_SIZES.sheet, quality: "high" });
+      const img = await generateFilmImage({ prompt, references: refs, size: IMAGE_SIZES.sheet, quality: "medium" });
       usd += img.costUsd ?? IMAGE_ESTIMATE_USD.sheet;
       const path = `${series.user_id}/series/${series.id}/cast/${row.id}-${Date.now()}.png`;
       const up = await storage.from(FILM_BUCKET).upload(path, img.png, { contentType: "image/png", upsert: true });
