@@ -7,6 +7,7 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { storage } from "@/lib/storage";
 import { MASTER_STYLE_ONLY } from "@config/film-prompts/sheet-maker";
+import { CHARACTER_LOOK_RULE, hasCharacterLayout, withCharacterLayout } from "@config/film-prompts/character-sheet";
 import { callClaudeJson, claudeCost } from "./anthropic";
 import { generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
 import { refundSeries, reserveSeries, settleSeries } from "./series-pay";
@@ -113,8 +114,8 @@ const PROMPT_SCHEMA = { type: "object", additionalProperties: false, required: [
 const PROMPT_RULES: Record<CastKind, string> = {
   style:
     "a VISUAL STYLE MASTER for the whole series: one wide key-art frame of a typical place of the story, plus a strip of its colour palette swatches and a small note-free study of its rendering technique (lines, shading, texture, lighting). Style only: NO main characters, no faces, no readable text.",
-  character:
-    "a CHARACTER REFERENCE SHEET on a plain light background: the same character in full body front, three-quarter, side and back views, plus 3–4 facial expressions and close-ups of key costume details and props. Exact consistent proportions, face, hair, costume and colours in every view. No text labels.",
+  // the film maker's one character sheet (config/film-prompts/character-sheet): the look is written, the layout added
+  character: CHARACTER_LOOK_RULE,
   place:
     "an ENVIRONMENT REFERENCE SHEET: one wide establishing view of the place plus 2–3 other angles (a closer view, a reverse angle, a detail of key props and materials), same time of day and lighting in all. No people unless the description needs them in the background. No text labels.",
 };
@@ -161,10 +162,11 @@ export async function generateCast(series: FilmSeries, who: { id: string; email?
   after(async () => {
     let usd = 0;
     try {
-      let prompt = row.prompt;
+      // a character's prompt from before the film maker's one sheet layout is written again, so a redraw follows it
+      let prompt = row.kind === "character" && row.prompt && !hasCharacterLayout(row.prompt) ? "" : row.prompt;
       if (!prompt) {
         const w = await writePrompt(series, row);
-        prompt = w.prompt;
+        prompt = row.kind === "character" ? withCharacterLayout(w.prompt) : w.prompt;
         usd += w.usd;
         await db().from("film_series_cast").update({ prompt }).eq("id", row.id);
       }

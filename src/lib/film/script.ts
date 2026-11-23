@@ -18,7 +18,7 @@ import {
   STAGE_KIND,
   type ScriptKind,
 } from "@config/film-prompts/screenwriter";
-import { filmKind, readFilmKind } from "@config/film";
+import { filmKind, projectKind } from "@config/film";
 import { journeyIntakeText, normalizeJourneyIntake } from "./intake";
 
 const STAGE = "screenwriter";
@@ -58,7 +58,8 @@ const db = () => createAdminClient();
 
 /** The user's first message: their own story, facts and duration, exactly as they wrote them. */
 export function storyMessage(p: FilmProject) {
-  const kind = filmKind(readFilmKind((p as { kind?: unknown }).kind))!;
+  // a lesson («🎓 درس لطلابك») is kept as a scene and known by its intake's plan: the screenwriter gets the lesson brief
+  const kind = filmKind(projectKind(p as { kind?: unknown; intake?: unknown }))!;
   const parts = [`نوع العمل: ${kind.ar}`, kind.brief, "", `عنوان المشروع: ${p.title}`, "", p.story];
   if (p.fixed_facts) parts.push("", "أشياء ثابتة لا تتغير:", p.fixed_facts);
   if (p.target_duration_sec) parts.push("", `مدة تقريبية: ${p.target_duration_sec} ثانية`);

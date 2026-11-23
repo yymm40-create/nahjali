@@ -10,7 +10,10 @@ import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject
 import { GENERATOR_FACTS, SHEET_APP_INTEGRATION, SHEET_MAKER_PROMPT, SHEET_MAKER_SCHEMA, STYLE_PLACEHOLDER } from "@config/film-prompts/sheet-maker";
 import { STYLE_TEST_KEY, promptWithTestStyle, sheetEditHead, sheetEdits, styleTestPictures, testRefFor, type TestRefChoice } from "./style-test-ref";
 import { findStyle } from "@config/film-styles";
+import { projectKind } from "@config/film";
+import { LESSON_SHEETS_NOTE, LESSON_STYLE_ID } from "@config/film-lesson";
 import { sheetImpact } from "./impact";
+import { withCharacterLayout } from "@config/film-prompts/character-sheet";
 import { CONVERT_SHEETS, convertSheetPrompt, LIKENESS_SCHEMA, LIKENESS_SYSTEM, PORTRAITS_PER_PHOTO, portraitPrompt, type Likeness } from "@config/film-prompts/convert-person";
 
 import { storage } from "@/lib/storage";
@@ -294,7 +297,9 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
         .limit(1)
         .maybeSingle();
       if (!handoff) throw new UserError("ما لقينا السيناريو المعتمد.", 409);
-      const id = await addUserMessage(project.id, `${handoff.body}\n\n---\n${GENERATOR_FACTS}`);
+      // a lesson («🎓 درس لطلابك»): its fixed style and what its map holds are said before the map is planned
+      const lesson = projectKind(project) === "lesson" ? `\n\n---\n${LESSON_SHEETS_NOTE}` : "";
+      const id = await addUserMessage(project.id, `${handoff.body}\n\n---\n${GENERATOR_FACTS}${lesson}`);
       return { jobId: await queueReply(project, user, id) };
     }
 
@@ -692,9 +697,25 @@ async function approveMap(project: FilmProject, user: { id: string; email?: stri
     .select("id");
   if (verErr) throw verErr;
   if (!done?.length) throw new UserError("الخريطة ما انعتمدت (تغيّرت حالتها). حدّث الصفحة وجرّب.", 409);
-  const text = lines.length ? `اعتمد\n\nمعلومات عن الصور:\n${lines.join("\n")}` : "اعتمد";
+  // a lesson's style is fixed («الانحراف الأسلوبي»): approved with the map, so there is no style test — the sheet maker
+  // goes straight to the master (and the «approve» action then starts turning any real person to convert into it)
+  const lessonStyle = projectKind(project) === "lesson" ? await fixLessonStyle(project.id) : null;
+  const text = [lines.length ? `اعتمد\n\nمعلومات عن الصور:\n${lines.join("\n")}` : "اعتمد", lessonStyle ? `الستايل المعتمد (ثابت للدرس، بدون لقطة اختبار — سلّم برومبت الماستر STY-00 الآن):\n${lessonStyle}` : ""].filter(Boolean).join("\n\n");
   const id = await addUserMessage(project.id, text);
   return queueReply(project, user, id);
+}
+
+/** A lesson's one style, kept as the approved style (once); its text. */
+async function fixLessonStyle(projectId: string): Promise<string> {
+  const style = findStyle(LESSON_STYLE_ID)!;
+  const had = latest(await sheetVersions(projectId), "style");
+  if (had?.status === "approved") return had.body;
+  const { error } = await db().from("film_versions").insert({
+    project_id: projectId, stage: STAGE, kind: "style", version: 1, body: style.text,
+    data: { styleId: style.id }, status: "approved", approved_at: new Date().toISOString(), created_by: "user",
+  });
+  if (error) throw error;
+  return style.text;
 }
 
 const FINISH_REQUEST = "كل صور الشيتات صارت معتمدة";
@@ -797,7 +818,10 @@ async function generateSheet(project: FilmProject, user: { id: string; email?: s
   // with it, the test frame governs the look: the written style leaves the prompt and the master becomes secondary
   // …and above it the person's own edits of this sheet, in their words («ويتبع تعديلاتي اللي أكتبها»)
   const edits = test ? sheetEdits(await userMessages(project.id, sheetEditHead(sheetId)), sheetId) : [];
-  const text = promptWithTestStyle(prompt.data.prompt, { master, withTest: Boolean(test), styleText: style?.body, edits });
+  // a character sheet is always the film maker's three panels (config/film-prompts/character-sheet): the layout is added
+  // word for word after the look the sheet maker wrote
+  const isCharacter = sheetId.startsWith("CHR-") || approvedMap(await sheetVersions(project.id)).map.find((m) => m.id === sheetId)?.kind === "character";
+  const text = promptWithTestStyle(isCharacter ? withCharacterLayout(prompt.data.prompt) : prompt.data.prompt, { master, withTest: Boolean(test), styleText: style?.body, edits });
   await startImage(project, user, { sheetId, prompt: text, refs, kind: "sheet", versionId: prompt.id, meta: test ? { style_test_ref: test.id } : {} });
 }
 

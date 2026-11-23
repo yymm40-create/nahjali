@@ -16,6 +16,7 @@ import type { MapChoice, MapItem, SheetVersion } from "@/lib/film/sheets";
 import SheetCards from "./SheetCards";
 import ConvertCards from "./ConvertCards";
 import { styleTestCandidate, styleTestPictures, styleTestRef, testRefOn } from "@/lib/film/style-test-ref";
+import { LESSON_MAP_QUESTION } from "@config/film-lesson";
 import StyleBrowser, { StyleThumb, type StyleCardView } from "@/components/style-map/StyleBrowser";
 
 const MAX_REFERENCE_UPLOADS = 4; // same as lib/film/sheets.ts (that file is server-only)
@@ -47,6 +48,8 @@ interface Props {
   editsLeft: number | null;
   /** a series' scene: its series' ready characters, places and style */
   seriesCast?: SeriesCast[];
+  /** «🎓 درس لطلابك»: the style is fixed (no style test), and the map asks about the teacher's own characters first */
+  lesson?: boolean;
 }
 
 type SeriesCast = { id: string; kind: "style" | "character" | "place"; name: string; url: string };
@@ -63,7 +66,7 @@ function castFor(m: MapItem, cast: SeriesCast[]) {
 const MASTER = "STY-00";
 const TEST = "STYLE-TEST";
 
-export default function SheetsWorkspace({ projectId, stage, versions, assets, job, imagesRunning, styles, editsLeft, seriesCast = [] }: Props) {
+export default function SheetsWorkspace({ projectId, stage, versions, assets, job, imagesRunning, styles, editsLeft, seriesCast = [], lesson = false }: Props) {
   const router = useRouter();
   const filmBase = useFilmBase();
   const [writing, setWriting] = useState(job?.status === "running");
@@ -231,6 +234,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           <MapChoices
             projectId={projectId}
             map={map}
+            lesson={lesson}
             locked={understanding.status !== "awaiting_approval"}
             savedChoices={choices}
             assets={assets}
@@ -384,9 +388,11 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
 
 /** Per map item: generate it, or use the user's own picture (as is / as a reference for a new sheet). */
 function MapChoices({
-  projectId, map, locked, savedChoices, assets, seriesCast, busy, onRefresh, onRemove, onApprove, onSend, warning,
+  projectId, map, lesson, locked, savedChoices, assets, seriesCast, busy, onRefresh, onRemove, onApprove, onSend, warning,
 }: {
   projectId: string;
+  /** «🎓 درس لطلابك»: asked first whether the teacher has characters of his own to use or turn into the style */
+  lesson?: boolean;
   map: MapItem[];
   seriesCast: SeriesCast[];
   locked: boolean;
@@ -467,7 +473,8 @@ function MapChoices({
   return (
     <div className="space-y-2">
       <h3 className="font-extrabold">خريطة الشيتات: وش تبي نصنع؟</h3>
-      {!locked && <p className="text-sm font-bold text-muted">💡 هذي الشخصيات والأماكن اللي بنرسمها. ما عندك صورة؟ خلّها على «اصنعه لي» واضغط «اعتمد» تحت.</p>}
+      {!locked && lesson && <p className="rounded-xl border-2 border-[var(--film-hl)] bg-[var(--film-soft)] p-3 text-sm font-black leading-7">❓ {LESSON_MAP_QUESTION}</p>}
+      {!locked && !lesson && <p className="text-sm font-bold text-muted">💡 هذي الشخصيات والأماكن اللي بنرسمها. ما عندك صورة؟ خلّها على «اصنعه لي» واضغط «اعتمد» تحت.</p>}
       <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(e) => upload(Array.from(e.target.files ?? []))} />
       {map.map((m) => {
         const c = (locked ? savedChoices[m.id] : choices[m.id]) ?? "make";

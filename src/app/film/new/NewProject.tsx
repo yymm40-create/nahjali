@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
 import { sheetOf } from "@/components/jawad/content/media-prep";
-import { isYoutubeLink, storyLink, storyUpload } from "@/lib/film/story-link";
+import { isYoutubeLink, storyLink, storyPdf, storyUpload } from "@/lib/film/story-link";
 import { useClaudeModel } from "@/components/robots/claude-model";
 import { FILM_KINDS, type FilmKind } from "@config/film";
 import ProjectFields, { type FieldValues } from "../ProjectFields";
@@ -26,6 +26,16 @@ export default function NewProject() {
   // WHAT is being made: a short scene that stands on its own, a whole cinematic film, or a series (its own place)
   const [kind, setKind] = useState<FilmKind | "">("");
   const [research, setResearch] = useState<"yes" | "no" | "">("");
+  // «🎓 درس لطلابك»: the shortest path — no research question (it is built on the teacher's own lesson), no story map
+  const lesson = kind === "lesson";
+  const chooseKind = (k: FilmKind) => {
+    setKind(k);
+    setIntake(null);
+    if (k === "lesson") return setResearch("no");
+    // leaving a lesson: the research question is the person's again, and a lesson's PDF is not a story the others read
+    if (kind === "lesson") setResearch("");
+    if (storyPdf(values.story)) setValues((v) => ({ ...v, story: "" }));
+  };
   const [busy, setBusy] = useState(false);
   // the person's Claude model: «سجاد» prepares the journey with it, not always the default
   const [claude] = useClaudeModel();
@@ -119,8 +129,11 @@ export default function NewProject() {
       if (link && !isYoutubeLink(link.url)) throw new Error("حط رابط فيديو يوتيوب صحيح. المتاح الحين روابط يوتيوب بس.");
       const upload = storyUpload(values.story);
       if (upload && !upload.video) throw new Error("ارفع الفيديو أول، وبعدها خل سجاد يفهمه.");
+      const pdf = storyPdf(values.story);
+      if (pdf && !pdf.pdf) throw new Error("ارفع ملف الدرس (PDF) أول، وبعدها خل سجاد يفهمه.");
       const sheetId = link ? await prepareLink(link.url) : null;
       if (link || upload) setStep("👂 سجاد يشوف الفيديو ويسمعه…");
+      else if (pdf) setStep("📖 سجاد يقرا ملف الدرس…");
       const result = await postJson<{ intake: JourneyIntake }>("/api/film/intake", { draftId: draftId.current, kind, title: values.title, story: values.story, fixedFacts: values.fixedFacts, targetDurationSec: values.targetDurationSec, answers, previous: intake, model: claude.id, journey, ...(link ? { youtube: { sheetId } } : {}) });
       setIntake(result.intake);
     } catch (e) {
@@ -136,7 +149,8 @@ export default function NewProject() {
     setBusy(true);
     setError("");
     try {
-      const { id } = await postJson<{ id: string }>("/api/film/projects", { ...values, title: intake.title || values.title, story: intake.concept || values.story, targetDurationSec: intake.targetDurationSec ?? values.targetDurationSec, fixedFacts: intake.fixedFacts.join("\n") || values.fixedFacts, research, kind, intake, workflowVersion: 2, journey });
+      // a lesson's title may be left to سجاد
+      const { id } = await postJson<{ id: string }>("/api/film/projects", { ...values, title: intake.title || values.title || (lesson ? "درسي" : ""), story: intake.concept || values.story, targetDurationSec: intake.targetDurationSec ?? values.targetDurationSec, fixedFacts: intake.fixedFacts.join("\n") || values.fixedFacts, research, kind, intake, workflowVersion: 2, journey });
       // straight to the screenwriter, who starts by himself; «نعم»: سجاد opens there too and asks for the research's scope
       router.push(`${filmBase}/${id}/script?start=1${research === "yes" ? "&research=1" : ""}`);
     } catch (e) {
@@ -159,7 +173,7 @@ export default function NewProject() {
         {/* FIRST: what is being made — a scene, a film, or a series (which has its own place) */}
         {!intake && <section className="card space-y-2 p-3">
           <b className="block text-base">وش تبي تصنع؟</b>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {FILM_KINDS.map((k) =>
               k.id === "series" ? (
                 <Link key={k.id} href={`${filmBase}/series`} className="kind-card">
@@ -168,7 +182,7 @@ export default function NewProject() {
                   <small>{k.hint}</small>
                 </Link>
               ) : (
-                <button key={k.id} type="button" className={`kind-card${kind === k.id ? " on" : ""}`} aria-pressed={kind === k.id} onClick={() => { setKind(k.id); setIntake(null); }}>
+                <button key={k.id} type="button" className={`kind-card${kind === k.id ? " on" : ""}`} aria-pressed={kind === k.id} onClick={() => chooseKind(k.id)}>
                   <span className="kind-icon" aria-hidden>{k.icon}</span>
                   <b>{k.ar}</b>
                   <small>{k.hint}</small>
@@ -178,10 +192,12 @@ export default function NewProject() {
           </div>
           {kind === "film" && <p className="text-xs leading-6 text-muted">الفيلم يُكتب كعمل كامل: بداية وتحوّل ونهاية، ومشاهد مرقّمة لكل واحد مكانه وهدفه — وكل مشهد تصنعه بعدها بنفس الأدوات (صور، فيديو، أصوات، موسيقى).</p>}
           {kind === "scene" && <p className="text-xs leading-6 text-muted">المشهد القصير يقف بنفسه: مكان واحد ولحظة واحدة — أسرع وأرخص، وما يفتح أحداثًا تحتاج مشاهد ثانية.</p>}
+          {lesson && <p className="text-xs leading-6 text-muted">الدرس أقصر وأسهل مسار: سجاد يفهم درسك ويأكد معك، والسيناريست يكتب نص الدرس على طول، والشخصيات والأماكن تنصنع بستايل «الانحراف الأسلوبي» (بيكسار حديث) وتعتمدها، والتعليق الصوتي بـ ElevenLabs. الشكل: قصة قصيرة، أو مجسم ثلاثي الأبعاد، أو هايبرموشن لأدق التفاصيل.</p>}
         </section>}
 
-        {!intake && <ProjectFields key={startOnMap ? "map" : "free"} startOnMap={startOnMap} withLink kind={kind} values={values} onChange={(next) => { setValues(next); setIntake(null); }} />}
-        <ResearchChoice value={research} onChange={setResearch} />
+        {!intake && <ProjectFields key={`${lesson ? "lesson" : "story"}-${startOnMap ? "map" : "free"}`} startOnMap={startOnMap} withLink kind={kind} values={values} onChange={(next) => { setValues(next); setIntake(null); }} />}
+        {/* a lesson asks no research question (it is built on the teacher's lesson) */}
+        {!lesson && <ResearchChoice value={research} onChange={setResearch} />}
         {/* which mind writes the film: before سجاد reads the idea, because his reading is the journey's first reply */}
         {!intake && kind && (
           <section className="card space-y-2 p-3">
@@ -195,10 +211,10 @@ export default function NewProject() {
           <JourneyIntakeCard intake={intake} busy={busy} onRecheck={(answers) => void understand(answers)} onConfirm={() => void create()} onEdit={() => setIntake(null)} />
         ) : (
           <>
-            {!kind && <p className="text-center text-sm font-bold text-muted">اختر أول: مشهد قصير أو فيلم سينمائي؟</p>}
+            {!kind && <p className="text-center text-sm font-bold text-muted">اختر أول: مشهد قصير، فيلم سينمائي، أو درس؟</p>}
             {kind && !research && values.title.trim() && <p className="text-center text-sm font-bold text-muted">اختر: تبيني أبحث لتطوير القصة أو لا؟</p>}
-            <button className="btn btn-primary w-full text-xl" onClick={() => void understand()} disabled={busy || !values.title.trim() || values.story.trim().length < 10 || !research || !kind}>
-              {busy ? step || "سجاد يراجع الفكرة…" : <><span aria-hidden>🤖</span> خل سجاد يفهمها ويسأل الناقص</>}
+            <button className="btn btn-primary w-full text-xl" onClick={() => void understand()} disabled={busy || (!lesson && !values.title.trim()) || values.story.trim().length < 10 || !research || !kind}>
+              {busy ? step || (lesson ? "سجاد يقرا الدرس…" : "سجاد يراجع الفكرة…") : <><span aria-hidden>🤖</span> {lesson ? "خل سجاد يفهم الدرس" : "خل سجاد يفهمها ويسأل الناقص"}</>}
             </button>
           </>
         )}

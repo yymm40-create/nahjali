@@ -7,6 +7,8 @@
 //      copies the same character instead of designing him again.
 // The style text goes into STYLE exactly as it is in the library (config/film-styles.ts).
 
+import { CHARACTER_SHEET_LAYOUT } from "./character-sheet";
+
 export type ConvertGender = "boy" | "girl" | "man" | "woman";
 
 /** What step 1 writes for one real photo (stored on that upload's meta.likeness). */
@@ -70,7 +72,8 @@ export function portraitPrompt(l: Likeness, styleText: string, moreStylized = fa
 }
 
 /**
- * Step 3: the character sheet from the approved single image(s) only. One single image is the method itself; with
+ * Step 3: the character sheet from the approved single image(s) only, in the film maker's fixed three-panel layout
+ * (config/film-prompts/character-sheet). One single image is the method itself; with
  * more (one per real photo), the first is the main one (its outfit) and the others are the same character.
  */
 export function convertSheetPrompt(l: Likeness, references = 1) {
@@ -80,7 +83,7 @@ export function convertSheetPrompt(l: Likeness, references = 1) {
   const intro = many
     ? `Turn the character in the reference images into a character reference sheet. All ${references} reference images show the same character; the FIRST one is the main reference. It must be the EXACT same character as in the reference images, do not redesign ${p.him} and do not make ${p.him} younger or older:`
     : `Turn the character in the reference image into a character reference sheet. It must be the EXACT same character as in the reference image, do not redesign ${p.him} and do not make ${p.him} younger or older:`;
-  return `${intro} copy ${p.his} face shape, eyes, eyebrows, nose, smile, ears, hair shape and hair color, skin tone, age, head size and body proportions, ${l.outfit.trim()}${many ? " (as in the first reference image)" : ""}, and the exact same art style, rendering, materials, line work and colors as ${ref}. Only the background and the poses change. Plain flat neutral medium grey background, even soft studio lighting, no scenery. TOP ROW: four full-body views of ${p.him} standing in a relaxed neutral pose, evenly spaced, all at the same scale, feet visible: front view, three-quarter view, side profile view, back view; ${l.lower_body.trim().replace(/\.$/, "")}. BOTTOM ROW: five head-and-shoulders close-ups of the same face with different expressions: happy grin, big laugh, surprised, thinking, sad. Every view must look like ${ref}. No text, no labels, no numbers, no logos, no watermark.`;
+  return `${intro} copy ${p.his} face shape, eyes, eyebrows, nose, smile, ears, hair shape and hair color, skin tone, age, head size and body proportions, ${l.outfit.trim()}${many ? " (as in the first reference image)" : ""}, and the exact same art style, rendering, materials, line work and colors as ${ref}. Only the background, the framing and the pose change; ${l.lower_body.trim().replace(/\.$/, "")}. Every panel must look like ${ref}. ${CHARACTER_SHEET_LAYOUT}`;
 }
 
 /** Single images one press makes for a real photo (the method: 3, then the closest face is chosen). */

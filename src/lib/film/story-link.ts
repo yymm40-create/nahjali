@@ -61,3 +61,33 @@ export function storyUpload(story: string): { video: StoryVideo | null; note: st
   if (!m) return { video: null, note };
   return { video: { name: first.slice(0, m.index).trim(), videoId: m[1].toLowerCase(), sheetId: m[2] ? m[2].toLowerCase() : null }, note };
 }
+
+// «📄 ملف PDF» (the lesson path, 23 Nov 2026: «اضف في صانع الافلام خيار اضافة بي دي اف بحيث الشخص يقدر يضيف درس»): the
+// lesson as a PDF from the person's device, read by سجاد (Claude reads the file itself), with the teacher's note under it.
+
+/** The first line of a story given as a PDF file. */
+export const STORY_PDF_HEAD = "📄 ملف PDF:";
+const PDF_ID = new RegExp(`\\[ملف:(${UUID})\\]\\s*$`, "i");
+
+/** An uploaded PDF (the person's upload id). */
+export interface StoryPdf {
+  name: string;
+  fileId: string;
+}
+
+/** The story text of an uploaded PDF and its note (no file yet: only the head, so the way stays chosen). */
+export function storyFromPdf(pdf: StoryPdf | null, note: string) {
+  const n = note.trim();
+  const line = pdf ? `${pdf.name.replace(/[[\]\n]/g, " ").slice(0, 120)} [ملف:${pdf.fileId}]` : "";
+  return `${STORY_PDF_HEAD} ${line}`.trimEnd() + (n ? `\n\n${n}` : "");
+}
+
+/** The PDF and note of a story given as a PDF (pdf null: not uploaded yet), or null when it was not. */
+export function storyPdf(story: string): { pdf: StoryPdf | null; note: string } | null {
+  const s = String(story ?? "");
+  if (!s.startsWith(STORY_PDF_HEAD)) return null;
+  const { first, note } = split(s, STORY_PDF_HEAD);
+  const m = first.match(PDF_ID);
+  if (!m) return { pdf: null, note };
+  return { pdf: { name: first.slice(0, m.index).trim(), fileId: m[1].toLowerCase() }, note };
+}

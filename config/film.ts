@@ -1,6 +1,8 @@
 // Film branch settings. Edit freely.
 // Spending caps (USD) are edited from /admin/film and stored in the database (film_settings).
 
+import { LESSON_BRIEF, LESSON_SECONDS } from "./film-lesson";
+
 /** The film branch's stages, in order. */
 export const FILM_STAGES = [
   { key: "screenwriter", label: "السيناريست", icon: "✍️" },
@@ -121,6 +123,16 @@ export const FILM_KINDS = [
     seconds: [60, 900] as [number, number],
   },
   {
+    // «🎓 درس لطلابك» (config/film-lesson.ts): a lesson turned into something visual and easy — kept in the database as
+    // a scene, its lesson plan in the project's intake («lesson»)
+    id: "lesson",
+    ar: "درس لطلابك",
+    icon: "🎓",
+    hint: "حوّل درسك لشي بصري سهل: قصة قصيرة، مجسم ثلاثي الأبعاد، أو هايبرموشن بتعليق صوتي",
+    brief: LESSON_BRIEF,
+    seconds: [LESSON_SECONDS.min, LESSON_SECONDS.max] as [number, number],
+  },
+  {
     id: "series",
     ar: "مسلسل كامل",
     icon: "📺",
@@ -131,8 +143,12 @@ export const FILM_KINDS = [
 ] as const;
 export type FilmKind = (typeof FILM_KINDS)[number]["id"];
 export const filmKind = (v: unknown) => FILM_KINDS.find((k) => k.id === v) ?? null;
-/** The shape a project is made in (a scene when nothing was chosen, which is how every old project was made). */
-export const readFilmKind = (v: unknown): Exclude<FilmKind, "series"> => (v === "film" ? "film" : "scene");
+/** The shape a project is made in (a scene when nothing was chosen, which is how every old project was made). A lesson
+ * is kept as a scene: see projectKind for the shape the person chose. */
+export const readFilmKind = (v: unknown): Exclude<FilmKind, "series" | "lesson"> => (v === "film" ? "film" : "scene");
+/** A project's shape as the person chose it: a lesson when its intake carries a lesson plan, else its stored kind. */
+export const projectKind = (p: { kind?: unknown; intake?: unknown }): Exclude<FilmKind, "series"> =>
+  p.intake && typeof p.intake === "object" && (p.intake as { lesson?: unknown }).lesson ? "lesson" : readFilmKind(p.kind);
 
 export const FILM_LIMITS = {
   titleMax: 80,

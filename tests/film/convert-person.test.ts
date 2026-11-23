@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { convertSheetPrompt, MORE_STYLIZED, portraitPrompt, type Likeness } from "@config/film-prompts/convert-person";
+import { CHARACTER_SHEET_LAYOUT } from "@config/film-prompts/character-sheet";
 import { approvedImages, chosenPortraits, MASTER_ID, pendingSheets, portraitKey, type SheetVersion } from "@/lib/film/sheets";
 import type { FilmAsset } from "@/lib/film/types";
 
@@ -24,12 +25,14 @@ describe("«حوّل شخصية واقعية»: the method's prompts", () => {
     expect(portraitPrompt(BOY, STYLE, true)).toContain(`${STYLE} ${MORE_STYLIZED}. Fully stylized`);
   });
 
-  it("the sheet: from the single image only, the same character, four views and five expressions", () => {
+  it("the sheet: from the single image only, the same character, the film maker's three panels", () => {
     const p = convertSheetPrompt(BOY);
     expect(p).toContain("It must be the EXACT same character as in the reference image, do not redesign him and do not make him younger or older");
     expect(p).toContain("the red football jersey with the dark green V collar, and the exact same art style");
-    expect(p).toContain("back view; below the jersey he wears dark navy sports shorts and white sneakers. BOTTOM ROW");
-    expect(p).toContain("happy grin, big laugh, surprised, thinking, sad");
+    expect(p).toContain("below the jersey he wears dark navy sports shorts and white sneakers. Every panel must look like the reference image.");
+    expect(p).toContain(CHARACTER_SHEET_LAYOUT);
+    expect(p).not.toContain("BOTTOM ROW");
+    expect(p).not.toContain("happy grin");
     expect(p).not.toContain("photo");
   });
 
