@@ -174,8 +174,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
     if (!next) return;
     autoSent.current.add(next.id);
     autoAfterEdit.current.delete(next.ref_key);
-    const t = setTimeout(() => void send({ action: "approve", versionId: next.id, count: 1 }), 0);
-    return () => clearTimeout(t);
+    setTimeout(() => void send({ action: "approve", versionId: next.id, count: 1 }), 0);
   });
 
   // Arrived from the screenwriter (…/sheets?start=1): the sheet maker starts by itself, no second press
@@ -184,8 +183,8 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
     if (autoStarted.current || started || new URLSearchParams(window.location.search).get("start") !== "1") return;
     autoStarted.current = true;
     window.history.replaceState(null, "", window.location.pathname);
-    const t = setTimeout(() => send({ action: "start" }), 0);
-    return () => clearTimeout(t);
+    // not cleared on the next render: a render in that moment cancelled it for good (the ref is already set)
+    setTimeout(() => send({ action: "start" }), 0);
   });
   // Every picture approved: the handoff to the director is prepared by itself (once)
   // (only when the last approval happens on this page: arriving with everything already approved, e.g. after going
@@ -196,8 +195,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
     if (!allApproved) sawOpen.current = true;
     if (autoFinished.current || !sawOpen.current || !allApproved || writing || failed || busy) return;
     autoFinished.current = true;
-    const t = setTimeout(() => send({ action: "finish" }), 0);
-    return () => clearTimeout(t);
+    setTimeout(() => send({ action: "finish" }), 0);
   });
   const revise = (v: SheetVersion) => (mode: SendMode, text: string) => send({ action: "revise", text, versionId: v.id, mode });
   // «اعتمد المحدد»: new pictures ticked on their cards
@@ -439,8 +437,7 @@ function MapChoices({
       return c && !savedChoices[m.id] && !assets.some((a) => a.kind === "upload" && a.ref_key === m.id && a.status !== "rejected") ? [{ sheetId: m.id, castId: c.id }] : [];
     });
     if (items.length) {
-      const t = setTimeout(() => void takeFromSeries(items), 0);
-      return () => clearTimeout(t);
+      setTimeout(() => void takeFromSeries(items), 0);
     }
   });
 

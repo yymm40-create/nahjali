@@ -134,26 +134,26 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
     if (busy || writing) return;
     if (!started && autoStart && !startedOnce.current) {
       startedOnce.current = true;
-      const t = setTimeout(() => void send({ action: "start", superDirector: true }), 0);
-      return () => clearTimeout(t);
+      // not cleared on the next render: the ref is already set, so a cancelled timer never came back
+      setTimeout(() => void send({ action: "start", superDirector: true }), 0);
+      return;
     }
     if (understanding?.status === "awaiting_approval" && approvedOnce.current !== understanding.id) {
       approvedOnce.current = understanding.id;
-      const t = setTimeout(() => void send({ action: "approve", versionId: understanding.id }), 0);
-      return () => clearTimeout(t);
+      setTimeout(() => void send({ action: "approve", versionId: understanding.id }), 0);
+      return;
     }
     if (!direct) return;
     // «اصنع مباشرة»: the map, then each generation as it arrives, approved here; a note asks for the next one
     const waiting = [mapV, ...ordered.map((gid) => versions.filter((x) => x.kind === "dir_generation" && x.ref_key === gid).at(-1))].find((x) => x?.status === "awaiting_approval" && approvedOnce.current !== x.id);
     if (waiting) {
       approvedOnce.current = waiting.id;
-      const t = setTimeout(() => void send({ action: "approve", versionId: waiting.id }), 0);
-      return () => clearTimeout(t);
+      setTimeout(() => void send({ action: "approve", versionId: waiting.id }), 0);
+      return;
     }
     if (note && note.created_at === current?.created_at && map.some((g) => !genIds.includes(g.id)) && approvedOnce.current !== note.id) {
       approvedOnce.current = note.id;
-      const t = setTimeout(() => void send({ action: "continue" }), 0);
-      return () => clearTimeout(t);
+      setTimeout(() => void send({ action: "continue" }), 0);
     }
   });
   const affects = (id: string) => {

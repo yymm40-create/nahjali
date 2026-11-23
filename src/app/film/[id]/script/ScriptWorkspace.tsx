@@ -99,9 +99,9 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
     const u = new URL(window.location.href);
     u.searchParams.delete("start");
     window.history.replaceState(null, "", u.pathname + (u.search || ""));
-    // (a moment, so the story's last words saved on the way here arrive first)
-    const t = setTimeout(() => send({ action: "start" }), 900);
-    return () => clearTimeout(t);
+    // (a moment, so the story's last words saved on the way here arrive first). Not cleared on the next render: a render
+    // in that moment (a banner, a poll) cancelled it, and the person was left with the start button
+    setTimeout(() => send({ action: "start" }), 900);
   });
 
   if (versions.length === 0 && !running && !failed) {

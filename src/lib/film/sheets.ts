@@ -14,6 +14,7 @@ import { projectKind } from "@config/film";
 import { LESSON_SHEETS_NOTE, LESSON_STYLE_ID } from "@config/film-lesson";
 import { sheetImpact } from "./impact";
 import { withCharacterLayout } from "@config/film-prompts/character-sheet";
+import { completeHandoff } from "./handoff-guard";
 import { CONVERT_SHEETS, convertSheetPrompt, LIKENESS_SCHEMA, LIKENESS_SYSTEM, PORTRAITS_PER_PHOTO, portraitPrompt, type Likeness } from "@config/film-prompts/convert-person";
 
 import { storage } from "@/lib/storage";
@@ -297,6 +298,9 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
         .limit(1)
         .maybeSingle();
       if (!handoff) throw new UserError("ما لقينا السيناريو المعتمد.", 409);
+      // a handoff saved (nearly) empty before the guard: the approved screenplay goes with it
+      const { data: screenplay } = await db().from("film_versions").select("body").eq("project_id", project.id).eq("stage", "screenwriter").eq("kind", "screenplay").eq("status", "approved").order("version", { ascending: false }).limit(1).maybeSingle();
+      handoff.body = completeHandoff(handoff.body, screenplay?.body);
       // a lesson («🎓 درس لطلابك»): its fixed style and what its map holds are said before the map is planned
       const lesson = projectKind(project) === "lesson" ? `\n\n---\n${LESSON_SHEETS_NOTE}` : "";
       const id = await addUserMessage(project.id, `${handoff.body}\n\n---\n${GENERATOR_FACTS}${lesson}`);
