@@ -21,7 +21,7 @@ import FontTable, { type FontItem } from "./FontTable";
 import MotionCarouselTable from "./MotionCarouselTable";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { drawWithCode, pngBody, smallJpeg } from "@/components/claude-code/draw";
-import { downloadYoutube, sheetOf, youtubeLinks } from "./media-prep";
+import { downloadYoutube, sheetOf, soundOnlyAsk, youtubeLinks } from "./media-prep";
 import { joinSlidesToReel } from "./slides-reel";
 import StorePanel from "./StorePanel";
 
@@ -1251,7 +1251,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       // a YouTube link: downloaded first (the video, its sound and its frames), like Claude does it, and attached
       for (const link of editing == null ? youtubeLinks(typed) : []) {
         try {
-          const got = await downloadYoutube(link, setPrep);
+          const got = await downloadYoutube(link, setPrep, { frames: !soundOnlyAsk(typed) });
           if (got?.length) {
             files.push(...got.filter((g) => !files.some((f) => f.id === g.id)).slice(0, Math.max(0, JAWAD_ATTACHMENT_LIMIT - files.length)));
             // the person's message (the last one) shows what was downloaded

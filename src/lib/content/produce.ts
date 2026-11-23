@@ -126,6 +126,13 @@ export const reasonOf = (e: unknown) =>
     : "صار خطأ غير متوقع أثناء الرسم.";
 const detailOf = (e: unknown) => (e instanceof DeskError ? e.detail || e.reason : e instanceof Error ? e.message : String(e)).slice(0, 300);
 
+/**
+ * Slide 1 is the COVER and the HOOK (the first frame people see in the feed and on the profile grid): its writing is the
+ * boldest typography of the whole carousel, never a small line at an edge.
+ */
+export const COVER_RULE =
+  "THIS SLIDE IS THE COVER AND THE HOOK — its writing must be the strongest typographic design of the whole carousel: the headline (the slide's key words) is HUGE, filling most of the frame's width, in 2–3 short lines, centred inside the safe middle (the profile grid crops the frame to 3:4 / 1:1 from the centre, so nothing important sits near the top or bottom edge); one key word or name is the biggest and stands out (weight, colour or a soft glow); any small lead-in or sub line sits close above or below it; strong contrast with the picture behind; a refined composition that fits the style (a thin ornamental frame, a hairline rule, a subtle highlight) — premium and professional, never a plain small sentence, never text at the frame's edge. The whole headline is fully readable from the very first frame (it never starts empty and fades in).";
+
 /** The full prompt of one slide: where it stands, the design (Baqir's), the style (verbatim), the slide, the rules. */
 export function slidePrompt(o: { n: number; total: number; prompt: string; styleId: string; carouselId?: string; fontId?: string; paletteId?: string; withRef: boolean; userRefs?: number; fix?: string }): string {
   const style = o.styleId ? findStyle(o.styleId) : null;
@@ -138,6 +145,8 @@ export function slidePrompt(o: { n: number; total: number; prompt: string; style
         ? `Slide 1 of ${o.total} of a carousel, drawn again. The reference picture is the earlier version of this slide: keep its design system exactly (colours, typography, margins, grid, logo placement, decorative elements) and fix the listed problems.`
         : `Slide ${o.n} of ${o.total} of one carousel. The reference picture is slide 1: match its design system EXACTLY — the same colours, typography, margins, layout grid, logo placement and decorative elements — so the carousel reads as one set. Only the content changes.`
       : `Slide ${o.n} of ${o.total} of a carousel (the first: it sets the design system every other slide will copy).`,
+    // the cover is the hook (the owner, 23 Nov 2026: «الصفحة الاولى لازم تاخذ مواصفات الهوك والغلاف… صايرة بسيطة… فالكتابة»)
+    o.n === 1 ? COVER_RULE : "",
     o.userRefs ? `The client's own attached picture${o.userRefs > 1 ? "s are" : " is"} also given as reference${o.userRefs > 1 ? "s" : ""} (named ref1${o.userRefs > 1 ? "…" : ""}): use ${o.userRefs > 1 ? "them" : "it"} where the slide's brief asks (a logo, a photo, a product), exactly as ${o.userRefs > 1 ? "they are" : "it is"}, without redrawing or altering ${o.userRefs > 1 ? "them" : "it"}.` : "",
     car ? carouselStyleBlock(car, !!pal, !!font) : "",
     car && (pal || font || o.userRefs) ? CLIENT_FIRST : "",
