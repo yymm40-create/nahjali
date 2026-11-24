@@ -26,22 +26,30 @@ export async function deviceState(): Promise<Device> {
   return sub && Notification.permission === "granted" ? "on" : "off";
 }
 
-/** Asks for permission, subscribes this device and tells the server. "on", or "denied" when the person said no. */
+/** Rejects when a step of the browser never answers (a service worker that never gets ready, a permission prompt that
+ *  never shows), so «احفظ» never hangs (a member's report, 24 November 2026). */
+function inTime<T>(p: Promise<T>, ms = 12_000): Promise<T> {
+  return Promise.race([p, new Promise<T>((_, no) => setTimeout(() => no(new Error("المتصفح ما ردّ على تفعيل الإشعارات. سكّر التطبيق وافتحه من جديد وجرّب مرة ثانية.")), ms))]);
+}
+
+/** Asks for permission, subscribes this device and tells the server. "on", or "denied" when the person said no. Call it
+ *  straight from the tap: the permission is asked first, while the tap still counts (iPhone needs that). */
 export async function enablePush(): Promise<"on" | "denied"> {
-  const reg = await navigator.serviceWorker.register("/mahdi/sw.js", { scope: "/mahdi/" });
-  await navigator.serviceWorker.ready;
-  if ((await Notification.requestPermission()) !== "granted") return "denied";
+  const permission = Notification.permission === "granted" ? "granted" : await inTime(Notification.requestPermission(), 60_000);
+  if (permission !== "granted") return "denied";
+  const reg = await inTime(navigator.serviceWorker.register("/mahdi/sw.js", { scope: "/mahdi/" }));
+  await inTime(navigator.serviceWorker.ready);
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {
     try {
-      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(VAPID_PUBLIC) });
+      sub = await inTime(reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(VAPID_PUBLIC) }));
     } catch {
       // An old subscription made with other keys: drop it and try once more
       await (await reg.pushManager.getSubscription())?.unsubscribe();
-      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(VAPID_PUBLIC) });
+      sub = await inTime(reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(VAPID_PUBLIC) }));
     }
   }
-  await mahdiFetch("/api/mahdi/notifications/subscribe", { method: "POST", json: sub.toJSON() });
+  await inTime(mahdiFetch("/api/mahdi/notifications/subscribe", { method: "POST", json: sub.toJSON() }));
   return "on";
 }
 

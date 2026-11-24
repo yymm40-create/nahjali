@@ -78,6 +78,9 @@ export default function DayTasks() {
     setBusy(true);
     try {
       const timedNow = timed && Boolean(at);
+      // a task with a time: this device is asked for notifications (or its subscription is sent again, in case the
+      // server dropped it) right from the tap — never waited for, so a browser that never answers can't hang the form
+      if (timedNow && (device === "off" || device === "on")) void enablePush().then(setDevice, () => {});
       const date = later && day && day > today ? day : null;
       const r = await mahdiFetch<{ tasks: DayTask[]; upcoming?: DayTask[] }>("/api/mahdi/tasks", {
         method: "POST",
@@ -86,9 +89,6 @@ export default function DayTasks() {
       save(r.tasks);
       if (r.upcoming) setUpcoming(r.upcoming);
       if (date) toast(t.tasks.savedFor(`${weekdayName(date)} ${fmtDate(date)}`));
-      // a task with a time: this device is asked for notifications (or its subscription is sent again, in case the
-      // server dropped it), right on the tap that saved it
-      if (timedNow && (device === "off" || device === "on")) setDevice(await enablePush().catch(() => device));
       setTitle("");
       setAt("");
       setLater(false);
