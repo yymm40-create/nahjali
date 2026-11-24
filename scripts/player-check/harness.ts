@@ -2,7 +2,7 @@
 // see how many videos it decodes at once and which one it draws.
 import { Player, type PlayerAsset } from "@/components/jawad/editor/player";
 import { apply, type Command } from "@/lib/editor/commands";
-import { flatten, readTimeline, type Timeline } from "@/lib/editor/model";
+import { clipEnd, flatten, readTimeline, sourceTime, type Timeline } from "@/lib/editor/model";
 
 declare global {
   interface Window {
@@ -10,6 +10,7 @@ declare global {
     pcRun: (cmd: Command) => void;
     pcSeek: (ms: number) => Promise<void>;
     pcPlay: (ms: number) => Promise<void>;
+    pcLag: (ms: number) => Promise<{ at: number; lag: number }[]>;
     pcLook: () => { videos: number; sounds: number; playing: number; pixel: [number, number, number] };
   }
 }
@@ -50,4 +51,23 @@ window.pcLook = () => {
   const c = document.querySelector("canvas")!;
   const d = c.getContext("2d")!.getImageData(Math.floor(c.width / 2), Math.floor(c.height / 2), 1, 1).data;
   return { videos: vids.length, sounds: document.querySelectorAll("audio").length, playing: vids.filter((v) => !v.paused).length, pixel: [d[0], d[1], d[2]] };
+};
+
+// How far the picture on screen is behind the film: every 50 ms while it plays, the shown cut's own video against
+// the moment it should be at (seconds; negative = the picture is late). The cut is the top clip under the playhead.
+window.pcLag = async (ms) => {
+  const out: { at: number; lag: number }[] = [];
+  player.seek(0);
+  await settle(600);
+  player.play();
+  const t0 = performance.now();
+  while (performance.now() - t0 < ms) {
+    await new Promise((r) => setTimeout(r, 50));
+    const now = player.ms;
+    const top = [...flatten(tl).tracks].reverse().flatMap((t) => (t.kind === "video" && !t.hidden ? t.clips.filter((c) => c.start <= now && clipEnd(c) > now) : []))[0];
+    const el = top ? (player as unknown as { media: Map<string, HTMLMediaElement> }).media.get(top.id) : null;
+    if (top && el) out.push({ at: Math.round(now - top.start), lag: Math.round((el.currentTime - sourceTime(top, now) / 1000) * 1000) / 1000 });
+  }
+  player.pause();
+  return out;
 };
