@@ -21,7 +21,7 @@ import { allTracks, flatten, clipEnd, duration, findClip, formatTime, mainTrack,
 import { api, postJson } from "@/lib/fetch";
 import Icon, { type IconName } from "../Icon";
 import AssistantPanel from "./AssistantPanel";
-import { UPDATE_EVENT, updating } from "@/components/NewVersion";
+import { PAGE_BUILD, UPDATE_EVENT, updateNow, updating } from "@/components/NewVersion";
 import MovableBubble from "@/components/MovableBubble";
 import RobotFace from "@/components/RobotFace";
 import "./haidara-pop.css";
@@ -2156,6 +2156,27 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         <span className={`hidden shrink-0 text-[11px] sm:inline ${save === "error" || save === "conflict" ? "text-jw-danger" : "text-jw-faint"}`} aria-live="polite">
           {SAVE_TEXT[save]}
         </span>
+        {/* which build this page runs: a press asks the site for the live one, and reloads to it when they differ */}
+        <button
+          type="button"
+          className="hidden shrink-0 rounded px-1 text-[10px] tabular-nums text-jw-faint hover:text-jw-ink lg:inline"
+          dir="ltr"
+          onClick={async () => {
+            try {
+              const { build } = (await (await fetch("/api/version", { cache: "no-store" })).json()) as { build?: string };
+              if (build && build !== "dev" && build !== PAGE_BUILD) {
+                flash("فيه نسخة أحدث: أحفظ شغلك وأحدّث الصفحة…");
+                void updateNow();
+              } else flash(`أنت على آخر نسخة (${PAGE_BUILD}).`);
+            } catch {
+              flash("ما قدرت أسأل الموقع عن آخر نسخة. تأكد من الإنترنت.", true);
+            }
+          }}
+          title="رقم نسخة الموقع اللي شغالة عندك. اضغط: أتأكد إنها آخر نسخة، وإذا لا أحدّث الصفحة"
+          aria-label={`نسخة الموقع ${PAGE_BUILD}: اضغط للتأكد من آخر نسخة`}
+        >
+          v{PAGE_BUILD}
+        </button>
         {ws && wide && (
           <>
             {/* (the pages are the menus at the top left now; the colour room and the others stay in the menu bar) */}
