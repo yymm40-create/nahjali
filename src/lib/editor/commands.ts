@@ -230,6 +230,19 @@ export type Command =
   /** «بدّل الزاوية»: a cut shows the same moment from another synced camera (`cam`: that camera's original clip id) */
   | { type: "multicam_angle"; clipId: string; cam: string }
   /**
+   * «شبكة الكاميرات»: from `at`, the film shows this camera (`cam`: a video clip that covers that moment). The cut goes
+   * on the «المونتاج» track — over every camera, made the first time — and lasts until the camera's clip ends or the
+   * next cut begins. The cameras themselves stay where they are, untouched, and no sound changes.
+   */
+  | { type: "multicam_cut"; cam: string; at: number }
+  /**
+   * «تقطيع ذكي»: the cuts of «المونتاج» between `from` and `to` replaced by these shots (each a camera's clip id and
+   * the stretch it shows, inside that clip). What was cut outside the stretch stays.
+   */
+  | { type: "multicam_plan"; from: number; to: number; shots: { cam: string; from: number; to: number }[] }
+  /** a track one place up or down among the tracks of its kind (pictures: over or under its neighbour) */
+  | { type: "move_track"; trackId: string; dir: "up" | "down" }
+  /**
    * «قوالب المونتاج»: the open timeline becomes a ready template filled with the person's files (built by
    * lib/editor/templates.ts); the project's other timelines stay. Put {"type":"seq_new"} before it to keep what is there.
    */
@@ -1444,7 +1457,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const main = t.noMain ? null : mainTrack(t);
       // the tracks whose clips may change places: plain ones of this kind (not the main one, a locked one, the smart
       // edit's, the cameras kept for «بدّل الزاوية», or one that is off / soloed — those are someone's own choice)
-      const lanes = t.tracks.filter((x) => x.kind === cmd.kind && x !== main && !x.locked && !x.role && !x.angles && !x.motion && !x.off && !x.solo && !x.hidden && !x.muted);
+      const lanes = t.tracks.filter((x) => x.kind === cmd.kind && x !== main && !x.locked && !x.role && !x.angles && !x.motion && !x.off && !x.solo && !x.hidden && !x.muted && !x.clips.some((c) => c.angle));
       const before = lanes.filter((x) => x.clips.length).length;
       if (before < 2) fail("ما فيه مسارات تنلمّ (يبي لها مسارين فيهم مقاطع على الأقل، غير الرئيسي والمقفول والمخفي).");
       const to = packLanes(lanes.flatMap((x, lane) => x.clips.map((c) => ({ id: c.id, lane, start: c.start, end: clipEnd(c) }))));
@@ -1655,6 +1668,131 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       tidy(t, target);
       const shown = new Set(shots.map((s) => s.cam)).size;
       return { timeline: t, label: `بدّلت الكاميرات تلقائيًا (${made.length} لقطة من ${shown} كاميرات)`, select: [made[0].id] };
+    }
+
+    case "multicam_cut": {
+      const found = findClip(t, cmd.cam) ?? fail("ما لقينا هذي الكاميرا.");
+      // (pressed on one of the cuts: the camera it was cut from)
+      const cam = found.clip.angle ? (findClip(t, found.clip.angle) ?? fail("الكاميرا الأصلية لهذي اللقطة انحذفت.")) : found;
+      const src = cam.clip;
+      const a = src.assetId ? assets.get(src.assetId) : null;
+      if (cam.track.kind !== "video" || src.text || src.seq || src.motion || !a || a.kind !== "video") fail("الكاميرا لازم تكون مقطع فيديو.");
+      const at = Math.round(Number(cmd.at));
+      if (!Number.isFinite(at) || at < src.start || at > clipEnd(src) - LIMITS.minClipMs) fail("هذي الكاميرا ما صوّرت هذي اللحظة.");
+      // the track of the cuts: the one that holds them already, else a new one over every picture track
+      let program = t.tracks.find((x) => x.kind === "video" && !x.angles && x.clips.some((c) => c.angle));
+      if (program?.locked) fail(`المسار «${program.name}» مقفول؛ افتح القفل أول.`);
+      if (!program) {
+        program = newTrack(t, "video");
+        program.name = "المونتاج";
+        program.color = "#f59e0b";
+      }
+      const shot = (from: number, to: number, of: Clip): Clip => {
+        const c: Clip = { ...structuredClone(of), id: newId("c"), start: from, ...timedFields(cutTimed(of, from, to)), angle: of.id, transition: null, fix: null, volume: 0, fadeIn: 0, fadeOut: 0 };
+        delete c.off;
+        delete c.solo;
+        return c;
+      };
+      const on = program.clips.find((c) => c.start <= at && clipEnd(c) > at);
+      if (on?.angle === src.id) return { timeline: t, label: "هذي الكاميرا هي المعروضة", select: [on.id] };
+      const next = program.clips.find((c) => c.start > at);
+      let from = at;
+      let until = Math.min(clipEnd(src), next ? next.start : Infinity);
+      if (on) {
+        const onEnd = clipEnd(on);
+        const origin = on.angle ? findClip(t, on.angle)?.clip : null;
+        until = Math.min(clipEnd(src), onEnd);
+        // right at the cut's start: the whole cut changes camera (no sliver of the old one is left)
+        if (at - on.start < LIMITS.minClipMs * 2 && src.start <= on.start) from = on.start;
+        const keepHead = from > on.start;
+        const tail = until < onEnd - LIMITS.minClipMs && origin ? shot(until, onEnd, origin) : null;
+        program.clips = program.clips.filter((c) => c.id !== on.id);
+        if (keepHead) {
+          // the cut that was showing ends here (its transition belonged to the cut after it, which is a new one now)
+          setTimed(on, cutTimed(on, on.start, from));
+          on.transition = null;
+          program.clips.push(on);
+        }
+        if (tail) program.clips.push(tail);
+      }
+      if (until - from < LIMITS.minClipMs) fail("ما بقى وقت يكفي للقطة هنا.");
+      if (countClips(t) + 2 > LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
+      const made = shot(from, until, src);
+      program.clips.push(made);
+      program.clips.sort((x, y) => x.start - y.start);
+      // edge to edge (a millisecond of rounding goes to the later cut)
+      for (let i = 1; i < program.clips.length; i++) if (program.clips[i].start < clipEnd(program.clips[i - 1])) program.clips[i].start = clipEnd(program.clips[i - 1]);
+      return { timeline: t, label: `قطعت على ${cam.track.name}`, select: [made.id] };
+    }
+
+    case "multicam_plan": {
+      const from = Math.round(Number(cmd.from));
+      const to = Math.round(Number(cmd.to));
+      if (!Number.isFinite(from) || !Number.isFinite(to) || to - from < LIMITS.minClipMs) fail("حدّد من وين لين وين.");
+      const list = (Array.isArray(cmd.shots) ? cmd.shots : []).map((x) => ({ cam: String(x?.cam), from: Math.round(Number(x?.from)), to: Math.round(Number(x?.to)) })).sort((a, b) => a.from - b.from);
+      if (!list.length) fail("ما فيه لقطات: ما فيه كاميرا مختارة صوّرت هذا الوقت.");
+      if (list.length > LIMITS.clips / 2) fail("اللقطات أكثر من المسموح.");
+      let end = from;
+      const sources = list.map((x) => {
+        const f = findClip(t, x.cam) ?? fail("لقطة من كاميرا مو موجودة.");
+        const a = f.clip.assetId ? assets.get(f.clip.assetId) : null;
+        if (f.track.kind !== "video" || f.clip.angle || f.clip.text || f.clip.seq || f.clip.motion || !a || a.kind !== "video") fail("الكاميرات لازم تكون مقاطع فيديو.");
+        if (!Number.isFinite(x.from) || x.to - x.from < LIMITS.minClipMs) fail("لقطة أقصر من المسموح.");
+        if (x.from < f.clip.start - 2 || x.to > clipEnd(f.clip) + 2) fail("لقطة برا وقت كاميرتها.");
+        if (x.from < end - 2 || x.to > to + 2) fail("اللقطات متداخلة أو برا الوقت المحدد.");
+        end = x.to;
+        return f.clip;
+      });
+      let program = t.tracks.find((x) => x.kind === "video" && !x.angles && x.clips.some((c) => c.angle));
+      if (program?.locked) fail(`المسار «${program.name}» مقفول؛ افتح القفل أول.`);
+      if (!program) {
+        program = newTrack(t, "video");
+        program.name = "المونتاج";
+        program.color = "#f59e0b";
+      }
+      // the cuts already inside the stretch go; one that crosses an edge keeps its part outside
+      const kept: Clip[] = [];
+      for (const c of program.clips) {
+        const e = clipEnd(c);
+        if (e <= from || c.start >= to) {
+          kept.push(c);
+          continue;
+        }
+        if (c.start < from - LIMITS.minClipMs) {
+          const head = { ...structuredClone(c), id: newId("c"), ...timedFields(cutTimed(c, c.start, from)), transition: null };
+          kept.push(head);
+        }
+        if (e > to + LIMITS.minClipMs) {
+          const tail = { ...structuredClone(c), id: newId("c"), start: to, ...timedFields(cutTimed(c, to, e)) };
+          kept.push(tail);
+        }
+      }
+      const made = list.map((x, i): Clip => {
+        const c: Clip = { ...structuredClone(sources[i]), id: newId("c"), start: x.from, ...timedFields(cutTimed(sources[i], x.from, x.to)), angle: sources[i].id, transition: null, fix: null, volume: 0, fadeIn: 0, fadeOut: 0 };
+        delete c.off;
+        delete c.solo;
+        return c;
+      });
+      if (countClips(t) - program.clips.length + kept.length + made.length > LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
+      program.clips = [...kept, ...made].sort((x, y) => x.start - y.start);
+      for (let i = 1; i < program.clips.length; i++) if (program.clips[i].start < clipEnd(program.clips[i - 1])) program.clips[i].start = clipEnd(program.clips[i - 1]);
+      const n = new Set(list.map((x) => x.cam)).size;
+      return { timeline: t, label: `تقطيع ذكي: ${made.length} لقطة من ${n} كاميرات`, select: [made[0].id] };
+    }
+
+    case "move_track": {
+      const track = t.tracks.find((x) => x.id === cmd.trackId) ?? fail("ما لقينا هذا المسار.");
+      const i = t.tracks.indexOf(track);
+      // (pictures are drawn bottom-up, so «up» is later in the list; sound is listed top-down)
+      const step = (cmd.dir === "up") === (track.kind !== "audio") ? 1 : -1;
+      const j = i + step;
+      const other = t.tracks[j];
+      const main = t.noMain ? null : mainTrack(t);
+      if (!other || (other.kind === "audio") !== (track.kind === "audio")) fail(cmd.dir === "up" ? "هذا أعلى مسار." : "هذا أسفل مسار.");
+      if (track === main || other === main) fail("المسار الرئيسي يبقى تحت. (اضغط «رئيسي» فوق عشان تصير كل المسارات مثل بعض.)");
+      t.tracks[i] = other;
+      t.tracks[j] = track;
+      return { timeline: t, label: cmd.dir === "up" ? `رفعت «${track.name}»` : `نزّلت «${track.name}»` };
     }
 
     case "multicam_angle": {

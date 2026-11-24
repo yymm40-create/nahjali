@@ -8,7 +8,10 @@ import { readTimeline } from "@/lib/editor/model";
 import "@/app/jawad-ai/jawad.css";
 import "@/app/jawad-ai/sections.css";
 
-const asset = (id: string, kind: "video" | "audio", sec: number): EditorAsset => ({ id, kind, name: `${id}.mp4`, durationMs: sec * 1000, width: 1080, height: 1920, hasAudio: true, status: "ready", url: null }) as unknown as EditorAsset;
+// ?media=1: the cameras are real little videos (run.mjs makes them), so the picture and «شبكة الكاميرات» can be tried
+const media = new URLSearchParams(location.search).has("media");
+let made = 0;
+const asset = (id: string, kind: "video" | "audio", sec: number): EditorAsset => ({ id, kind, name: `${id}.mp4`, durationMs: sec * 1000, width: 1080, height: 1920, hasAudio: !media, status: "ready", url: media && kind === "video" ? `/cam${made++ % 8}.webm` : null }) as unknown as EditorAsset;
 const clip = (id: string, assetId: string, start: number, sec: number, more: object = {}) => ({ id, assetId, start, in: 0, out: sec * 1000, speed: 1, ...more });
 const cams = 7;
 const assets: EditorAsset[] = [asset("القصيدة", "audio", 200), asset("الافتتاحية", "video", 200)];
@@ -16,7 +19,7 @@ const tracks: unknown[] = [{ id: "main", kind: "video", name: "الرئيسي", 
 const colours = ["#ef4444", "#f59e0b", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"];
 for (let i = 0; i < cams; i++) {
   assets.push(asset(`كاميرا ${i + 1}`, "video", 40));
-  tracks.push({ id: `v${i}`, kind: "video", name: `كاميرا ${i + 1}`, clips: [clip(`c${i}a`, `كاميرا ${i + 1}`, 4000 + i * 14_000, 16, { label: colours[i] }), clip(`c${i}b`, `كاميرا ${i + 1}`, 104_000 + i * 12_000, 13, { label: colours[i] })] });
+  tracks.push({ id: `v${i}`, kind: "video", name: `كاميرا ${i + 1}`, clips: [clip(`c${i}a`, `كاميرا ${i + 1}`, 4000 + i * 5000, 30, { label: colours[i] }), clip(`c${i}b`, `كاميرا ${i + 1}`, 104_000 + i * 12_000, 13, { label: colours[i] })] });
 }
 tracks.push({ id: "t0", kind: "text", name: "نص", clips: [{ id: "tx", assetId: null, start: 2000, in: 0, out: 5000, speed: 1, text: { body: "يا ليلة القدر" } }] });
 tracks.push({ id: "a0", kind: "audio", name: "القصيدة", clips: [clip("p", "القصيدة", 0, 200)] });
