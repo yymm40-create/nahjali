@@ -69,6 +69,8 @@ interface Reply {
   prompt: string;
   sheet_id: string;
   references: { sheet_id: string; role: string }[];
+  /** «صورتي كما هي» said in words: the map items whose own picture the person asked to use as it is, with no sheet */
+  own_picture_ids?: string[];
 }
 
 export interface SheetVersion {
@@ -242,6 +244,12 @@ export type SheetAction =
   | { action: "reject_image"; assetId: string }
   | { action: "rename"; assetId: string; name: string }
   | { action: "remove_upload"; assetId: string }
+  // «صورتي كما هي»: at any time after the map is approved, the person's own picture of an item stands as its picture,
+  // with no sheet (assetId: which upload; none: the latest) — and back again («اصنع لها شيت»)
+  | { action: "use_own_picture"; sheetId: string; assetId?: string }
+  | { action: "sheet_from_picture"; sheetId: string }
+  /** an edit of the approved map that was asked for but not approved: dropped, the approved map stays */
+  | { action: "cancel_map_edit" }
   // «حوّل شخصية واقعية»: describe his photos and draw a single image of each (all, or the photos named)
   | { action: "convert_start"; sheetId: string; uploadIds?: string[] }
   /** more single images of one real photo; stylize: «طلعت شبه واقعية» */
@@ -541,7 +549,8 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       busy();
       if (!approvedImages(assets)[MASTER_ID]) throw new UserError("اعتمد صورة الماستر أول.", 409);
       const ids = [...new Set(versions.filter((x) => x.kind === "sheet_prompt" && x.ref_key !== MASTER_ID).map((x) => x.ref_key))];
-      const waiting = ids.map((id) => latest(versions, "sheet_prompt", id)!).filter((x) => x.status === "awaiting_approval");
+      const asIs = approvedMap(versions).choices;
+      const waiting = ids.map((id) => latest(versions, "sheet_prompt", id)!).filter((x) => x.status === "awaiting_approval" && asIs[x.ref_key] !== "as_is");
       if (!waiting.length) throw new UserError("ما فيه برومبتات تنتظر الاعتماد.", 409);
       for (const v of waiting) await setApproved(v, versions);
       let images = 0;
@@ -584,9 +593,12 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       if (!picks.length) throw new UserError("حدّد صورة أو أكثر.", 400);
       for (const a of picks) {
         const item = map.find((m) => m.id === a.ref_key);
-        const older = assets.filter((x) => x.ref_key === a.ref_key && x.id !== a.id && x.status === "approved").map((x) => x.id);
+        // it stood on the person's own picture: a sheet again (their picture stays an upload, never «مرفوضة»)
+        // (read again each time: two items going back in one press must not undo each other's choice)
+        if (approvedMap(versions).choices[a.ref_key] === "as_is") await backToSheet(await sheetVersions(project.id), assets, a.ref_key);
+        const older = assets.filter((x) => x.kind === "image" && x.ref_key === a.ref_key && x.id !== a.id && x.status === "approved").map((x) => x.id);
         if (older.length) await db().from("film_assets").update({ status: "rejected" }).in("id", older);
-        await db().from("film_assets").update({ status: "approved", meta: { ...a.meta, at_name: atName(item?.name ?? a.ref_key) } }).eq("id", a.id);
+        await db().from("film_assets").update({ status: "approved", meta: { ...a.meta, at_name: keptName(assets, a.ref_key) ?? atName(item?.name ?? a.ref_key) } }).eq("id", a.id);
       }
       if (convo?.status === "running") return { jobId: convo.id };
       return { jobId: await maybeFinish(project, user) };
@@ -600,11 +612,14 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       if (a.ref_key === MASTER_ID) busy();
       const { map } = approvedMap(versions);
       const item = map.find((m) => m.id === a.ref_key);
-      const older = assets.filter((x) => x.ref_key === a.ref_key && x.id !== a.id && x.status === "approved").map((x) => x.id);
+      // it stood on the person's own picture: a sheet again (their picture stays an upload, never «مرفوضة»)
+      const wasOwn = await backToSheet(versions, assets, a.ref_key);
+      const older = assets.filter((x) => x.kind === "image" && x.ref_key === a.ref_key && x.id !== a.id && x.status === "approved").map((x) => x.id);
       if (older.length) await db().from("film_assets").update({ status: "rejected" }).in("id", older);
-      await db().from("film_assets").update({ status: "approved", meta: { ...a.meta, at_name: atName(item?.name ?? a.ref_key) } }).eq("id", a.id);
+      const name = keptName(assets, a.ref_key) ?? atName(item?.name ?? a.ref_key);
+      await db().from("film_assets").update({ status: "approved", meta: { ...a.meta, at_name: name } }).eq("id", a.id);
       // «الرجوع الذكي»: a picture replaced after the director planned the shots → the shots drawn with it are listed
-      if (older.length && project.stage !== "sheets" && a.ref_key !== MASTER_ID) after(() => sheetImpact(project, a.ref_key, atName(item?.name ?? a.ref_key)));
+      if ((older.length || wasOwn) && project.stage !== "sheets" && a.ref_key !== MASTER_ID) after(() => sheetImpact(project, a.ref_key, name));
       const laterSheets = versions.some((x) => x.kind === "sheet_prompt" && x.ref_key !== MASTER_ID);
       if (convo?.status === "running") return { jobId: convo.id };
       if (a.ref_key === MASTER_ID && !laterSheets) {
@@ -642,6 +657,42 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       return { jobId: null };
     }
 
+    case "use_own_picture": {
+      const done = await takeOwnPicture(project, versions, assets, input.sheetId, input.assetId);
+      // the sheet maker reads it with the person's next message (no reply is asked for)
+      await addUserMessage(project.id, ownPictureNote(done.item));
+      // a reply being written now: the choice is kept, and the page finishes when it's done
+      if (convo?.status === "running") return { jobId: convo.id };
+      return { jobId: await maybeFinish(project, user) };
+    }
+
+    case "sheet_from_picture": {
+      busy();
+      const item = approvedMap(versions).map.find((m) => m.id === input.sheetId);
+      const choice = item ? await backToSheet(versions, assets, item.id) : null;
+      if (!item || !choice) throw new UserError("هذا العنصر مو معتمد بصورتك كما هي.", 409);
+      // not every item has its picture any more: the project is back with the sheet maker
+      if (project.stage === "director") await db().from("film_projects").update({ stage: "sheets" }).eq("id", project.id);
+      if (choice === "convert") return { jobId: null };
+      // its sheet was never described: asked for now (written alone, drawn by itself); described before: «ولّد» on its card
+      if (versions.some((v) => v.kind === "sheet_prompt" && v.ref_key === item.id)) return { jobId: null };
+      if (!approvedImages(assets)[MASTER_ID]) return { jobId: null, warning: "وصف شيتها ينكتب مع باقي الشيتات بعد اعتماد الماستر." };
+      const marks = choice === "reference" ? assets.filter((a) => a.kind === "upload" && a.ref_key === item.id && a.status !== "rejected").slice(-1).map((u) => `[[image:${u.id}]]`).join(" ") : "";
+      const id = await addUserMessage(project.id, `${batchMessage([item])}\n${item.id} (${item.name}): غيّرت رأيي، ما أبي صورتي كما هي؛ اصنع الشيت${marks ? ` من صورتي بستايل المشروع: ${marks}` : " بستايل المشروع."}`);
+      return { jobId: await queueReply(project, user, id) };
+    }
+
+    case "cancel_map_edit": {
+      busy();
+      const last = latest(versions, "sheet_understanding");
+      const approved = versions.some((v) => v.kind === "sheet_understanding" && v.status === "approved");
+      if (!last || last.status !== "awaiting_approval" || !approved) throw new UserError("ما فيه تعديل خريطة ينتظر الاعتماد.", 409);
+      const { error } = await db().from("film_versions").update({ status: "superseded" }).eq("id", last.id).eq("status", "awaiting_approval");
+      if (error) throw error;
+      await addUserMessage(project.id, "ملاحظة: تراجعت عن تعديل الخريطة الأخير؛ الخريطة المعتمدة قبله باقية كما هي، وكل اللي اعتمدته محفوظ.");
+      return { jobId: await maybeFinish(project, user) };
+    }
+
     case "rename": {
       const a = assets.find((x) => x.id === input.assetId);
       if (!a || a.status !== "approved") throw new UserError("الاسم يتغيّر للمراجع المعتمدة بس.", 409);
@@ -653,6 +704,105 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       return { jobId: null };
     }
   }
+}
+
+/** The name the item's approved picture carries now (the director already writes it): kept when the picture is replaced. */
+const keptName = (assets: FilmAsset[], sheetId: string) =>
+  assets.filter((a) => a.ref_key === sheetId && a.status === "approved").map((a) => a.meta?.at_name).find((n): n is string => typeof n === "string" && n.length > 1);
+
+/**
+ * An item that stood on the person's own picture «كما هي» becomes a sheet again (a sheet picture approved for it, or
+ * «اصنع لها شيت»): their pictures stay, as uploads, with the choice they had before. Returns that choice (null: it was
+ * not standing on their picture).
+ */
+async function backToSheet(versions: SheetVersion[], assets: FilmAsset[], sheetId: string): Promise<MapChoice | null> {
+  const mapV = versions.filter((v) => v.kind === "sheet_understanding" && v.status === "approved").at(-1);
+  const plan = mapV ? backToSheetPlan(mapV.data.choices ?? {}, assets, sheetId) : null;
+  if (!mapV || !plan) return null;
+  for (const u of plan.uploads) {
+    const { error } = await db().from("film_assets").update({ status: "uploaded", meta: u.meta }).eq("id", u.id);
+    if (error) throw error;
+  }
+  const { error } = await db().from("film_versions").update({ data: { ...mapV.data, choices: { ...(mapV.data.choices ?? {}), [sheetId]: plan.choice } } }).eq("id", mapV.id);
+  if (error) throw error;
+  return plan.choice;
+}
+
+/**
+ * What going back to a sheet changes (nothing written here): the item's choice — the one it had before «صورتي كما هي»
+ * (a real person's photos go back to «حوّل»), else a sheet designed from the picture — and every picture of the
+ * person's as an upload again, never «مرفوضة». null: the item is not standing on their picture.
+ */
+export function backToSheetPlan(choices: Record<string, MapChoice>, assets: FilmAsset[], sheetId: string) {
+  if (choices[sheetId] !== "as_is") return null;
+  const ups = assets.filter((a) => a.kind === "upload" && a.ref_key === sheetId && a.status !== "rejected");
+  const was = ups.map((u) => u.meta?.was).find((w): w is MapChoice => w === "reference" || w === "convert" || w === "make");
+  const choice: MapChoice = was ?? (ups.length ? "reference" : "make");
+  const uploads = ups.map((u) => {
+    const meta = { ...(u.meta ?? {}) } as Record<string, unknown>;
+    // the use it had before it stood for the item (a reference, a real person's photo); a picture given only «كما هي»
+    // becomes the sheet's reference — except for an item that is made from nothing, where it is kept and not used
+    const mode = typeof meta.was_mode === "string" ? meta.was_mode : meta.mode === "as_is" || !meta.mode ? (choice === "reference" ? "reference" : "as_is") : meta.mode;
+    delete meta.was;
+    delete meta.was_mode;
+    delete meta.at_name;
+    return { id: u.id, meta: { ...meta, mode } };
+  });
+  return { choice, uploads };
+}
+
+const ownPictureNote = (item: MapItem) => `ملاحظة: ${item.id} (${item.name}) اعتمدت له صورتي كما هي، بدون شيت. لا تكتب له برومبت إلا إذا طلبت شيته من جديد.`;
+
+/**
+ * «صورتي كما هي»: the person's own picture of a map item becomes its approved picture, at any time after the map is
+ * approved — whatever was chosen for it on the map and whatever sheets were drawn (they stay under its card, and can be
+ * approved again). The name the director already writes for the item is kept.
+ */
+async function takeOwnPicture(project: FilmProject, versions: SheetVersion[], assets: FilmAsset[], sheetId: string, assetId?: string) {
+  const mapV = versions.filter((v) => v.kind === "sheet_understanding" && v.status === "approved").at(-1);
+  const item = mapV?.data.sheet_map?.find((m) => m.id === sheetId);
+  if (!mapV || !item) throw new UserError("ما لقيت هذا العنصر في الخريطة المعتمدة.", 404);
+  if (item.id === MASTER_ID) throw new UserError("الماستر يتصنع دائمًا؛ هو مرجع الستايل لكل الفيلم.", 400);
+  const plan = ownPicturePlan(item, mapV.data.choices ?? {}, assets, assetId);
+  if (!plan) throw new UserError(`ما عندي صورة منك لـ«${item.name}»؛ ارفعها أول.`, 409);
+  if (plan.reject.length) {
+    const { error } = await db().from("film_assets").update({ status: "rejected" }).in("id", plan.reject);
+    if (error) throw error;
+  }
+  if (plan.backToUpload.length) {
+    const { error } = await db().from("film_assets").update({ status: "uploaded" }).in("id", plan.backToUpload);
+    if (error) throw error;
+  }
+  const { error: upErr } = await db().from("film_assets").update({ status: "approved", meta: plan.meta }).eq("id", plan.id);
+  if (upErr) throw upErr;
+  const { error: mapErr } = await db().from("film_versions").update({ data: { ...mapV.data, choices: { ...(mapV.data.choices ?? {}), [item.id]: "as_is" } } }).eq("id", mapV.id);
+  if (mapErr) throw mapErr;
+  // «الرجوع الذكي»: a picture replaced after the director planned the shots → the shots drawn with it are listed
+  if (plan.reject.length && project.stage !== "sheets") after(() => sheetImpact(project, item.id, plan.name));
+  return { item };
+}
+
+/**
+ * What «صورتي كما هي» changes (nothing written here): which picture of the person's stands for the item (the one named,
+ * else the latest), the name it carries — the one the director already writes when a picture stood there before — the
+ * sheet pictures that go back with the attempts, and the person's other pictures that stay uploads. null: they gave no
+ * picture for this item.
+ */
+export function ownPicturePlan(item: MapItem, choices: Record<string, MapChoice>, assets: FilmAsset[], assetId?: string) {
+  const ups = assets.filter((a) => a.kind === "upload" && a.ref_key === item.id && a.status !== "rejected" && a.storage_path);
+  const up = assetId ? ups.find((a) => a.id === assetId) : ups.at(-1);
+  if (!up) return null;
+  const before = choices[item.id] ?? "make";
+  const others = assets.filter((a) => a.ref_key === item.id && a.id !== up.id && a.status === "approved");
+  const name = [...others.map((a) => a.meta?.at_name), up.meta?.at_name].find((n): n is string => typeof n === "string" && n.length > 1) ?? atName(item.name);
+  return {
+    id: up.id,
+    name,
+    // «was» / «was_mode»: the item's choice and this picture's use before, so the person can go back to them
+    meta: { ...(up.meta ?? {}), mode: "as_is", at_name: name, ...(before !== "as_is" ? { was: before } : {}), ...(typeof up.meta?.mode === "string" && up.meta.mode !== "as_is" ? { was_mode: up.meta.mode } : {}) } as Record<string, unknown>,
+    reject: others.filter((a) => a.kind === "image").map((a) => a.id),
+    backToUpload: others.filter((a) => a.kind === "upload").map((a) => a.id),
+  };
 }
 
 async function setApproved(v: SheetVersion, versions: SheetVersion[]) {
@@ -670,8 +820,23 @@ async function approveMap(project: FilmProject, user: { id: string; email?: stri
     // the master is made — unless a series' scene takes its series' style picture as it is
     const choice: MapChoice = item.id === MASTER_ID ? (choices[item.id] === "as_is" && project.series_id ? "as_is" : "make") : (choices[item.id] ?? "make");
     clean[item.id] = choice;
-    if (choice === "make") continue;
     const active = assets.filter((a) => a.kind === "upload" && a.ref_key === item.id && a.status !== "rejected");
+    // the map approved again with another choice: a picture of the person's that stood «كما هي» stops standing for the
+    // item when it is now made, and a sheet drawn before stops standing for it when their own picture now does
+    if (choice !== "as_is") {
+      const stood = active.filter((a) => a.status === "approved").map((a) => a.id);
+      if (stood.length) {
+        const { error: stErr } = await db().from("film_assets").update({ status: "uploaded" }).in("id", stood);
+        if (stErr) throw stErr;
+      }
+    } else {
+      const drawn = assets.filter((a) => a.kind === "image" && a.ref_key === item.id && a.status === "approved").map((a) => a.id);
+      if (drawn.length) {
+        const { error: drErr } = await db().from("film_assets").update({ status: "rejected" }).in("id", drawn);
+        if (drErr) throw drErr;
+      }
+    }
+    if (choice === "make") continue;
     // One picture (the latest) for "as is" and "reference"; up to 4 photos of the same person for "convert"
     const ups = multiUpload(choice) ? active.slice(-MAX_REFERENCE_UPLOADS) : active.slice(-1);
     if (!ups.length) throw new UserError(`ارفع صورة «${item.name}» أول، أو اختر «اصنعه لي».`, 400);
@@ -993,6 +1158,27 @@ export async function runSheetReply(projectId: string, jobId: string) {
 
     const client = db();
     const versions = await sheetVersions(projectId);
+    // «الكلام يشتغل زي الزر»: the person wrote that an item should be their own picture as it is — done here, the same
+    // as its button (an item with no picture of theirs is left as it was; the reply says so)
+    const ownDone: MapItem[] = [];
+    const ownProject = kind !== "sheet_handoff" && r.own_picture_ids?.length ? await loadProject(projectId) : null;
+    if (ownProject) {
+      for (const id of [...new Set(r.own_picture_ids)].slice(0, 12)) {
+        try {
+          ownDone.push((await takeOwnPicture(ownProject, await sheetVersions(projectId), await sheetAssets(projectId), String(id))).item);
+        } catch (e) {
+          if (!(e instanceof UserError)) throw e;
+        }
+      }
+    }
+    // only that was asked (no prompt delivered): nothing to show as a step — the reply joins the conversation and, with
+    // every picture approved, the project moves on (an item with no picture of theirs: the reply says so, nothing changes)
+    if (r.own_picture_ids?.length && !r.prompt?.trim() && kind === "sheet_prompt") {
+      await client.from("film_messages").insert({ project_id: projectId, stage: STAGE, role: "assistant", content: result.raw });
+      if (ownProject) await maybeFinish(ownProject, { id: "" });
+      await succeedJob(jobId, { costUsd: claudeCost(result.usage) + handoffUsd, units: totalTokens(result.usage) });
+      return;
+    }
     const same = versions.filter((v) => v.kind === kind && v.ref_key === ref);
     const isHandoff = kind === "sheet_handoff";
     const old = same.filter((v) => v.status === "awaiting_approval" || v.status === "draft" || (isHandoff && v.status === "approved")).map((v) => v.id);
@@ -1235,7 +1421,7 @@ export async function sheetUploadUrl(project: FilmProject, sheetId: string, mime
 }
 
 /** Step 2: records the uploaded picture against its map item. */
-export async function confirmSheetUpload(project: FilmProject, sheetId: string, path: string, mode: MapChoice = "as_is") {
+export async function confirmSheetUpload(project: FilmProject, sheetId: string, path: string, mode: MapChoice = "as_is", keep = false): Promise<string> {
   const dir = `${projectDir(project)}/sheets`;
   if (!path.startsWith(`${dir}/upload-${sheetId}-`) || path.includes("..")) throw new UserError("ملف غير صحيح.", 400);
   const name = path.slice(dir.length + 1);
@@ -1243,18 +1429,22 @@ export async function confirmSheetUpload(project: FilmProject, sheetId: string, 
   const file = list?.find((f) => f.name === name);
   const size = Number(file?.metadata?.size ?? 0);
   if (!file || size <= 0 || size > 20 * 1024 * 1024) throw new UserError("ما وصل الملف أو حجمه أكبر من ٢٠ ميجا.", 400);
-  if (multiUpload(mode)) {
+  if (keep) {
+    // «📤 ارفع صورة جاهزة» on a sheet's card: one more picture of the person's — the item's other pictures (a reference,
+    // a real person's photos) stay as they are, so the choice can be taken back
+  } else if (multiUpload(mode)) {
     const { count } = await db().from("film_assets").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("kind", "upload").eq("ref_key", sheetId).neq("status", "rejected");
     if ((count ?? 0) >= MAX_REFERENCE_UPLOADS) throw new UserError(`الحد الأقصى ${MAX_REFERENCE_UPLOADS} صور لكل عنصر.`, 400);
   } else {
     // "As is": only the latest upload counts for this item
     await db().from("film_assets").update({ status: "rejected" }).eq("project_id", project.id).eq("kind", "upload").eq("ref_key", sheetId);
   }
-  const { error } = await db().from("film_assets").insert({
+  const { data: row, error } = await db().from("film_assets").insert({
     project_id: project.id, kind: "upload", ref_key: sheetId, storage_path: path, file_name: name,
     mime: String(file.metadata?.mimetype ?? ""), bytes: size, status: "uploaded", meta: {},
-  });
+  }).select("id").single();
   if (error) throw error;
+  return String(row.id);
 }
 
 const UNDERSTAND_SCHEMA = { type: "object", additionalProperties: false, required: ["understanding"], properties: { understanding: { type: "string" } } } as const;

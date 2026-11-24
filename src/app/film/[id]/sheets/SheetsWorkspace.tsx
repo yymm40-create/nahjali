@@ -13,7 +13,7 @@ import QuestionsForm from "../../QuestionsForm";
 import ActionBar, { EditsLeftContext, type SendMode } from "../../ActionBar";
 import StepCard from "../../StepCard";
 import type { MapChoice, MapItem, SheetVersion } from "@/lib/film/sheets";
-import SheetCards from "./SheetCards";
+import SheetCards, { OwnUpload } from "./SheetCards";
 import ConvertCards from "./ConvertCards";
 import { styleTestCandidate, styleTestPictures, styleTestRef, testRefOn } from "@/lib/film/style-test-ref";
 import { LESSON_MAP_QUESTION } from "@config/film-lesson";
@@ -156,7 +156,9 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
   const map = mapVersion?.data.sheet_map ?? [];
   const choices = mapVersion?.status === "approved" ? (mapVersion.data.choices ?? {}) : {};
   const promptIds = [...new Set(versions.filter((v) => v.kind === "sheet_prompt").map((v) => v.ref_key))];
-  const orderedSheets = [...map.map((m) => m.id).filter((id) => promptIds.includes(id)), ...promptIds.filter((id) => !map.some((m) => m.id === id))];
+  // a card per sheet described so far — and per item standing on the person's own picture («صورتك كما هي»), so that
+  // choice can be changed from its card at any time
+  const orderedSheets = [...map.map((m) => m.id).filter((id) => promptIds.includes(id) || (id !== MASTER && choices[id] === "as_is")), ...promptIds.filter((id) => !map.some((m) => m.id === id))];
   const library = assets.filter((a) => a.status === "approved" && a.ref_key !== TEST && typeof a.meta.at_name === "string");
   const current = [...versions].filter((v) => v.kind !== "sheet_handoff" && v.kind !== "style").sort((a, b) => a.created_at.localeCompare(b.created_at)).at(-1);
   const failed = job?.status === "failed" && !writing;
@@ -164,7 +166,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
   const masterApproved = assets.some((a) => a.kind === "image" && a.ref_key === MASTER && a.status === "approved");
   const approvedIds = new Set(assets.filter((a) => a.status === "approved").map((a) => a.ref_key));
   // «كل الشيتات مع بعض»: prompts waiting, new pictures waiting, and sheets still without a prompt
-  const waitingPrompts = orderedSheets.filter((sid) => sid !== MASTER && latestOf("sheet_prompt", sid)?.status === "awaiting_approval");
+  const waitingPrompts = orderedSheets.filter((sid) => sid !== MASTER && choices[sid] !== "as_is" && latestOf("sheet_prompt", sid)?.status === "awaiting_approval");
   const readyImages = map.filter((m) => m.id !== MASTER && !approvedIds.has(m.id) && assets.some((a) => a.kind === "image" && a.ref_key === m.id && a.status === "generated"));
   // a real person to convert gets his sheet from his chosen single images («🔄» cards), not from the batch
   const noPrompt = mapVersion?.status === "approved" ? map.filter((m) => m.id !== MASTER && choices[m.id] !== "as_is" && choices[m.id] !== "convert" && !promptIds.includes(m.id)) : [];
@@ -182,7 +184,8 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
     if (drawing >= 5) return;
     const next = orderedSheets
       .map((sid) => latestOf("sheet_prompt", sid))
-      .find((v) => v && v.status === "awaiting_approval" && !autoSent.current.has(v.id) && (autoMake || autoAfterEdit.current.has(v.ref_key)));
+      // (never for an item the person now keeps as their own picture: nothing is drawn for it)
+      .find((v) => v && v.status === "awaiting_approval" && choices[v.ref_key] !== "as_is" && !autoSent.current.has(v.id) && (autoMake || autoAfterEdit.current.has(v.ref_key)));
     if (!next) return;
     autoSent.current.add(next.id);
     autoAfterEdit.current.delete(next.ref_key);
@@ -209,6 +212,10 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
     autoFinished.current = true;
     setTimeout(() => send({ action: "finish" }), 0);
   });
+  // «وش باقي عشان تنتقل للمخرج؟»: every map item still without an approved picture, with the way out of each
+  const mapApproved = mapVersion?.status === "approved";
+  const blockers = stage === "sheets" && mapApproved && approvedIds.has(MASTER) ? map.filter((m) => m.id !== MASTER && !approvedIds.has(m.id)) : [];
+  const mapEditWaiting = understanding?.status === "awaiting_approval" && versions.some((v) => v.kind === "sheet_understanding" && v.status === "approved");
   const revise = (v: SheetVersion) => (mode: SendMode, text: string) => send({ action: "revise", text, versionId: v.id, mode });
   // «اعتمد المحدد»: new pictures ticked on their cards
   const [selected, setSelected] = useState<string[]>([]);
@@ -257,6 +264,11 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
             onSend={revise(understanding)}
             warning={understanding.status === "approved" ? `الخريطة معتمدة. تعديلها ممكن يضيف أو يحذف شيتات؛ اللي اعتمدته يظل محفوظ، وصانع الشيت يوضح وش يتأثر.${backToSheets}` : undefined}
           />
+          {mapEditWaiting && (
+            <button className="btn btn-ghost w-full text-sm" disabled={busy || writing} onClick={() => send({ action: "cancel_map_edit" })}>
+              ↩️ غيّرت رأيي: ألغِ تعديل الخريطة وخلّ المعتمدة كما هي
+            </button>
+          )}
         </StepCard>
       )}
 
@@ -353,13 +365,33 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
         onEdit={(sid) => autoAfterEdit.current.add(sid)}
         selected={selected}
         onSelect={toggleSelect}
+        choices={choices}
+        ownable={mapApproved}
       />
 
-      {/* Items the user supplied "as is" need no prompt */}
-      {map.filter((m) => choices[m.id] === "as_is").length > 0 && (
-        <p className="card p-4 text-sm font-bold text-muted">
-          مراجع من عندك معتمدة كما هي: {map.filter((m) => choices[m.id] === "as_is").map((m) => m.name).join("، ")}
-        </p>
+      {/* «وش باقي؟»: what still stands between the person and the director, each with its way out */}
+      {blockers.length > 0 && !writing && !painting && (
+        <section className="card space-y-2 border-2 border-gold p-4">
+          <p className="font-extrabold">🧭 باقي {blockers.length === 1 ? "عنصر واحد" : `${blockers.length} عناصر`} عشان تنتقل للمخرج</p>
+          <p className="text-xs font-bold text-muted">كل عنصر يحتاج صورة معتمدة وحدة: شيت يعجبك، أو صورتك أنت كما هي. اختر اللي يناسبك:</p>
+          {blockers.map((m) => {
+            const pics = assets.filter((a) => a.kind === "image" && a.ref_key === m.id);
+            const fresh = pics.filter((a) => a.status === "generated" && a.url).at(-1);
+            const drawing = pics.some((a) => a.status === "generating");
+            const mine = assets.filter((a) => a.kind === "upload" && a.ref_key === m.id && a.status !== "rejected" && a.url).at(-1);
+            const described = promptIds.includes(m.id);
+            return (
+              <div key={m.id} className="space-y-2 rounded-2xl border border-line p-3">
+                <p className="text-sm font-extrabold">{m.id} · {m.name} <span className="font-bold text-muted">— {drawing ? "شيتها ينرسم الحين…" : fresh ? "شيتها جاهز وينتظر اعتمادك" : choices[m.id] === "convert" ? "تتحول من صورها الواقعية (فوق)" : described ? "ما لها صورة معتمدة" : "شيتها ما انكتب وصفه بعد"}</span></p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {fresh && <button className="btn btn-primary min-h-9 flex-1 px-2 text-xs" disabled={busy} onClick={() => send({ action: "approve_image", assetId: fresh.id })}>✅ اعتمد آخر شيت</button>}
+                  {mine && <button className="btn btn-secondary min-h-9 flex-1 px-2 text-xs" disabled={busy} onClick={() => send({ action: "use_own_picture", sheetId: m.id, assetId: mine.id })}>📤 استخدم صورتي كما هي</button>}
+                  <OwnUpload projectId={projectId} sheetId={m.id} busy={busy} send={send} label={mine ? "ارفع غيرها" : "📤 ارفع صورة جاهزة"} />
+                </div>
+              </div>
+            );
+          })}
+        </section>
       )}
 
       {writing && (
@@ -377,7 +409,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           <button className="btn btn-primary w-full" disabled={busy} onClick={() => send({ action: "retry" })}>أعد المحاولة</button>
         </div>
       )}
-      {allApproved && !writing && !failed && (
+      {allApproved && !writing && (
         <div className="card space-y-2 p-5 text-center">
           <p className="text-lg font-extrabold">✅ كل الصور معتمدة</p>
           <p className="text-sm font-bold text-muted">نجهّز التسليم وننقلك للمخرج تلقائيًا. لو ما انتقلت، اضغط هنا (ما ينحسب من تعديلاتك).</p>
