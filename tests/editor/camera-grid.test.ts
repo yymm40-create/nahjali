@@ -67,6 +67,13 @@ describe("«شبكة الكاميرات»: cut to a camera from the playhead", (
     expect(() => apply(t, { type: "multicam_cut", cam: C.id, at: 59_990 }, assets)).toThrow(/ما صوّرت/);
   });
 
+  it("pressed a breath before a cut, it is that cut that changes camera (no error, no sliver)", () => {
+    const x = applyAll(t, [{ type: "multicam_cut", cam: A.id, at: 0 }, { type: "multicam_cut", cam: B.id, at: 12_000 }], assets).timeline;
+    // 80 ms before the cut at 12 s
+    const r = apply(x, { type: "multicam_cut", cam: C.id, at: 34_920 }, assets).timeline;
+    expect(cuts(r)).toEqual([["a", 0, 12_000], ["b", 12_000, 35_000], ["c", 35_000, 60_000]]);
+  });
+
   it("a later cut stops where the next one begins", () => {
     let x = apply(t, { type: "multicam_cut", cam: C.id, at: 30_000 }, assets).timeline;
     x = apply(x, { type: "multicam_cut", cam: A.id, at: 8000 }, assets).timeline;
