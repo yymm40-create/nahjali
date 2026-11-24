@@ -149,3 +149,19 @@ describe("multicam_plan: the plan on the «المونتاج» track", () => {
     expect(() => apply(t, { type: "multicam_plan", from: 0, to: 10_000, shots: [{ cam: A.id, from: 0, to: 12_000 }] }, assets)).toThrow(/برا الوقت/);
   });
 });
+
+describe("the number keys of «شبكة الكاميرات»", () => {
+  it("cut by the physical key: top row, number pad, and an Arabic keyboard", async () => {
+    const { camKey } = await import("@/components/jawad/editor/CameraGrid");
+    expect(camKey({ key: "3", code: "Digit3" })).toBe(2);
+    expect(camKey({ key: "7", code: "Numpad7" })).toBe(6);
+    // an Arabic layout types «٣» on the 3 key
+    expect(camKey({ key: "٣", code: "Digit3" })).toBe(2);
+    // a browser that does not say which key: the digit it typed, Western or Arabic
+    expect(camKey({ key: "٥", code: "" })).toBe(4);
+    expect(camKey({ key: "9", code: "" })).toBe(8);
+    // 0 is the tenth camera
+    expect(camKey({ key: "0", code: "Digit0" })).toBe(9);
+    for (const e of [{ key: "a", code: "KeyA" }, { key: " ", code: "Space" }, { key: "F1", code: "F1" }, { key: "Enter", code: "Enter" }]) expect(camKey(e)).toBeNull();
+  });
+});
