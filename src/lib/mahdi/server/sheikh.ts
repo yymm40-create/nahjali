@@ -8,7 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { claudeCost, claudeFetch, type ClaudeUsage } from "@/lib/film/anthropic";
 import { claudeModelOf } from "@config/claude-models";
 import { bookName, gradingLine, HADITH_BOOKS, hadithUrl, type HadithRow } from "../hadiths";
-import { SHEIKH_MEMORY, sheikhWording, type SheikhMode, type SheikhMsg, type SheikhSource } from "../sheikh";
+import { answeredHistory, pendingQuestion, SHEIKH_MEMORY, sheikhWording, type SheikhMode, type SheikhMsg, type SheikhSource } from "../sheikh";
 import { chapterHadiths, readHadiths, searchHadiths, type HadithHit } from "./hadiths";
 import { check, UserError } from "./api";
 import type { SheikhLogRow } from "../sheikh-log";
@@ -214,11 +214,9 @@ async function answer(mode: SheikhMode, question: string, history: SheikhRow[]):
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new UserError("الشيخ الذكي غير مفعّل على الخادم.", 503);
   const model = claudeModelOf(MODEL);
-  const messages: Msg[] = history.slice(-SHEIKH_MEMORY).map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.body.slice(0, 4000) }));
-  while (messages.length && messages[0].role !== "user") messages.shift();
-  const asked = `${mode === "quick" ? "[سؤال سريع]" : "[بحث شامل]"} ${question}`;
-  if (messages.length && messages[messages.length - 1].role === "user") messages[messages.length - 1] = { role: "user", content: `${messages[messages.length - 1].content as string}\n\n${asked}` };
-  else messages.push({ role: "user", content: asked });
+  // only questions that got their answer: one left without an answer is never mixed into this one
+  const messages: Msg[] = answeredHistory(history).slice(-SHEIKH_MEMORY).map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.body.slice(0, 4000) }));
+  messages.push({ role: "user", content: `${mode === "quick" ? "[سؤال سريع]" : "[بحث شامل]"} ${question}` });
 
   const read = new Map<string, HadithRow | HadithHit>();
   let usd = 0;
@@ -271,9 +269,19 @@ async function answer(mode: SheikhMode, question: string, history: SheikhRow[]):
 }
 
 /** Saves the person's question, the sheikh answers it from the library, and his answer is saved: both, in order. */
+/** How long a new question waits for the person's question before it (asked from another tab or device) to be answered. */
+const WAIT_MS = 150_000;
+
 export async function askSheikh(userId: string, mode: SheikhMode, question: string): Promise<SheikhRow[]> {
-  const history = await myChat(userId, SHEIKH_MEMORY * 2);
+  // one question at a time: a question sent while the one before it is still being answered waits its turn, so each
+  // gets its own answer (the owner, 24 November 2026 — two questions at once got the first one's answer twice)
+  let history = await myChat(userId, SHEIKH_MEMORY * 2);
   if (history === null) throw new UserError(NOT_READY, 503);
+  for (const until = Date.now() + WAIT_MS; pendingQuestion(history); ) {
+    if (Date.now() > until) throw new UserError("الشيخ لسا يجاوب سؤالك اللي قبله، انتظر شوي وأرسل.", 409);
+    await new Promise((r) => setTimeout(r, 3000));
+    history = (await myChat(userId, SHEIKH_MEMORY * 2)) ?? [];
+  }
   const q = check(await db().insert({ user_id: userId, role: "user", mode, body: question }).select("*").single()) as SheikhRow;
   let a: { body: string; sources: SheikhSource[]; usd: number };
   try {
