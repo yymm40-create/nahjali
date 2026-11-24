@@ -95,6 +95,14 @@ const okLag = lag.length > 100 && Math.abs(mean(early)) < 0.05 && Math.abs(mean(
 console.log(`${okLag ? "✓" : "✗"} a cut is in step from its first frames (within 50 ms early on, 40 ms settled)`);
 if (!okLag) failed.push("lag after a cut");
 
+// fast cuts while playing: the film must keep its pace and what is heard must not jump
+await run({ type: "update_tracks", trackIds: ["v1", "v2"], patch: { muted: false } });
+const rapid = await page.evaluate(() => window.pcRapid(["c3", "c7", "c1", "c9", "c4", "c8", "c2", "c6"], 250));
+const lost = rapid.elapsed - rapid.advanced;
+const okRapid = Math.abs(lost) < 80 && rapid.seeks === 0 && rapid.audible >= 1 && rapid.black === 0 && rapid.frames > 30;
+console.log(`${okRapid ? "✓" : "✗"} 8 cuts pressed 250 ms apart while playing: the film fell ${lost} ms behind the clock (want under 80), ${rapid.seeks} jump(s) of what is heard (want 0; ${rapid.audible} heard), ${rapid.black} black frame(s) of ${rapid.frames} (want 0)`);
+if (!okRapid) failed.push("rapid cuts");
+
 await browser.close();
 server.close();
 console.log(failed.length ? `\n${failed.length} FAILED` : "\nall checks passed");

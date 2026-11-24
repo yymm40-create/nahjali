@@ -1677,7 +1677,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const src = cam.clip;
       const a = src.assetId ? assets.get(src.assetId) : null;
       if (cam.track.kind !== "video" || src.text || src.seq || src.motion || !a || a.kind !== "video") fail("الكاميرا لازم تكون مقطع فيديو.");
-      const at = Math.round(Number(cmd.at));
+      let at = Math.round(Number(cmd.at));
       if (!Number.isFinite(at) || at < src.start || at > clipEnd(src) - LIMITS.minClipMs) fail("هذي الكاميرا ما صوّرت هذي اللحظة.");
       // the track of the cuts: the one that holds them already, else a new one over every picture track
       let program = t.tracks.find((x) => x.kind === "video" && !x.angles && x.clips.some((c) => c.angle));
@@ -1693,6 +1693,10 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         delete c.solo;
         return c;
       };
+      // pressed a breath before a cut that is already there: it is that cut that changes camera (a sliver of a shot
+      // between the two would be refused — while cutting fast by the keys, that was an error at every near miss)
+      const near = program.clips.find((c) => c.start <= at && clipEnd(c) > at);
+      if (near && clipEnd(near) - at < LIMITS.minClipMs * 2 && clipEnd(near) <= clipEnd(src) - LIMITS.minClipMs) at = clipEnd(near);
       const on = program.clips.find((c) => c.start <= at && clipEnd(c) > at);
       if (on?.angle === src.id) return { timeline: t, label: "هذي الكاميرا هي المعروضة", select: [on.id] };
       const next = program.clips.find((c) => c.start > at);

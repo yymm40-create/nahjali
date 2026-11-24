@@ -43,6 +43,10 @@ const NUDGE_S = 0.04;
 const PREROLL_MS = 450;
 /** A picture with no sound of its own is put back in step firmly: from this far off (s), by up to a fifth of its speed. */
 const TIGHT_S = 0.012;
+/** The longest the last picture is kept on the screen while a video just cut to gets ready (ms). */
+const HOLD_MS = 600;
+/** After an edit, a playing video or sound further than this from its moment (s) is put back; nearer, it plays on. */
+const HARD_S = 0.06;
 /** A jump made while playing lands this far ahead (s × the rate): the film moves on while the browser seeks. */
 const SEEK_LEAD_S = 0.08;
 /** How far ahead clips' sound is scheduled. */
@@ -109,11 +113,18 @@ export class Player {
     this.spans = voiceSpans(tl, (c) => !c.text && !!this.assets.get(c.assetId ?? "")?.hasAudio);
     this.fit();
     this.ms = Math.min(this.ms, duration(tl));
-    // an edit while playing: the sound is scheduled again from here
+    // An edit while playing. Only one that changes what is HEARD starts the sound again from here (which holds the
+    // film for a moment). A cut of «المونتاج» pressed while the film plays changes no sound: the film keeps its pace
+    // — it used to stop 60 ms and jump the sound at every press, which made fast cutting a mess.
+    const sound = soundSignature(tl);
+    const sameSound = sound === this.soundSig;
+    this.soundSig = sound;
     try {
       if (this.playing) {
-        this.stopSound();
-        this.reanchor();
+        if (!sameSound) {
+          this.stopSound();
+          this.reanchor();
+        }
         this.schedule();
       }
       this.sync(true);
@@ -184,6 +195,9 @@ export class Player {
   }
 
   /** The sound clock now matches the preview's moment (a moment from now, so nothing starts in the past). */
+  /** what is heard, as of the last update (see soundSignature) */
+  private soundSig = "";
+
   private reanchor() {
     if (this.ac) this.anchor = { ctx: this.ac.currentTime + 0.06, ms: this.ms };
   }
@@ -522,7 +536,9 @@ export class Player {
           // a picture a little behind or ahead catches up by playing a touch faster or slower (a jump only when far off:
           // jumping every few seconds is what made the preview stutter)
           const off = m.currentTime - at;
-          if (hard || Math.abs(off) > DRIFT_S * rate) seekTo(m, at + (this.playing ? SEEK_LEAD_S * rate : 0));
+          // (after an edit: put back only what is really off — a video or sound already in step is left to play, a
+          // jump of it is heard; a picture with no sound of its own lands a little ahead, the film moves on meanwhile)
+          if (Math.abs(off) > (hard ? HARD_S : DRIFT_S) * rate) seekTo(m, at + (m.muted ? SEEK_LEAD_S * rate : 0));
           // (a picture whose sound is not its own — a cut, a muted camera — may change speed freely: nothing is heard)
           else if (m.muted ? Math.abs(off) > TIGHT_S : Math.abs(off) > NUDGE_S * this.rate) rate *= 1 - (m.muted ? Math.max(-0.2, Math.min(0.2, off * 1.5)) : Math.max(-0.03, Math.min(0.03, off * 0.5)));
           if (m.paused) m.play().catch(() => {});
@@ -684,11 +700,36 @@ export class Player {
     this.draw();
   }
 
+  /** the screen has a picture on it; and since when it is being kept while the next video loads */
+  private painted = false;
+  private heldSince = 0;
+
+  /**
+   * A cut pressed while the film plays: the video it cuts to needs a moment to open and find its frame, and until
+   * then there is nothing of it to draw — the screen went black (or showed the file's first frame) at every press.
+   * The picture that is on stays instead, for at most HOLD_MS, until the new one is ready.
+   */
+  private holding() {
+    if (!this.playing || !this.painted) return false;
+    const base = shownLayers(this.tl, this.shown(), this.assetOf)[0];
+    if (!base || !("clip" in base) || base.clip.text || !base.clip.assetId || this.assets.get(base.clip.assetId)?.kind !== "video") return false;
+    const m = this.media.get(base.clip.id);
+    if (m instanceof HTMLVideoElement && m.readyState >= 2 && !m.seeking) {
+      this.heldSince = 0;
+      return false;
+    }
+    const now = performance.now();
+    if (!this.heldSince) this.heldSince = now;
+    return now - this.heldSince < HOLD_MS;
+  }
+
   draw() {
     // one frame that can't be drawn (a picture the browser isn't ready to give) must never break the page
     try {
       this.fit();
+      if (this.holding()) return;
       drawFrame(this.ctx, this.tl, this.shown(), this.frameOf, { assetOf: this.assetOf });
+      this.painted = true;
     } catch (e) {
       console.warn("editor draw", e);
     }
@@ -731,6 +772,20 @@ export class Player {
       return null;
     }
   }
+}
+
+/**
+ * Everything the sound depends on, as one string: the heard clips (their place, part, speed, level, fades and sound
+ * work) of the tracks that are not muted. Two timelines with the same signature sound the same, so the sound that is
+ * playing can go on.
+ */
+export function soundSignature(tl: Timeline): string {
+  const out: unknown[] = [];
+  for (const t of tl.tracks) {
+    if (t.kind === "text" || t.muted) continue;
+    for (const c of t.clips) if (c.assetId && c.volume > 0) out.push([t.id, t.duck ? 1 : 0, c.id, c.assetId, c.start, c.in, c.out, c.speed, c.volume, c.fadeIn, c.fadeOut, c.ramp ?? 0, c.sound ?? 0]);
+  }
+  return JSON.stringify(out);
 }
 
 function seekTo(m: Media, s: number) {

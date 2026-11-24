@@ -11,6 +11,7 @@ declare global {
     pcSeek: (ms: number) => Promise<void>;
     pcPlay: (ms: number) => Promise<void>;
     pcLag: (ms: number) => Promise<{ at: number; lag: number }[]>;
+    pcRapid: (cams: string[], everyMs: number) => Promise<{ elapsed: number; advanced: number; seeks: number; audible: number; black: number; frames: number }>;
     pcLook: () => { videos: number; sounds: number; playing: number; pixel: [number, number, number] };
   }
 }
@@ -34,7 +35,13 @@ window.pcStart = async (n) => {
   await window.pcSeek(5000);
 };
 window.pcRun = (cmd) => {
-  tl = apply(tl, cmd, info()).timeline;
+  try {
+    tl = apply(tl, cmd, info()).timeline;
+  } catch (e) {
+    // (the editor shows the reason and nothing changes)
+    console.log("refused:", e instanceof Error ? e.message : e);
+    return;
+  }
   player.update(flatten(tl), assets);
 };
 window.pcSeek = async (ms) => {
@@ -68,6 +75,44 @@ window.pcLag = async (ms) => {
     const el = top ? (player as unknown as { media: Map<string, HTMLMediaElement> }).media.get(top.id) : null;
     if (top && el) out.push({ at: Math.round(now - top.start), lag: Math.round((el.currentTime - sourceTime(top, now) / 1000) * 1000) / 1000 });
   }
+  player.pause();
+  return out;
+};
+
+// Cuts pressed quickly while the film plays (the number keys of «شبكة الكاميرات»): does the film keep going? The
+// time the film advanced against the time that passed, and how often a video or sound that is HEARD was made to jump.
+window.pcRapid = async (cams, everyMs) => {
+  player.seek(1000);
+  await settle(600);
+  player.play();
+  await settle(800);
+  let seeks = 0;
+  const heard = () => [...document.querySelectorAll<HTMLMediaElement>("video,audio")].filter((m) => !m.muted && !m.paused);
+  const count = () => seeks++;
+  const watched = heard();
+  for (const m of watched) m.addEventListener("seeking", count);
+  const t0 = performance.now();
+  const ms0 = player.ms;
+  // every frame the screen shows meanwhile: is it ever black?
+  let black = 0;
+  let frames = 0;
+  let watching = true;
+  const c = document.querySelector("canvas")!;
+  const look = () => {
+    if (!watching) return;
+    const d = c.getContext("2d")!.getImageData(Math.floor(c.width / 2), Math.floor(c.height / 2), 1, 1).data;
+    frames++;
+    if (d[0] + d[1] + d[2] < 24) black++;
+    requestAnimationFrame(look);
+  };
+  requestAnimationFrame(look);
+  for (const cam of cams) {
+    window.pcRun({ type: "multicam_cut", cam, at: Math.round(player.ms) });
+    await new Promise((r) => setTimeout(r, everyMs));
+  }
+  watching = false;
+  const out = { elapsed: Math.round(performance.now() - t0), advanced: Math.round(player.ms - ms0), seeks, audible: watched.length, black, frames };
+  for (const m of watched) m.removeEventListener("seeking", count);
   player.pause();
   return out;
 };
