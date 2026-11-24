@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { diffDays, isISODate, todayIn } from "@/lib/mahdi/engine";
+import { addDays, diffDays, isISODate, todayIn } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError, UUID_RE } from "@/lib/mahdi/server/api";
-import { loadPriorities, loadTasks, PRIORITY_TITLE_PREFIX, priorityColumnMissing } from "@/lib/mahdi/server/snapshot";
+import { loadPriorities, loadTasks, loadUpcoming, PRIORITY_TITLE_PREFIX, priorityColumnMissing } from "@/lib/mahdi/server/snapshot";
 
 const MAX_PER_DAY = 100;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -35,6 +35,15 @@ function fail(error: { code?: string } | null) {
 
 /** The longest stretch of past priorities asked at once (a month report and a bit). */
 const MAX_RANGE_DAYS = 93;
+/** How far ahead a task can be set (a member's report, 24 November 2026: a task could only be for today). */
+const AHEAD_DAYS = 365;
+/** The day a new task is for: today, or a later day up to a year ahead. */
+function dayOf(v: unknown, today: string) {
+  if (v === null || v === undefined || v === "") return today;
+  if (!isISODate(v) || v < today || diffDays(v, today) > AHEAD_DAYS) throw new UserError(t.tasks.badDate, 400);
+  return v;
+}
+const upcoming = (supabase: SupabaseClient, today: string) => loadUpcoming(supabase, addDays(today, 1), addDays(today, AHEAD_DAYS)).catch(() => []);
 
 /**
  * «مهام اليوم»: today's tasks. With `?priorities=1&from=YYYY-MM-DD&to=YYYY-MM-DD`: the «أولويات اليوم» of those days
@@ -54,19 +63,24 @@ export const GET = mahdiRoute(async (req: Request) => {
       throw e;
     }
   }
-  return NextResponse.json({ tasks: await loadTasks(supabase, todayIn(profile.timeZone)).catch(() => []) });
+  const today = todayIn(profile.timeZone);
+  // `?upcoming=1`: the tasks set for the days after today
+  if (q.get("upcoming") === "1") return NextResponse.json({ upcoming: await upcoming(supabase, today) }, { headers: { "Cache-Control": "private, no-store" } });
+  return NextResponse.json({ tasks: await loadTasks(supabase, today).catch(() => []) });
 });
 
-/** A new task for today: `{ title, at?: "HH:MM" | null, habitId?: string | null, priority?: boolean }` (a priority: «أولويات اليوم»). */
+/** A new task: `{ title, at?: "HH:MM" | null, habitId?: string | null, priority?: boolean, date?: "YYYY-MM-DD" }` (a priority:
+ *  «أولويات اليوم», always today; any other task can be for a later day, reminded on that day). */
 export const POST = mahdiRoute(async (req: Request) => {
   const { supabase, user, profile } = await requireProfile(req);
   const body = await readJson(req);
   const today = todayIn(profile.timeZone);
-  const { count, error: e1 } = await supabase.from("mahdi_day_tasks").select("id", { count: "exact", head: true }).eq("task_date", today);
+  const priority = body.priority === true;
+  const day = priority ? today : dayOf(body.date, today);
+  const { count, error: e1 } = await supabase.from("mahdi_day_tasks").select("id", { count: "exact", head: true }).eq("task_date", day);
   fail(e1);
   if ((count ?? 0) >= MAX_PER_DAY) throw new UserError(t.tasks.tooMany(MAX_PER_DAY), 429);
-  const priority = body.priority === true;
-  const row = { user_id: user.id, task_date: today, title: title(body.title), at_time: priority ? null : timeOf(body.at), habit_id: await habitOf(supabase, body.habitId), sort_order: count ?? 0 };
+  const row = { user_id: user.id, task_date: day, title: title(body.title), at_time: priority ? null : timeOf(body.at), habit_id: await habitOf(supabase, body.habitId), sort_order: count ?? 0 };
   let { error } = await supabase
     .from("mahdi_day_tasks")
     .insert({ ...row, ...(priority ? { priority: true } : {}) });
@@ -76,7 +90,7 @@ export const POST = mahdiRoute(async (req: Request) => {
     ({ error } = await supabase.from("mahdi_day_tasks").insert({ ...row, title: `${PRIORITY_TITLE_PREFIX}${row.title}` }));
   }
   fail(error);
-  return NextResponse.json({ tasks: await loadTasks(supabase, today) });
+  return NextResponse.json({ tasks: await loadTasks(supabase, today), ...(day !== today ? { upcoming: await upcoming(supabase, today) } : {}) });
 });
 
 /** Ticks / unticks or edits a task: `{ id, done?, title?, at?, habitId? }`. A new time is reminded again. */
