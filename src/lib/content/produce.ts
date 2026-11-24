@@ -171,6 +171,22 @@ export function slidePrompt(o: { n: number; total: number; prompt: string; style
     .join("\n\n");
 }
 
+/** The owner's copy of a carousel's prompts: the planned slides (while it is drawn) or the slides that failed (after) — for each,
+ *  the prompt with slide 1 as its reference (as the site draws slides 2+) and the prompt without any reference (to draw it alone). */
+type PromptSource = Pick<PendingProduce, "aspect" | "styleId" | "carouselId" | "fontId" | "paletteId"> & { slides: { n: number; text: string; prompt: string }[] };
+export function ownerPrompts(p: PromptSource): { aspect: string; slides: { n: number; text: string; withRef: string; alone: string }[] } {
+  const total = p.slides.length;
+  const one = (s: PromptSource["slides"][number], withRef: boolean) => slidePrompt({ n: s.n, total, prompt: s.prompt, styleId: p.styleId, carouselId: p.carouselId, fontId: p.fontId, paletteId: p.paletteId, withRef });
+  return { aspect: p.aspect, slides: p.slides.map((s) => ({ n: s.n, text: s.text, withRef: s.n === 1 ? one(s, false) : one(s, true), alone: one(s, false) })) };
+}
+
+/** Where the owner's prompts come from: the carousel being drawn, or else the last carousel's failed slides. */
+export function promptSource(chat: Chat): PromptSource | null {
+  if (chat.pending) return chat.pending;
+  const block = [...chat.messages].reverse().find((m) => m.slides?.failed.length)?.slides;
+  return block ? { aspect: block.aspect, styleId: block.styleId, carouselId: block.carouselId, fontId: block.fontId, paletteId: block.paletteId, slides: block.failed.map(({ n, text, prompt }) => ({ n, text, prompt })) } : null;
+}
+
 /** What the person is told after the check (also what «محمد باقر» reads in his next answer). */
 export function buildReport(o: { made: Slide[]; failed: SlideFailure[]; unchecked: number }): string {
   const sound = o.made.filter((s) => !s.flag);

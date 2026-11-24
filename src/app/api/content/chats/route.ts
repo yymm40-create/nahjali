@@ -4,6 +4,7 @@ import { handle, UserError } from "@/lib/api";
 import { requireContentUser } from "@/lib/content/access";
 import { deleteChat, getChat, listChats } from "@/lib/content/chats";
 import { producedLinks, uploadLinks } from "@/lib/content/files";
+import { ownerPrompts, promptSource } from "@/lib/content/produce";
 import { isAdmin } from "@config/site";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,13 @@ export const GET = handle(async (req: Request) => {
   if (!UUID.test(id)) throw new UserError("محادثة غير صحيحة.", 400);
   const chat = await getChat(user.id, id);
   if (!chat) throw new UserError("ما لقينا هذي المحادثة.", 404);
+  // the owner only: every planned slide's full prompt as the site sends it to GPT Image 2 (to draw them elsewhere when the
+  // provider is out of balance — the owner, 24 Nov 2026: «تأخذ البرومبتات بالكود من ورا وتسويهم في آرتليست»)
+  if (new URL(req.url).searchParams.get("prompts")) {
+    if (!isAdmin(user.email)) throw new UserError("هذي للمالك فقط.", 403);
+    const src = promptSource(chat);
+    return NextResponse.json({ prompts: src ? ownerPrompts(src) : null });
+  }
   const [ups, links, downloads, spent] = await Promise.all([
     uploadLinks(user.id, chat.messages.flatMap((m) => (m.files ?? []).filter((f) => f.kind === "image").map((f) => f.id))),
     producedLinks(user.id, id),
