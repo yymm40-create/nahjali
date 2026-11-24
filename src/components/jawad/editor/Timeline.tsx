@@ -171,7 +171,8 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   for (const kind of ["video", "audio", "text"] as const) tl.tracks.filter((t) => t.kind === kind).forEach((t, i) => labels.set(t.id, `${kind === "video" ? "V" : kind === "audio" ? "A" : "T"}${i + 1}`));
   // a phone (CapCut's way): no track heads, the playhead fixed in the middle and the clips slide under it; half a screen
   // of room on each side lets the very start and the end reach it
-  const HEAD = compact ? 0 : 204;
+  // (wide enough that a track's name is read whole beside its switches)
+  const HEAD = compact ? 0 : 236;
   const scroller = useRef<HTMLDivElement>(null);
   const [pad, setPad] = useState(0);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -785,6 +786,9 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   const [adding, setAdding] = useState(false);
   /** «مجلدات المسارات»: the menu of the folder button (`trackId: null`) or of a right-click on a track's head */
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; trackId: string | null } | null>(null);
+  /** «مجلد جديد: اختر المسارات»: the tracks ticked so far (null: not choosing) and the folder's name */
+  const [picking, setPicking] = useState<string[] | null>(null);
+  const [pickName, setPickName] = useState("");
   const carries = (e: React.DragEvent) => !readOnly && (e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes(ASSET_DRAG));
   const dropPoint = (e: React.DragEvent) => {
     let trackId: string | null = null;
@@ -1033,6 +1037,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       ];
     }
     return [
+      { label: "☑️ مجلد جديد: اختر المسارات بعلامة صح", on: () => (setPickName(""), setPicking([])) },
       ...(loose("video").length > 1 ? [{ label: `📁 مسارات الفيديو في مجلد (${loose("video").length})`, on: () => run({ type: "folder_tracks", trackIds: loose("video").map((t) => t.id), name: "الفيديو" }) }] : []),
       ...(loose("audio").length > 1 ? [{ label: `📁 مسارات الصوت في مجلد (${loose("audio").length})`, on: () => run({ type: "folder_tracks", trackIds: loose("audio").map((t) => t.id), name: "الصوت" }) }] : []),
       ...(loose("text").length > 1 ? [{ label: `📁 مسارات النصوص في مجلد (${loose("text").length})`, on: () => run({ type: "folder_tracks", trackIds: loose("text").map((t) => t.id), name: "النصوص" }) }] : []),
@@ -1067,6 +1072,28 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
         </div>
       )}
       {!compact && flagChip && <div className="absolute right-3 z-40" style={{ top: RULER + 3 }}>{flagChip}</div>}
+      {/* «مجلد جديد»: tick the tracks on their heads, name the folder, make it */}
+      {!compact && picking && (
+        <div className="absolute left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border border-jw-accent bg-jw-surface px-3 py-1 text-xs shadow-xl" style={{ top: RULER + 2 }} dir="rtl" role="group" aria-label="مجلد جديد">
+          <b className="whitespace-nowrap">📁 حط صح على المسارات</b>
+          <span className="whitespace-nowrap tabular-nums text-jw-muted">{picking.length} مختار</span>
+          <input className="jw-input !h-7 !w-32 text-xs" value={pickName} onChange={(e) => setPickName(e.target.value)} placeholder="اسم المجلد" aria-label="اسم المجلد" maxLength={40} />
+          <button
+            type="button"
+            className="jw-btn jw-btn-primary !min-h-7 whitespace-nowrap text-xs"
+            disabled={!picking.length}
+            onClick={() => {
+              run({ type: "folder_tracks", trackIds: picking, name: pickName.trim() || undefined });
+              setPicking(null);
+            }}
+          >
+            سوّ المجلد
+          </button>
+          <button type="button" className="jw-btn jw-btn-quiet !min-h-7 whitespace-nowrap text-xs" onClick={() => setPicking(null)}>
+            إلغاء
+          </button>
+        </div>
+      )}
       <div ref={scroller} className="jw-scroll relative min-h-0 flex-1 overflow-auto overscroll-contain" style={{ touchAction: "pan-x pan-y" }} onDragOver={dragOver} onDragLeave={dragLeave} onDrop={drop}>
         <div ref={content} className="relative" style={{ width: contentW, minWidth: "100%", minHeight: "100%" }}>
           {/* ruler */}
@@ -1307,6 +1334,9 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
                     run={run}
                     label={pro ? labels.get(track.id) : undefined}
                     onMenu={readOnly || isMain ? undefined : (x, y) => setFolderMenu({ x, y, trackId: track.id })}
+                    pick={picking && !isMain ? { on: picking.includes(track.id), toggle: () => setPicking((p) => (p ? (p.includes(track.id) ? p.filter((id) => id !== track.id) : [...p, track.id]) : p)) } : undefined}
+                    onMove={readOnly || isMain ? undefined : (dir) => run({ type: "move_track", trackId: track.id, dir })}
+                    onRename={readOnly || isMain ? undefined : (name) => run({ type: "update_track", trackId: track.id, patch: { name } })}
                   />
                 )}
                 <div
@@ -1450,7 +1480,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   );
 }
 
-function TrackHead({ track, tracks, inFolder, isMain, width, compact, readOnly, run, label, onMenu }: { track: Track; tracks: Track[]; inFolder: boolean; isMain: boolean; width: number; compact: boolean; readOnly: boolean; run: Props["run"]; label?: string; onMenu?: (x: number, y: number) => void }) {
+function TrackHead({ track, tracks, inFolder, isMain, width, compact, readOnly, run, label, onMenu, pick, onMove, onRename }: { track: Track; tracks: Track[]; inFolder: boolean; isMain: boolean; width: number; compact: boolean; readOnly: boolean; run: Props["run"]; label?: string; onMenu?: (x: number, y: number) => void; /** «مجلد جديد»: this track's tick */ pick?: { on: boolean; toggle: () => void }; onMove?: (dir: "up" | "down") => void; onRename?: (name: string) => void }) {
   // the colours open over the editor (the timeline's own box would cut them off)
   const [painting, setPainting] = useState<{ x: number; y: number } | null>(null);
   // ⌥ (Alt) held: the same switch on EVERY track that has it (all eyes shut or open, all sound off or on, all locks)
@@ -1462,12 +1492,13 @@ function TrackHead({ track, tracks, inFolder, isMain, width, compact, readOnly, 
     if (only && mates.length) run([{ type: "update_tracks", trackIds: mates, patch: { solo: false } }, { type: "update_track", trackId: track.id, patch: { solo: true } }], { label: `سولو: «${track.name}» بروحه` });
     else run({ type: "update_track", trackId: track.id, patch: { solo: only ? true : !track.solo } });
   };
-  const btn = "grid h-6 w-6 place-items-center rounded hover:bg-jw-surface-3";
+  const btn = "grid h-6 w-5 place-items-center rounded hover:bg-jw-surface-3";
   const icon = track.kind === "audio" ? "music" : track.motion ? "sparkles" : track.kind === "text" ? "type" : isMain ? "film" : "layers";
   return (
     <div
-      className="sticky left-0 z-10 flex shrink-0 items-center gap-0.5 border-e border-jw-line bg-jw-surface px-1 text-jw-muted"
-      style={{ width, minWidth: width, boxShadow: inFolder ? "inset 3px 0 0 color-mix(in srgb, var(--jw-accent) 55%, transparent)" : undefined }}
+      className="group/head sticky left-0 z-10 flex shrink-0 items-center gap-0.5 border-e border-jw-line bg-jw-surface px-1 text-jw-muted"
+      // a strip in the track's own colour (else its kind's: pictures blue, sound green, text violet); wider inside a folder
+      style={{ width, minWidth: width, boxShadow: `inset ${inFolder ? 5 : 3}px 0 0 ${track.color ?? (track.kind === "audio" ? "#10b981" : track.kind === "text" ? "#8b5cf6" : "#38bdf8")}${track.color ? "" : "b3"}` }}
       dir="rtl"
       onContextMenu={(e) => {
         if (!onMenu) return;
@@ -1475,8 +1506,20 @@ function TrackHead({ track, tracks, inFolder, isMain, width, compact, readOnly, 
         onMenu(e.clientX, e.clientY);
       }}
     >
+      {pick && (
+        <input type="checkbox" className="h-4 w-4 shrink-0 cursor-pointer accent-[var(--jw-accent)]" checked={pick.on} onChange={pick.toggle} aria-label={`حط ${track.name} في المجلد`} />
+      )}
       {!compact && (
-        <span className="flex min-w-0 flex-1 items-center gap-1 truncate text-[11px]" title={track.name}>
+        <span
+          className="flex min-w-0 flex-1 items-center gap-1 truncate text-[11px]"
+          title={onRename ? `${track.name} (ضغطتين: غيّر الاسم)` : track.name}
+          onClick={pick ? pick.toggle : undefined}
+          onDoubleClick={() => {
+            if (!onRename || pick) return;
+            const name = window.prompt("اسم المسار", track.name);
+            if (name?.trim()) onRename(name.trim());
+          }}
+        >
           {label ? (
             <b className="grid h-5 min-w-7 place-items-center rounded-sm px-1 text-[10px] text-white" style={{ background: track.color ?? "#5b6170" }} dir="ltr">
               {label}
@@ -1485,6 +1528,16 @@ function TrackHead({ track, tracks, inFolder, isMain, width, compact, readOnly, 
             <Icon name={icon} size={13} />
           )}
           <span className="truncate">{isMain ? "الرئيسي" : track.name}</span>
+          {onMove && !pick && (
+            <span className="ms-auto hidden shrink-0 group-hover/head:flex" dir="ltr">
+              <button type="button" className="grid h-4 w-4 place-items-center rounded hover:bg-jw-surface-3" onClick={(e) => (e.stopPropagation(), onMove("up"))} onDoubleClick={(e) => e.stopPropagation()} aria-label={`ارفع ${track.name}`} title="ارفع المسار">
+                <Icon name="chevronUp" size={11} />
+              </button>
+              <button type="button" className="grid h-4 w-4 place-items-center rounded hover:bg-jw-surface-3" onClick={(e) => (e.stopPropagation(), onMove("down"))} onDoubleClick={(e) => e.stopPropagation()} aria-label={`نزّل ${track.name}`} title="نزّل المسار">
+                <Icon name="chevronDown" size={11} />
+              </button>
+            </span>
+          )}
         </span>
       )}
       <div className={`relative flex ${compact ? "flex-col" : ""} items-center`}>

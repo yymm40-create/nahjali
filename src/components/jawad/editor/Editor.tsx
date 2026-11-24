@@ -62,6 +62,7 @@ import MenuBar, { type MenuAct } from "./MenuBar";
 import CommandBar from "./CommandBar";
 import ClipStrip from "./ClipStrip";
 import ScopesPanel from "./ScopesPanel";
+import CameraGrid from "./CameraGrid";
 import "./workspaces.css";
 import "./glass.css";
 import { PAGE_INFO, PRO, WS_BY_ID, wsVars, type PageId } from "./workspaces";
@@ -292,6 +293,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   };
   // the timeline's height, dragged by its top edge (null: the usual share of the screen); kept on this device
   const [tlH, setTlH] = useState<number | null>(null);
+  // «شبكة الكاميرات»: every camera of the moment under the playhead, a press cuts to it
+  const [camGrid, setCamGrid] = useState(false);
   // «المظهر»: the pro workspace as sheets of glass (the look it opens in), or flat as it was; kept on this device
   const [skin, setSkin] = useState<"glass" | "flat">("glass");
   useEffect(() => {
@@ -2309,7 +2312,14 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                   <Icon name="play" size={16} />
                 </button>
               )}
+              {wide && !full && (
+                <button type="button" className={`jw-glass jw-3d flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold ${camGrid ? "pro-on" : ""}`} onClick={() => setCamGrid((v) => !v)} aria-pressed={camGrid} title="شبكة الكاميرات: كل الكاميرات اللي عند المؤشر جنب بعض، واضغط على وحدة تقطع عليها">
+                  <Icon name="grid" size={16} />
+                  <span className="hidden sm:inline">الكاميرات</span>
+                </button>
+              )}
             </span>
+            {camGrid && wide && !full && <Guard name="شبكة الكاميرات"><CameraGrid tl={tl} assets={assetMap} player={player} run={handRun} readOnly={readOnly} onClose={() => setCamGrid(false)} flash={flash} /></Guard>}
           </div>
           {toast && (
             <div role="status" className={`pointer-events-none absolute inset-x-3 bottom-3 mx-auto w-fit max-w-full rounded-lg px-3 py-2 text-center text-xs shadow-lg ${toast.bad ? "bg-jw-danger text-white" : "bg-jw-surface-3 text-jw-ink"}`}>

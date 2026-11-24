@@ -302,6 +302,30 @@ export default async function checks({ browser, base, out }) {
     await page.close();
   });
 
+  // ---- a folder made by ticking the tracks; a track up and down
+  await check("a new folder takes the tracks that are ticked, and a track moves up", async () => {
+    const page = await open("?cams=6");
+    await page.getByRole("button", { name: "مجلدات المسارات" }).click();
+    await page.getByRole("menuitem", { name: /اختر المسارات بعلامة صح/ }).click();
+    for (const id of ["v1", "v3", "v4"]) await head(page, id).getByRole("checkbox").check();
+    await page.getByRole("textbox", { name: "اسم المجلد" }).fill("الشباب");
+    await page.screenshot({ path: join(out, "pick.png") });
+    await page.getByRole("button", { name: "سوّ المجلد" }).click();
+    await page.waitForTimeout(150);
+    let t = await tl(page);
+    eq(t.folders?.map((f) => f.name), ["الشباب"], "the folder");
+    eq(t.tracks.filter((x) => x.folder).map((x) => x.id), ["v1", "v3", "v4"], "only the ticked tracks");
+    eq(await page.getByRole("checkbox").count(), 0, "the ticks are gone");
+    // v0 one place up: over v1
+    const before = (await tl(page)).tracks.filter((x) => x.kind === "video").map((x) => x.id);
+    await head(page, "v0").hover();
+    await head(page, "v0").getByRole("button", { name: /^ارفع/ }).click();
+    t = await tl(page);
+    const after = t.tracks.filter((x) => x.kind === "video").map((x) => x.id);
+    eq([after.indexOf("v0"), after.indexOf("v1")], [before.indexOf("v1"), before.indexOf("v0")], "swapped");
+    await page.close();
+  });
+
   // ---- the whole screen
   await check("the timeline takes the whole screen and gives it back", async () => {
     const page = await open("?cams=8");
