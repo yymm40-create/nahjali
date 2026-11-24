@@ -32,13 +32,28 @@ function inTime<T>(p: Promise<T>, ms = 12_000): Promise<T> {
   return Promise.race([p, new Promise<T>((_, no) => setTimeout(() => no(new Error("المتصفح ما ردّ على تفعيل الإشعارات. سكّر التطبيق وافتحه من جديد وجرّب مرة ثانية.")), ms))]);
 }
 
+/** Resolves once the registration has an active worker (installing → activated). */
+function activated(reg: ServiceWorkerRegistration): Promise<void> {
+  if (reg.active) return Promise.resolve();
+  const w = reg.installing ?? reg.waiting;
+  if (!w) return Promise.resolve();
+  return new Promise((done, fail) => {
+    w.addEventListener("statechange", () => {
+      if (w.state === "activated") done();
+      else if (w.state === "redundant") fail(new Error("service worker failed"));
+    });
+  });
+}
+
 /** Asks for permission, subscribes this device and tells the server. "on", or "denied" when the person said no. Call it
  *  straight from the tap: the permission is asked first, while the tap still counts (iPhone needs that). */
 export async function enablePush(): Promise<"on" | "denied"> {
   const permission = Notification.permission === "granted" ? "granted" : await inTime(Notification.requestPermission(), 60_000);
   if (permission !== "granted") return "denied";
   const reg = await inTime(navigator.serviceWorker.register("/mahdi/sw.js", { scope: "/mahdi/" }));
-  await inTime(navigator.serviceWorker.ready);
+  // not `navigator.serviceWorker.ready`: it waits for a worker of THIS page's scope, and the home page /mahdi (no slash) is
+  // outside /mahdi/ — so on the home page it never came (a member's report, 24 November 2026). Wait for this one instead.
+  await inTime(activated(reg));
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {
     try {
