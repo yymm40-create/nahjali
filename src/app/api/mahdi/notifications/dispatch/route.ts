@@ -1,37 +1,35 @@
-import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { dispatchEngagement } from "@/lib/mahdi/server/engage";
 import { dispatchHabitAlerts, dispatchPlanAlerts, dispatchReminders, dispatchTaskReminders, pushConfigured } from "@/lib/mahdi/server/notify";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { cronAuthorized } from "@/lib/mahdi/server/cron-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-function authorized(req: Request): boolean {
-  const secret = process.env.MAHDI_CRON_SECRET;
-  if (!secret || secret.length < 24) return false; // never open when the secret is missing or weak
-  const given = req.headers.get("authorization") ?? "";
-  const want = `Bearer ${secret}`;
-  const a = Buffer.from(given);
-  const b = Buffer.from(want);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 /**
- * Called by Supabase pg_cron + pg_net every 15 minutes (see supabase/migrations/0009_mahdi_notifications_cron.sql).
- * Protected by `Authorization: Bearer <MAHDI_CRON_SECRET>`; anyone else gets 404, as if the route did not exist.
+ * Called by Supabase pg_cron + pg_net every 15 minutes (0009), and every minute with `?only=minute` for the timed tasks and
+ * the planner alerts (0127). Protected by `Authorization: Bearer <secret>` (cron-auth.ts); anyone else gets 404.
  */
 export async function POST(req: Request) {
-  if (!authorized(req)) return new NextResponse(null, { status: 404 });
+  if (!(await cronAuthorized(req))) return new NextResponse(null, { status: 404 });
   if (!pushConfigured()) return NextResponse.json({ error: "VAPID keys are not set" }, { status: 503 });
   try {
     const db = createAdminClient();
+    // `?only=minute` (every minute, SQL 0127): only what is marked once sent, so it goes out on its minute and never twice
+    if (new URL(req.url).searchParams.get("only") === "minute") {
+      const tasks = await dispatchTaskReminders(db).catch((e) => (console.error("[mahdi minute tasks]", e), null));
+      const plan = await dispatchPlanAlerts(db).catch((e) => (console.error("[mahdi minute plan]", e), null));
+      return NextResponse.json({ tasks, plan });
+    }
     const habits = await dispatchReminders(db);
+    // once SQL 0127 is in, the timed tasks and planner alerts go every minute: not here too (both jobs start on :00, :15…)
+    const minuteJob = !(await db.rpc("mahdi_cron_ok", { p_token: "" })).error;
     // «مهام اليوم» at their times (never stops the habit reminders above)
-    const tasks = await dispatchTaskReminders(db).catch((e) => (console.error("[mahdi dispatch tasks]", e), null));
+    const tasks = minuteJob ? null : await dispatchTaskReminders(db).catch((e) => (console.error("[mahdi dispatch tasks]", e), null));
     // «اجعله تنبيهًا» on habits and planner events (each on its own, never stopping the others)
     const habitAlerts = await dispatchHabitAlerts(db).catch((e) => (console.error("[mahdi dispatch habit alerts]", e), null));
-    const plan = await dispatchPlanAlerts(db).catch((e) => (console.error("[mahdi dispatch plan alerts]", e), null));
+    const plan = minuteJob ? null : await dispatchPlanAlerts(db).catch((e) => (console.error("[mahdi dispatch plan alerts]", e), null));
     // «تنبيهات تجيبك للتطبيق» (the morning verse, the review notes, the streak, the comeback): never stops what is above
     const engage = await dispatchEngagement(db).catch((e) => (console.error("[mahdi dispatch engage]", e), null));
     // the heartbeat (migration 0102): the app can say when the dispatcher last ran
