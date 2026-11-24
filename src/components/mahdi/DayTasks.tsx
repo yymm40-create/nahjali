@@ -1,13 +1,14 @@
 "use client";
 
-// «مهام اليوم» on the home screen: things to do today only (not habits, not a fixed schedule). A plain checklist, or
+// «مهام اليوم» on the home screen: things to do today (not habits, not a fixed schedule) — or on a later day, kept in
+// «المهام القادمة» until their day comes (a member's report, 24 November 2026). A plain checklist, or
 // tasks at a time (reminded by a notification then, and an hour later if still open). A task can count for one of the
 // user's habits: ticking it fills that habit for the day.
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { dayGoals, versionAt } from "@/lib/mahdi/engine";
-import { t } from "@/lib/mahdi/i18n";
+import { addDays, dayGoals, versionAt } from "@/lib/mahdi/engine";
+import { fmtDate, t, weekdayName } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { deviceState, enablePush, type Device } from "@/lib/mahdi/client/push";
 import { habitStatus } from "@/lib/mahdi/client/derive";
@@ -36,6 +37,19 @@ export default function DayTasks() {
   const [at, setAt] = useState("");
   const [habitId, setHabitId] = useState("");
   const [busy, setBusy] = useState(false);
+  // the day of a new task: today, or another (later) day
+  const [later, setLater] = useState(false);
+  const [day, setDay] = useState("");
+  const [upcoming, setUpcoming] = useState<DayTask[]>([]);
+  useEffect(() => {
+    let live = true;
+    mahdiFetch<{ upcoming: DayTask[] }>("/api/mahdi/tasks?upcoming=1")
+      .then((r) => live && setUpcoming(r.upcoming ?? []))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
   // can this device get the timed tasks' notifications? (asked of the device itself, not only its permission: a
   // permission without a subscription, or an iPhone that hasn't installed the app, gets nothing — a member's report,
   // 24 November 2026)
@@ -64,12 +78,20 @@ export default function DayTasks() {
     setBusy(true);
     try {
       const timedNow = timed && Boolean(at);
-      await call("POST", { title: title.trim(), at: timedNow ? at : null, habitId: habitId || null });
+      const date = later && day && day > today ? day : null;
+      const r = await mahdiFetch<{ tasks: DayTask[]; upcoming?: DayTask[] }>("/api/mahdi/tasks", {
+        method: "POST",
+        json: { title: title.trim(), at: timedNow ? at : null, habitId: habitId || null, ...(date ? { date } : {}) },
+      });
+      save(r.tasks);
+      if (r.upcoming) setUpcoming(r.upcoming);
+      if (date) toast(t.tasks.savedFor(`${weekdayName(date)} ${fmtDate(date)}`));
       // a task with a time: this device is asked for notifications (or its subscription is sent again, in case the
       // server dropped it), right on the tap that saved it
       if (timedNow && (device === "off" || device === "on")) setDevice(await enablePush().catch(() => device));
       setTitle("");
       setAt("");
+      setLater(false);
       setHabitId("");
     } catch (e) {
       fail(e);
@@ -113,6 +135,18 @@ export default function DayTasks() {
       fail(e);
     }
   };
+
+  const removeUpcoming = async (task: DayTask) => {
+    const before = upcoming;
+    setUpcoming(before.filter((x) => x.id !== task.id));
+    try {
+      await mahdiFetch("/api/mahdi/tasks", { method: "DELETE", json: { id: task.id } });
+    } catch (e) {
+      setUpcoming(before);
+      fail(e);
+    }
+  };
+  const upcomingDays = [...new Set(upcoming.map((x) => x.date))];
 
   const doneCount = tasks.filter((x) => x.doneAt).length;
   const now = dayMin(nowHHMM());
@@ -191,6 +225,27 @@ export default function DayTasks() {
         </div>
         {title.trim() && (
           <div className="flex flex-wrap items-center gap-2 text-sm">
+            <button type="button" className={`m-option min-h-9 px-3 text-sm ${!later ? "font-semibold" : ""}`} aria-pressed={!later} onClick={() => setLater(false)}>
+              {t.tasks.today}
+            </button>
+            <button
+              type="button"
+              className={`m-option min-h-9 px-3 text-sm ${later ? "font-semibold" : ""}`}
+              aria-pressed={later}
+              onClick={() => {
+                setLater(true);
+                if (!day || day <= today) setDay(addDays(today, 1));
+              }}
+            >
+              📅 {t.tasks.otherDay}
+            </button>
+            {later && (
+              <input type="date" className="m-field m-num !w-auto !py-1.5" min={addDays(today, 1)} max={addDays(today, 365)} value={day} onChange={(e) => setDay(e.target.value)} aria-label={t.tasks.pickDay} />
+            )}
+          </div>
+        )}
+        {title.trim() && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
             <button type="button" className={`m-option min-h-9 px-3 text-sm ${!timed ? "font-semibold" : ""}`} aria-pressed={!timed} onClick={() => setTimed(false)}>
               {t.tasks.noTime}
             </button>
@@ -234,6 +289,35 @@ export default function DayTasks() {
             } as Record<string, string>)[device]
           }
         </Link>
+      )}
+
+      {upcoming.length > 0 && (
+        <div className="space-y-2 pt-1">
+          <h3 className="text-sm font-semibold">📅 {t.tasks.upcoming}</h3>
+          <p className="m-hint">{t.tasks.upcomingHint}</p>
+          {upcomingDays.map((d) => (
+            <div key={d}>
+              <p className="m-num text-xs font-semibold m-muted">
+                {weekdayName(d)} · {fmtDate(d)}
+              </p>
+              <ul className="divide-y" style={{ borderColor: "var(--m-line)" }}>
+                {upcoming
+                  .filter((x) => x.date === d)
+                  .map((task) => (
+                    <li key={task.id} className="flex items-center gap-3 py-1.5">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm">{task.title}</span>
+                        {task.at && <span className="m-num block text-xs m-muted">🕒 {task.at}</span>}
+                      </span>
+                      <button type="button" className="m-icon-btn m-btn-ghost" aria-label={t.tasks.remove} onClick={() => void removeUpcoming(task)}>
+                        <Icon name="trash" size={16} />
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       )}
     </section>
   );

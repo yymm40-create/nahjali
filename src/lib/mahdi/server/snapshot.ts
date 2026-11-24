@@ -161,6 +161,16 @@ export async function loadTasks(supabase: SupabaseClient, date: string): Promise
   return (data as unknown as TaskRow[]).map(taskFromRow);
 }
 
+/** The tasks of the days after today (not priorities), `from`..`to` inclusive (through RLS: the user's own), soonest first. */
+export async function loadUpcoming(supabase: SupabaseClient, from: string, to: string): Promise<DayTask[]> {
+  const read = (cols: string) =>
+    supabase.from("mahdi_day_tasks").select(cols).gte("task_date", from).lte("task_date", to).order("task_date").order("at_time", { nullsFirst: false }).order("created_at").limit(300);
+  let { data, error } = await read("id,task_date,title,at_time,habit_id,sort_order,done_at,priority");
+  if (priorityColumnMissing(error)) ({ data, error } = await read("id,task_date,title,at_time,habit_id,sort_order,done_at"));
+  if (error) throw error;
+  return (data as unknown as TaskRow[]).map(taskFromRow).filter((x) => !x.priority);
+}
+
 /** The «أولويات اليوم» of a stretch of days, `from`..`to` inclusive (through RLS: the user's own), oldest day first. */
 export async function loadPriorities(supabase: SupabaseClient, from: string, to: string): Promise<DayTask[]> {
   const read = (cols: string) =>
