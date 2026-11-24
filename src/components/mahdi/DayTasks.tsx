@@ -5,10 +5,11 @@
 // user's habits: ticking it fills that habit for the day.
 
 import Link from "next/link";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { dayGoals, versionAt } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
+import { deviceState, enablePush, type Device } from "@/lib/mahdi/client/push";
 import { habitStatus } from "@/lib/mahdi/client/derive";
 import type { DayTask } from "@/lib/mahdi/types";
 import AlertBell from "./AlertBell";
@@ -23,8 +24,6 @@ const dayMin = (hhmm: string) => {
   return v < 360 ? v + 1440 : v;
 };
 const nowHHMM = () => new Date().toTimeString().slice(0, 5);
-const noSubscribe = () => () => {};
-const permission = () => (typeof Notification === "undefined" ? "unsupported" : Notification.permission);
 
 export default function DayTasks() {
   const { state, store, timeline, toast } = useMahdi();
@@ -37,7 +36,19 @@ export default function DayTasks() {
   const [at, setAt] = useState("");
   const [habitId, setHabitId] = useState("");
   const [busy, setBusy] = useState(false);
-  const notif = useSyncExternalStore(noSubscribe, permission, () => "granted");
+  // can this device get the timed tasks' notifications? (asked of the device itself, not only its permission: a
+  // permission without a subscription, or an iPhone that hasn't installed the app, gets nothing — a member's report,
+  // 24 November 2026)
+  const [device, setDevice] = useState<Device>("checking");
+  useEffect(() => {
+    let live = true;
+    deviceState()
+      .then((d) => live && setDevice(d))
+      .catch(() => live && setDevice("unsupported"));
+    return () => {
+      live = false;
+    };
+  }, []);
 
   if (!snap.tasksReady) return null;
 
@@ -52,7 +63,11 @@ export default function DayTasks() {
     if (!title.trim() || busy) return;
     setBusy(true);
     try {
-      await call("POST", { title: title.trim(), at: timed && at ? at : null, habitId: habitId || null });
+      const timedNow = timed && Boolean(at);
+      await call("POST", { title: title.trim(), at: timedNow ? at : null, habitId: habitId || null });
+      // a task with a time: this device is asked for notifications (or its subscription is sent again, in case the
+      // server dropped it), right on the tap that saved it
+      if (timedNow && (device === "off" || device === "on")) setDevice(await enablePush().catch(() => device));
       setTitle("");
       setAt("");
       setHabitId("");
@@ -206,9 +221,18 @@ export default function DayTasks() {
         {title.trim() && (timed || habitId) && <p className="m-hint">{[timed ? t.tasks.remindHint : "", habitId ? t.tasks.habitHint : ""].filter(Boolean).join(" ")}</p>}
       </form>
 
-      {(hasTimed || (timed && title.trim())) && notif !== "granted" && notif !== "unsupported" && (
+      {(hasTimed || (timed && title.trim())) && device !== "on" && device !== "checking" && (
         <Link href="/mahdi/more/notifications" className="m-note flex items-center gap-2 text-sm font-semibold">
-          <Icon name="bell" size={16} /> {t.tasks.enableNotify}
+          <Icon name="bell" size={16} />{" "}
+          {
+            ({
+              "needs-install": t.notify.iosHint,
+              denied: t.notify.denied,
+              unsupported: t.notify.unsupported,
+              "not-configured": t.notify.notConfigured,
+              off: t.tasks.enableNotify,
+            } as Record<string, string>)[device]
+          }
         </Link>
       )}
     </section>

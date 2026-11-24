@@ -11,6 +11,9 @@ const R = t.readChallenge;
 export const READ_CHALLENGE_PATH = "/mahdi/read-challenge";
 /** Once per visit: closing it with «لاحقًا» keeps it away until the app is opened again. */
 const LATER = (id: string) => `mahdi-read-challenge-later:${id}`;
+/** «لا تظهرها مرة ثانية»: kept on this device, the invitation to this challenge never opens by itself again (a member's
+ *  report, 24 November 2026: it opened on every visit for someone who doesn't want to join). */
+const NEVER = (id: string) => `mahdi-read-challenge-never:${id}`;
 
 interface Status {
   challenge: ReadChallenge | null;
@@ -36,7 +39,7 @@ export default function ReadChallengeInvite() {
         if (!live || !s.challenge || s.joined || s.phase === "over") return;
         let later = false;
         try {
-          later = sessionStorage.getItem(LATER(s.challenge.id)) === "1";
+          later = sessionStorage.getItem(LATER(s.challenge.id)) === "1" || localStorage.getItem(NEVER(s.challenge.id)) === "1";
         } catch {}
         setStatus(s);
         if (!later) setOpen(true);
@@ -55,6 +58,13 @@ export default function ReadChallengeInvite() {
       sessionStorage.setItem(LATER(id), "1");
     } catch {}
     setOpen(false);
+  };
+
+  const never = () => {
+    try {
+      localStorage.setItem(NEVER(id), "1");
+    } catch {}
+    later();
   };
 
   async function join() {
@@ -91,6 +101,9 @@ export default function ReadChallengeInvite() {
         </button>
         <button type="button" className="m-btn m-btn-quiet w-full" onClick={later}>
           {R.later}
+        </button>
+        <button type="button" className="m-btn m-btn-quiet w-full text-sm" onClick={never}>
+          {R.never}
         </button>
       </div>
     </Sheet>
