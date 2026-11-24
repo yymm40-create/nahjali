@@ -73,3 +73,23 @@ export function linkPieces(line: string): AnswerPiece[] {
 export function plainAnswer(s: string): string {
   return s.replace(/^#{1,6}\s+/gm, "").replace(/^\s*[-*]\s+/gm, "• ");
 }
+
+/** How long a question may still be waiting for its answer (a deep search takes a minute or two); an older one without an
+ *  answer was lost (its answer failed) and no longer holds the next question. */
+export const SHEIKH_PENDING_MS = 6 * 60_000;
+
+/** The person's question still being answered (the newest message is theirs and recent), or null. Oldest first. */
+export function pendingQuestion<T extends { role: "user" | "sheikh"; created_at: string }>(rows: T[], now = Date.now()): T | null {
+  const last = rows[rows.length - 1];
+  return last && last.role === "user" && now - Date.parse(last.created_at) < SHEIKH_PENDING_MS ? last : null;
+}
+
+/** The conversation the sheikh reads: only questions that got their answer, each with it (oldest first), so a question
+ *  left without an answer is never mixed into the new one. */
+export function answeredHistory<T extends { role: "user" | "sheikh" }>(rows: T[]): T[] {
+  const out: T[] = [];
+  for (let i = 0; i < rows.length - 1; i++) {
+    if (rows[i].role === "user" && rows[i + 1].role === "sheikh") out.push(rows[i], rows[i + 1]);
+  }
+  return out;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanQuestion, linkPieces, plainAnswer, sheikhLeft, sheikhWording, SHEIKH_DAILY } from "@/lib/mahdi/sheikh";
+import { answeredHistory, cleanQuestion, linkPieces, pendingQuestion, plainAnswer, sheikhLeft, sheikhWording, SHEIKH_DAILY } from "@/lib/mahdi/sheikh";
 import { sheikhLog, type SheikhLogRow } from "@/lib/mahdi/sheikh-log";
 import { gradingLine, hadithQuery, hadithRows, normAr, type RawHadith } from "@/lib/mahdi/hadiths";
 
@@ -89,5 +89,24 @@ describe("«أسئلة الشيخ الذكي» (the owner's log)", () => {
     expect(stats.avgSecs.quick).toBeCloseTo(8.5);
     expect(stats.top).toEqual([{ question: "روايات في بر الوالدين", times: 2, people: 2 }]);
     expect(stats.days).toEqual([{ day: "2026-11-22", questions: 2, people: 2 }, { day: "2026-11-23", questions: 2, people: 2 }]);
+  });
+});
+
+describe("«الشيخ الذكي»: one question at a time", () => {
+  const now = Date.parse("2026-11-24T07:00:00Z");
+  const at = (minAgo: number) => new Date(now - minAgo * 60_000).toISOString();
+  const u = (b: string, m: number) => ({ role: "user" as const, body: b, created_at: at(m) });
+  const s = (b: string, m: number) => ({ role: "sheikh" as const, body: b, created_at: at(m) });
+
+  it("waits while the newest message is a recent question", () => {
+    expect(pendingQuestion([u("أ", 10), s("ج", 9), u("ب", 1)], now)?.body).toBe("ب");
+    expect(pendingQuestion([u("أ", 10), s("ج", 9)], now)).toBeNull();
+    expect(pendingQuestion([u("ضاع", 30)], now)).toBeNull();
+    expect(pendingQuestion([], now)).toBeNull();
+  });
+
+  it("reads only questions that got their answer", () => {
+    const rows = [u("أ", 10), s("ج أ", 9), u("بلا جواب", 8), u("ب", 7), s("ج ب", 6), u("الحين", 1)];
+    expect(answeredHistory(rows).map((r) => r.body)).toEqual(["أ", "ج أ", "ب", "ج ب"]);
   });
 });
