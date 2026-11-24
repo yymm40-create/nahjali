@@ -35,6 +35,16 @@ const KEEP_MS = 6000;
 const DRIFT_S = 0.5;
 /** Past this the picture is nudged (played slightly faster or slower) back onto the sound. */
 const NUDGE_S = 0.04;
+/**
+ * A clip about to begin starts playing this long before its first frame, out of sight and in step, so the cut lands
+ * on a picture that is already running — a video started AT the cut shows its first frames late (the browser needs
+ * a moment to get going), which on a track of short cuts is every cut a frame or two behind the sound.
+ */
+const PREROLL_MS = 450;
+/** A picture with no sound of its own is put back in step firmly: from this far off (s), by up to a fifth of its speed. */
+const TIGHT_S = 0.012;
+/** A jump made while playing lands this far ahead (s × the rate): the film moves on while the browser seeks. */
+const SEEK_LEAD_S = 0.08;
 /** How far ahead clips' sound is scheduled. */
 const SCHEDULE_MS = 3000;
 /** Longer files keep playing their sound from their element (decoding hours of sound would fill the memory). */
@@ -496,18 +506,25 @@ export class Player {
         m.muted = track.muted || gain <= 0;
         m.volume = Math.min(1, Math.max(0, gain));
         // (covered for a moment more: it waits on the frame it will show when the clip over it ends)
-        const at = (on && !showing ? sourceTime(clip, warm.get(clip.id) ?? ms) : on ? sourceTime(clip, ms) : held.has(clip.id) ? sourceTime(clip, held.get(clip.id)!) : clip.in) / 1000;
+        // about to begin and it will be seen: it runs up to its first frame (see PREROLL_MS)
+        const lead = clip.start - ms;
+        const startRate = soon ? speedAt(clip, clip.start) : 1;
+        const pre = soon && picture && this.playing && this.rate === 1 && lead <= PREROLL_MS && clip.in - lead * startRate >= 0 && !held.has(clip.id) && shownLayers(this.tl, clip.start, this.assetOf).some((l) => "clip" in l && l.clip.id === clip.id);
+        // (while it waits, it sits where the run-up begins, so the run-up starts without a jump)
+        const runUp = soon && picture && clip.in - PREROLL_MS * startRate >= 0;
+        const at = (pre ? clip.in - lead * startRate : runUp && !held.has(clip.id) ? clip.in - Math.min(lead, PREROLL_MS) * startRate : on && !showing ? sourceTime(clip, warm.get(clip.id) ?? ms) : on ? sourceTime(clip, ms) : held.has(clip.id) ? sourceTime(clip, held.get(clip.id)!) : clip.in) / 1000;
         // forward the element plays (faster when shuttling, up to the browser's limit); backward it is stepped frame
         // by frame like a scrub (no browser plays a video backward)
-        const live = on && showing && this.playing && this.rate > 0;
+        const live = pre || (on && showing && this.playing && this.rate > 0);
         // («منحنى السرعة»: the rate follows the curve at this moment)
-        let rate = speedAt(clip, ms) * (this.rate > 0 ? this.rate : 1);
+        let rate = (pre ? startRate : speedAt(clip, ms)) * (this.rate > 0 ? this.rate : 1);
         if (live) {
           // a picture a little behind or ahead catches up by playing a touch faster or slower (a jump only when far off:
           // jumping every few seconds is what made the preview stutter)
           const off = m.currentTime - at;
-          if (hard || Math.abs(off) > DRIFT_S * rate) seekTo(m, at);
-          else if (Math.abs(off) > NUDGE_S * this.rate) rate *= 1 - Math.max(-0.03, Math.min(0.03, off * 0.5));
+          if (hard || Math.abs(off) > DRIFT_S * rate) seekTo(m, at + (this.playing ? SEEK_LEAD_S * rate : 0));
+          // (a picture whose sound is not its own — a cut, a muted camera — may change speed freely: nothing is heard)
+          else if (m.muted ? Math.abs(off) > TIGHT_S : Math.abs(off) > NUDGE_S * this.rate) rate *= 1 - (m.muted ? Math.max(-0.2, Math.min(0.2, off * 1.5)) : Math.max(-0.03, Math.min(0.03, off * 0.5)));
           if (m.paused) m.play().catch(() => {});
         }
         rate = Math.min(16, Math.max(0.0625, rate));

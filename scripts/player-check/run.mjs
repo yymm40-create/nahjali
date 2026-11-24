@@ -81,6 +81,20 @@ const okPlay = playing.videos === 1 && playing.playing === 1;
 console.log(`${okPlay ? "✓" : "✗"} while playing: ${playing.playing} playing of ${playing.videos} video element(s) (want 1 of 1)`);
 if (!okPlay) failed.push("playing");
 
+// the cuts of «المونتاج»: a shot every 2 s, a different camera each time. How late is the picture after a cut?
+for (let i = 0; i < 6; i++) await run({ type: "multicam_cut", cam: `c${(i * 5) % N}`, at: i * 2000 });
+const lag = await page.evaluate(() => window.pcLag(11000));
+// (the first 300 ms of the film itself is the browser starting to play)
+const after = (lo, hi) => lag.filter((x) => x.at >= lo && x.at < hi && Math.abs(x.lag) < 5).map((x) => x.lag);
+const mean = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
+const early = after(100, 500);
+const settled = after(900, 2000);
+const worst = Math.max(...lag.filter((x) => x.at >= 150).map((x) => Math.abs(x.lag)));
+console.log(`picture against the film after a cut: ${Math.round(mean(early) * 1000)} ms in its first half second, ${Math.round(mean(settled) * 1000)} ms once settled, worst ${Math.round(worst * 1000)} ms (${lag.length} samples)`);
+const okLag = lag.length > 100 && Math.abs(mean(early)) < 0.05 && Math.abs(mean(settled)) < 0.04;
+console.log(`${okLag ? "✓" : "✗"} a cut is in step from its first frames (within 50 ms early on, 40 ms settled)`);
+if (!okLag) failed.push("lag after a cut");
+
 await browser.close();
 server.close();
 console.log(failed.length ? `\n${failed.length} FAILED` : "\nall checks passed");
