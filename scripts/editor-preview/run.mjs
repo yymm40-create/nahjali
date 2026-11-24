@@ -100,6 +100,21 @@ for (const name of shots) {
     await page.keyboard.press("5");
     await page.waitForTimeout(500);
     if ((await page.locator("[data-cam]").nth(4).getAttribute("aria-pressed")) !== "true") problems.push("the key 5 did not cut to the fifth camera");
+    // an Arabic keyboard: the 2 key types «٢»; and the number pad
+    await page.evaluate(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "٢", code: "Digit2", bubbles: true, cancelable: true })));
+    await page.waitForTimeout(400);
+    if ((await page.locator("[data-cam]").nth(1).getAttribute("aria-pressed")) !== "true") problems.push("the 2 key on an Arabic keyboard did not cut to the second camera");
+    await page.keyboard.press("Numpad6");
+    await page.waitForTimeout(400);
+    if ((await page.locator("[data-cam]").nth(5).getAttribute("aria-pressed")) !== "true") problems.push("the number pad's 6 did not cut to the sixth camera");
+    // while the film plays: a press cuts at that very moment
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(900);
+    await page.keyboard.press("1");
+    await page.waitForTimeout(300);
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(300);
+    if ((await page.locator("[data-cam]").nth(0).getAttribute("aria-pressed")) !== "true") problems.push("a number pressed while playing did not cut");
     await page.screenshot({ path: join(out, "cameras-cut.png") });
     // «تقطيع ذكي»: the whole stretch of the cameras cut by itself
     await page.getByRole("tab", { name: /تقطيع ذكي/ }).click();

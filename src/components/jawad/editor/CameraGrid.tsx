@@ -38,6 +38,18 @@ export function camerasAt(tl: Timeline, ms: number, kindOf: (assetId: string) =>
   return out.slice(0, MAX);
 }
 
+/**
+ * Which tile a key cuts to (0 = the first): the number keys 1–9 and 0 for the tenth, by the PHYSICAL key — so the
+ * top row and the number pad both work, and so does an Arabic keyboard, whose number keys type «١٢٣» (the letter
+ * the key types is only read when the browser does not say which key it was). Null for any other key.
+ */
+export function camKey(e: Pick<KeyboardEvent, "key" | "code">): number | null {
+  const m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code ?? "");
+  const typed = "٠١٢٣٤٥٦٧٨٩".indexOf(e.key);
+  const n = m ? Number(m[1]) : typed >= 0 ? typed : /^[0-9]$/.test(e.key) ? Number(e.key) : null;
+  return n == null ? null : n === 0 ? 9 : n - 1;
+}
+
 /** The camera the film shows at `ms`: the one the cut there was made from, else the top one. */
 export function liveCamera(tl: Timeline, ms: number, cams: Camera[]): string | null {
   for (const track of tl.tracks) for (const c of track.clips) if (c.angle && c.start <= ms && clipEnd(c) > ms && !track.hidden && !track.off) return c.angle;
@@ -167,6 +179,8 @@ export default function CameraGrid({ tl, assets, player, run, readOnly, onClose,
     return player.subscribe(tick);
   }, [player]);
 
+  // the tile a key has just cut to: it flashes, so the press is seen without looking for it
+  const [hit, setHit] = useState<string | null>(null);
   const cut = (id: string) => {
     if (readOnly || !player) return;
     run({ type: "multicam_cut", cam: id, at: Math.round(player.ms) });
@@ -181,12 +195,16 @@ export default function CameraGrid({ tl, assets, player, run, readOnly, onClose,
       const el = e.target as HTMLElement | null;
       if (e.metaKey || e.ctrlKey || e.altKey || (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable))) return;
       if (e.key === "Escape") return onClose();
-      const n = Number(e.key);
-      const c = Number.isInteger(n) && n >= 1 ? camsRef.current[n - 1] : null;
-      if (!c) return;
+      const n = camKey(e);
+      if (n == null || e.shiftKey) return;
+      // a number is the grid's while it is open: it never falls through to another shortcut, camera there or not
       e.preventDefault();
       e.stopPropagation();
+      const c = camsRef.current[n];
+      if (!c || e.repeat) return;
       cutRef.current(c.clip.id);
+      setHit(c.clip.id);
+      window.setTimeout(() => setHit((h) => (h === c.clip.id ? null : h)), 260);
     };
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
@@ -204,7 +222,7 @@ export default function CameraGrid({ tl, assets, player, run, readOnly, onClose,
             ✨ تقطيع ذكي
           </button>
         </span>
-        <span className="min-w-0 flex-1 truncate text-[11px] text-jw-muted">{tab === "smart" ? "يقطّع بين الكاميرات بروحه في الوقت اللي تحدده" : cams.length ? `${cams.length} كاميرا عند المؤشر · اضغط على وحدة (أو رقمها) تقطع عليها` : "ما فيه كاميرات عند المؤشر"}</span>
+        <span className="min-w-0 flex-1 truncate text-[11px] text-jw-muted">{tab === "smart" ? "يقطّع بين الكاميرات بروحه في الوقت اللي تحدده" : cams.length ? `${cams.length} كاميرا · اضغط رقمها على الكيبورد (1–9 و0 للعاشرة) وتقطع عليها، حتى والفيديو شغال` : "ما فيه كاميرات عند المؤشر"}</span>
         <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon shrink-0" onClick={onClose} aria-label="سكّر شبكة الكاميرات" title="سكّر (Esc)">
           ✕
         </button>
@@ -287,11 +305,11 @@ export default function CameraGrid({ tl, assets, player, run, readOnly, onClose,
                 type="button"
                 disabled={readOnly}
                 data-cam={clip.id}
-                className={`group relative min-h-[72px] overflow-hidden rounded-xl bg-black text-start outline outline-2 transition ${on ? "outline-red-500" : "outline-transparent hover:outline-jw-accent"}`}
+                className={`group relative min-h-[72px] overflow-hidden rounded-xl bg-black text-start outline outline-2 transition ${hit === clip.id ? "scale-[0.97] outline-white" : on ? "outline-red-500" : "outline-transparent hover:outline-jw-accent"}`}
                 onClick={() => cut(clip.id)}
                 aria-pressed={on}
                 aria-label={`اقطع على ${track.name}`}
-                title={on ? `${track.name}: هذي المعروضة الحين` : `اقطع على ${track.name} من هنا${i < 9 ? ` (${i + 1})` : ""}`}
+                title={on ? `${track.name}: هذي المعروضة الحين` : `اقطع على ${track.name} من هنا${i < 10 ? ` (الزر ${(i + 1) % 10})` : ""}`}
               >
                 {src && (
                   <video
@@ -313,7 +331,7 @@ export default function CameraGrid({ tl, assets, player, run, readOnly, onClose,
                 )}
                 {clip.label && <span className="absolute inset-x-0 top-0 h-1" style={{ background: clip.label }} />}
                 <span className="absolute start-1 top-1.5 flex items-center gap-1">
-                  {i < 9 && <kbd className="grid h-5 min-w-5 place-items-center rounded bg-black/70 px-1 text-[11px] font-black text-white">{i + 1}</kbd>}
+                  {i < 10 && <kbd className="grid h-6 min-w-6 place-items-center rounded-md bg-white px-1 text-sm font-black text-black shadow">{(i + 1) % 10}</kbd>}
                   {on && <span className={`rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-black text-white ${playing ? "animate-pulse" : ""}`}>LIVE</span>}
                 </span>
                 <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/85 to-transparent px-1.5 pb-1 pt-4 text-[11px] font-semibold text-white">{track.name}{a?.name ? ` · ${a.name}` : ""}</span>
