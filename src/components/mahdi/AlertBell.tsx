@@ -72,8 +72,9 @@ function AlertSheet({ name, time, hint, onSave, onClose }: { name: string; time:
   const save = async (value: string | null) => {
     setBusy(true);
     try {
-      // turning one on: this device is asked for notifications first, when it can and hasn't said yes yet
-      if (value && device === "off") setDevice(await enablePush().catch(() => "off" as const));
+      // turning one on: this device is asked for notifications (from the tap itself), but the time is saved without
+      // waiting for it — a browser that never answers must not hang «احفظ»
+      if (value && device === "off") void enablePush().then(setDevice, () => setDevice("off"));
       await onSave(value);
       toast(value ? t.alert.saved(name, value) : t.alert.removed);
       onClose();
