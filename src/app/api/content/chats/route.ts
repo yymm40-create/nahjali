@@ -4,7 +4,7 @@ import { handle, UserError } from "@/lib/api";
 import { requireContentUser } from "@/lib/content/access";
 import { deleteChat, getChat, listChats } from "@/lib/content/chats";
 import { producedLinks, uploadLinks } from "@/lib/content/files";
-import { ownerPrompts } from "@/lib/content/produce";
+import { ownerPrompts, promptSource } from "@/lib/content/produce";
 import { isAdmin } from "@config/site";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,8 @@ export const GET = handle(async (req: Request) => {
   // provider is out of balance — the owner, 24 Nov 2026: «تأخذ البرومبتات بالكود من ورا وتسويهم في آرتليست»)
   if (new URL(req.url).searchParams.get("prompts")) {
     if (!isAdmin(user.email)) throw new UserError("هذي للمالك فقط.", 403);
-    return NextResponse.json({ prompts: chat.pending ? ownerPrompts(chat.pending) : null });
+    const src = promptSource(chat);
+    return NextResponse.json({ prompts: src ? ownerPrompts(src) : null });
   }
   const [ups, links, downloads, spent] = await Promise.all([
     uploadLinks(user.id, chat.messages.flatMap((m) => (m.files ?? []).filter((f) => f.kind === "image").map((f) => f.id))),
