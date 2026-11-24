@@ -171,6 +171,14 @@ export function slidePrompt(o: { n: number; total: number; prompt: string; style
     .join("\n\n");
 }
 
+/** The owner's copy of a planned carousel's prompts: for each slide, the prompt with slide 1 as its reference (as the site
+ *  draws slides 2+) and the prompt without any reference (to draw it alone). */
+export function ownerPrompts(p: PendingProduce): { aspect: string; slides: { n: number; text: string; withRef: string; alone: string }[] } {
+  const total = p.slides.length;
+  const one = (s: PendingProduce["slides"][number], withRef: boolean) => slidePrompt({ n: s.n, total, prompt: s.prompt, styleId: p.styleId, carouselId: p.carouselId, fontId: p.fontId, paletteId: p.paletteId, withRef });
+  return { aspect: p.aspect, slides: p.slides.map((s) => ({ n: s.n, text: s.text, withRef: s.n === 1 ? one(s, false) : one(s, true), alone: one(s, false) })) };
+}
+
 /** What the person is told after the check (also what «محمد باقر» reads in his next answer). */
 export function buildReport(o: { made: Slide[]; failed: SlideFailure[]; unchecked: number }): string {
   const sound = o.made.filter((s) => !s.flag);
