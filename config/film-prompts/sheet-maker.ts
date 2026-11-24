@@ -354,6 +354,7 @@ This conversation runs inside a website.
 - The master STY-00 is a STYLE reference only (rendering, line, color, light, texture). It never decides the design details of characters or environments. If the master conflicts with a character or environment (its approved facts, its supplied images, its sheet), the character or environment wins. In every character and environment prompt, give STY-00 the role "style only".
 - Do not judge images: never say whether a generated or approved image is good, correct or faithful, and never ask me to check it. When I approve, continue to the next step; otherwise just deliver and wait for my action.
 - I can always take back an approval, generate another picture, or send an edit or a new direction at any step. Apply it to the latest state and continue from there.
+- MY OWN PICTURE AS IT IS, AT ANY TIME: after the map is approved I may change my mind about an item and tell you to use my own uploaded picture of it as it is, with no sheet (for example «استخدم صورتي كما هي», «بدون شيت», «أبي نفس صورتي المرجعية», «كنسل الشيت وخلّ صورتي»). Then: put that item's ID in "own_picture_ids", keep the stage you are in (6 after the master), set "sheet_id" to that ID, leave "prompt" EMPTY and "references" empty, and write one short Arabic line in "content" confirming it. The website then approves my picture for that ID by itself and moves on; do not write a prompt for that ID again unless I ask for its sheet. Use "own_picture_ids" only when I clearly ask for my own picture instead of a sheet — an edit of the sheet's design (colours, angle, details «كما هي» of one part) is NOT that. If I never gave a picture for that ID, say so in "content" and leave "own_picture_ids" empty. A message of mine that starts with «ملاحظة:» only tells you what I did with the website's buttons; it needs no answer.
 - If you want to propose a change to what you just delivered (a design improvement, a fix, a risk you noticed), put it in "suggestion" as a short Arabic text and keep it OUT of "content". I will decide whether to apply it or to approve and continue.
 
 Every reply you send must be ONE JSON object that matches the provided schema:
@@ -366,6 +367,7 @@ Every reply you send must be ONE JSON object that matches the provided schema:
 - "prompt": the complete English image-generation prompt delivered in this reply (Stages 4, 5 and 6). For Stage 4, keep the exact placeholder "[VISUAL STYLE — INSERT HERE]". An empty string otherwise.
 - "sheet_id": the ID the prompt belongs to ("STYLE-TEST" in Stage 4, "STY-00" in Stage 5, the sheet ID in Stage 6). An empty string otherwise.
 - "references": Stage 5–6 only — the approved sheet IDs whose images must be attached when generating this prompt, each with its role (for example "STY-00" with role "style"). An empty array otherwise.
+- "own_picture_ids": the IDs whose own uploaded picture I asked to use as it is (see above). An empty array in every other reply.
 When I press the website's approval button, you receive exactly "اعتمد" (sometimes followed by information about images or uploads).`;
 
 /** Appended by the website to every character/environment image prompt, where the master is attached last. */
@@ -393,7 +395,7 @@ export const MASTER_STYLE_SECONDARY = `Reference note: the LAST attached image i
 export const SHEET_MAKER_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["stage", "content", "notes", "suggestion", "questions", "sheet_map", "prompt", "sheet_id", "references"],
+  required: ["stage", "content", "notes", "suggestion", "questions", "sheet_map", "prompt", "sheet_id", "references", "own_picture_ids"],
   properties: {
     stage: { type: "integer", enum: [2, 3, 4, 5, 6, 7] },
     content: { type: "string" },
@@ -433,6 +435,7 @@ export const SHEET_MAKER_SCHEMA = {
         properties: { sheet_id: { type: "string" }, role: { type: "string" } },
       },
     },
+    own_picture_ids: { type: "array", items: { type: "string" } },
   },
 } as const;
 

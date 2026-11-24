@@ -6,12 +6,12 @@
 // rejected ones too, folded under the card by version, newest first. «📎 أرفق صورة الاختبار» beside «ولّد» sends the
 // style test picture with THIS drawing (ticked = sent); every picture drawn with it says so («📎 انرسمت مع صورة الاختبار»).
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { postJson } from "@/lib/fetch";
 import Spinner from "@/components/Spinner";
 import { credits } from "@/lib/film/credits";
 import Coined from "@/components/Coined";
-import type { SheetVersion } from "@/lib/film/sheets";
+import type { MapChoice, SheetVersion } from "@/lib/film/sheets";
 import { drawnWithTest } from "@/lib/film/style-test-ref";
 
 export interface CardAsset {
@@ -30,21 +30,21 @@ type Send = (body: Record<string, unknown>) => Promise<void> | void;
 
 const SHEET_USD = 0.4;
 
-export default function SheetCards({ projectId, items, versions, assets, busy, send, onEdit, selected = [], onSelect, test = null, testOn = false }: { projectId: string; items: { id: string; title: string }[]; versions: SheetVersion[]; assets: CardAsset[]; busy: boolean; send: Send; onEdit: (sheetId: string) => void; /** the style test picture a drawing can be sent with (null: none), and whether the film's setting sends it */ test?: { id: string; url: string } | null; testOn?: boolean; selected?: string[]; onSelect?: (assetId: string) => void }) {
+export default function SheetCards({ projectId, items, versions, assets, busy, send, onEdit, selected = [], onSelect, test = null, testOn = false, choices = {}, ownable = false }: { /** the map's choice per item, and whether «صورتي كما هي» is offered (the map is approved) */ choices?: Record<string, MapChoice>; ownable?: boolean; projectId: string; items: { id: string; title: string }[]; versions: SheetVersion[]; assets: CardAsset[]; busy: boolean; send: Send; onEdit: (sheetId: string) => void; /** the style test picture a drawing can be sent with (null: none), and whether the film's setting sends it */ test?: { id: string; url: string } | null; testOn?: boolean; selected?: string[]; onSelect?: (assetId: string) => void }) {
   if (!items.length) return null;
   return (
     <section className="space-y-2">
       <p className="text-sm font-bold text-muted">اسحب يمين ويسار بين الشخصيات والأماكن 👈👉 · عجبتك؟ اعتمدها. ما عجبتك؟ «ما عجبني» واكتب وش تبي.</p>
       <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-3" style={{ scrollbarWidth: "thin" }}>
         {items.map((it) => (
-          <SheetCard key={it.id} projectId={projectId} id={it.id} title={it.title} prompts={versions.filter((v) => v.kind === "sheet_prompt" && v.ref_key === it.id)} images={assets.filter((a) => a.kind === "image" && a.ref_key === it.id)} busy={busy} send={send} onEdit={onEdit} selected={selected} onSelect={onSelect} test={test} testOn={testOn} />
+          <SheetCard key={it.id} projectId={projectId} id={it.id} title={it.title} prompts={versions.filter((v) => v.kind === "sheet_prompt" && v.ref_key === it.id)} images={assets.filter((a) => a.kind === "image" && a.ref_key === it.id)} own={assets.filter((a) => a.kind === "upload" && a.ref_key === it.id && a.status !== "rejected" && a.url)} choice={choices[it.id]} ownable={ownable && it.id !== "STY-00"} busy={busy} send={send} onEdit={onEdit} selected={selected} onSelect={onSelect} test={test} testOn={testOn} />
         ))}
       </div>
     </section>
   );
 }
 
-function SheetCard({ projectId, id, title, prompts, images, busy, send, onEdit, selected = [], onSelect, test, testOn }: { projectId: string; id: string; title: string; prompts: SheetVersion[]; images: CardAsset[]; busy: boolean; send: Send; onEdit: (sheetId: string) => void; selected?: string[]; onSelect?: (assetId: string) => void; test: { id: string; url: string } | null; testOn: boolean }) {
+function SheetCard({ projectId, id, title, prompts, images, own = [], choice, ownable = false, busy, send, onEdit, selected = [], onSelect, test, testOn }: { own?: CardAsset[]; choice?: MapChoice; ownable?: boolean; projectId: string; id: string; title: string; prompts: SheetVersion[]; images: CardAsset[]; busy: boolean; send: Send; onEdit: (sheetId: string) => void; selected?: string[]; onSelect?: (assetId: string) => void; test: { id: string; url: string } | null; testOn: boolean }) {
   const latest = prompts.at(-1);
   const [count, setCount] = useState(1);
   // «📎 أرفق صورة الاختبار»: this card's own choice for its next drawing (starts as the film's setting); a real person's
@@ -85,6 +85,47 @@ function SheetCard({ projectId, id, title, prompts, images, busy, send, onEdit, 
   // the attempts, newest version first, each with its pictures (rejected ones kept, faded)
   const byVersion = [...prompts].reverse().map((v) => ({ v, imgs: images.filter((i) => i.version_id === v.id) })).filter((x) => x.imgs.length);
   const loose = images.filter((i) => !i.version_id || !prompts.some((v) => v.id === i.version_id));
+  const attempts = (byVersion.length > 1 || images.length > 1 || (choice === "as_is" && images.length > 0)) && (
+    <details className="rounded-xl border border-line p-2 text-sm">
+      <summary className="cursor-pointer font-extrabold text-muted">{choice === "as_is" ? `شيتات انرسمت لها قبل (${images.length})` : `المحاولات (${images.length})`}</summary>
+      <div className="mt-2 space-y-2">
+        {byVersion.map(({ v, imgs }) => (
+          <details key={v.id} open={v.id === latest?.id} className="rounded-lg bg-surface-2 p-2">
+            <summary className="cursor-pointer text-xs font-extrabold">النسخة {v.version}{v.id === latest?.id ? " (الأحدث)" : ""} · {imgs.length} صور</summary>
+            <Thumbs imgs={imgs} busy={busy} send={send} />
+          </details>
+        ))}
+        {loose.length > 0 && <Thumbs imgs={loose} busy={busy} send={send} />}
+      </div>
+    </details>
+  );
+
+  // «📤 صورتك كما هي»: the item stands on the person's own picture — no sheet, nothing to generate
+  if (choice === "as_is") {
+    const mine = own.find((u) => u.status === "approved") ?? own.at(-1);
+    return (
+      <article className="card w-[86%] max-w-[440px] shrink-0 snap-center space-y-3 border-2 border-teal p-3">
+        <header className="flex items-center justify-between gap-2">
+          <h3 className="truncate font-extrabold">{title}</h3>
+          <span className="chip bg-teal text-white">📤 صورتك كما هي ✅</span>
+        </header>
+        <div className="overflow-hidden rounded-xl bg-surface-2">
+          {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL */}
+          {mine?.url ? <a href={mine.url} target="_blank" rel="noopener"><img src={mine.url} alt={title} className="w-full" /></a> : <div className="grid aspect-video place-items-center text-sm font-bold text-muted">صورتك</div>}
+        </div>
+        {typeof mine?.meta.at_name === "string" && <p className="text-xs font-bold text-muted">{mine.meta.at_name}</p>}
+        <p className="text-xs font-bold text-muted">معتمدة بدون شيت: المخرج يستخدم صورتك نفسها. تقدر تغيّر رأيك أي وقت.</p>
+        {ownable && (
+          <div className="flex flex-wrap gap-2">
+            <OwnUpload projectId={projectId} sheetId={id} busy={busy} send={send} label="🔁 غيّر صورتي" />
+            <button className="btn btn-ghost min-h-9 flex-1 px-2 text-xs" disabled={busy} onClick={() => window.confirm("تبي نصنع لها شيت بدال صورتك؟ صورتك تبقى محفوظة وتقدر ترجع لها.") && send({ action: "sheet_from_picture", sheetId: id })}>🖼️ اصنع لها شيت بدالها</button>
+          </div>
+        )}
+        {attempts}
+      </article>
+    );
+  }
+  const mine = own.at(-1);
 
   return (
     <article className={`card w-[86%] max-w-[440px] shrink-0 snap-center space-y-3 p-3 ${approved ? "border-2 border-teal" : ""}`}>
@@ -183,19 +224,23 @@ function SheetCard({ projectId, id, title, prompts, images, busy, send, onEdit, 
         </div>
       )}
 
-      {(byVersion.length > 1 || images.length > 1) && (
-        <details className="rounded-xl border border-line p-2 text-sm">
-          <summary className="cursor-pointer font-extrabold text-muted">المحاولات ({images.length})</summary>
-          <div className="mt-2 space-y-2">
-            {byVersion.map(({ v, imgs }) => (
-              <details key={v.id} open={v.id === latest?.id} className="rounded-lg bg-surface-2 p-2">
-                <summary className="cursor-pointer text-xs font-extrabold">النسخة {v.version}{v.id === latest?.id ? " (الأحدث)" : ""} · {imgs.length} صور</summary>
-                <Thumbs imgs={imgs} busy={busy} send={send} />
-              </details>
-            ))}
-            {loose.length > 0 && <Thumbs imgs={loose} busy={busy} send={send} />}
+      {attempts}
+
+      {/* «صورتي كما هي»: at any time, the person's own picture instead of a sheet (whatever was chosen on the map) */}
+      {ownable && (
+        <div className="space-y-2 rounded-xl border border-dashed border-line p-2">
+          <p className="text-xs font-extrabold text-muted">ما تبي شيت؟ خلّ صورتك هي المعتمدة:</p>
+          <div className="flex flex-wrap items-center gap-2">
+            {mine && (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL */}
+                <img src={mine.url} alt="صورتك" className="size-12 shrink-0 rounded-lg object-cover" />
+                <button className="btn btn-secondary min-h-9 flex-1 px-2 text-xs" disabled={busy} onClick={() => send({ action: "use_own_picture", sheetId: id, assetId: mine.id })}>📤 استخدم صورتي كما هي (بدون شيت)</button>
+              </>
+            )}
+            <OwnUpload projectId={projectId} sheetId={id} busy={busy} send={send} label={mine ? "ارفع غيرها" : "📤 ارفع صورة جاهزة بدال الشيت"} />
           </div>
-        </details>
+        </div>
       )}
     </article>
   );
@@ -222,5 +267,39 @@ function Thumbs({ imgs, busy, send }: { imgs: CardAsset[]; busy: boolean; send: 
         </figure>
       ))}
     </div>
+  );
+}
+
+/**
+ * «📤 ارفع صورة جاهزة»: the person's own picture for one item, uploaded and taken as the item's picture as it is, at once
+ * (the same two steps as the map's upload; `use` makes it the approved picture).
+ */
+export function OwnUpload({ projectId, sheetId, busy, send, label }: { projectId: string; sheetId: string; busy: boolean; send: Send; label: string }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [up, setUp] = useState(false);
+  const [err, setErr] = useState("");
+  async function upload(file?: File) {
+    if (!file) return;
+    setErr("");
+    setUp(true);
+    try {
+      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 20 * 1024 * 1024) throw new Error("صورة JPG أو PNG أو WEBP أقل من ٢٠ ميجا.");
+      const { path, token } = await postJson<{ path: string; token: string }>(`/api/film/projects/${projectId}/sheets`, { action: "upload_url", sheetId, mime: file.type });
+      const put = await fetch(token, { method: "PUT", headers: { "content-type": file.type }, body: file }).catch(() => null);
+      if (!put?.ok) throw new Error("تعذّر رفع الصورة.");
+      await send({ action: "upload_confirm", sheetId, path, use: true });
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setUp(false);
+      if (input.current) input.current.value = "";
+    }
+  }
+  return (
+    <>
+      <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => void upload(e.target.files?.[0])} />
+      <button className="btn btn-ghost min-h-9 flex-1 px-2 text-xs" disabled={busy || up} onClick={() => input.current?.click()}>{up ? "نرفع…" : label}</button>
+      {err && <p className="error-box w-full text-xs">{err}</p>}
+    </>
   );
 }

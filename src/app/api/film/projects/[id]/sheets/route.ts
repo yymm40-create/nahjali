@@ -11,7 +11,7 @@ export const maxDuration = 800;
 type Body =
   | SheetAction
   | { action: "upload_url"; sheetId: string; mime: string }
-  | { action: "upload_confirm"; sheetId: string; path: string; mode?: MapChoice }
+  | { action: "upload_confirm"; sheetId: string; path: string; mode?: MapChoice; /** «📤 ارفع صورة جاهزة» on a sheet's card: it becomes the item's picture as it is, now */ use?: boolean }
   | { action: "use_series_cast"; sheetId: string; castId: string }
   | { action: "use_brand"; sheetId: string; assetId: string };
 
@@ -23,6 +23,10 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
   const body = (await req.json().catch(() => ({}))) as Body;
   if (body.action === "upload_url") return NextResponse.json(await sheetUploadUrl(project, body.sheetId, body.mime));
   if (body.action === "upload_confirm") {
+    if (body.use) {
+      const assetId = await confirmSheetUpload(project, body.sheetId, body.path, "as_is", true);
+      return NextResponse.json(await sheetAction(project, user, { action: "use_own_picture", sheetId: body.sheetId, assetId }));
+    }
     await confirmSheetUpload(project, body.sheetId, body.path, body.mode);
     return NextResponse.json({ ok: true });
   }
