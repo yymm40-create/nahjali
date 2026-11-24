@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import QuickReplies from "@/components/jawad/QuickReplies";
 import { Answer, Gallery, Questions, SlidesBox, splitAnswer, stagesOf } from "@/components/jawad/content/ContentChat";
 import { libraryOf } from "@/components/jawad/content/ContentLibrary";
-import CarouselTable from "@/components/jawad/content/CarouselTable";
+import CarouselTable, { tableFor } from "@/components/jawad/content/CarouselTable";
 
 // What the page draws, server-rendered (no browser here): the buttons, the swatches, the galleries, the carousel while
 // it is being drawn and after.
@@ -81,6 +81,11 @@ describe("the table of carousel styles", () => {
     const html = renderToStaticMarkup(h(CarouselTable, { ...props, recommended: ["editorial", "nope"] }));
     expect(html).toContain("ترشيحات محمد باقر لك");
     expect(html.indexOf("7. الإديتوريال")).toBeLessThan(html.indexOf("1. الدفتر"));
+  });
+  it("a niche shows only its own styles, without his recommendations on top", () => {
+    const recs = rows.slice(0, 1);
+    expect(tableFor("الكل", niches, recs)).toEqual({ picks: recs, shown: niches });
+    expect(tableFor(niches[1], niches, recs)).toEqual({ picks: [], shown: [niches[1]] });
   });
   it("opens by itself when it is asked, in place of a button to find", () => {
     const gal = { templates: [], styles: [], carousels: rows, niches };

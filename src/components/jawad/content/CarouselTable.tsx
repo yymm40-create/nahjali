@@ -3,7 +3,7 @@
 // «صانع المحتوى» — جدول ستايلات الكاروسيل: the 104 looks a person picks from, by niche, each with its two sample slides, what it
 // is and what it suits. Instead of questions about colours and margins. Two ways out: help me choose, or something else.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export interface CarouselItem {
   id: string;
@@ -19,6 +19,12 @@ export interface CarouselItem {
 }
 
 const ALL = "الكل";
+
+/** What the table shows for the chosen niche: his recommendations only under «الكل» (on top of a niche they hid it, and the table looked
+ *  unchanged), and the niches to list. */
+export function tableFor(niche: string, niches: string[], picks: CarouselItem[]): { picks: CarouselItem[]; shown: string[] } {
+  return { picks: niche === ALL ? picks : [], shown: niches.filter((n) => niche === ALL || n === niche) };
+}
 
 function Row({ s, onPick, onOpen }: { s: CarouselItem; onPick: (s: CarouselItem) => void; onOpen: (s: CarouselItem) => void }) {
   return (
@@ -47,8 +53,13 @@ export default function CarouselTable({ items, niches, recommended = [], disable
   const [niche, setNiche] = useState(ALL);
   const [view, setView] = useState<CarouselItem | null>(null);
   const [own, setOwn] = useState<string | null>(null);
-  const picks = recommended.map((id) => items.find((s) => s.id === id)).filter((s): s is CarouselItem => !!s);
-  const shown = niches.filter((n) => niche === ALL || n === niche);
+  const scroller = useRef<HTMLDivElement>(null);
+  const recs = recommended.map((id) => items.find((s) => s.id === id)).filter((s): s is CarouselItem => !!s);
+  const { picks, shown } = tableFor(niche, niches, recs);
+  const choose = (n: string) => {
+    setNiche(n);
+    scroller.current?.scrollTo({ top: 0 });
+  };
 
   useEffect(() => {
     if (!view) return;
@@ -77,12 +88,12 @@ export default function CarouselTable({ items, niches, recommended = [], disable
       )}
       <div className="ct-ctable-chips" role="group" aria-label="صنّف حسب المجال">
         {[ALL, ...niches].map((n) => (
-          <button key={n} type="button" className="ct-opt" aria-pressed={niche === n} onClick={() => setNiche(n)}>
+          <button key={n} type="button" className="ct-opt" aria-pressed={niche === n} onClick={() => choose(n)}>
             {n} <small>{n === ALL ? items.length : items.filter((s) => s.niche === n).length}</small>
           </button>
         ))}
       </div>
-      <div className="ct-ctable-scroll">
+      <div className="ct-ctable-scroll" ref={scroller}>
         <table>
           <thead>
             <tr><th>الغلاف والشريحة</th><th>الستايل</th><th><span className="sr">اختيار</span></th></tr>
