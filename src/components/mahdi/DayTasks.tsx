@@ -3,7 +3,8 @@
 // «مهام اليوم» on the home screen: things to do today (not habits, not a fixed schedule) — or on a later day, kept in
 // «المهام القادمة» until their day comes (a member's report, 24 November 2026). A plain checklist, or
 // tasks at a time (reminded by a notification then, and an hour later if still open). A task can count for one of the
-// user's habits: ticking it fills that habit for the day.
+// user's habits: ticking it fills that habit for the day. Any task, today's or a later one, can be edited: its title,
+// its day (today or later, up to a year ahead) and its time (a member's report, 25 November 2026).
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -12,10 +13,12 @@ import { fmtDate, t, weekdayName } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { deviceState, enablePush, type Device } from "@/lib/mahdi/client/push";
 import { habitStatus } from "@/lib/mahdi/client/derive";
+import { editTouchesUpcoming, lastTaskDay, taskEditBody, type TaskDraft } from "@/lib/mahdi/tasks";
 import type { DayTask } from "@/lib/mahdi/types";
 import AlertBell from "./AlertBell";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
+import Sheet from "./Sheet";
 
 const byTime = (a: DayTask, b: DayTask) => (a.at && b.at ? a.at.localeCompare(b.at) : a.at ? -1 : b.at ? 1 : a.sortOrder - b.sortOrder);
 /** Minutes since the day began (6:00), so 01:00 is later than 23:00. */
@@ -41,6 +44,8 @@ export default function DayTasks() {
   const [later, setLater] = useState(false);
   const [day, setDay] = useState("");
   const [upcoming, setUpcoming] = useState<DayTask[]>([]);
+  // the task being edited (today's or an upcoming one)
+  const [editing, setEditing] = useState<DayTask | null>(null);
   useEffect(() => {
     let live = true;
     mahdiFetch<{ upcoming: DayTask[] }>("/api/mahdi/tasks?upcoming=1")
@@ -148,6 +153,25 @@ export default function DayTasks() {
   };
   const upcomingDays = [...new Set(upcoming.map((x) => x.date))];
 
+  /** Saves an edit; both lists come back right (a task moved to today shows in today's list, one moved later in
+   *  «المهام القادمة»). Throws so the form stays open on a failure. */
+  const saveEdit = async (task: DayTask, draft: TaskDraft) => {
+    const body = taskEditBody(task, draft);
+    if (!body) return setEditing(null);
+    if (body.at && (device === "off" || device === "on")) void enablePush().then(setDevice, () => {});
+    const r = await mahdiFetch<{ tasks: DayTask[]; upcoming?: DayTask[] }>("/api/mahdi/tasks", { method: "PATCH", json: body });
+    save(r.tasks);
+    if (r.upcoming) setUpcoming(r.upcoming);
+    else if (editTouchesUpcoming(task, body, today))
+      void mahdiFetch<{ upcoming: DayTask[] }>("/api/mahdi/tasks?upcoming=1")
+        .then((u) => setUpcoming(u.upcoming ?? []))
+        .catch(() => {});
+    const date = typeof body.date === "string" ? body.date : null;
+    if (date && date > today) toast(t.tasks.savedFor(`${weekdayName(date)} ${fmtDate(date)}`));
+    else if (date) toast(t.tasks.movedToday);
+    setEditing(null);
+  };
+
   const doneCount = tasks.filter((x) => x.doneAt).length;
   const now = dayMin(nowHHMM());
   const hasTimed = tasks.some((x) => x.at && !x.doneAt);
@@ -201,6 +225,9 @@ export default function DayTasks() {
                   )}
                 </span>
                 {!task.doneAt && <AlertBell name={task.title} time={task.at} hint={t.alert.taskHint} onSave={(at) => call("PATCH", { id: task.id, at })} />}
+                <button type="button" className="m-icon-btn m-btn-ghost" aria-label={`${t.tasks.editTask}: ${task.title}`} onClick={() => setEditing(task)}>
+                  <Icon name="edit" size={16} />
+                </button>
                 <button type="button" className="m-icon-btn m-btn-ghost" aria-label={t.tasks.remove} onClick={() => void remove(task)}>
                   <Icon name="trash" size={16} />
                 </button>
@@ -309,6 +336,9 @@ export default function DayTasks() {
                         <span className="block truncate text-sm">{task.title}</span>
                         {task.at && <span className="m-num block text-xs m-muted">🕒 {task.at}</span>}
                       </span>
+                      <button type="button" className="m-icon-btn m-btn-ghost" aria-label={`${t.tasks.editTask}: ${task.title}`} onClick={() => setEditing(task)}>
+                        <Icon name="edit" size={16} />
+                      </button>
                       <button type="button" className="m-icon-btn m-btn-ghost" aria-label={t.tasks.remove} onClick={() => void removeUpcoming(task)}>
                         <Icon name="trash" size={16} />
                       </button>
@@ -319,6 +349,89 @@ export default function DayTasks() {
           ))}
         </div>
       )}
+
+      <Sheet open={editing !== null} onClose={() => setEditing(null)} title={t.tasks.editTask}>
+        {editing && <TaskEdit key={editing.id} task={editing} today={today} onCancel={() => setEditing(null)} onSave={(draft) => saveEdit(editing, draft)} onFail={fail} />}
+      </Sheet>
     </section>
+  );
+}
+
+/** The edit form: the title, the day (today, or a later day up to a year ahead) and the time (or none). */
+function TaskEdit({ task, today, onSave, onCancel, onFail }: { task: DayTask; today: string; onSave: (d: TaskDraft) => Promise<void>; onCancel: () => void; onFail: (e: unknown) => void }) {
+  const [title, setTitle] = useState(task.title);
+  const [later, setLater] = useState(task.date > today);
+  const [day, setDay] = useState(task.date > today ? task.date : addDays(today, 1));
+  const [timed, setTimed] = useState(Boolean(task.at));
+  const [at, setAt] = useState(task.at ?? "");
+  const [busy, setBusy] = useState(false);
+  const dayOk = !later || (day > today && day <= lastTaskDay(today));
+  const ok = Boolean(title.trim()) && dayOk && (!timed || Boolean(at));
+
+  const submit = async () => {
+    if (!ok || busy) return;
+    setBusy(true);
+    try {
+      await onSave({ title, date: later ? day : today, at: timed ? at : null });
+    } catch (e) {
+      onFail(e);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
+      <label className="block space-y-1">
+        <span className="text-sm m-muted">{t.tasks.taskName}</span>
+        <input className="m-field" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} placeholder={t.tasks.placeholder} />
+      </label>
+      <div className="space-y-1">
+        <p className="text-sm m-muted">{t.tasks.taskDay}</p>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <button type="button" className={`m-option min-h-9 px-3 text-sm ${!later ? "font-semibold" : ""}`} aria-pressed={!later} onClick={() => setLater(false)}>
+            {t.tasks.today}
+          </button>
+          <button type="button" className={`m-option min-h-9 px-3 text-sm ${later ? "font-semibold" : ""}`} aria-pressed={later} onClick={() => setLater(true)}>
+            📅 {t.tasks.otherDay}
+          </button>
+          {later && <input type="date" className="m-field m-num !w-auto !py-1.5" min={addDays(today, 1)} max={lastTaskDay(today)} value={day} onChange={(e) => setDay(e.target.value)} aria-label={t.tasks.pickDay} />}
+        </div>
+      </div>
+      <div className="space-y-1">
+        <p className="text-sm m-muted">{t.tasks.taskTime}</p>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <button type="button" className={`m-option min-h-9 px-3 text-sm ${!timed ? "font-semibold" : ""}`} aria-pressed={!timed} onClick={() => setTimed(false)}>
+            {t.tasks.noTime}
+          </button>
+          <button
+            type="button"
+            className={`m-option min-h-9 px-3 text-sm ${timed ? "font-semibold" : ""}`}
+            aria-pressed={timed}
+            onClick={() => {
+              setTimed(true);
+              if (!at) setAt(nowHHMM());
+            }}
+          >
+            🕒 {t.tasks.atTime}
+          </button>
+          {timed && <input type="time" className="m-field m-num !w-auto !py-1.5" dir="ltr" value={at} onChange={(e) => setAt(e.target.value)} aria-label={t.tasks.atTime} />}
+        </div>
+        {timed && <p className="m-hint">{t.tasks.remindHint}</p>}
+      </div>
+      <div className="flex gap-2">
+        <button type="submit" className="m-btn m-btn-primary flex-1" disabled={!ok || busy}>
+          {t.tasks.save}
+        </button>
+        <button type="button" className="m-btn m-btn-ghost" disabled={busy} onClick={onCancel}>
+          {t.tasks.cancel}
+        </button>
+      </div>
+    </form>
   );
 }
