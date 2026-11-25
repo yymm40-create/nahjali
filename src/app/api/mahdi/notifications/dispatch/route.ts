@@ -16,19 +16,23 @@ export async function POST(req: Request) {
   if (!pushConfigured()) return NextResponse.json({ error: "VAPID keys are not set" }, { status: 503 });
   try {
     const db = createAdminClient();
-    // `?only=minute` (every minute, SQL 0127): only what is marked once sent, so it goes out on its minute and never twice
+    // `?only=minute` (every minute, SQL 0127): every reminder at a time the person chose — tasks, planner events, habit
+    // alerts and the habit reminders — on its own minute (the owner, 25 November 2026: «لاتحط قانون ربع الساعة»). Each
+    // is marked once sent (notified, reminded_on, reminder_sent_at, last_sent_at), so a minute's run never sends one twice.
     if (new URL(req.url).searchParams.get("only") === "minute") {
       const tasks = await dispatchTaskReminders(db).catch((e) => (console.error("[mahdi minute tasks]", e), null));
       const plan = await dispatchPlanAlerts(db).catch((e) => (console.error("[mahdi minute plan]", e), null));
-      return NextResponse.json({ tasks, plan });
+      const habitAlerts = await dispatchHabitAlerts(db, new Date(), { needSentColumn: true }).catch((e) => (console.error("[mahdi minute habit alerts]", e), null));
+      const habits = await dispatchReminders(db).catch((e) => (console.error("[mahdi minute habits]", e), null));
+      return NextResponse.json({ tasks, plan, habitAlerts, habits });
     }
-    const habits = await dispatchReminders(db);
-    // once SQL 0127 is in, the timed tasks and planner alerts go every minute: not here too (both jobs start on :00, :15…)
+    // once SQL 0127 is in, everything at a chosen time goes every minute (above): not here too (both start on :00, :15…)
     const minuteJob = !(await db.rpc("mahdi_cron_ok", { p_token: "" })).error;
+    const habits = minuteJob ? { checked: 0, sent: 0 } : await dispatchReminders(db);
     // «مهام اليوم» at their times (never stops the habit reminders above)
     const tasks = minuteJob ? null : await dispatchTaskReminders(db).catch((e) => (console.error("[mahdi dispatch tasks]", e), null));
     // «اجعله تنبيهًا» on habits and planner events (each on its own, never stopping the others)
-    const habitAlerts = await dispatchHabitAlerts(db).catch((e) => (console.error("[mahdi dispatch habit alerts]", e), null));
+    const habitAlerts = minuteJob ? null : await dispatchHabitAlerts(db).catch((e) => (console.error("[mahdi dispatch habit alerts]", e), null));
     const plan = minuteJob ? null : await dispatchPlanAlerts(db).catch((e) => (console.error("[mahdi dispatch plan alerts]", e), null));
     // «تنبيهات تجيبك للتطبيق» (the morning verse, the review notes, the streak, the comeback): never stops what is above
     const engage = await dispatchEngagement(db).catch((e) => (console.error("[mahdi dispatch engage]", e), null));
