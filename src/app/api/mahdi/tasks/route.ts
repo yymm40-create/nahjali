@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDays, diffDays, isISODate, todayFor } from "@/lib/mahdi/engine";
+import { lastTaskDay, taskDay } from "@/lib/mahdi/tasks";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError, UUID_RE } from "@/lib/mahdi/server/api";
 import { loadPriorities, loadTasks, loadUpcoming, PRIORITY_TITLE_PREFIX, priorityColumnMissing } from "@/lib/mahdi/server/snapshot";
@@ -35,15 +36,14 @@ function fail(error: { code?: string } | null) {
 
 /** The longest stretch of past priorities asked at once (a month report and a bit). */
 const MAX_RANGE_DAYS = 93;
-/** How far ahead a task can be set (a member's report, 24 November 2026: a task could only be for today). */
-const AHEAD_DAYS = 365;
-/** The day a new task is for: today, or a later day up to a year ahead. */
+/** The day a task is for: today, or a later day up to a year ahead (a member's report, 24 November 2026: a task could
+ *  only be for today). */
 function dayOf(v: unknown, today: string) {
-  if (v === null || v === undefined || v === "") return today;
-  if (!isISODate(v) || v < today || diffDays(v, today) > AHEAD_DAYS) throw new UserError(t.tasks.badDate, 400);
-  return v;
+  const day = taskDay(v, today);
+  if (!day) throw new UserError(t.tasks.badDate, 400);
+  return day;
 }
-const upcoming = (supabase: SupabaseClient, today: string) => loadUpcoming(supabase, addDays(today, 1), addDays(today, AHEAD_DAYS)).catch(() => []);
+const upcoming = (supabase: SupabaseClient, today: string) => loadUpcoming(supabase, addDays(today, 1), lastTaskDay(today)).catch(() => []);
 
 /**
  * «مهام اليوم»: today's tasks. With `?priorities=1&from=YYYY-MM-DD&to=YYYY-MM-DD`: the «أولويات اليوم» of those days
@@ -93,11 +93,15 @@ export const POST = mahdiRoute(async (req: Request) => {
   return NextResponse.json({ tasks: await loadTasks(supabase, today), ...(day !== today ? { upcoming: await upcoming(supabase, today) } : {}) });
 });
 
-/** Ticks / unticks or edits a task: `{ id, done?, title?, at?, habitId? }`. A new time is reminded again. */
+/** Ticks / unticks or edits a task: `{ id, done?, title?, at?, habitId?, date? }`. `date` moves a task (not a priority)
+ *  to today or a later day up to a year ahead (a member's report, 25 November 2026: upcoming tasks couldn't be edited).
+ *  A new time or day is reminded again. Returns today's tasks, and «المهام القادمة» too when the task was or is now on a
+ *  later day. */
 export const PATCH = mahdiRoute(async (req: Request) => {
   const { supabase, profile } = await requireProfile(req);
   const body = await readJson(req);
   const id = requireId(body.id);
+  const today = todayFor(profile);
   const patch: Record<string, unknown> = {};
   if (typeof body.done === "boolean") patch.done_at = body.done ? new Date().toISOString() : null;
   if ("title" in body) patch.title = title(body.title);
@@ -106,10 +110,34 @@ export const PATCH = mahdiRoute(async (req: Request) => {
     patch.notified = 0;
   }
   if ("habitId" in body) patch.habit_id = await habitOf(supabase, body.habitId);
+  // the task as it is: its day (for the date move and the lists sent back) and whether it is a priority
+  const read = (cols: string) => supabase.from("mahdi_day_tasks").select(cols).eq("id", id).limit(1);
+  let { data: rows, error: e0 } = await read("id,task_date,title,priority");
+  if (priorityColumnMissing(e0)) ({ data: rows, error: e0 } = await read("id,task_date,title"));
+  fail(e0);
+  const row = (rows as unknown as { task_date: string; title: string; priority?: boolean }[] | null)?.[0];
+  if (!row) throw new UserError(t.errors.notFound, 404);
+  // a priority kept with the title marker (before migration 0058) keeps it when renamed
+  const marked = row.title.startsWith(PRIORITY_TITLE_PREFIX);
+  if (marked && typeof patch.title === "string") patch.title = `${PRIORITY_TITLE_PREFIX}${patch.title}`;
+  let moved: string | null = null;
+  if ("date" in body && body.date !== row.task_date) {
+    const day = dayOf(body.date, today);
+    if (row.priority || marked) throw new UserError(t.errors.invalid, 400);
+    if (day !== row.task_date) {
+      const { count, error: e1 } = await supabase.from("mahdi_day_tasks").select("id", { count: "exact", head: true }).eq("task_date", day);
+      fail(e1);
+      if ((count ?? 0) >= MAX_PER_DAY) throw new UserError(t.tasks.tooMany(MAX_PER_DAY), 429);
+      Object.assign(patch, { task_date: day, sort_order: count ?? 0, notified: 0, done_at: null });
+      moved = day;
+    }
+  }
+  if (!Object.keys(patch).length) throw new UserError(t.errors.invalid, 400);
   const { data, error } = await supabase.from("mahdi_day_tasks").update(patch).eq("id", id).select("id");
   fail(error);
   if (!data?.length) throw new UserError(t.errors.notFound, 404);
-  return NextResponse.json({ tasks: await loadTasks(supabase, todayFor(profile)) });
+  const later = row.task_date > today || (moved !== null && moved > today);
+  return NextResponse.json({ tasks: await loadTasks(supabase, today), ...(later ? { upcoming: await upcoming(supabase, today) } : {}) });
 });
 
 /** Removes a task: `{ id }`. */

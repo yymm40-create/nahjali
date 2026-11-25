@@ -9,6 +9,7 @@ import { addDays, todayFor, todayIn } from "../engine";
 import { clocksOf } from "./clock";
 import { avatarUrl } from "./rows";
 import { cleanPerms, type Seat } from "../groups/program";
+import { cleanVisibility, visibilityMissing, workFor, type GroupVisibility, type WorkView } from "../groups/privacy";
 import { programMissing } from "./group-program";
 
 /** The cookie that carries a group's join token while the visitor signs up or in (a week at most). */
@@ -52,15 +53,21 @@ export async function listMyGroups(db: SupabaseClient, me: string) {
   if (error) throw error;
   const ids = (rows ?? []).map((r) => r.group_id as string);
   if (!ids.length) return { groups: [], invites: [] };
-  const [{ data: groups }, { data: members }] = await Promise.all([
-    db.from("mahdi_groups").select("id, name, leader_id, created_at").in("id", ids),
+  const readGroups = (cols: string) => db.from("mahdi_groups").select(cols).in("id", ids);
+  const [first, { data: members }] = await Promise.all([
+    readGroups("id, name, leader_id, created_at, progress_visibility"),
     db.from("mahdi_group_members").select("group_id, status").in("group_id", ids),
   ]);
+  // before SQL 0129 every group is open
+  const groups = (visibilityMissing(first.error) ? (await readGroups("id, name, leader_id, created_at")).data : first.data) as
+    | { id: string; name: string; leader_id: string; progress_visibility?: string }[]
+    | null;
   const people = await peopleInfo(db, [...(groups ?? []).map((g) => g.leader_id), ...(rows ?? []).map((r) => r.invited_by).filter(Boolean)]);
-  const view = (g: { id: string; name: string; leader_id: string }) => ({
+  const view = (g: { id: string; name: string; leader_id: string; progress_visibility?: string }) => ({
     id: g.id,
     name: g.name,
     isLeader: g.leader_id === me,
+    visibility: cleanVisibility(g.progress_visibility),
     leaderName: people.get(g.leader_id)?.displayName ?? "",
     members: (members ?? []).filter((m) => m.group_id === g.id && m.status === "active").length,
   });
@@ -80,7 +87,11 @@ export async function listMyGroups(db: SupabaseClient, me: string) {
  */
 export async function requireGroup(db: SupabaseClient, groupId: string, me: string, allowInvited = false) {
   const read = (cols: string) => db.from("mahdi_group_members").select(cols).eq("group_id", groupId).eq("user_id", me).maybeSingle();
-  const [{ data: group }, first] = await Promise.all([db.from("mahdi_groups").select("id, name, leader_id").eq("id", groupId).maybeSingle(), read("status, role, perms, appointed_by")]);
+  const readGroup = (cols: string) => db.from("mahdi_groups").select(cols).eq("id", groupId).maybeSingle();
+  const [g1, first] = await Promise.all([readGroup("id, name, leader_id, progress_visibility"), read("status, role, perms, appointed_by")]);
+  // before migration 0129 there is no privacy choice: everyone sees, as before
+  const visibilityReady = !visibilityMissing(g1.error);
+  const group = (visibilityReady ? g1.data : (await readGroup("id, name, leader_id")).data) as { id: string; name: string; leader_id: string; progress_visibility?: string } | null;
   // before migration 0083 there are no admins: only the status
   const member = (programMissing(first.error) ? (await read("status")).data : first.data) as { status: MemberRow["status"]; role?: string; perms?: unknown; appointed_by?: string | null } | null;
   if (!group || !member || (member.status !== "active" && !allowInvited)) throw new UserError(t.groups.notMember, 404);
@@ -90,7 +101,14 @@ export async function requireGroup(db: SupabaseClient, groupId: string, me: stri
     perms: group.leader_id === me ? [] : cleanPerms(member.perms),
     appointedBy: member.appointed_by ?? null,
   };
-  return { group: group as { id: string; name: string; leader_id: string }, status: member.status, seat };
+  const visibility: GroupVisibility = visibilityReady ? cleanVisibility(group.progress_visibility) : "all";
+  return { group: { id: group.id, name: group.name, leader_id: group.leader_id }, status: member.status, seat, visibility, visibilityReady };
+}
+
+/** Whether migration 0129 (the group's privacy choice) is in the database. */
+export async function visibilityReadyIn(db: SupabaseClient) {
+  const { error } = await db.from("mahdi_groups").select("progress_visibility").limit(1);
+  return !visibilityMissing(error);
 }
 
 /** How many groups I am in or invited to. */
@@ -111,14 +129,18 @@ export async function groupMembers(db: SupabaseClient, groupId: string, leaderId
   }));
 }
 
-/** Active shared work and this cycle's completion. A shared definition means leader edits never drift between members. */
+/**
+ * Active shared work and this cycle's completion. A shared definition means leader edits never drift between members.
+ * `view.full`: the viewer sees how many did each work (an open group, or a leader); `view.names`: and who did it.
+ */
 export async function groupWorks(
   db: SupabaseClient,
   groupId: string,
   activeMemberIds: string[],
   today: string,
   me: string,
-) {
+  view: { full: boolean; names: boolean; nameOf: (id: string) => string } = { full: true, names: false, nameOf: () => "" },
+): Promise<WorkView[] | null> {
   const { data: rows, error } = await db
     .from("mahdi_group_works")
     .select("id, title, details, cadence, due_date, created_at")
@@ -136,20 +158,16 @@ export async function groupWorks(
     .in("work_id", rows.map((work) => work.id))
     .in("work_date", dates);
   if (logsError) throw logsError;
-  const active = new Set(activeMemberIds);
   return rows.map((work) => {
     const workDate = work.cadence === "daily" ? today : work.due_date as string;
-    const doneBy = new Set((logs ?? []).filter((log) => log.work_id === work.id && log.work_date === workDate && active.has(log.user_id)).map((log) => log.user_id));
-    return {
-      id: work.id as string,
-      title: work.title as string,
-      details: work.details as string,
-      cadence: work.cadence as "daily" | "once",
-      dueDate: work.due_date as string | null,
-      mineDone: doneBy.has(me),
-      doneCount: doneBy.size,
-      memberCount: activeMemberIds.length,
-    };
+    const doneBy = [...new Set((logs ?? []).filter((log) => log.work_id === work.id && log.work_date === workDate).map((log) => log.user_id as string))];
+    return workFor(
+      { id: work.id as string, title: work.title as string, details: work.details as string, cadence: work.cadence as "daily" | "once", dueDate: work.due_date as string | null },
+      doneBy,
+      activeMemberIds,
+      me,
+      view,
+    );
   });
 }
 

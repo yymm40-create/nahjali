@@ -8,6 +8,7 @@ import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
 import UsernameForm from "./UsernameForm";
+import VisibilityChoice from "./groups/VisibilityChoice";
 
 interface GroupItem {
   id: string;
@@ -16,22 +17,26 @@ interface GroupItem {
   leaderName: string;
   members: number;
   invitedBy?: string;
+  visibility?: "all" | "leaders";
 }
+type Visibility = "all" | "leaders";
 
 /** «إخوة الولاية»: my groups, invitations waiting for me, and creating a group. */
 export default function GroupsHome() {
   const router = useRouter();
   const { state, toast } = useMahdi();
-  const [data, setData] = useState<{ groups: GroupItem[]; invites: GroupItem[] } | null>(null);
+  const [data, setData] = useState<{ groups: GroupItem[]; invites: GroupItem[]; privacyReady?: boolean } | null>(null);
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
   const [name, setName] = useState("");
+  // who sees each member's progress in the new group (everyone, as before, unless the leader picks otherwise)
+  const [visibility, setVisibility] = useState<Visibility>("all");
   const [busy, setBusy] = useState(false);
   const hasUsername = Boolean(state.snap.username);
 
   useEffect(() => {
     let live = true;
-    mahdiFetch<{ groups: GroupItem[]; invites: GroupItem[] }>("/api/mahdi/groups")
+    mahdiFetch<{ groups: GroupItem[]; invites: GroupItem[]; privacyReady?: boolean }>("/api/mahdi/groups")
       .then((d) => live && (setData(d), setError("")))
       .catch((e: Error) => live && setError(e.message));
     return () => {
@@ -56,8 +61,9 @@ export default function GroupsHome() {
     e.preventDefault();
     setBusy(true);
     try {
-      const { id } = await mahdiFetch<{ id: string }>("/api/mahdi/groups", { method: "POST", json: { name: name.trim() } });
-      toast(t.groups.created);
+      const privacyReady = Boolean(data?.privacyReady);
+      const { id, privacyKept } = await mahdiFetch<{ id: string; privacyKept?: boolean }>("/api/mahdi/groups", { method: "POST", json: { name: name.trim(), visibility: privacyReady ? visibility : "all" } });
+      toast(privacyKept === false ? t.groups.privacy.notKept : t.groups.created);
       router.push(`/mahdi/groups/${id}`);
     } catch (err) {
       toast((err as Error).message);
@@ -90,7 +96,10 @@ export default function GroupsHome() {
             {data.invites.map((g) => (
               <li key={g.id} className="m-card flex flex-wrap items-center gap-3 p-4">
                 <span className="min-w-0 flex-1">
-                  <span className="block font-semibold">{g.name}</span>
+                  <span className="block font-semibold">
+                    {g.name}
+                    {g.visibility === "leaders" && <span className="m-chip ms-2 text-xs">{t.groups.privacy.chip}</span>}
+                  </span>
                   <span className="block text-sm m-muted">{t.groups.invitedBy(g.invitedBy ?? g.leaderName)}</span>
                 </span>
                 <button type="button" className="m-btn m-btn-primary m-btn-sm" disabled={busy} onClick={() => respond(g.id, "accept")}>{t.groups.accept}</button>
@@ -113,7 +122,10 @@ export default function GroupsHome() {
                   <Link href={`/mahdi/groups/${g.id}`} className="m-card flex items-center gap-3 p-4">
                     <Icon name="users" className="m-gold" />
                     <span className="min-w-0 flex-1">
-                      <span className="block font-semibold">{g.name}</span>
+                      <span className="block font-semibold">
+                        {g.name}
+                        {g.visibility === "leaders" && <span className="m-chip ms-2 text-xs">{t.groups.privacy.chip}</span>}
+                      </span>
                       <span className="m-num block text-sm m-muted">
                         {t.groups.members(g.members)} · {g.isLeader ? t.groups.leader : `${t.groups.leader}: ${g.leaderName}`}
                       </span>
@@ -133,6 +145,7 @@ export default function GroupsHome() {
             <span className="m-label">{t.groups.create}</span>
             <input className="m-field" required maxLength={40} value={name} onChange={(e) => setName(e.target.value)} placeholder={t.groups.namePlaceholder} aria-label={t.groups.name} />
           </label>
+          <VisibilityChoice value={visibility} onChange={setVisibility} disabled={!data.privacyReady} />
           <button className="m-btn m-btn-primary w-full" disabled={busy || !name.trim()}>
             <Icon name="plus" size={18} /> {t.groups.create}
           </button>
