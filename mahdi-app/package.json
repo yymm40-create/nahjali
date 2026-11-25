@@ -1,0 +1,21 @@
+{
+  "name": "lajl-almahdi-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "«لأجل المهدي»: تطبيق الجوال (أندرويد ثم آيفون) — يفتح /mahdi وحده، ويحجز التنبيهات في الجوال نفسه",
+  "scripts": {
+    "sync": "cap sync",
+    "assets": "capacitor-assets generate --android --iconBackgroundColor '#ffffff' --iconBackgroundColorDark '#ffffff' --splashBackgroundColor '#ffffff' --splashBackgroundColorDark '#ffffff'"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.2",
+    "@capacitor/core": "8.6.2",
+    "@capacitor/local-notifications": "8.3.1",
+    "@capacitor/splash-screen": "8.0.2",
+    "@capacitor/status-bar": "8.0.4"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "3.0.5",
+    "@capacitor/cli": "8.6.2"
+  }
+}

@@ -15,6 +15,7 @@ const eslintConfig = defineConfig([
     // the desktop program (its own package, plain Node)
     "desktop/**",
     "mobile/**",
+    "mahdi-app/**",
     // the owner's installed skills (vendor code, kept verbatim — never "fixed" to pass our lint)
     "config/editor/skills/higgsfield-motion/**",
     "config/editor/skills/higgsfield-motion-saas/**",
