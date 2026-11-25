@@ -7,34 +7,44 @@ import { mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/li
 import { groupCount, groupMembers, groupRanking, groupWorks, MAX_GROUPS, MAX_GROUP_WORKS, MAX_MEMBERS, requireGroup } from "@/lib/mahdi/server/groups";
 import { archiveProject, deleteHabit, deleteProject, loadProgram, saveHabit, saveProject, seatsOf } from "@/lib/mahdi/server/group-program";
 import { can, cleanPerms, grantable, isAbove, type GroupPerm, type Seat } from "@/lib/mahdi/groups/program";
+import { GROUP_VISIBILITIES, rankingFor, seesEveryone, visibilityMissing } from "@/lib/mahdi/groups/privacy";
 import { releaseReader } from "@/lib/mahdi/server/khatma";
 import { cleanText, oneOf, parseDate, requireName } from "@/lib/mahdi/server/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-/** The group (members only): my seat, members (with their admin seats), the program, and the private ranking `?period=week|month&metric=score|reading`. */
+/**
+ * The group (members only): my seat, members (with their admin seats), the program, and the private ranking
+ * `?period=week|month&metric=score|reading`. In a group set to «إنجاز كل عضو يشوفه هو والمشرف بس» (SQL 0129) a member
+ * gets only their own row of the ranking and their own tick of each shared work; the leader and the admins holding
+ * «الإحصائيات» get everyone's. Trimmed here, so nothing of the others ever reaches a member's device.
+ */
 export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const { user, profile } = await requireProfile(req);
   const id = requireId((await params).id);
   const db = createAdminClient();
-  const { group, seat } = await requireGroup(db, id, user.id);
+  const { group, seat, visibility, visibilityReady } = await requireGroup(db, id, user.id);
+  const full = seesEveryone(seat, visibility);
   const q = new URL(req.url).searchParams;
   const period = q.get("period") === "month" ? "month" : "week";
   const metric = q.get("metric") === "reading" ? "reading" : "score";
   const members = await groupMembers(db, id, group.leader_id);
   const activeIds = members.filter((member) => member.status === "active").map((member) => member.userId);
+  const nameOf = new Map(members.map((m) => [m.userId, m.displayName]));
   const [ranking, works, { seats, ready: seatsReady }, program] = await Promise.all([
     groupRanking(db, members, period, metric, user.id),
-    groupWorks(db, id, activeIds, todayIn(profile.timeZone), user.id),
+    // who did each work: for those who see everyone's numbers (the leader, admins with «الإحصائيات»)
+    groupWorks(db, id, activeIds, todayIn(profile.timeZone), user.id, { full, names: can(seat, "stats"), nameOf: (uid) => nameOf.get(uid) ?? "" }),
     seatsOf(db, id, group.leader_id),
     loadProgram(db, id),
   ]);
   const seatOf = new Map(seats.map((x) => [x.userId, x]));
-  const nameOf = new Map(members.map((m) => [m.userId, m.displayName]));
   return NextResponse.json(
     {
       group: { id: group.id, name: group.name, isLeader: group.leader_id === user.id },
+      // who sees each member's progress; `ready` false until SQL 0129 runs (then everyone sees, as before)
+      privacy: { visibility, ready: visibilityReady, full, canChange: group.leader_id === user.id && visibilityReady },
       // my seat: what I may do here, and what I may hand on to an admin under me
       me: { role: seat.role, perms: seat.role === "leader" ? grantable(seat) : seat.perms, grantable: can(seat, "admins") ? grantable(seat) : [], seatsReady },
       // the people who asked to join through the link are for the eyes of those who manage members
@@ -60,7 +70,7 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
           };
         }),
       program: { ready: program.ready, projects: program.projects, habits: program.habits },
-      ranking,
+      ranking: rankingFor(ranking, full),
       works: works ?? [],
       worksReady: works !== null,
       today: todayIn(profile.timeZone),
@@ -79,7 +89,7 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
  *               { projectId, archived } · project_delete { projectId } · habit_save { habitId?, …the habit form } · habit_delete { habitId }
  *   with «المشرفون»: admin_set { username, perms } · admin_remove { username } (only those under them)
  *   with «الإعدادات»: rename { name }
- *   the leader alone: transfer { username } · delete
+ *   the leader alone: privacy { visibility: 'all' | 'leaders' } · transfer { username } · delete
  */
 export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const { user, profile } = await requireProfile(req);
@@ -289,6 +299,15 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
       // the new leader holds everything as leader; the old one stays on as an admin with every permission
       await db.from("mahdi_group_members").update({ role: "member", perms: [], appointed_by: null }).eq("group_id", id).eq("user_id", uid).then(() => null, () => null);
       await db.from("mahdi_group_members").update({ role: "admin", perms: grantable(seat), appointed_by: uid }).eq("group_id", id).eq("user_id", user.id).then(() => null, () => null);
+      return ok();
+    }
+    // who sees each member's progress: everyone (as before) or each one and the leaders only — the leader's choice
+    case "privacy": {
+      if (!isLeader) throw new UserError(t.groups.admins.notAllowed, 403);
+      const visibility = oneOf(body.visibility, GROUP_VISIBILITIES);
+      const { error } = await db.from("mahdi_groups").update({ progress_visibility: visibility }).eq("id", id);
+      if (visibilityMissing(error)) throw new UserError(t.groups.privacy.notReady, 503);
+      if (error) throw error;
       return ok();
     }
     case "rename": {
