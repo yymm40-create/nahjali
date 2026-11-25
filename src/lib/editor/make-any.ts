@@ -78,6 +78,10 @@ export interface MakePlan {
   refs?: { uploadId: string; role: RefRole }[];
   /** Seedance continuation: where the finished clip belongs. */
   extend?: { clipId: string; edge: "start" | "end" };
+  /** a style of the library (config/film-styles.ts) the picture or video is made in («من فكرة لمسودة») */
+  styleId?: string;
+  /** «هويتي»: the person's brand kit applied to the picture or video («من فكرة لمسودة») */
+  brand?: boolean;
 }
 
 const IMAGE_ASPECTS = ["1:1", "16:9", "9:16", "3:2", "2:3"];
@@ -121,11 +125,12 @@ export function speechWish(voice: string): { provider: "jawad" | "elevenlabs" | 
 }
 
 /** A voice for the words: one of the person's own by its name, else a ready voice whose description fits best. */
-async function pickVoice(who: Who, wanted: string): Promise<{ value: string; provider: string } | null> {
+async function pickVoice(who: Who, wanted: string, cache?: MakeCache): Promise<{ value: string; provider: string } | null> {
   const { provider, want } = speechWish(wanted);
   // OpenAI's voices are the generator's own (its default fits Arabic); nothing to pick from the library
   if (provider === "openai") return null;
-  const v = await listVoices(who.id, who.owner).catch(() => null);
+  const read = () => listVoices(who.id, who.owner).catch(() => null);
+  const v = await (cache ? (cache.voices ??= read()) : read());
   if (!v) return null;
   const w = want.trim().toLowerCase();
   const all = [...v.mine, ...v.ready].filter((x) => !provider || x.provider === provider);
@@ -160,8 +165,13 @@ export async function ownVoiceNames(userId: string) {
   return (data ?? []).map((r) => String(r.name));
 }
 
+/** What several requests priced together share (the voice library is read once). */
+export interface MakeCache {
+  voices?: Promise<Awaited<ReturnType<typeof listVoices>> | null>;
+}
+
 /** A request priced (or why it can't be made). */
-export async function planMake(who: Who & { email?: string | null }, s: MakeSpec, projectRatio: number): Promise<{ plan: MakePlan } | { error: string }> {
+export async function planMake(who: Who & { email?: string | null }, s: MakeSpec, projectRatio: number, cache?: MakeCache): Promise<{ plan: MakePlan } | { error: string }> {
   if (!MAKE_KINDS.includes(s.makeKind)) return { error: "نوع غير معروف." };
   if (!s.prompt.trim()) return { error: "ما وصل وصف اللي أصنعه." };
   if (!(await can(who.email, "editor_ai"))) return { error: "حيدرا ماكس (الذكاء الاصطناعي) مقفل لحسابك الحين." };
@@ -170,7 +180,7 @@ export async function planMake(who: Who & { email?: string | null }, s: MakeSpec
   // speech: the voice's own provider first (a library voice lives at one), else the provider asked for; then the
   // first generator that can take the request as it is (JAWAD's own engine speaks only with a voiceprint, so without
   // one the next generator takes it)
-  const voicePick = s.makeKind === "speech" ? await pickVoice(who, s.voice) : null;
+  const voicePick = s.makeKind === "speech" ? await pickVoice(who, s.voice, cache) : null;
   const asked = s.makeKind === "speech" ? speechWish(s.voice).provider : null;
   const first = voicePick ? SPEECH_GEN[voicePick.provider] : asked ? SPEECH_GEN[asked] : null;
   const order = first ? [first, ...CHOICES[s.makeKind].filter((id) => id !== first)] : CHOICES[s.makeKind];
@@ -294,7 +304,7 @@ export async function startMake(user: { id: string; email?: string | null }, own
   const took = series ? await takeAttempt(team!, series.user_id as string, user.id) : false;
   let r: Awaited<ReturnType<typeof createJob>>;
   try {
-    r = await createJob(user, owner, { idempotencyKey: b.key, sectionId: p.sectionId, generatorId: p.generatorId, refStyle, settings: p.settings, prompt: p.prompt, instructions: "", refs, expectedCoins: p.coins }, origin, { team, via: "editor" });
+    r = await createJob(user, owner, { idempotencyKey: b.key, sectionId: p.sectionId, generatorId: p.generatorId, refStyle, settings: p.settings, prompt: p.prompt, instructions: "", refs, expectedCoins: p.coins, ...(typeof p.styleId === "string" && p.styleId ? { styleId: p.styleId } : {}), ...(p.brand === true ? { brand: true } : {}) }, origin, { team, via: "editor" });
   } catch (e) {
     if (took) await giveAttempt(team!, user.id).catch(() => {});
     throw e;

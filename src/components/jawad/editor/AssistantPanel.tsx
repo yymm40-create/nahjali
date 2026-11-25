@@ -36,6 +36,7 @@ import { faceOnFrame, type FaceBox } from "@/lib/editor/talk-motion";
 import { faceIn } from "./face";
 import { reframeCandidates, reframeClips, reframeShape, stillThere } from "./reframe-run";
 import { askShorts } from "./shorts-ask";
+import { askDraft } from "./draft-ask";
 import { defaultSound, multicamCameras, planMulticam } from "./multicam-run";
 import { MULTICAM } from "@/lib/editor/multicam";
 import Icon from "../Icon";
@@ -733,6 +734,11 @@ function Conversation({
             if (!id) throw new Error("ما فيه فيديو فيه كلام أطلّع منه مقاطع؛ ارفع الفيديو الطويل أول.");
             askShorts({ tab: "shorts", assetId: id, ...(Number(q.seconds) > 0 ? { max: Number(q.seconds) } : {}) });
             setMsgs((m) => [...m, { role: "assistant", text: `فتحت «مقاطع قصيرة» على «${assets.get(id)?.name ?? "الفيديو"}» — السعر مكتوب على الزر، اضغطه وأطلّع لك أقوى اللحظات.` }]);
+          } else if (q.kind === "draft") {
+            // «من فكرة لمسودة»: its window opens with the idea — paid, so the route, the plan and the price are approved there
+            const shape = (["9:16", "16:9", "1:1", "4:5"] as const).find((r) => r === q.aspect);
+            askDraft({ idea: q.prompt, ...(Number(q.seconds) > 0 ? { seconds: Number(q.seconds) } : {}), ...(shape ? { ratio: shape } : {}), ...(q.lang === "en" || q.lang === "ar" ? { lang: q.lang } : {}) });
+            setMsgs((m) => [...m, { role: "assistant", text: "فتحت «من فكرة لمسودة» بفكرتك — اختر الصوت وطريقة الصورة (كل وحدة بسعرها)، وأكتب لك الخطة تعدّلها قبل ما يتصنع شي." }]);
           } else if (q.kind === "watch") {
             // «👁️»: he needs to see the clip whole — it is watched, and he is asked again with it, by itself
             watchNext.current = q.clipId === FILM || findClip(tlRef.current, q.clipId) ? q.clipId : null;

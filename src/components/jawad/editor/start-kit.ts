@@ -4,6 +4,7 @@
 import type { Timeline } from "@/lib/editor/model";
 import type { Template } from "@/lib/editor/templates";
 import type { EditorAsset } from "./types";
+import type { DraftAsk } from "./draft-ask";
 
 export type StartKit = {
   projectId: string;
@@ -13,6 +14,8 @@ export type StartKit = {
   pkg?: { timeline: Timeline; media: { oldId: string; file: File }[] };
   /** «قوالب المونتاج»: a template picked in the launcher — the editor opens with its slots to fill */
   template?: Template;
+  /** «من فكرة لمسودة» from the launcher: the editor opens on its window with the idea and the choices made there */
+  draft?: DraftAsk;
 };
 
 let kit: StartKit | null = null;
