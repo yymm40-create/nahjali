@@ -36,7 +36,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
                 kind={ticket.k}
                 refId={ticket.ref}
                 publishableKey={publishableKey()}
-                callbackUrl={`${origin}/api/checkout/return?k=${ticket.k}${ticket.k === "pay" && ticket.ref ? `&r=${encodeURIComponent(ticket.ref)}` : ""}`}
+                callbackUrl={`${origin}/api/checkout/return?k=${ticket.k}`}
                 back={ticket.back}
                 applePay={applePayOn()}
               />

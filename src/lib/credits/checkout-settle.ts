@@ -12,12 +12,11 @@ import { settleCreditFormPayment } from "./orders";
 const kindOf = (v: unknown): CheckoutKind | "" => (CHECKOUT_KINDS.includes(v as CheckoutKind) ? (v as CheckoutKind) : "");
 
 /** Settles the purchase behind this payment (once, however many times it runs) and says where the buyer goes. */
-export async function settleFormPayment(paymentId: string, hint = "", refHint = ""): Promise<{ kind: CheckoutKind | ""; paid: boolean; to: string }> {
+export async function settleFormPayment(paymentId: string, hint = ""): Promise<{ kind: CheckoutKind | ""; paid: boolean; to: string }> {
   const id = paymentId.trim().slice(0, 80);
   const fallback = kindOf(hint);
   const paths = { coursePath: COURSE.base, offerPath: OFFER10.path };
-  // `refHint` only picks the done page of a free-amount payment that cannot be read («ادعم التطبيق» → the app's own)
-  const unpaid = { kind: fallback, paid: false, to: landing(fallback, false, { ...paths, paymentId: fallback === "pay" ? id : undefined, ref: fallback === "pay" ? refHint : undefined }) };
+  const unpaid = { kind: fallback, paid: false, to: landing(fallback, false, { ...paths, paymentId: fallback === "pay" ? id : undefined }) };
   if (!moyasarEnabled() || !/^[0-9a-f-]{36}$/i.test(id)) return unpaid;
   const p = await getPayment(id).catch((e) => {
     console.error("checkout getPayment", id, e);
@@ -40,8 +39,8 @@ export async function settleFormPayment(paymentId: string, hint = "", refHint = 
       return { kind, paid, to: landing(kind, paid, paths) };
     }
     case "pay":
-      // a plain payment to JAWAD AI (or «ادعم التطبيق» of «لأجل المهدي», ref "mahdi"): nothing to add; the done page reads the payment again and shows it
-      return { kind, paid: p.status === "paid", to: landing(kind, p.status === "paid", { paymentId: id, ref }) };
+      // a plain payment to JAWAD AI: nothing to add; the done page reads the payment again and shows it
+      return { kind, paid: p.status === "paid", to: landing(kind, p.status === "paid", { paymentId: id }) };
     default:
       return unpaid;
   }

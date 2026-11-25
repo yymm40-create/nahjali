@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { checkPayment } from "@/lib/pay-check";
+import { getInvoice, getPayment, moyasarEnabled } from "@/lib/credits/moyasar";
 import { amountLabel } from "@/lib/pay-link";
 import "@/components/jawad/landing.css";
 import "../pay.css";
@@ -8,10 +8,22 @@ import "../pay.css";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "تم الدفع", robots: { index: false } };
 
+/** What Moyasar really says about this payment (never what the URL says): paid and how much, or not paid. */
+async function check(id: string, invoiceId: string): Promise<{ paid: boolean; amount: number | null }> {
+  if (!moyasarEnabled() || (!id && !invoiceId)) return { paid: false, amount: null };
+  if (id) {
+    const p = await getPayment(id).catch(() => null);
+    if (p && p.id === id) return { paid: p.status === "paid" && p.currency === "SAR", amount: Number.isFinite(p.amount) ? p.amount / 100 : null };
+  }
+  const inv = await getInvoice(invoiceId || id).catch(() => null);
+  if (inv && inv.id) return { paid: inv.status === "paid" && inv.currency === "SAR", amount: Number.isFinite(inv.amount) ? inv.amount / 100 : null };
+  return { paid: false, amount: null };
+}
+
 /** Where Moyasar sends the payer back after the invoice page (it appends the payment `id`). */
 export default async function PayDonePage({ searchParams }: { searchParams: Promise<{ id?: string; invoice_id?: string }> }) {
   const { id = "", invoice_id = "" } = await searchParams;
-  const r = await checkPayment(id.slice(0, 80), invoice_id.slice(0, 80));
+  const r = await check(id.slice(0, 80), invoice_id.slice(0, 80));
   return (
     <div className="ld pl" dir="rtl">
       <header className="ld-hero pl-hero">
