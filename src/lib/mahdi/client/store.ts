@@ -1,7 +1,7 @@
 // BROWSER ONLY. The app's data on the device: a server snapshot, plus logs the user changed that the server hasn't
 // confirmed yet. A tap updates the screen at once; the change is sent in the background, kept on the device while
 // offline, and sent again when the connection returns. If two devices edit the same day, the newest edit wins.
-import { todayIn, type ISODate } from "../engine";
+import { todayFor, type ISODate } from "../engine";
 import { t } from "../i18n";
 import type { LogOp, Profile, Snapshot } from "../types";
 import { ApiError, mahdiFetch } from "./fetch";
@@ -156,7 +156,7 @@ export function createStore(initial: Snapshot) {
     },
 
     setProfile(profile: Profile) {
-      const today = todayIn(profile.timeZone);
+      const today = todayFor(profile);
       set({ snap: { ...state.snap, profile }, today });
     },
 
@@ -191,9 +191,9 @@ export function createStore(initial: Snapshot) {
       if (online) schedule(0);
     },
 
-    /** Re-checks "today" (called every minute, so the app rolls over at 6:00 in the morning in the user's time zone). */
+    /** Re-checks "today" (called every minute, so the app rolls over at the person's «بداية يومي» — Fajr by default). */
     tick() {
-      const today = todayIn(state.snap.profile.timeZone);
+      const today = todayFor(state.snap.profile);
       if (today !== state.today) set({ today });
     },
   };

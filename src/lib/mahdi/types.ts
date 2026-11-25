@@ -1,6 +1,6 @@
 // Data shapes shared by the server, the browser store and (later) a native app.
 import type { MahdiTheme, MilestonePeriod, ProjectColor } from "@config/mahdi";
-import type { BookUnit, ISODate, ReadingGoals, ReadingSession, Version } from "./engine";
+import type { BookUnit, DayStart, ISODate, ReadingGoals, ReadingSession, Version } from "./engine";
 import type { GroupPlan } from "./groups/program";
 
 export interface Shrine {
@@ -35,6 +35,8 @@ export interface Profile {
   homeWidgets: string[] | null;
   /** where the drawn shrine shows: «auto» (as the design does), backdrop, banner, horizon, photo or off */
   shrinePlace: string;
+  /** «بداية يومي»: when the person's day starts (Fajr in their area by default; migration 0128). May be missing in a copy saved before it. */
+  dayStart?: DayStart;
 }
 
 export interface Project {

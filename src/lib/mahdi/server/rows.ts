@@ -1,6 +1,6 @@
 // Database rows (snake_case) → app shapes (camelCase).
 import type { MahdiTheme, MilestonePeriod, ProjectColor } from "@config/mahdi";
-import type { Freq, HabitState, Measure, Version } from "../engine";
+import { readDayStart, type Freq, type HabitState, type Measure, type Version } from "../engine";
 import type { GoalPlan, Habit, Milestone, Profile, Project, Shrine } from "../types";
 import { publicFileUrl } from "@/lib/storage/public";
 
@@ -33,6 +33,12 @@ export interface ProfileRow {
   home_widgets?: string[] | null;
   /** where the drawn shrine shows (migration 0064; null = as the design does) */
   shrine_place?: string | null;
+  /** «بداية يومي» (migration 0128; missing before it = Fajr of the time zone's main city) */
+  day_start_mode?: string | null;
+  day_start_at?: string | null;
+  day_lat?: number | string | null;
+  day_lng?: number | string | null;
+  day_city?: string | null;
 }
 export interface ProjectRow {
   id: string;
@@ -124,6 +130,7 @@ export const profileFromRow = (r: ProfileRow): Profile => ({
   viewMode: r.view_mode ?? "list",
   homeWidgets: r.home_widgets ?? null,
   shrinePlace: r.shrine_place ?? "auto",
+  dayStart: readDayStart(r),
 });
 
 export const projectFromRow = (r: ProjectRow): Project => ({

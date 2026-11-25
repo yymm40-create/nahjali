@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { todayIn } from "@/lib/mahdi/engine";
+import { todayFor } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { addTime, applyMinutesToHabit, loadReader, setFreePage, setTimeHabit } from "@/lib/mahdi/server/quran-reader";
@@ -9,7 +9,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 /** The reader's clock: today's seconds, the habit reading time fills, and the page of the free reading. */
 export const GET = mahdiRoute(async (req: Request) => {
   const { user, profile } = await requireProfile(req);
-  return NextResponse.json(await loadReader(createAdminClient(), user.id, todayIn(profile.timeZone)), { headers: { "Cache-Control": "private, no-store" } });
+  return NextResponse.json(await loadReader(createAdminClient(), user.id, todayFor(profile)), { headers: { "Cache-Control": "private, no-store" } });
 });
 
 /**
@@ -22,7 +22,7 @@ export const POST = mahdiRoute(async (req: Request) => {
   const body = (await req.text().then((x) => JSON.parse(x)).catch(() => null)) as Record<string, unknown> | null;
   if (!body || typeof body !== "object") throw new UserError(t.errors.invalid, 400);
   const db = createAdminClient();
-  const today = todayIn(profile.timeZone);
+  const today = todayFor(profile);
   switch (body.action) {
     case "time": {
       const r = await addTime(db, user.id, today, Number(body.seconds) || 0);

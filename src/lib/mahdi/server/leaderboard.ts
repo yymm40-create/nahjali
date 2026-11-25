@@ -6,7 +6,8 @@
 //     never raises it; `overCount` is shown beside it.
 //   • Too few goals (7 in a week, 20 in a month) means no rank yet, so one lucky day can't top the board.
 //   • Equal scores (as shown, in whole percent) share a rank: 1, 1, 3.
-import { addDays, buildTimeline, monthGoals, startOfMonth, startOfWeek, summarize, todayIn, weekGoals } from "../engine";
+import { addDays, buildTimeline, monthGoals, startOfMonth, startOfWeek, summarize, todayFor, todayIn, weekGoals, type Clock } from "../engine";
+import { clockOfRow, profilesWithClock } from "./clock";
 import type { Habit } from "../types";
 import { challengeAsHabit, toItems } from "../client/derive";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -74,14 +75,14 @@ export async function getLeaderboard(period: LeaderboardPeriod): Promise<RankedE
   const entries: BoardEntry[] = [];
 
   if (ids.length) {
-    const profiles = new Map<string, { tz: string }>();
+    const profiles = new Map<string, Clock>();
     const names = new Map<string, { displayName: string; avatarUrl: string | null; frame: string }>();
     for (const part of chunks(ids)) {
       const [pr, pub] = await Promise.all([
-        db.from("mahdi_profiles").select("user_id, time_zone").in("user_id", part),
+        profilesWithClock(db, "user_id, time_zone", part),
         db.from("mahdi_public_profiles").select("user_id, display_name, avatar_url, frame").in("user_id", part),
       ]);
-      for (const p of pr.data ?? []) profiles.set(p.user_id, { tz: p.time_zone });
+      for (const p of pr.data ?? []) profiles.set(p.user_id, clockOfRow(p));
       for (const p of pub.data ?? []) names.set(p.user_id, { displayName: p.display_name, avatarUrl: p.avatar_url ?? null, frame: p.frame ?? "" });
     }
     const wanted = ids.filter((id) => profiles.has(id) && names.has(id));
@@ -91,7 +92,7 @@ export async function getLeaderboard(period: LeaderboardPeriod): Promise<RankedE
     await addChallenges(db, data, earliest);
     for (const id of wanted) {
       const d = data.get(id)!;
-      const r = boardScore(d.habits, d.logs, todayIn(profiles.get(id)!.tz, now), period);
+      const r = boardScore(d.habits, d.logs, todayFor(profiles.get(id)!, now), period);
       if (r) entries.push({ userId: id, ...names.get(id)!, ...r });
     }
   }
@@ -129,7 +130,7 @@ export async function getChallengeRanking(challengeId: string): Promise<RankedEn
   const now = new Date();
   for (const part of chunks((members ?? []).map((m) => m.user_id as string))) {
     const [pr, pub, priv, logs] = await Promise.all([
-      db.from("mahdi_profiles").select("user_id, time_zone").in("user_id", part),
+      profilesWithClock(db, "user_id, time_zone", part),
       db.from("mahdi_public_profiles").select("user_id, display_name, avatar_url, frame").in("user_id", part),
       db.from("mahdi_privacy").select("user_id").eq("community", true).in("user_id", part),
       selectAll<{ user_id: string; log_date: string; value: number | string }>((a, b) =>
@@ -138,10 +139,10 @@ export async function getChallengeRanking(challengeId: string): Promise<RankedEn
     ]);
     const community = new Set((priv.data ?? []).map((p) => p.user_id));
     for (const m of (members ?? []).filter((x) => part.includes(x.user_id) && community.has(x.user_id))) {
-      const tz = pr.data?.find((p) => p.user_id === m.user_id)?.time_zone;
+      const row = pr.data?.find((p) => p.user_id === m.user_id);
       const who = pub.data?.find((p) => p.user_id === m.user_id);
-      if (!tz || !who) continue;
-      const today = todayIn(tz, now);
+      if (!row?.time_zone || !who) continue;
+      const today = todayFor(clockOfRow(row), now);
       const habit = challengeAsHabit(challenge, { joinedOn: m.joined_on, leftOn: null });
       const first = habit.versions[0].effectiveFrom;
       if (first > today) continue;
@@ -181,14 +182,14 @@ export function rankReading(entries: ReadingEntry[]): (ReadingEntry & { rank: nu
   });
 }
 
-/** The first day of the board's week or month for someone, in their own time zone. */
-export const periodStartFor = (tz: string, period: LeaderboardPeriod, now = new Date()) => {
-  const today = todayIn(tz, now);
+/** The first day of the board's week or month for someone, in their own day (time zone and «بداية يومي»). */
+export const periodStartFor = (clock: Clock, period: LeaderboardPeriod, now = new Date()) => {
+  const today = todayFor(clock, now);
   return { today, start: period === "week" ? startOfWeek(today, BOARD_WEEK_START) : startOfMonth(today) };
 };
 
 /** Minutes, pages and narrations read in the period by each of the given users (read with the service role). */
-export async function readingTotalsFor(userIds: string[], tzOf: Map<string, string>, period: LeaderboardPeriod, now = new Date()) {
+export async function readingTotalsFor(userIds: string[], tzOf: Map<string, Clock>, period: LeaderboardPeriod, now = new Date()) {
   const db = createAdminClient();
   const out = new Map<string, { seconds: number; pages: number; narrations: number }>();
   const earliest = addDays(todayIn("Etc/GMT+12", now), -32);
@@ -208,7 +209,7 @@ export async function readingTotalsFor(userIds: string[], tzOf: Map<string, stri
       for (const b of data ?? []) narrationBooks.add(b.id);
     }
     for (const r of rows) {
-      const { today, start } = periodStartFor(tzOf.get(r.user_id) ?? "Asia/Riyadh", period, now);
+      const { today, start } = periodStartFor(tzOf.get(r.user_id) ?? { timeZone: "Asia/Riyadh" }, period, now);
       if (r.log_date < start || r.log_date > today) continue;
       const cur = out.get(r.user_id) ?? { seconds: 0, pages: 0, narrations: 0 };
       const isNarration = narrationBooks.has(r.book_id);
@@ -232,14 +233,14 @@ export async function getReadingBoard(period: LeaderboardPeriod) {
   const { data: privacy, error } = await db.from("mahdi_privacy").select("user_id").eq("community", true).eq("leaderboard", true);
   if (error) throw error;
   const ids = (privacy ?? []).map((p) => p.user_id as string);
-  const tzOf = new Map<string, string>();
+  const tzOf = new Map<string, Clock>();
   const names = new Map<string, { displayName: string; avatarUrl: string | null; frame: string }>();
   for (const part of chunks(ids)) {
     const [pr, pub] = await Promise.all([
-      db.from("mahdi_profiles").select("user_id, time_zone").in("user_id", part),
+      profilesWithClock(db, "user_id, time_zone", part),
       db.from("mahdi_public_profiles").select("user_id, display_name, avatar_url, frame").in("user_id", part),
     ]);
-    for (const p of pr.data ?? []) tzOf.set(p.user_id, p.time_zone);
+    for (const p of pr.data ?? []) tzOf.set(p.user_id, clockOfRow(p));
     for (const p of pub.data ?? []) names.set(p.user_id, { displayName: p.display_name, avatarUrl: p.avatar_url ?? null, frame: p.frame ?? "" });
   }
   const wanted = ids.filter((id) => tzOf.has(id) && names.has(id));

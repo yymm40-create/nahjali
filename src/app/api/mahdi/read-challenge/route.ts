@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@config/site";
-import { todayIn } from "@/lib/mahdi/engine";
+import { todayFor } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { readDays, readPhase } from "@/lib/mahdi/read-challenge";
 import { mahdiRoute, readJson, requireProfile, UserError, UUID_RE } from "@/lib/mahdi/server/api";
@@ -21,7 +21,7 @@ const flagOf = (f: { repeats: number; maxDay: number } | undefined) =>
  */
 export const GET = mahdiRoute(async (req: Request) => {
   const { user, profile } = await requireProfile(req);
-  const today = todayIn(profile.timeZone);
+  const today = todayFor(profile);
   const challenge = await currentReadChallenge(today);
   if (!challenge) return NextResponse.json({ challenge: null }, { headers: NO_STORE });
   const owner = isAdmin(user.email);
@@ -61,15 +61,15 @@ export const POST = mahdiRoute(async (req: Request) => {
   const body = await readJson(req);
   if ("session" in body) {
     if (!isAdmin(user.email)) throw new UserError(t.errors.notFound, 404);
-    const challenge = await currentReadChallenge(todayIn(profile.timeZone));
+    const challenge = await currentReadChallenge(todayFor(profile));
     if (!challenge || typeof body.session !== "string" || !UUID_RE.test(body.session)) throw new UserError(t.errors.invalid, 400);
     if (!(await setSessionEarlier(challenge.id, body.session, body.earlier === true))) throw new UserError(t.errors.notFound, 404);
     return NextResponse.json({ ok: true });
   }
   if (body.agree !== true) throw new UserError(t.readChallenge.agreeRequired, 400);
-  const challenge = await currentReadChallenge(todayIn(profile.timeZone));
+  const challenge = await currentReadChallenge(todayFor(profile));
   if (!challenge) throw new UserError(t.readChallenge.notReady, 503);
-  if (readPhase(challenge, todayIn(profile.timeZone)) === "over") throw new UserError(t.readChallenge.over, 400);
+  if (readPhase(challenge, todayFor(profile)) === "over") throw new UserError(t.readChallenge.over, 400);
   await joinReadChallenge(challenge.id, user.id);
   return NextResponse.json({ ok: true });
 });

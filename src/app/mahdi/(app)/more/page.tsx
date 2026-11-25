@@ -20,6 +20,7 @@ import InstallCard from "@/components/mahdi/InstallCard";
 import MetricsLink from "@/components/mahdi/MetricsLink";
 import UsernameForm from "@/components/mahdi/UsernameForm";
 import Icon from "@/components/mahdi/Icon";
+import DayStartSetting from "@/components/mahdi/DayStartSetting";
 import { ShrinePicker, ThemePicker } from "@/components/mahdi/LookPickers";
 import { SHRINE_PLACES, type ShrinePlace } from "@/lib/mahdi/shrine-art";
 import { useMahdi } from "@/components/mahdi/Provider";
@@ -27,7 +28,7 @@ import { useLook } from "@/components/mahdi/ThemeRoot";
 import Robot from "@/components/mahdi/Robot";
 import { setAssistantPrefs, useAssistantPrefs } from "@/lib/mahdi/client/assistant-prefs";
 
-/** Account and settings: name, picture, look, calendar, time zone, sign out. */
+/** Account and settings: name, picture, look, calendar, time zone, «بداية يومي», sign out. */
 export default function MorePage() {
   const router = useRouter();
   const { state, store, toast } = useMahdi();
@@ -248,6 +249,7 @@ export default function MorePage() {
             </button>
           )}
         </div>
+        <DayStartSetting profile={profile} save={save} />
       </section>
 
       <section className="m-card space-y-2 p-5">

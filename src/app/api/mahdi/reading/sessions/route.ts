@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { countPages, isISODate, mergeRanges, todayIn, addDays } from "@/lib/mahdi/engine";
+import { countPages, isISODate, mergeRanges, todayFor, addDays } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { loadReading } from "@/lib/mahdi/server/reading";
@@ -22,7 +22,7 @@ export const POST = mahdiRoute(async (req: Request) => {
   if (!pagesInBook) throw new UserError(t.errors.notFound, 404);
 
   const now = Date.now();
-  const today = todayIn(profile.timeZone);
+  const today = todayFor(profile);
   let date = today;
   let startedAt: string | null = null;
   let seconds = Math.floor(Number(body.seconds) || 0);
@@ -33,7 +33,7 @@ export const POST = mahdiRoute(async (req: Request) => {
     // A session can't be longer than the time since it started (a little slack for clocks)
     seconds = Math.min(seconds, Math.ceil((now - start) / 1000) + 120);
     startedAt = new Date(start).toISOString();
-    date = todayIn(profile.timeZone, new Date(start));
+    date = todayFor(profile, new Date(start));
   } else if (body.date !== undefined) {
     if (!isISODate(body.date) || body.date > today || body.date < addDays(today, -60)) throw new UserError(t.errors.invalid, 400);
     date = body.date;

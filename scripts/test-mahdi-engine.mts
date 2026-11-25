@@ -1,6 +1,7 @@
 // Checks the «لأجل المهدي» goal engine (no database needed).
 // Usage: npx tsx scripts/test-mahdi-engine.mts
-import { startOfWeek, todayIn } from "../src/lib/mahdi/engine/dates";
+import { startOfWeek } from "../src/lib/mahdi/engine/dates";
+import { DEFAULT_DAY_START, todayIn } from "../src/lib/mahdi/engine/day-start";
 import { buildTimeline, dayInstance } from "../src/lib/mahdi/engine/schedule";
 import { dayGoals, dayScore, monthGoals, periodGoalsOn, summarize, weekGoals, weekScore } from "../src/lib/mahdi/engine/score";
 import { dayStreak, daysSinceLastActivity, itemStreak, weekStreak } from "../src/lib/mahdi/engine/streaks";
@@ -31,7 +32,8 @@ const ctx: EngineContext = { asOf: "2026-10-08", weekStart: 6 };
 check(startOfWeek("2026-10-08", 6) === "2026-10-03", "week starting Saturday");
 check(startOfWeek("2026-10-08", 0) === "2026-10-04", "week starting Sunday");
 check(startOfWeek("2026-10-08", 1) === "2026-10-05", "week starting Monday");
-check(todayIn("Asia/Riyadh", new Date("2026-10-03T22:30:00Z")) === "2026-10-04", "today in Riyadh after 9:30pm UTC is the next day");
+check(todayIn("Asia/Riyadh", new Date("2026-10-03T22:30:00Z"), { ...DEFAULT_DAY_START, mode: "midnight" }) === "2026-10-04", "today in Riyadh after 9:30pm UTC is the next day (day starting at midnight)");
+check(todayIn("Asia/Riyadh", new Date("2026-10-03T22:30:00Z")) === "2026-10-03", "before Fajr in Riyadh it is still yesterday");
 check(todayIn("America/New_York", new Date("2026-10-03T22:30:00Z")) === "2026-10-03", "today in New York");
 
 // ── 1. daily done/not-done ──

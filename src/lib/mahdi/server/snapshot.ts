@@ -1,7 +1,7 @@
 // SERVER ONLY. Loads everything the app needs for one user (through RLS: only their own rows).
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { HISTORY_DAYS } from "@config/mahdi";
-import { addDays, todayIn } from "../engine";
+import { addDays, todayFor } from "../engine";
 import { parseEngage } from "../engage";
 import type { Challenge, DayTask, Milestone, NotificationSettings, Phrase, Profile, Shrine, Snapshot } from "../types";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -48,7 +48,7 @@ export function pickShrine(shrines: Shrine[], id: string | null | undefined): Sh
 }
 
 export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): Promise<Snapshot> {
-  const today = todayIn(profile.timeZone);
+  const today = todayFor(profile);
   const logsFrom = addDays(today, -HISTORY_DAYS);
 
   const [shrines, phrases, extra, reading, username, tasks, projects, habits, versions, logs, groups, plan, emergencyDays] = await Promise.all([

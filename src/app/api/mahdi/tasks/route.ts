@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { addDays, diffDays, isISODate, todayIn } from "@/lib/mahdi/engine";
+import { addDays, diffDays, isISODate, todayFor } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError, UUID_RE } from "@/lib/mahdi/server/api";
 import { loadPriorities, loadTasks, loadUpcoming, PRIORITY_TITLE_PREFIX, priorityColumnMissing } from "@/lib/mahdi/server/snapshot";
@@ -63,7 +63,7 @@ export const GET = mahdiRoute(async (req: Request) => {
       throw e;
     }
   }
-  const today = todayIn(profile.timeZone);
+  const today = todayFor(profile);
   // `?upcoming=1`: the tasks set for the days after today
   if (q.get("upcoming") === "1") return NextResponse.json({ upcoming: await upcoming(supabase, today) }, { headers: { "Cache-Control": "private, no-store" } });
   return NextResponse.json({ tasks: await loadTasks(supabase, today).catch(() => []) });
@@ -74,7 +74,7 @@ export const GET = mahdiRoute(async (req: Request) => {
 export const POST = mahdiRoute(async (req: Request) => {
   const { supabase, user, profile } = await requireProfile(req);
   const body = await readJson(req);
-  const today = todayIn(profile.timeZone);
+  const today = todayFor(profile);
   const priority = body.priority === true;
   const day = priority ? today : dayOf(body.date, today);
   const { count, error: e1 } = await supabase.from("mahdi_day_tasks").select("id", { count: "exact", head: true }).eq("task_date", day);
@@ -109,7 +109,7 @@ export const PATCH = mahdiRoute(async (req: Request) => {
   const { data, error } = await supabase.from("mahdi_day_tasks").update(patch).eq("id", id).select("id");
   fail(error);
   if (!data?.length) throw new UserError(t.errors.notFound, 404);
-  return NextResponse.json({ tasks: await loadTasks(supabase, todayIn(profile.timeZone)) });
+  return NextResponse.json({ tasks: await loadTasks(supabase, todayFor(profile)) });
 });
 
 /** Removes a task: `{ id }`. */
@@ -118,5 +118,5 @@ export const DELETE = mahdiRoute(async (req: Request) => {
   const body = await readJson(req);
   const { error } = await supabase.from("mahdi_day_tasks").delete().eq("id", requireId(body.id));
   fail(error);
-  return NextResponse.json({ tasks: await loadTasks(supabase, todayIn(profile.timeZone)) });
+  return NextResponse.json({ tasks: await loadTasks(supabase, todayFor(profile)) });
 });

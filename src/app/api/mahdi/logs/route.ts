@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { MAHDI_LIMITS } from "@config/mahdi";
-import { isISODate, todayIn } from "@/lib/mahdi/engine";
+import { isISODate, todayFor } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { fromDbError, mahdiRoute, readJson, requireProfile, UserError, UUID_RE } from "@/lib/mahdi/server/api";
 import { parseValue } from "@/lib/mahdi/server/validate";
@@ -25,7 +25,7 @@ export const PUT = mahdiRoute(async (req: Request) => {
   const { ops } = await readJson(req, 256 * 1024);
   if (!Array.isArray(ops) || ops.length === 0 || ops.length > MAHDI_LIMITS.maxLogOps) throw new UserError(t.errors.invalid, 400);
 
-  const today = todayIn(profile.timeZone);
+  const today = todayFor(profile);
   const now = Date.now();
   const ids = ops.map((o) => (o as { habitId?: unknown })?.habitId).filter((x): x is string => typeof x === "string");
   const habitIds = [...new Set(ids.filter((x) => UUID_RE.test(x)))];

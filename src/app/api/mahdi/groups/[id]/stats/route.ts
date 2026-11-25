@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { todayIn } from "@/lib/mahdi/engine";
+import { todayFor } from "@/lib/mahdi/engine";
 import { can } from "@/lib/mahdi/groups/program";
 import { mahdiRoute, requireId, requireProfile } from "@/lib/mahdi/server/api";
 import { programStats } from "@/lib/mahdi/server/group-program";
@@ -18,7 +18,7 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const db = createAdminClient();
   const { seat } = await requireGroup(db, id, user.id);
   const all = can(seat, "stats");
-  const stats = await programStats(db, id, todayIn(profile.timeZone), profile.weekStart, all ? undefined : [user.id]);
+  const stats = await programStats(db, id, todayFor(profile), profile.weekStart, all ? undefined : [user.id]);
   const people = await peopleInfo(db, stats.members.map((m) => m.userId));
   return NextResponse.json(
     {

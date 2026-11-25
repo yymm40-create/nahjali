@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { MAHDI_LIMITS } from "@config/mahdi";
-import { addDays, todayIn } from "@/lib/mahdi/engine";
+import { addDays, todayFor } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { loadSnapshot } from "@/lib/mahdi/server/snapshot";
@@ -19,7 +19,7 @@ export const POST = mahdiRoute(async (req: Request) => {
   const { count } = await supabase.from("mahdi_habits").select("id", { count: "exact", head: true });
   if ((count ?? 0) >= MAHDI_LIMITS.maxHabits) throw new UserError(t.errors.tooMany, 403);
 
-  const today = todayIn(profile.timeZone);
+  const today = todayFor(profile);
   const start = body.startDate === undefined ? today : parseDate(body.startDate);
   if (start < addDays(today, -5 * 366) || start > addDays(today, 366)) throw new UserError(t.errors.invalid, 400);
   const config = parseConfig(body);

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { MAHDI_LIMITS, PROJECT_COLORS } from "@config/mahdi";
 import { cleanPlan, FOOD_HABITS, habitsFor, type FoodHabit, type GymWay, type HabitSpec } from "@/lib/mahdi/health/plan";
-import { todayIn } from "@/lib/mahdi/engine";
+import { todayFor } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { loadSnapshot } from "@/lib/mahdi/server/snapshot";
@@ -57,7 +57,7 @@ export const POST = mahdiRoute(async (req: Request) => {
     }
   }
 
-  const start = todayIn(profile.timeZone);
+  const start = todayFor(profile);
   let made = 0;
   const links: Record<string, string> = {};
   for (const s of specs as HabitSpec[]) {

@@ -7,7 +7,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { addDays, dayGoals, versionAt } from "@/lib/mahdi/engine";
+import { addDays, appDayMinute, dayGoals, dayStartMinute, versionAt } from "@/lib/mahdi/engine";
 import { fmtDate, t, weekdayName } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { deviceState, enablePush, type Device } from "@/lib/mahdi/client/push";
@@ -18,11 +18,10 @@ import Icon from "./Icon";
 import { useMahdi } from "./Provider";
 
 const byTime = (a: DayTask, b: DayTask) => (a.at && b.at ? a.at.localeCompare(b.at) : a.at ? -1 : b.at ? 1 : a.sortOrder - b.sortOrder);
-/** Minutes since the day began (6:00), so 01:00 is later than 23:00. */
-const dayMin = (hhmm: string) => {
+/** Minutes into the person's day (it starts at their «بداية يومي»), so 01:00 is later than 23:00. */
+const dayMin = (hhmm: string, startMin: number) => {
   const [h, m] = hhmm.split(":").map(Number);
-  const v = h * 60 + m;
-  return v < 360 ? v + 1440 : v;
+  return appDayMinute(h * 60 + m, startMin);
 };
 const nowHHMM = () => new Date().toTimeString().slice(0, 5);
 
@@ -149,7 +148,8 @@ export default function DayTasks() {
   const upcomingDays = [...new Set(upcoming.map((x) => x.date))];
 
   const doneCount = tasks.filter((x) => x.doneAt).length;
-  const now = dayMin(nowHHMM());
+  const startMin = dayStartMinute(snap.profile.timeZone, today, snap.profile.dayStart);
+  const now = dayMin(nowHHMM(), startMin);
   const hasTimed = tasks.some((x) => x.at && !x.doneAt);
 
   return (
@@ -170,7 +170,7 @@ export default function DayTasks() {
       {tasks.length > 0 && (
         <ul className="divide-y" style={{ borderColor: "var(--m-line)" }}>
           {tasks.map((task) => {
-            const late = !task.doneAt && task.at && dayMin(task.at) < now;
+            const late = !task.doneAt && task.at && dayMin(task.at, startMin) < now;
             const habit = task.habitId ? snap.habits.find((h) => h.id === task.habitId) : null;
             return (
               <li key={task.id} className="flex items-center gap-3 py-2">

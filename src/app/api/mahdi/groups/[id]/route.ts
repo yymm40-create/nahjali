@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { cleanUsername, USERNAME_RE } from "@/lib/username-rules";
 import { t } from "@/lib/mahdi/i18n";
-import { todayIn } from "@/lib/mahdi/engine";
+import { todayFor } from "@/lib/mahdi/engine";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { groupCount, groupMembers, groupRanking, groupWorks, MAX_GROUPS, MAX_GROUP_WORKS, MAX_MEMBERS, requireGroup } from "@/lib/mahdi/server/groups";
 import { archiveProject, deleteHabit, deleteProject, loadProgram, saveHabit, saveProject, seatsOf } from "@/lib/mahdi/server/group-program";
@@ -26,7 +26,7 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const activeIds = members.filter((member) => member.status === "active").map((member) => member.userId);
   const [ranking, works, { seats, ready: seatsReady }, program] = await Promise.all([
     groupRanking(db, members, period, metric, user.id),
-    groupWorks(db, id, activeIds, todayIn(profile.timeZone), user.id),
+    groupWorks(db, id, activeIds, todayFor(profile), user.id),
     seatsOf(db, id, group.leader_id),
     loadProgram(db, id),
   ]);
@@ -63,7 +63,7 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
       ranking,
       works: works ?? [],
       worksReady: works !== null,
-      today: todayIn(profile.timeZone),
+      today: todayFor(profile),
     },
     { headers: { "Cache-Control": "private, no-store" } },
   );
@@ -91,7 +91,7 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const need = (p: GroupPerm) => {
     if (status !== "active" || !can(seat, p)) throw new UserError(t.groups.admins.notAllowed, 403);
   };
-  const today = todayIn(profile.timeZone);
+  const today = todayFor(profile);
   const ok = () => NextResponse.json({ ok: true });
 
   // The account behind a @username (it must use «لأجل المهدي»)
@@ -126,7 +126,7 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
       const workId = requireId(body.workId);
       const { data: work } = await db.from("mahdi_group_works").select("id, cadence, due_date").eq("id", workId).eq("group_id", id).eq("active", true).maybeSingle();
       if (!work) throw new UserError(t.errors.notFound, 404);
-      const workDate = work.cadence === "daily" ? todayIn(profile.timeZone) : work.due_date;
+      const workDate = work.cadence === "daily" ? todayFor(profile) : work.due_date;
       if (body.done === true) {
         const { error } = await db.from("mahdi_group_work_logs").upsert(
           { work_id: workId, group_id: id, user_id: user.id, work_date: workDate, done_at: new Date().toISOString() },
@@ -212,7 +212,7 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
       if ((count ?? 0) >= MAX_GROUP_WORKS) throw new UserError(t.groups.worksLimit(MAX_GROUP_WORKS), 429);
       const cadence = oneOf(body.cadence, ["daily", "once"] as const);
       const dueDate = cadence === "once" ? parseDate(body.dueDate) : null;
-      const today = todayIn(profile.timeZone);
+      const today = todayFor(profile);
       if (dueDate && dueDate < today) throw new UserError(t.groups.workPastDate, 400);
       const { error } = await db.from("mahdi_group_works").insert({
         group_id: id,

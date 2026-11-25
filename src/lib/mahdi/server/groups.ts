@@ -5,7 +5,8 @@ import { t } from "../i18n";
 import { UserError } from "./api";
 import { addChallenges, chunks, loadHabitData } from "./bulk";
 import { boardScore, rankEntries, rankReading, readingTotalsFor, MIN_GOALS, type LeaderboardPeriod } from "./leaderboard";
-import { addDays, todayIn } from "../engine";
+import { addDays, todayFor, todayIn } from "../engine";
+import { clocksOf } from "./clock";
 import { avatarUrl } from "./rows";
 import { cleanPerms, type Seat } from "../groups/program";
 import { programMissing } from "./group-program";
@@ -160,15 +161,18 @@ export async function groupRanking(db: SupabaseClient, members: Awaited<ReturnTy
   const active = members.filter((m) => m.status === "active");
   const base = (m: (typeof active)[number]) => ({ userId: m.userId, displayName: m.displayName, avatarUrl: m.avatarUrl, frame: "", username: m.username });
   const now = new Date();
+  // each member's own day (their time zone and «بداية يومي»); read here, never sent with the members
+  const clocks = await clocksOf(db, active.map((m) => m.userId));
+  const clockOf = (m: (typeof active)[number]) => clocks.get(m.userId) ?? { timeZone: m.tz };
   if (metric === "reading") {
-    const totals = await readingTotalsFor(active.map((m) => m.userId), new Map(active.map((m) => [m.userId, m.tz])), period, now);
+    const totals = await readingTotalsFor(active.map((m) => m.userId), new Map(active.map((m) => [m.userId, clockOf(m)])), period, now);
     const ranked = rankReading(active.map((m) => ({ ...base(m), ...(totals.get(m.userId) ?? { seconds: 0, pages: 0, narrations: 0 }) })));
     return { ranked: ranked.map(({ userId, ...e }) => ({ ...e, mine: userId === me })), unranked: [] };
   }
   const earliest = addDays(todayIn("Etc/GMT+12", now), -45);
   const data = await loadHabitData(db, active.map((m) => m.userId), earliest);
   await addChallenges(db, data, earliest);
-  const scored = active.map((m) => ({ m, s: boardScore(data.get(m.userId)!.habits, data.get(m.userId)!.logs, todayIn(m.tz, now), period) }));
+  const scored = active.map((m) => ({ m, s: boardScore(data.get(m.userId)!.habits, data.get(m.userId)!.logs, todayFor(clockOf(m), now), period) }));
   const ranked = rankEntries(scored.filter((x) => x.s).map(({ m, s }) => ({ ...base(m), ...s! })));
   return {
     ranked: ranked.map(({ userId, ...e }) => ({ ...e, username: active.find((m) => m.userId === userId)?.username, mine: userId === me })),
