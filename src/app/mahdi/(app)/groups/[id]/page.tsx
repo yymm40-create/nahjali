@@ -14,6 +14,8 @@ import { useMahdi } from "@/components/mahdi/Provider";
 import Sheet from "@/components/mahdi/Sheet";
 import GroupProgram, { type ProgramData } from "@/components/mahdi/groups/GroupProgram";
 import GroupStats from "@/components/mahdi/groups/GroupStats";
+import VisibilityChoice from "@/components/mahdi/groups/VisibilityChoice";
+import type { GroupVisibility } from "@/lib/mahdi/groups/privacy";
 import { GROUP_PERMS, type GroupPerm } from "@/lib/mahdi/groups/program";
 
 interface Member {
@@ -31,12 +33,15 @@ interface Member {
 }
 interface Detail {
   group: { id: string; name: string; isLeader: boolean };
+  /** who sees each member's progress; before SQL 0129 `ready` is false and everyone sees, as before */
+  privacy?: { visibility: GroupVisibility; ready: boolean; full: boolean; canChange: boolean };
   me?: { role: "leader" | "admin" | "member"; perms: GroupPerm[]; grantable: GroupPerm[]; seatsReady: boolean };
   program?: ProgramData;
   members: Member[];
   requests?: { displayName: string; username: string; avatarUrl: string | null }[];
-  ranking: { ranked: BoardRow[]; unranked: { displayName: string; username: string; avatarUrl: string | null; mine: boolean }[]; min?: number };
-  works: { id: string; title: string; details: string; cadence: "daily" | "once"; dueDate: string | null; mineDone: boolean; doneCount: number; memberCount: number }[];
+  ranking: { ranked: BoardRow[]; unranked: { displayName: string; username: string; avatarUrl: string | null; mine: boolean }[]; min?: number; onlyMine?: boolean };
+  // in a private group a member gets only their own tick (no counts); the leaders also get who did it
+  works: { id: string; title: string; details: string; cadence: "daily" | "once"; dueDate: string | null; mineDone: boolean; doneCount: number | null; memberCount: number | null; doneBy?: string[] }[];
   worksReady: boolean;
   today: string;
 }
@@ -124,7 +129,7 @@ export default function GroupPage() {
   async function toggleWork(work: Detail["works"][number]) {
     if (workBusy) return;
     setWorkBusy(work.id);
-    setResult((current) => current ? { ...current, data: { ...current.data, works: current.data.works.map((item) => item.id === work.id ? { ...item, mineDone: !item.mineDone, doneCount: Math.max(0, item.doneCount + (item.mineDone ? -1 : 1)) } : item) } } : current);
+    setResult((current) => current ? { ...current, data: { ...current.data, works: current.data.works.map((item) => item.id === work.id ? { ...item, mineDone: !item.mineDone, doneCount: item.doneCount === null ? null : Math.max(0, item.doneCount + (item.mineDone ? -1 : 1)) } : item) } } : current);
     try {
       await mahdiFetch(`/api/mahdi/groups/${id}`, { method: "POST", json: { action: "work_toggle", workId: work.id, done: !work.mineDone } });
       toast(work.mineDone ? t.groups.workUndone : t.groups.workDone);
@@ -146,6 +151,7 @@ export default function GroupPage() {
   }
   if (!data) return <p className="m-muted">{t.common.loading}</p>;
   const { group, members, ranking } = data;
+  const isPrivate = data.privacy?.visibility === "leaders";
   const active = members.filter((m) => m.status === "active");
   const invited = members.filter((m) => m.status === "invited");
   // what I may do here (before migration 0083 the leader alone, as before)
@@ -165,6 +171,7 @@ export default function GroupPage() {
         <p className="m-eyebrow">{t.groups.title}</p>
         <h1 className="m-display text-3xl">{group.name}</h1>
         <p className="m-num text-sm m-muted">{t.groups.members(active.length)}</p>
+        {isPrivate && <p className="m-note text-sm">{data.privacy?.full ? t.groups.privacy.leaderNote : t.groups.privacy.memberNote}</p>}
         {data.me?.role === "admin" && (
           <p className="text-sm">
             <span className="m-chip m-chip-gold">{t.groups.admin}</span> <span className="m-muted">{t.groups.admins.yours}: {mine.map((x) => t.groups.admins.short[x]).join("، ")}</span>
@@ -232,11 +239,14 @@ export default function GroupPage() {
                   {work.details && <span className="mt-0.5 block whitespace-pre-line text-sm m-muted">{work.details}</span>}
                   <span className="m-num mt-1 flex flex-wrap gap-x-2 text-xs m-muted">
                     <span>{work.cadence === "daily" ? t.groups.workToday : t.groups.workOn(work.dueDate ?? "")}</span>
-                    <span>· {t.groups.workProgress(work.doneCount, work.memberCount)}</span>
+                    {work.doneCount !== null && work.memberCount !== null ? <span>· {t.groups.workProgress(work.doneCount, work.memberCount)}</span> : <span>· {t.groups.privacy.workMine}</span>}
                   </span>
-                  <span className="mt-2 block h-1.5 overflow-hidden rounded-full" style={{ background: "var(--m-track)" }}>
-                    <span className="block h-full rounded-full transition-[width]" style={{ width: `${work.memberCount ? Math.round(work.doneCount / work.memberCount * 100) : 0}%`, background: "var(--m-gold)" }} />
-                  </span>
+                  {work.doneCount !== null && work.memberCount !== null && (
+                    <span className="mt-2 block h-1.5 overflow-hidden rounded-full" style={{ background: "var(--m-track)" }}>
+                      <span className="block h-full rounded-full transition-[width]" style={{ width: `${work.memberCount ? Math.round(work.doneCount / work.memberCount * 100) : 0}%`, background: "var(--m-gold)" }} />
+                    </span>
+                  )}
+                  {work.doneBy && <span className="mt-1 block text-xs m-muted">{work.doneBy.length ? t.groups.privacy.doneBy(work.doneBy.join("، ")) : t.groups.privacy.doneByNone}</span>}
                 </span>
                 {may("program") && (
                   <button type="button" className="m-icon-btn m-btn-ghost shrink-0" disabled={workBusy === work.id} aria-label={t.groups.workRemove} onClick={() => act({ action: "work_archive", workId: work.id }, t.groups.workArchived)}>
@@ -285,7 +295,7 @@ export default function GroupPage() {
 
       <section className="space-y-3" aria-labelledby="rank">
         <h2 id="rank" className="text-lg font-semibold">{t.groups.ranking}</h2>
-        <p className="text-sm m-muted">{t.groups.rankingHint}</p>
+        <p className="text-sm m-muted">{ranking.onlyMine ? t.groups.privacy.rankingMine : t.groups.rankingHint}</p>
         <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t.leaderboard.metric}>
           {(["score", "reading"] as const).map((m) => (
             <button key={m} type="button" role="radio" aria-checked={metric === m} className="m-option min-h-10 px-3 text-sm font-semibold" onClick={() => setMetric(m)}>
@@ -418,6 +428,17 @@ export default function GroupPage() {
       </section>
 
       <section className="m-card space-y-2 p-4">
+        {group.isLeader && data.privacy && (
+          <div className="pb-2">
+            <VisibilityChoice
+              value={data.privacy.visibility}
+              disabled={!data.privacy.canChange}
+              busy={busy}
+              note={data.privacy.ready ? t.groups.privacy.leaderOnly : t.groups.privacy.notReady}
+              onChange={(v) => v !== data.privacy?.visibility && act({ action: "privacy", visibility: v }, t.groups.privacy.saved)}
+            />
+          </div>
+        )}
         {may("settings") && (
           rename === null ? (
             <button type="button" className="m-btn m-btn-ghost w-full justify-start" onClick={() => setRename(group.name)}>
