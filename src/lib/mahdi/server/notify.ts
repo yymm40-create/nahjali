@@ -292,12 +292,14 @@ interface HabitAlertRow {
  * still open — whatever the general reminder mode is (the time was set on purpose). Not in quiet hours, and not when
  * the person turned «تذكير العادات في أوقاتها» off. Sent once a day (reminder_sent_at, SQL 0102).
  */
-export async function dispatchHabitAlerts(db: SupabaseClient, now: Date = new Date()): Promise<AlertDispatchResult> {
+export async function dispatchHabitAlerts(db: SupabaseClient, now: Date = new Date(), opts: { needSentColumn?: boolean } = {}): Promise<AlertDispatchResult> {
   const result: AlertDispatchResult = { checked: 0, sent: 0 };
   let sentCol = true;
   let { data, error }: { data: unknown[] | null; error: unknown } = await db.from("mahdi_habits").select("id, user_id, name, reminder_time, reminder_sent_at").not("reminder_time", "is", null).limit(20000);
   if (missingColumn(error)) {
-    // before SQL 0102: the window is one run of the scheduler long, so a slot is met once
+    // before SQL 0102: the window is one run of the scheduler long, so a slot is met once — never on the minute's run,
+    // which would send it again every minute of that window
+    if (opts.needSentColumn) return result;
     sentCol = false;
     ({ data, error } = await db.from("mahdi_habits").select("id, user_id, name, reminder_time").not("reminder_time", "is", null).limit(20000));
   }
