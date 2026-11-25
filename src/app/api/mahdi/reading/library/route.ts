@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { MAX_READING } from "@/lib/mahdi/server/reading";
-import { todayIn } from "@/lib/mahdi/engine";
+import { todayFor } from "@/lib/mahdi/engine";
 import { autoBookHabit, createBookHabit, readingReply, removeBookHabit, setBookTarget } from "@/lib/mahdi/server/reading-write";
 
 /**
@@ -31,7 +31,7 @@ export const POST = mahdiRoute(async (req: Request) => {
       if (!book) throw new UserError(t.errors.notFound, 404);
       check(await supabase.from("mahdi_user_books").insert({ user_id: user.id, book_id: bookId, state: "reading" }));
       // a new book becomes a habit too, unless the person said no
-      if (body.habit !== false) await autoBookHabit(supabase, user.id, todayIn(profile.timeZone), bookId);
+      if (body.habit !== false) await autoBookHabit(supabase, user.id, todayFor(profile), bookId);
     }
   } else if (action === "pause" || action === "finish") {
     if (!entry) throw new UserError(t.errors.notFound, 404);
@@ -48,7 +48,7 @@ export const POST = mahdiRoute(async (req: Request) => {
     if (!entry) throw new UserError(t.errors.notFound, 404);
     const target = Math.round(Number(body.target));
     if (!Number.isInteger(target) || target < 1 || target > 1000) throw new UserError(t.reading.bookHabit.badTarget, 400);
-    const today = todayIn(profile.timeZone);
+    const today = todayFor(profile);
     if (action === "habit") {
       if (!(await createBookHabit(supabase, user.id, today, bookId, target))) throw new UserError(t.reading.bookHabit.notMade, 409);
     } else await setBookTarget(supabase, user.id, today, bookId, target);

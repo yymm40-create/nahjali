@@ -5,7 +5,8 @@
 // `mahdi_push_log` (migration 0102; before it, nothing here runs).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
-import { addDays, buildTimeline, dayGoals, dayStreak, daysSinceLastActivity, dueSlot, inQuietHours, minuteOfDayIn, toMinutes, todayIn } from "../engine";
+import { addDays, buildTimeline, dayGoals, dayStreak, daysSinceLastActivity, dueSlot, inQuietHours, minuteOfDayIn, readDayStart, toMinutes, todayIn, type DayStart } from "../engine";
+import { profilesWithClock } from "./clock";
 import { toItems } from "../client/derive";
 import { COMEBACK_AFTER_DAYS, COMEBACK_EVERY_DAYS, ENGAGE, ENGAGE_DAILY_MAX, STREAK_MIN_DAYS, engageDay, engageOn, engageText, parseEngage, weekStartOf, type EngageKind } from "../engage";
 import { chunks, loadHabitData } from "./bulk";
@@ -36,14 +37,14 @@ export async function dispatchEngagement(db: SupabaseClient, now: Date = new Dat
   result.checked = users.length;
   if (!users.length) return result;
 
-  const tzOf = new Map<string, { tz: string; weekStart: number }>();
+  const tzOf = new Map<string, { tz: string; weekStart: number; day: DayStart }>();
   const setOf = new Map<string, Settings>();
   for (const ids of chunks(users)) {
     const [pr, st] = await Promise.all([
-      db.from("mahdi_profiles").select("user_id, time_zone, week_start").in("user_id", ids),
+      profilesWithClock(db, "user_id, time_zone, week_start", ids),
       db.from("mahdi_notification_settings").select("*").in("user_id", ids),
     ]);
-    for (const p of pr.data ?? []) tzOf.set(p.user_id, { tz: p.time_zone, weekStart: Number(p.week_start) });
+    for (const p of pr.data ?? []) tzOf.set(p.user_id, { tz: p.time_zone, weekStart: Number(p.week_start), day: readDayStart(p) });
     for (const s of (st.data ?? []) as Settings[]) setOf.set(s.user_id, s);
   }
 
@@ -55,7 +56,7 @@ export async function dispatchEngagement(db: SupabaseClient, now: Date = new Dat
     const s = setOf.get(u);
     const engage = parseEngage(s?.engage);
     const nowMin = minuteOfDayIn(z.tz, now);
-    const today = todayIn(z.tz, now);
+    const today = todayIn(z.tz, now, z.day);
     const quietStart = s?.quiet_start ?? "23:00", quietEnd = s?.quiet_end ?? "07:00";
     const kinds = ENGAGE.filter((e) => {
       const slot = toMinutes(e.at);

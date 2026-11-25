@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { MAHDI_LIMITS } from "@config/mahdi";
-import { maxDate, todayIn, type HabitState } from "@/lib/mahdi/engine";
+import { maxDate, todayFor, type HabitState } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import type { VersionRow } from "@/lib/mahdi/server/rows";
@@ -64,7 +64,7 @@ export const PATCH = mahdiRoute(async (req: Request, { params }: Ctx) => {
     const latest = versions[versions.length - 1];
     if (!latest) throw new UserError(t.errors.notFound, 404);
     // Today, or the start date when the habit has not started yet: never earlier than the first version
-    const from = maxDate(todayIn(profile.timeZone), versions[0].effective_from);
+    const from = maxDate(todayFor(profile), versions[0].effective_from);
     const config =
       wantsConfig && body.config && typeof body.config === "object"
         ? parseConfig(body.config as Record<string, unknown>)

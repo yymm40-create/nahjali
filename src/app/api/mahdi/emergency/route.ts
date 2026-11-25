@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { addDays, todayIn, validEmergencyTarget, versionAt, type Item } from "@/lib/mahdi/engine";
+import { addDays, todayFor, validEmergencyTarget, versionAt, type Item } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { habitsFromRows, type HabitRow, type VersionRow } from "@/lib/mahdi/server/rows";
@@ -25,7 +25,7 @@ const ids = (v: unknown) => {
 export const POST = mahdiRoute(async (req: Request) => {
   const { supabase, user, profile } = await requireProfile(req);
   const body = await readJson(req);
-  const today = todayIn(profile.timeZone);
+  const today = todayFor(profile);
 
   if (body.action === "set") {
     const items = (Array.isArray(body.items) ? body.items : []).slice(0, MAX_ITEMS).map((x) => (x ?? {}) as Record<string, unknown>);

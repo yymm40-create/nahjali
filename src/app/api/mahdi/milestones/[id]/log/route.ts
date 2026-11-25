@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { MAHDI_LIMITS } from "@config/mahdi";
-import { addDays, todayIn } from "@/lib/mahdi/engine";
+import { addDays, todayFor } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { checkGoals, findMilestone } from "@/lib/mahdi/server/goals";
@@ -16,7 +16,7 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const body = await readJson(req);
   if (!(await findMilestone(supabase, id))) throw new UserError(t.errors.notFound, 404);
 
-  const today = todayIn(profile.timeZone);
+  const today = todayFor(profile);
   const date = body.date === undefined ? today : parseDate(body.date);
   if (date > today) throw new UserError(t.errors.futureDate, 400);
   if (date < addDays(today, -5 * 366)) throw new UserError(t.errors.invalid, 400);

@@ -1,7 +1,8 @@
 // SERVER ONLY. Web Push: sending, and the dispatcher that decides who gets a reminder right now.
 import webpush from "web-push";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { alreadySent, buildTimeline, dayGoals, dueSlot, inQuietHours, minuteOfDayIn, reminderSlots, taskReminderDue, todayIn, toMinutes, addDays, REMINDER_WINDOW_MIN, type ReminderMode } from "../engine";
+import { alreadySent, buildTimeline, dayGoals, dayStartMinute, dueSlot, inQuietHours, minuteOfDayIn, reminderSlots, taskReminderDue, todayFor, todayIn, toMinutes, addDays, REMINDER_WINDOW_MIN, type Clock, type ReminderMode } from "../engine";
+import { clockOfRow, profilesWithClock } from "./clock";
 import { occursOn, type PlanRepeat } from "../planner";
 import { PRIORITY_TITLE_PREFIX } from "./snapshot";
 import { t } from "../i18n";
@@ -98,21 +99,21 @@ export async function dispatchReminders(db: SupabaseClient, now: Date = new Date
   result.checked = rows.length;
   if (!rows.length) return result;
 
-  const tzOf = new Map<string, string>();
+  const tzOf = new Map<string, Clock>();
   const subsOf = new Map<string, SubRow[]>();
   for (const ids of chunks(rows.map((r) => r.user_id))) {
     const [pr, subs] = await Promise.all([
-      db.from("mahdi_profiles").select("user_id, time_zone").in("user_id", ids),
+      profilesWithClock(db, "user_id, time_zone", ids),
       db.from("mahdi_push_subscriptions").select("id, user_id, endpoint, p256dh, auth, failures").in("user_id", ids),
     ]);
-    for (const p of pr.data ?? []) tzOf.set(p.user_id, p.time_zone);
+    for (const p of pr.data ?? []) tzOf.set(p.user_id, clockOfRow(p));
     for (const s of (subs.data ?? []) as SubRow[]) (subsOf.get(s.user_id) ?? subsOf.set(s.user_id, []).get(s.user_id)!).push(s);
   }
 
   // Cheap checks first (time zone maths only), so users with nothing due never cost a database read
   const candidates = rows.filter((r) => subsOf.has(r.user_id) && tzOf.has(r.user_id)).map((r) => {
     const tz = tzOf.get(r.user_id)!;
-    const nowMin = minuteOfDayIn(tz, now);
+    const nowMin = minuteOfDayIn(tz.timeZone, now);
     const quiet = (m: number) => inQuietHours(m, r.quiet_start, r.quiet_end);
     const general = dueSlot(nowMin, reminderSlots(r.mode, r.times).filter((m) => !quiet(m)));
     return { r, tz, nowMin, quiet, general: general && !alreadySent(r.last_sent_at, general.ago, now) ? general : null };
@@ -132,7 +133,7 @@ export async function dispatchReminders(db: SupabaseClient, now: Date = new Date
     await Promise.all(
       batch.map(async (c) => {
         const d = data.get(c.r.user_id)!;
-        const today = todayIn(c.tz, now);
+        const today = todayFor(c.tz, now);
         const tl = buildTimeline(toItems(d.habits, d.logs), today, today, { asOf: today, weekStart: 6 });
         const open = dayGoals(tl, today).filter((i) => i.progress < 1);
         const tasksLeft = (openTasks.get(c.r.user_id) ?? []).filter((d) => d === today).length;
@@ -202,16 +203,16 @@ export async function dispatchTaskReminders(db: SupabaseClient, now: Date = new 
   if (!rows.length) return result;
 
   const users = [...new Set(rows.map((r) => r.user_id))];
-  const tzOf = new Map<string, string>();
+  const tzOf = new Map<string, Clock>();
   const subsOf = new Map<string, SubRow[]>();
   const quietOf = new Map<string, { start: string; end: string }>();
   for (const ids of chunks(users)) {
     const [pr, subs, st] = await Promise.all([
-      db.from("mahdi_profiles").select("user_id, time_zone").in("user_id", ids),
+      profilesWithClock(db, "user_id, time_zone", ids),
       db.from("mahdi_push_subscriptions").select("id, user_id, endpoint, p256dh, auth, failures").in("user_id", ids),
       db.from("mahdi_notification_settings").select("user_id, quiet_start, quiet_end").in("user_id", ids),
     ]);
-    for (const p of pr.data ?? []) tzOf.set(p.user_id, p.time_zone);
+    for (const p of pr.data ?? []) tzOf.set(p.user_id, clockOfRow(p));
     for (const s of (subs.data ?? []) as SubRow[]) (subsOf.get(s.user_id) ?? subsOf.set(s.user_id, []).get(s.user_id)!).push(s);
     for (const q of st.data ?? []) quietOf.set(q.user_id, { start: q.quiet_start, end: q.quiet_end });
   }
@@ -221,17 +222,17 @@ export async function dispatchTaskReminders(db: SupabaseClient, now: Date = new 
   for (const r of rows) {
     const tz = tzOf.get(r.user_id);
     if (!tz) continue;
-    const today = todayIn(tz, now);
+    const today = todayFor(tz, now);
     // a day that has passed: its reminders are not sent any more
     if (r.task_date < today) {
       stale.push(r.id);
       continue;
     }
     if (r.task_date !== today || !subsOf.has(r.user_id)) continue;
-    const nowMin = minuteOfDayIn(tz, now);
+    const nowMin = minuteOfDayIn(tz.timeZone, now);
     const q = quietOf.get(r.user_id);
     if (q && inQuietHours(nowMin, q.start, q.end)) continue;
-    const step = taskReminderDue(r.at_time.slice(0, 5), r.notified, nowMin);
+    const step = taskReminderDue(r.at_time.slice(0, 5), r.notified, nowMin, dayStartMinute(tz.timeZone, today, tz.dayStart));
     if (!step) continue;
     const u = byUser.get(r.user_id) ?? byUser.set(r.user_id, { at: [], late: [] }).get(r.user_id)!;
     u[step].push(r);
@@ -256,18 +257,18 @@ const plainTitle = (title: string) => (title.startsWith(PRIORITY_TITLE_PREFIX) ?
 
 const missingColumn = (e: unknown) => ["42703", "PGRST204"].includes((e as { code?: string } | null)?.code ?? "");
 
-/** What every alert dispatcher needs about its users: time zone, devices, quiet hours and the habit-reminder switch. */
+/** What every alert dispatcher needs about its users: clock (time zone and day start), devices, quiet hours and the habit-reminder switch. */
 async function usersOf(db: SupabaseClient, users: string[]) {
-  const tzOf = new Map<string, string>();
+  const tzOf = new Map<string, Clock>();
   const subsOf = new Map<string, SubRow[]>();
   const settingsOf = new Map<string, { start: string; end: string; habits: boolean }>();
   for (const ids of chunks(users)) {
     const [pr, subs, st] = await Promise.all([
-      db.from("mahdi_profiles").select("user_id, time_zone").in("user_id", ids),
+      profilesWithClock(db, "user_id, time_zone", ids),
       db.from("mahdi_push_subscriptions").select("id, user_id, endpoint, p256dh, auth, failures").in("user_id", ids),
       db.from("mahdi_notification_settings").select("user_id, quiet_start, quiet_end, habit_reminders").in("user_id", ids),
     ]);
-    for (const p of pr.data ?? []) tzOf.set(p.user_id, p.time_zone);
+    for (const p of pr.data ?? []) tzOf.set(p.user_id, clockOfRow(p));
     for (const s of (subs.data ?? []) as SubRow[]) (subsOf.get(s.user_id) ?? subsOf.set(s.user_id, []).get(s.user_id)!).push(s);
     for (const q of st.data ?? []) settingsOf.set(q.user_id, { start: q.quiet_start, end: q.quiet_end, habits: q.habit_reminders !== false });
   }
@@ -316,7 +317,7 @@ export async function dispatchHabitAlerts(db: SupabaseClient, now: Date = new Da
     if (!tz || !subsOf.has(h.user_id) || st?.habits === false) continue;
     const slot = toMinutes(h.reminder_time);
     if (slot === null || (st && inQuietHours(slot, st.start, st.end))) continue;
-    const due = dueSlot(minuteOfDayIn(tz, now), [slot], sentCol ? REMINDER_WINDOW_MIN : 15);
+    const due = dueSlot(minuteOfDayIn(tz.timeZone, now), [slot], sentCol ? REMINDER_WINDOW_MIN : 15);
     if (!due || (sentCol && alreadySent(h.reminder_sent_at ?? null, due.ago, now))) continue;
     (dueOf.get(h.user_id) ?? dueOf.set(h.user_id, []).get(h.user_id)!).push(h);
   }
@@ -330,7 +331,7 @@ export async function dispatchHabitAlerts(db: SupabaseClient, now: Date = new Da
       batch.map(async (userId) => {
         const d = habitData.get(userId);
         if (!d) return;
-        const today = todayIn(tzOf.get(userId)!, now);
+        const today = todayFor(tzOf.get(userId)!, now);
         const tl = buildTimeline(toItems(d.habits, d.logs), today, today, { asOf: today, weekStart: 6 });
         const open = new Set(dayGoals(tl, today).filter((i) => i.progress < 1).map((i) => i.itemId));
         const due = dueOf.get(userId)!;
@@ -373,12 +374,12 @@ export async function dispatchPlanAlerts(db: SupabaseClient, now: Date = new Dat
   for (const r of rows) {
     const tz = tzOf.get(r.user_id);
     if (!tz || !subsOf.has(r.user_id)) continue;
-    const today = todayIn(tz, now);
+    const today = todayFor(tz, now);
     if (r.reminded_on === today || !occursOn({ day: r.day, repeat: r.repeat }, today)) continue;
     const slot = toMinutes(r.start_time);
     const st = settingsOf.get(r.user_id);
     if (slot === null || (st && inQuietHours(slot, st.start, st.end))) continue;
-    if (!dueSlot(minuteOfDayIn(tz, now), [slot])) continue;
+    if (!dueSlot(minuteOfDayIn(tz.timeZone, now), [slot])) continue;
     const u = byUser.get(r.user_id) ?? byUser.set(r.user_id, { rows: [], today }).get(r.user_id)!;
     u.rows.push(r);
   }

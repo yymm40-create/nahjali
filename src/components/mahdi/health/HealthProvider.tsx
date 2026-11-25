@@ -8,7 +8,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
-import { todayIn } from "@/lib/mahdi/engine";
+import { todayFor } from "@/lib/mahdi/engine";
 import { DEFAULT_PROFILE, type HealthPlan, type HealthProfile } from "@/lib/mahdi/health/plan";
 import { emptyDay, type DayLog } from "@/lib/mahdi/health/tracker";
 
@@ -60,7 +60,7 @@ const write = (k: string, v: unknown) => {
 export default function HealthProvider({ children }: { children: React.ReactNode }) {
   const { state, store } = useMahdi();
   const uid = state.snap.profile.userId;
-  const today = todayIn(state.snap.profile.timeZone);
+  const today = todayFor(state.snap.profile);
   const [plan, setPlan] = useState<HealthPlan | null>(null);
   const [profile, setProfile] = useState<HealthProfile>(DEFAULT_PROFILE);
   const [step, setStep] = useState<SetupStep>("track");

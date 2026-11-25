@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { MAHDI_LIMITS } from "@config/mahdi";
-import { todayIn } from "@/lib/mahdi/engine";
+import { todayFor } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { loadSnapshot } from "@/lib/mahdi/server/snapshot";
@@ -29,7 +29,7 @@ export const PATCH = mahdiRoute(async (req: Request, { params }: Ctx) => {
   if ("archived" in body) {
     const archive = parseBool(body.archived);
     if (archive !== Boolean(current.archived_at)) {
-      check(await supabase.rpc("mahdi_archive_project", { p_project: id, p_date: todayIn(profile.timeZone), p_archive: archive }));
+      check(await supabase.rpc("mahdi_archive_project", { p_project: id, p_date: todayFor(profile), p_archive: archive }));
     }
   }
   return NextResponse.json({ snapshot: await loadSnapshot(supabase, profile) });

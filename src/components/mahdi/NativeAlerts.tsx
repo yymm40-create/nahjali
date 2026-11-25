@@ -6,7 +6,7 @@
 // In a browser it does nothing: there the server's push does the work.
 
 import { useEffect } from "react";
-import { addDays, buildTimeline, dayGoals, DAY_START_HOUR, inQuietHours, toMinutes, type ISODate } from "@/lib/mahdi/engine";
+import { addDays, buildTimeline, dayGoals, dayStartMinute, inQuietHours, toMinutes, type DayStart, type ISODate } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { alertId, bookAlerts, inNativeApp, type NativeAlert } from "@/lib/mahdi/client/native";
@@ -16,10 +16,10 @@ import { useMahdi } from "./Provider";
 
 const WEEK = 7;
 
-/** The moment a time of an app day happens (a day starts at DAY_START_HOUR, so 01:00 belongs to the night after). */
-function momentOf(day: ISODate, hhmm: string): Date {
+/** The moment a time of an app day happens (a day starts at the person's «بداية يومي», so 01:00 belongs to the night after). */
+function momentOf(day: ISODate, hhmm: string, timeZone: string, dayStart: DayStart | undefined): Date {
   const [h, m] = hhmm.split(":").map(Number);
-  const date = h < DAY_START_HOUR ? addDays(day, 1) : day;
+  const date = h * 60 + m < dayStartMinute(timeZone, day, dayStart) ? addDays(day, 1) : day;
   const [y, mo, d] = date.split("-").map(Number);
   return new Date(y, mo - 1, d, h, m, 0, 0);
 }
@@ -47,7 +47,7 @@ export default function NativeAlerts() {
       for (const x of [...snap.tasks.filter((y) => y.date === today), ...upcoming]) {
         if (!x.at || x.doneAt || quiet(x.at)) continue;
         const name = x.title;
-        const at = momentOf(x.date, x.at);
+        const at = momentOf(x.date, x.at, snap.profile.timeZone, snap.profile.dayStart);
         alerts.push({ id: alertId(`task:${x.id}`), title: t.tasks.title, body: t.tasks.notifyAt([name]), schedule: { at, allowWhileIdle: true }, extra: { url: "/mahdi" } });
         alerts.push({ id: alertId(`task-late:${x.id}`), title: t.tasks.title, body: t.tasks.notifyLate([name]), schedule: { at: new Date(at.getTime() + 3_600_000), allowWhileIdle: true }, extra: { url: "/mahdi" } });
       }
@@ -65,7 +65,7 @@ export default function NativeAlerts() {
               if (quiet(time)) continue;
               const inst = due.find((i) => i.itemId === h.id && i.kind === "day");
               if (!inst || (k === 0 && inst.progress >= 1)) continue;
-              alerts.push({ id: alertId(`habit:${h.id}:${day}`), title: t.notify.title2, body: t.notify.habitBody([h.name]), schedule: { at: momentOf(day, time), allowWhileIdle: true }, extra: { url: "/mahdi" } });
+              alerts.push({ id: alertId(`habit:${h.id}:${day}`), title: t.notify.title2, body: t.notify.habitBody([h.name]), schedule: { at: momentOf(day, time, snap.profile.timeZone, snap.profile.dayStart), allowWhileIdle: true }, extra: { url: "/mahdi" } });
             }
           }
         }
@@ -76,7 +76,7 @@ export default function NativeAlerts() {
       live = false;
       clearTimeout(timer);
     };
-  }, [snap.tasks, snap.habits, snap.notifications, snap.emergencyDays, snap.profile.weekStart, logs, today]);
+  }, [snap.tasks, snap.habits, snap.notifications, snap.emergencyDays, snap.profile.weekStart, snap.profile.timeZone, snap.profile.dayStart, logs, today]);
 
   return null;
 }

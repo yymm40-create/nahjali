@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { GOAL_LIMITS, MAHDI_LIMITS } from "@config/mahdi";
-import { addDays, todayIn } from "@/lib/mahdi/engine";
+import { addDays, todayFor } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { checkGoals } from "@/lib/mahdi/server/goals";
@@ -21,7 +21,7 @@ export const POST = mahdiRoute(async (req: Request) => {
   const { count } = await supabase.from("mahdi_milestones").select("id", { count: "exact", head: true }).eq("project_id", projectId);
   if ((count ?? 0) >= GOAL_LIMITS.maxMilestones) throw new UserError(t.errors.tooMany, 403);
 
-  const today = todayIn(profile.timeZone);
+  const today = todayFor(profile);
   const startsOn = body.startsOn === undefined ? today : parseDate(body.startsOn);
   if (startsOn < addDays(today, -5 * 366) || startsOn > addDays(today, 366)) throw new UserError(t.errors.invalid, 400);
 

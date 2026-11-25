@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { MAHDI_LIMITS } from "@config/mahdi";
-import { todayIn } from "@/lib/mahdi/engine";
+import { todayFor } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { dailyCount } from "@/lib/mahdi/khatma/mine";
 import { DIVISION_LABEL, DIVISIONS, rangeSize } from "@/lib/mahdi/khatma/portions";
@@ -14,7 +14,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 /** «ختمتي»: my own khatma now, what I read in it, and the ones before. */
 export const GET = mahdiRoute(async (req: Request) => {
   const { user, profile } = await requireProfile(req);
-  return NextResponse.json({ ...(await loadMyKhatma(createAdminClient(), user.id)), today: todayIn(profile.timeZone) }, { headers: { "Cache-Control": "private, no-store" } });
+  return NextResponse.json({ ...(await loadMyKhatma(createAdminClient(), user.id)), today: todayFor(profile) }, { headers: { "Cache-Control": "private, no-store" } });
 });
 
 /** A portion number (checked against the khatma's own stretch by the server functions). */
@@ -32,7 +32,7 @@ export const POST = mahdiRoute(async (req: Request) => {
   const { supabase, user, profile } = await requireProfile(req);
   const body = await readJson(req);
   const db = createAdminClient();
-  const today = todayIn(profile.timeZone);
+  const today = todayFor(profile);
   switch (body.action) {
     case "start": {
       const unit = body.unit === undefined ? "quarter" : oneOf(body.unit, DIVISIONS);

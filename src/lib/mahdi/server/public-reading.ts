@@ -1,7 +1,7 @@
 // SERVER ONLY. «رابط حسابي»: what a person's public link shows of their reading — only when they turned it on
 // (mahdi_privacy.share_reading, SQL 0126). Read with the service role; nothing private beyond these numbers.
 import { createAdminClient } from "@/lib/supabase/admin";
-import { startOfMonth, todayIn } from "../engine";
+import { readDayStart, startOfMonth, todayIn } from "../engine";
 import { readPhase } from "../read-challenge";
 import { currentReadChallenge, isReadMember, readChallengeBoard } from "./read-challenge";
 import type { PublicReading } from "../social";
@@ -16,8 +16,9 @@ export async function publicReadingOf(userId: string): Promise<PublicReading | n
   const { data: privacy, error } = await db.from("mahdi_privacy").select("share_reading").eq("user_id", userId).maybeSingle();
   if (error || !privacy?.share_reading) return null;
 
-  const { data: profile } = await db.from("mahdi_profiles").select("time_zone").eq("user_id", userId).maybeSingle();
-  const today = todayIn(profile?.time_zone ?? "Asia/Riyadh");
+  // their own day (time zone and «بداية يومي», SQL 0128; "*" so a database without those columns still answers)
+  const { data: profile } = await db.from("mahdi_profiles").select("*").eq("user_id", userId).maybeSingle();
+  const today = todayIn(profile?.time_zone ?? "Asia/Riyadh", new Date(), readDayStart(profile));
   const month = startOfMonth(today);
 
   // sessions in books of pages; pages read before (SQL 0121) are not reading done here

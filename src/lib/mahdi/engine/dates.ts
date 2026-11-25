@@ -1,4 +1,4 @@
-// Calendar dates as 'YYYY-MM-DD' strings (the user's local day, which starts at 6:00 in the morning: see todayIn).
+// Calendar dates as 'YYYY-MM-DD' strings (the user's local day, which starts at their «بداية يومي»: see todayIn in ./day-start).
 // All arithmetic happens at UTC midnight, so a time zone or daylight-saving change can never shift a day.
 // Pure functions: no React, no database.
 
@@ -53,24 +53,7 @@ export const maxDate = (a: ISODate, b: ISODate) => (a > b ? a : b);
 export const isISODate = (s: unknown): s is ISODate =>
   typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && fromUTC(toUTC(s)) === s;
 
-/** The user's day starts at 6:00 in the morning (local time), not at midnight: until then it is still yesterday. */
-export const DAY_START_HOUR = 6;
-
-/** Today's date in an IANA time zone (e.g. 'Asia/Riyadh'), the day starting at DAY_START_HOUR local time. */
-export function todayIn(timeZone: string, now: Date = new Date()): ISODate {
-  let date: ISODate;
-  let hour: number;
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(now);
-    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-    date = `${get("year")}-${get("month")}-${get("day")}`;
-    hour = Number(get("hour")) % 24;
-  } catch {
-    date = fromUTC(now.getTime() - (now.getTime() % DAY_MS));
-    hour = now.getUTCHours();
-  }
-  return hour < DAY_START_HOUR ? addDays(date, -1) : date;
-}
+// Today's date for a person (their day starts at their «بداية يومي»): see todayIn in ./day-start.
 
 export function isTimeZone(tz: unknown): tz is string {
   if (typeof tz !== "string" || tz.length > 64) return false;

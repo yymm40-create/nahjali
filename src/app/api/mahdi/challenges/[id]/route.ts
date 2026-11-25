@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { todayIn } from "@/lib/mahdi/engine";
+import { todayFor } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { getChallengeRanking } from "@/lib/mahdi/server/leaderboard";
@@ -34,7 +34,7 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const { supabase, user, profile } = await requireProfile(req);
   const id = requireId((await params).id);
   const body = await readJson(req);
-  const today = todayIn(profile.timeZone);
+  const today = todayFor(profile);
 
   const { data: def } = await supabase.from("mahdi_challenges").select("id, ends_on, leaderboard").eq("id", id).maybeSingle();
   if (!def) throw new UserError(t.errors.notFound, 404);

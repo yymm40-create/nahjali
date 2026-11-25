@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { todayIn } from "@/lib/mahdi/engine";
+import { todayFor } from "@/lib/mahdi/engine";
 import { fmtNum, fmtRelativeDay, t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import type { PostView, SocialUser } from "@/lib/mahdi/social";
@@ -70,7 +70,7 @@ export default function PostCard({ post, onChange, onRemoved, openComments = fal
   const [comments, setComments] = useState(openComments);
   const [reporting, setReporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const when = fmtRelativeDay(todayIn(state.snap.profile.timeZone, new Date(post.createdAt)), state.today);
+  const when = fmtRelativeDay(todayFor(state.snap.profile, new Date(post.createdAt)), state.today);
   const joined = state.snap.privacy.community;
 
   async function toggleAhsant() {

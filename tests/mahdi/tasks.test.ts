@@ -22,10 +22,11 @@ describe("«مهام اليوم» reminders", () => {
   it("a time first seen more than an hour late goes straight to the follow-up", () => {
     expect(taskReminderDue("09:00", 0, at(12, 0))).toBe("late");
   });
-  it("after midnight still belongs to the same day (the day starts at 6:00)", () => {
-    expect(taskReminderDue("01:00", 0, at(23, 0))).toBeNull();
-    expect(taskReminderDue("01:00", 0, at(1, 5))).toBe("at");
-    expect(taskReminderDue("23:30", 0, at(0, 40))).toBe("late");
+  it("after midnight still belongs to the same day (the day starts at the person's day start, here Fajr ~4:54)", () => {
+    const fajr = at(4, 54);
+    expect(taskReminderDue("01:00", 0, at(23, 0), fajr)).toBeNull();
+    expect(taskReminderDue("01:00", 0, at(1, 5), fajr)).toBe("at");
+    expect(taskReminderDue("23:30", 0, at(0, 40), fajr)).toBe("late");
   });
   it("ignores a broken time", () => {
     expect(taskReminderDue("25:99", 0, at(12))).toBeNull();
