@@ -11,7 +11,6 @@
 //   /.well-known/apple-developer-merchantid-domain-association. NEXT_PUBLIC_MOYASAR_APPLE_PAY=0 hides it.
 
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { SUPPORT_DONE_PATH, SUPPORT_REF } from "@/lib/mahdi/support";
 import { moyasarEnabled, type Payment } from "./moyasar";
 
 export type CheckoutKind = "credits" | "course" | "offer10" | "pay";
@@ -19,7 +18,7 @@ export const CHECKOUT_KINDS: readonly CheckoutKind[] = ["credits", "course", "of
 
 export interface Ticket {
   k: CheckoutKind;
-  /** the order id (credits, course), the account id (offer10), "" (pay) or "mahdi" (pay: «ادعم التطبيق» of «لأجل المهدي») */
+  /** the order id (credits, course), the account id (offer10), "" (pay) */
   ref: string;
   /** halalas */
   a: number;
@@ -82,8 +81,7 @@ export function landing(kind: CheckoutKind | "", paid: boolean, extra: { ref?: s
     case "offer10":
       return `${extra.offerPath ?? "/jawad-ai/offer"}?${flag}=1`;
     case "pay":
-      // «ادعم التطبيق» comes back to «لأجل المهدي»'s own thank-you page
-      return `${extra.ref === SUPPORT_REF ? SUPPORT_DONE_PATH : "/jawad-ai/pay/done"}${extra.paymentId ? `?id=${encodeURIComponent(extra.paymentId)}` : ""}`;
+      return `/jawad-ai/pay/done${extra.paymentId ? `?id=${encodeURIComponent(extra.paymentId)}` : ""}`;
     default:
       return "/jawad-ai";
   }
