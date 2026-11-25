@@ -1,0 +1,87 @@
+# «لأجل المهدي» on phones (mahdi-app/, Capacitor): builds the Android app on GitHub's servers.
+# - Always an installable .apk (published as a release, to try on any Android phone).
+# - With the upload key's secrets (MAHDI_KEYSTORE_BASE64 …: the SAME key as the old «لأجل المهدي» app on Google Play) also
+#   the signed .aab, ready to upload to Google Play as an update of that app. Nothing goes to the store by itself.
+name: Mahdi app
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["mahdi-app/**", ".github/workflows/mahdi-app.yml"]
+  push:
+    branches: [main]
+    paths: ["mahdi-app/**", ".github/workflows/mahdi-app.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mahdi-app
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mahdi-app
+    env:
+      MAHDI_VERSION_CODE: ${{ github.run_number }}00
+      MAHDI_VERSION_NAME: 2.0.${{ github.run_number }}
+      HAS_KEY: ${{ secrets.MAHDI_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mahdi-app/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npx cap sync android
+      - name: Installable APK
+        working-directory: mahdi-app/android
+        run: chmod +x gradlew && ./gradlew --no-daemon assembleDebug && cp app/build/outputs/apk/debug/app-debug.apk ../LajlAlMahdi.apk
+      - name: Signed bundle for Google Play
+        if: ${{ env.HAS_KEY == 'true' }}
+        working-directory: mahdi-app/android
+        env:
+          MAHDI_KEYSTORE_PASSWORD: ${{ secrets.MAHDI_KEYSTORE_PASSWORD }}
+          MAHDI_KEY_ALIAS: ${{ secrets.MAHDI_KEY_ALIAS }}
+          MAHDI_KEY_PASSWORD: ${{ secrets.MAHDI_KEY_PASSWORD }}
+        run: |
+          echo "${{ secrets.MAHDI_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          MAHDI_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon bundleRelease assembleRelease
+          cp app/build/outputs/bundle/release/app-release.aab ../LajlAlMahdi.aab
+          cp app/build/outputs/apk/release/app-release.apk ../LajlAlMahdi-signed.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mahdi-android
+          path: |
+            mahdi-app/LajlAlMahdi.apk
+            mahdi-app/LajlAlMahdi.aab
+            mahdi-app/LajlAlMahdi-signed.apk
+          if-no-files-found: warn
+
+  release:
+    needs: [android]
+    if: ${{ needs.android.result == 'success' && github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mahdi-android
+          path: out
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mahdi-app-v2.0.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: "لأجل المهدي للأندرويد · 2.0.${{ github.run_number }}"
+          make_latest: "false"
+          body: |
+            تطبيق «لأجل المهدي» للأندرويد للتجربة: نزّل LajlAlMahdi.apk على جوالك وافتحه (اسمح بالتثبيت من هذا المصدر).
+            إذا عندك نسخة Google Play القديمة احذفها أول (التوقيع يختلف في نسخة التجربة).
+          files: out/*

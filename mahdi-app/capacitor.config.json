@@ -1,0 +1,20 @@
+{
+  "appId": "app.aljawadai.mahdi",
+  "appName": "لأجل المهدي",
+  "webDir": "www",
+  "server": {
+    "url": "https://www.aljawadai.app/mahdi",
+    "errorPath": "offline.html",
+    "allowNavigation": ["www.aljawadai.app", "aljawadai.app", "*.supabase.co", "accounts.google.com", "*.google.com", "appleid.apple.com", "*.r2.cloudflarestorage.com"]
+  },
+  "android": {
+    "appendUserAgent": "MahdiApp/1.0",
+    "allowMixedContent": false,
+    "captureInput": true
+  },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 1200, "launchAutoHide": true, "backgroundColor": "#ffffff", "showSpinner": false },
+    "StatusBar": { "style": "LIGHT", "backgroundColor": "#ffffff", "overlaysWebView": false },
+    "LocalNotifications": { "smallIcon": "ic_stat_mahdi", "iconColor": "#1f6feb" }
+  }
+}

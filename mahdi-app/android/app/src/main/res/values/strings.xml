@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">لأجل المهدي</string>
+    <string name="title_activity_main">لأجل المهدي</string>
+    <string name="package_name">app.aljawadai.mahdi</string>
+    <string name="custom_url_scheme">app.aljawadai.mahdi</string>
+</resources>

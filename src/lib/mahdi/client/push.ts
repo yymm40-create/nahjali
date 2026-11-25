@@ -1,6 +1,7 @@
 // «لأجل المهدي» · this device and Web Push: can it get notifications, are they on, and turning them on or off.
 // Shared by the notifications page and every «اجعله تنبيهًا» bell.
 import { mahdiFetch } from "./fetch";
+import { bookAlerts, inNativeApp, nativeNotifications } from "./native";
 
 const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
 
@@ -14,6 +15,8 @@ function keyToBytes(base64: string) {
 
 /** Can this device get notifications, and are they on? */
 export async function deviceState(): Promise<Device> {
+  // inside the «لأجل المهدي» app: its own notifications (booked on the phone), not the web's push
+  if (inNativeApp()) return nativeNotifications();
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
     const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const standalone = window.matchMedia("(display-mode: standalone)").matches;
@@ -48,6 +51,7 @@ function activated(reg: ServiceWorkerRegistration): Promise<void> {
 /** Asks for permission, subscribes this device and tells the server. "on", or "denied" when the person said no. Call it
  *  straight from the tap: the permission is asked first, while the tap still counts (iPhone needs that). */
 export async function enablePush(): Promise<"on" | "denied"> {
+  if (inNativeApp()) return (await nativeNotifications(true)) === "on" ? "on" : "denied";
   const permission = Notification.permission === "granted" ? "granted" : await inTime(Notification.requestPermission(), 60_000);
   if (permission !== "granted") return "denied";
   const reg = await inTime(navigator.serviceWorker.register("/mahdi/sw.js", { scope: "/mahdi/" }));
@@ -70,6 +74,7 @@ export async function enablePush(): Promise<"on" | "denied"> {
 
 /** Unsubscribes this device (here and on the server). */
 export async function disablePush(): Promise<void> {
+  if (inNativeApp()) return bookAlerts([]);
   const reg = await navigator.serviceWorker.getRegistration("/mahdi/");
   const sub = await reg?.pushManager.getSubscription();
   if (sub) {
