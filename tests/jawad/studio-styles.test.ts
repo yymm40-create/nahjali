@@ -112,6 +112,7 @@ describe("«برومبت ثاني وثالث»", () => {
   it("the studio sends one generation per prompt with its own references and price", () => {
     const s = readFileSync(new URL("../../src/components/jawad/studio/Studio.tsx", import.meta.url), "utf8");
     expect(s).toContain("async function submitAll()");
-    expect(s).toContain("await submit(x.ev.price.coins, { prompt: x.prompt, refs: x.refs })");
+    // each at its own price («لامحدود» makes a covered one 0)
+    expect(s).toContain("await submit(coinsOfPlan(x), { prompt: x.prompt, refs: x.refs })");
   });
 });
