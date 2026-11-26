@@ -1,5 +1,13 @@
 import TryModel from "@/components/jawad/models/TryModel";
 import type { UnlimitedUse } from "@/lib/jawad/server/unlimited";
+import { unlimitedPass, UNLIMITED } from "@config/jawad/unlimited";
+
+/** The settings a pass covers (its quality, a video at most its length), so «جرّب» opens the studio already on them. */
+const settingsOf = (key: string): Record<string, string | number> => {
+  const p = unlimitedPass(key);
+  if (!p) return {};
+  return { ...Object.fromEntries(Object.entries(p.match).map(([k, v]) => [k, v[0]])), ...(p.kind === "video" ? { duration: Math.min(10, UNLIMITED.maxVideoSec) } : {}) };
+};
 
 const when = (iso: string) => new Date(iso).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { timeZone: "Asia/Riyadh", weekday: "long", hour: "numeric", minute: "2-digit" });
 
@@ -19,7 +27,7 @@ export default function MyPasses({ passes }: { passes: UnlimitedUse[] }) {
                 {p.refill ? ` · يرجع كامل ${when(p.refill)}` : ""}
               </span>
             </div>
-            <TryModel id={p.generatorId} name={p.name} className="ul-btn ul-btn-s" />
+            <TryModel id={p.generatorId} name={p.name} settings={settingsOf(p.pass)} className="ul-btn ul-btn-s" />
           </li>
         ))}
       </ul>

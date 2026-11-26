@@ -35,6 +35,7 @@ import { probeFile, putWithProgress } from "./upload";
 import WorksPanel from "./WorksPanel";
 import ImageTools, { type ImageSource } from "./ImageTools";
 import { isImageTool } from "@config/jawad/image-tools";
+import { passCovers, unlimitedPass, UNLIMITED } from "@config/jawad/unlimited";
 import { isVoiceTool, VOICE_CHANGE_ID, VOICE_TOOL_TRACK } from "@config/jawad/voice-tools";
 import CompareGenerators from "./CompareGenerators";
 import { DEFAULT_VIEW, worksQuery, type WorksView } from "@/lib/jawad/works-organise";
@@ -159,7 +160,7 @@ function withRoles(refs: RefItem[], style: RefStyle): RefItem[] {
   });
 }
 
-export default function Studio({ section, studioSections, generators: allGenerators, directorGenerators, prices: initialPrices, user, owner, allowed, balance: initialBalance, initialWorks, pricing, freeImageAvailable }: StudioProps) {
+export default function Studio({ section, studioSections, generators: allGenerators, directorGenerators, prices: initialPrices, user, owner, allowed, balance: initialBalance, initialWorks, pricing, freeImageAvailable, passes = [] }: StudioProps) {
   // the riyal pricing in force (rate, step, margins), so the prices here match the server's to the halala
   setPricing(pricing);
   const router = useRouter();
@@ -632,13 +633,19 @@ export default function Studio({ section, studioSections, generators: allGenerat
   const plan = def && extras.length
     ? [{ prompt: draft.prompt, refs: pick(draft.mainRefs) }, ...extras.map((x) => ({ prompt: x.prompt, refs: pick(x.refs) }))].map((x) => ({ ...x, ev: evaluate(def, { settings, prompt: x.prompt, instructions, refStyle, refs: [...x.refs, ...lookExtra(x.refs)].map(refMeta), atCost }, prices[def.id] ?? {}) }))
     : null;
-  const price = plan ? (plan.every((x) => x.ev.price.ok) ? plan.reduce((t, x) => t + (x.ev.price.ok ? x.ev.price.coins : 0), 0) : null) : ev?.price.ok ? ev.price.coins : null;
+  // «لامحدود»: a running pass that covers this generator at these settings makes the generation free (the server decides it again)
+  const passFor = (settings: Settings) => (def ? passes.find((p) => { const d = unlimitedPass(p.pass); return !!d && passCovers(d, def.id, settings); }) ?? null : null);
+  const passHere = !owner && ev?.price.ok ? passFor(ev.settings) : null;
+  // a pass for this generator whose quality (or video length) the settings miss: one tap puts them right
+  const passMiss = !owner && def && !passHere ? passes.map((p) => unlimitedPass(p.pass)).find((d) => d?.generatorId === def.id) ?? null : null;
+  const coinsOfPlan = (x: { ev: typeof ev }) => (x.ev?.price.ok ? (!owner && passFor(x.ev.settings) ? 0 : x.ev.price.coins) : 0);
+  const price = plan ? (plan.every((x) => x.ev.price.ok) ? plan.reduce((t, x) => t + coinsOfPlan(x), 0) : null) : ev?.price.ok ? (passHere ? 0 : ev.price.coins) : null;
   async function submitAll() {
     track("studio.generate");
     // «دبلجة» · «غيّر الصوت» · «حرّك الشفايف»
     if (def && isVoiceTool(def.id)) track(VOICE_TOOL_TRACK[def.id]);
     if (!plan) return price != null && submit(price);
-    for (const x of plan) if (x.ev.price.ok) await submit(x.ev.price.coins, { prompt: x.prompt, refs: x.refs });
+    for (const x of plan) if (x.ev.price.ok) await submit(coinsOfPlan(x), { prompt: x.prompt, refs: x.refs });
   }
   const busyUploads = draft.refs.some((r) => r.status === "uploading" || r.status === "checking");
   const blockers: string[] = [];
@@ -1290,6 +1297,26 @@ export default function Studio({ section, studioSections, generators: allGenerat
 
           {/* Always reachable: the button sticks to the bottom of the panel */}
           <div className="sticky bottom-0 space-y-2 border-t border-jw-line bg-jw-surface/95 p-3 backdrop-blur">
+            {passHere && (
+              <p className="flex flex-wrap items-center gap-x-2 rounded-xl bg-[#1f3fe0] px-3 py-2 text-xs font-bold text-white" role="status">
+                <span>⚡ لامحدود: هذا التوليد مجاني</span>
+                <span className="font-medium opacity-85">{passHere.fastLeft > 0 ? `سريع · باقي لك ${passHere.fastLeft} ${def?.output === "video" ? "ثانية" : "صورة"}` : "توليد بطيء: ينتظر شوي قبل ما يبدأ"}</span>
+              </p>
+            )}
+            {passMiss && (
+              <button
+                type="button"
+                className="w-full rounded-xl border border-[#3d5cff] bg-[#3d5cff]/10 px-3 py-2 text-start text-xs font-bold text-jw-ink"
+                onClick={() => {
+                  // one change for all of them (setSetting one by one would keep only the last)
+                  const patch: Settings = Object.fromEntries(Object.entries(passMiss.match).map(([k, vals]) => [k, vals[0]]));
+                  if (passMiss.kind === "video" && Number(ev?.settings.duration ?? 0) > UNLIMITED.maxVideoSec) patch.duration = UNLIMITED.maxVideoSec;
+                  if (def) setDraft((d) => ({ ...d, settings: { ...d.settings, [def.id]: { ...settings, ...patch } } }));
+                }}
+              >
+                ⚡ عندك لامحدود {passMiss.name}{passMiss.quality ? ` بدقة ${passMiss.quality}` : ""}{passMiss.kind === "video" ? ` (لين ${UNLIMITED.maxVideoSec} ثانية)` : ""}. اضغط هنا وتصير الإعدادات عليه ويطلع مجاني ←
+              </button>
+            )}
             {!user ? (
               <LoginLink className="jw-btn jw-btn-primary h-12 w-full text-base">سجّل الدخول للتوليد</LoginLink>
             ) : lowBalance ? (
@@ -1311,7 +1338,7 @@ export default function Studio({ section, studioSections, generators: allGenerat
                 {price != null && (
                   <span className="ms-1 flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--jw-on-accent)_15%,transparent)] px-2 py-0.5 text-sm">
                     {/* the owner sees the very price a customer sees (and the note below: nothing is taken from him) */}
-                    <Riyal halalas={price} size={15} />
+                    {passHere ? "مجاني ⚡" : <Riyal halalas={price} size={15} />}
                   </span>
                 )}
               </button>

@@ -6,6 +6,7 @@
 // «الطالب الذكي»), the tool says so and gives the link that opens that very conversation or project on the site, where
 // the page goes on by itself.
 
+import { unlimitedStatus } from "@/lib/jawad/server/unlimited";
 import { createHash } from "node:crypto";
 import { coinStr } from "@config/coins";
 import { FILM_STYLES } from "@config/film-styles";
@@ -73,7 +74,9 @@ const balance: ToolDef = {
   annotations: { readOnlyHint: true },
   run: async (_a, c) => {
     const b = await coinBalance(c.user.id);
-    return { balance: sar(b), balance_halalas: b, unlimited: await freeFor(c.user), top_up: `${c.origin}/jawad-ai/coins` };
+    // «لامحدود»: the passes running for the person — their generations are free (the studio and studio_generate decide it)
+    const passes = (await unlimitedStatus(c.user.id).catch(() => [])).map((p) => ({ generator_id: p.generatorId, name: p.name, ...(p.quality ? { quality: p.quality } : {}), until: p.until, fast_left: p.fastLeft, unit: p.kind === "video" ? "seconds" : "pictures", note: p.kind === "video" ? `Free at ${p.quality ?? "its quality"}, videos up to 15 s; after the fast balance it is slower.` : "Free; after the fast balance it is slower." }));
+    return { balance: sar(b), balance_halalas: b, unlimited: await freeFor(c.user), unlimited_passes: passes, top_up: `${c.origin}/jawad-ai/coins` };
   },
 };
 

@@ -27,6 +27,8 @@ export interface StudioProps {
   pricing: Pricing;
   initialWorks: { items: WorkItem[]; next: string | null } | null;
   freeImageAvailable: boolean;
+  /** «لامحدود»: the person's running passes (what each covers is in config/jawad/unlimited.ts) */
+  passes?: { pass: string; fastLeft: number }[];
 }
 
 /** A stored upload as the server returns it (with a short-lived link). */
