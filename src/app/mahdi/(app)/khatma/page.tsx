@@ -5,25 +5,28 @@ import { useMemo, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
 import Icon from "@/components/mahdi/Icon";
-import PartPicker, { partText, type Part } from "@/components/mahdi/khatma/PartPicker";
+import HabitLinkButton from "@/components/mahdi/HabitLinkButton";
+import PartPicker, { firstPart, partText, partVerses, RangeFields, UNIT_NAME, type Part } from "@/components/mahdi/khatma/PartPicker";
 import { useMyKhatma, type MyKhatma } from "@/components/mahdi/khatma/useMyKhatma";
 import FreeReading from "@/components/mahdi/khatma/FreeReading";
 import { TimeHabitLink, useReaderState } from "@/components/mahdi/khatma/ReaderClock";
 import { useReadOrder } from "@/components/mahdi/khatma/useReadOrder";
-import { dailyCount, isCarried, khatmaStats, unitText } from "@/lib/mahdi/khatma/mine";
+import { dailyCount, isCarried, khatmaStats, needsMore, START, unitText } from "@/lib/mahdi/khatma/mine";
 import { minutesText, portionsBefore, unreadOf, wholeMinutes } from "@/lib/mahdi/khatma/reader";
 import { DIVISION_LABEL, fullRange, isFull, portionQuarters, portionSummary, portionTitle, rangeSize, type Division, type PortionRange } from "@/lib/mahdi/khatma/portions";
 
 const PACES = [
   { days: 1, note: "اليوم" },
   { days: 7, note: "في أسبوع" },
-  { days: 10, note: "في ١٠ أيام" },
+  { days: 10, note: "في 10 أيام" },
   { days: 15, note: "في نص شهر" },
   { days: 30, note: "في شهر" },
   { days: 60, note: "في شهرين" },
 ];
 const dayText = (d: string) => new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
-const GREEN = "#22c55e";
+// what is read is an achievement: the design's yellow (never a green of its own)
+const DONE = "var(--m-gold)";
+const DONE_INK = "var(--m-gold-ink)";
 /** What is sent for a stretch: nothing for the whole Quran. */
 const rangeBody = (p: Part) => (isFull(p.unit, p.range) ? { unit: p.unit, rangeFrom: null, rangeTo: null } : { unit: p.unit, rangeFrom: p.range.from, rangeTo: p.range.to });
 
@@ -90,31 +93,97 @@ function Dedication({ to, setTo, soul, setSoul, optional }: { to: string; setTo:
 }
 
 function Start({ k, last }: { k: K; last: MyKhatma | null }) {
-  const [part, setPart] = useState<Part>({ unit: last?.unit ?? "quarter", range: last?.unit ? fullRange(last.unit) : fullRange("quarter") });
-  const [days, setDays] = useState(last?.days ?? 30);
+  const [part, setPart] = useState<Part>(() => {
+    const unit = last?.unit ?? START.unit;
+    return { unit, range: fullRange(unit) };
+  });
+  const [days, setDays] = useState(last?.days ?? START.days);
   const [to, setTo] = useState(last?.dedicatedTo ?? "");
   const [soul, setSoul] = useState(last?.forSoulOf ?? "");
   const [reached, setReached] = useState(0);
+  const [customDays, setCustomDays] = useState(false);
   // a different stretch or cut starts from its beginning
   const pickPart = (p: Part) => (setPart(p), setReached(0));
+  const whole = isFull(part.unit, part.range);
+  const total = rangeSize(part.range) - Math.max(0, reached - part.range.from);
+  const step = (n: number, title: string) => (
+    <legend className="flex items-center gap-2 font-semibold">
+      <span className="m-num grid size-7 place-items-center rounded-full text-sm" style={{ background: "var(--m-gold)", color: "var(--m-gold-ink)" }} aria-hidden="true">{n}</span>
+      {title}
+    </legend>
+  );
+  const choice = (on: boolean, label: React.ReactNode, onClick: () => void, sub?: string) => (
+    <button type="button" role="radio" aria-checked={on} className="m-option min-h-12 px-2 text-sm font-semibold" onClick={onClick}>
+      <span className="block">{label}</span>
+      {sub && <span className="m-num block text-xs font-normal m-muted">{sub}</span>}
+    </button>
+  );
+  const setUnit = (u: Division) => u !== part.unit && pickPart(whole ? { unit: u, range: fullRange(u) } : firstPart(u));
   return (
     <section className="space-y-4">
       {last?.status === "done" && (
         <div className="m-card space-y-1 p-5 text-center">
-          <p className="text-2xl">🤍</p>
           <p className="text-lg font-semibold">تمّت ختمتك رقم {last.number} بحمد الله</p>
           {last.finishedOn && <p className="text-sm m-muted">ختمتها {dayText(last.finishedOn)}</p>}
         </div>
       )}
-      <div className="m-card space-y-4 p-4">
+      <div className="m-card space-y-5 p-4">
         <div>
           <h2 className="text-lg font-semibold">{last ? "ابدأ ختمة جديدة" : "ابدأ ختمتك"}</h2>
-          <p className="text-sm m-muted">القرآن كاملًا أو جزء معيّن منه، بالصفحات أو الأجزاء أو الأحزاب أو أنصافها أو أرباعها. تتابع وين وصلت، وكل نصيب تقرؤه ينضاف لعادتك في «لأجل المهدي».</p>
+          <p className="text-sm m-muted">ثلاث خطوات وتبدأ. لو فاتك يوم، الباقي يتوزّع على الأيام الباقية بروحه.</p>
         </div>
-        <PartPicker value={part} onChange={pickPart} />
-        <ReachedPicker unit={part.unit} range={part.range} value={reached} onChange={setReached} />
-        <Pace days={days} setDays={setDays} total={rangeSize(part.range) - Math.max(0, reached - part.range.from)} unit={part.unit} />
-        <Dedication to={to} setTo={setTo} soul={soul} setSoul={setSoul} optional />
+
+        <fieldset className="space-y-2">
+          {step(1, "وش تقرأ؟")}
+          <div className="grid grid-cols-2 gap-2" role="radiogroup">
+            {choice(whole, "القرآن كامل", () => pickPart({ unit: part.unit, range: fullRange(part.unit) }))}
+            {choice(!whole, "جزء منه", () => whole && pickPart(firstPart(part.unit)))}
+          </div>
+          {!whole && <RangeFields value={part} onChange={pickPart} />}
+          <p className="m-num text-xs m-muted">{partText(part)} · {partVerses(part)}</p>
+        </fieldset>
+
+        <fieldset className="space-y-2">
+          {step(2, "كيف تقسّمه؟")}
+          <div className="grid grid-cols-2 gap-2" role="radiogroup">
+            {START.units.map((u) => choice(part.unit === u, u === "juz" ? "بالجزء" : "بالصفحة", () => setUnit(u), `${rangeSize(u === part.unit ? part.range : fullRange(u))} ${DIVISION_LABEL[u].one}`))}
+          </div>
+          {!START.units.includes(part.unit) && <p className="text-xs m-muted">مقسّمة {UNIT_NAME[part.unit]} (من «خيارات أكثر»).</p>}
+        </fieldset>
+
+        <fieldset className="space-y-2">
+          {step(3, "متى تخلّصه؟")}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="radiogroup">
+            {START.paces.map((p) => choice(!customDays && days === p.days, p.note, () => (setCustomDays(false), setDays(p.days)), `${unitText(part.unit, dailyCount(total, p.days))} باليوم`))}
+          </div>
+          <p className="m-num text-sm">وردك اليومي: <strong>{unitText(part.unit, dailyCount(total, days))}</strong> · {days === 1 ? "اليوم" : `${days} يوم`}</p>
+        </fieldset>
+
+        <details className="m-soft p-3" open={needsMore(last?.unit ?? START.unit, last?.days ?? START.days) || undefined}>
+          <summary className="cursor-pointer text-sm font-semibold">خيارات أكثر</summary>
+          <div className="mt-3 space-y-4">
+            <fieldset className="space-y-2">
+              <legend className="m-label">تقسيم أصغر</legend>
+              <div className="grid grid-cols-3 gap-2" role="radiogroup">
+                {START.moreUnits.map((u) => choice(part.unit === u, UNIT_NAME[u], () => setUnit(u)))}
+              </div>
+            </fieldset>
+            <fieldset className="space-y-2">
+              <legend className="m-label">مدة ثانية</legend>
+              <div className="grid grid-cols-3 gap-2" role="radiogroup">
+                {START.morePaces.map((p) => choice(!customDays && days === p.days, p.note, () => (setCustomDays(false), setDays(p.days))))}
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={customDays} onChange={(e) => setCustomDays(e.target.checked)} />
+                عدد أيام آخر
+                {customDays && <input type="number" min={1} max={365} className="m-field m-num w-24" value={days} onChange={(e) => setDays(Math.max(1, Math.min(365, Number(e.target.value) || 1)))} aria-label="عدد الأيام" />}
+              </label>
+            </fieldset>
+            <ReachedPicker unit={part.unit} range={part.range} value={reached} onChange={setReached} />
+            <Dedication to={to} setTo={setTo} soul={soul} setSoul={setSoul} optional />
+          </div>
+        </details>
+
         <button
           type="button"
           className="m-btn m-btn-primary w-full"
@@ -125,7 +194,7 @@ function Start({ k, last }: { k: K; last: MyKhatma | null }) {
             if (r && reached > 0) await k.carry(portionsBefore(part.range, reached));
           }}
         >
-          📖 ابدأ
+          <Icon name="book" size={18} /> ابدأ
         </button>
       </div>
     </section>
@@ -176,12 +245,14 @@ function Open({ k }: { k: K }) {
           <span className="m-num text-sm">{s.todayCount} / {s.perDay} {DIVISION_LABEL[u].one}</span>
         </div>
         <span className="block h-2.5 overflow-hidden rounded-full" style={{ background: "var(--m-track)" }}>
-          <span className="block h-full rounded-full" style={{ width: `${Math.min(100, (s.todayCount / s.perDay) * 100)}%`, background: GREEN }} />
+          <span className="block h-full rounded-full" style={{ width: `${Math.min(100, (s.todayCount / s.perDay) * 100)}%`, background: DONE }} />
         </span>
         <p className="text-sm m-muted">
           {s.todayLeft === 0 ? "✅ خلّصت وردك اليوم. تقبّل الله." : `باقي لك اليوم ${unitText(u, s.todayLeft)}.`}
-          {s.behind > 0 ? ` متأخر عن خطتك ${unitText(u, s.behind)}.` : s.ahead > 0 ? ` متقدّم على خطتك ${unitText(u, s.ahead)} 🌟` : ""}
-          {s.streak > 1 ? ` · ${s.streak} أيام ورا بعض 🔥` : ""}
+          {/* never «you are behind»: a missed day is spread over the days left by itself */}
+          {s.respread && s.daysLeft > 0 ? ` الباقي متوزّع على ${s.daysLeft === 1 ? "آخر يوم" : `الأيام الباقية (${s.daysLeft})`}.` : ""}
+          {s.daysLeft === 0 && s.left > 0 ? ` كمّل على راحتك، تخلّصها ${dayText(s.finishBy)} بإذن الله.` : ""}
+          {s.streak > 1 ? ` · ${s.streak} أيام ورا بعض` : ""}
         </p>
         <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="طريقة القراءة">
           <button type="button" role="radio" aria-checked={order === "order"} className="m-option min-h-11 px-2 text-sm font-semibold" onClick={() => setOrder("order")}>بالترتيب</button>
@@ -277,7 +348,7 @@ function Open({ k }: { k: K }) {
   );
 }
 
-/** Every portion of the khatma as a square under its juz (green = read, the gold border = where to go on). */
+/** Every portion of the khatma as a square under its juz (yellow = read, the bold border = where to go on). */
 function KhatmaMap({ unit, range, read, carried, next, edit, picked, onPick }: { unit: Division; range: PortionRange; read: Set<number>; carried: Set<number>; next: number | null; edit: boolean; picked: Set<number>; onPick: (n: number) => void }) {
   const groups = useMemo(() => {
     const byJuz = new Map<number, number[]>();
@@ -291,7 +362,7 @@ function KhatmaMap({ unit, range, read, carried, next, edit, picked, onPick }: {
   return (
     <section className="space-y-2" aria-labelledby="map">
       <h2 id="map" className="text-lg font-semibold">خريطة الختمة</h2>
-      <p className="text-sm m-muted">كل مربع {DIVISION_LABEL[unit].one}؛ الأخضر قرأته (الباهت اللي خلّصته قبل). {edit ? "اضغط على اللي تبي تحدّده." : "اضغط على أي واحد تفتحه."}</p>
+      <p className="text-sm m-muted">كل مربع {DIVISION_LABEL[unit].one}؛ الأصفر قرأته (الباهت اللي خلّصته قبل). {edit ? "اضغط على اللي تبي تحدّده." : "اضغط على أي واحد تفتحه."}</p>
       <ol className="grid gap-1.5">
         {groups.map(([juz, ns]) => (
           <li key={juz} className="flex items-start gap-2">
@@ -299,10 +370,10 @@ function KhatmaMap({ unit, range, read, carried, next, edit, picked, onPick }: {
             <span className="flex flex-1 flex-wrap gap-1">
               {ns.map((n) => {
                 const style = {
-                  background: read.has(n) ? GREEN : "var(--m-surface-2)",
-                  color: read.has(n) ? "#fff" : undefined,
+                  background: read.has(n) ? DONE : "var(--m-surface-2)",
+                  color: read.has(n) ? DONE_INK : undefined,
                   opacity: carried.has(n) && !picked.has(n) ? 0.65 : 1,
-                  borderColor: picked.has(n) ? "var(--m-ink)" : n === next ? "var(--m-gold)" : read.has(n) ? GREEN : "var(--m-line)",
+                  borderColor: picked.has(n) ? "var(--m-ink)" : n === next ? "var(--m-accent)" : read.has(n) ? DONE : "var(--m-line)",
                   borderWidth: picked.has(n) || n === next ? 2 : 1,
                   boxShadow: picked.has(n) ? "0 0 0 2px color-mix(in srgb, var(--m-gold) 60%, transparent)" : undefined,
                 } as React.CSSProperties;
@@ -334,14 +405,14 @@ function Ring({ pct }: { pct: number }) {
     <span className="relative grid size-20 shrink-0 place-items-center" role="img" aria-label={`${pct}٪ من الختمة`}>
       <svg viewBox="0 0 80 80" className="absolute inset-0 -rotate-90" aria-hidden>
         <circle cx="40" cy="40" r={r} fill="none" stroke="var(--m-track)" strokeWidth="8" />
-        <circle cx="40" cy="40" r={r} fill="none" stroke={GREEN} strokeWidth="8" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} />
+        <circle cx="40" cy="40" r={r} fill="none" stroke={DONE} strokeWidth="8" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} />
       </svg>
       <span className="m-num relative text-lg font-bold">{pct}%</span>
     </span>
   );
 }
 
-/** The habit the khatma fills: one made for it («ورد الختمة العلوية»), or one of mine. */
+/** The habit the khatma fills: «اربط بعادة» — one made for it («ورد الختمة العلوية»), or one of mine. */
 function HabitLink({ k }: { k: K }) {
   const cur = k.data!.current!;
   const habits = k.state.snap.habits.filter((h) => {
@@ -349,63 +420,37 @@ function HabitLink({ k }: { k: K }) {
     return v && v.state !== "archived";
   });
   const projects = k.state.snap.projects.filter((p) => !p.archivedAt);
-  const [pick, setPick] = useState("");
   const [project, setProject] = useState("");
-  const [making, setMaking] = useState(false);
   const one = DIVISION_LABEL[cur.unit].one;
   const perDay = dailyCount(rangeSize(cur.range), cur.days);
-  if (k.habit) {
-    return (
-      <section className="m-card flex flex-wrap items-center gap-3 p-4">
-        <span className="text-2xl" aria-hidden>{k.habit.icon || "✅"}</span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-semibold">مربوطة بعادة «{k.habit.name}»</span>
-          <span className="block text-sm m-muted">كل {one} تقرؤه هنا يضيف ١ على العادة في يومه (والعادة اللي تنحسب «تم/لا» تصير تمّت).</span>
-        </span>
-        <button type="button" className="m-btn m-btn-quiet m-btn-sm" disabled={k.busy} onClick={() => void k.post({ action: "link", habitId: null }, "انفكّ الربط.")}>فك الربط</button>
-      </section>
-    );
-  }
   return (
-    <section className="m-card space-y-3 p-4">
-      <div>
-        <h2 className="font-semibold">🔗 اربطها بعاداتك</h2>
-        <p className="text-sm m-muted">كل {one} تقرؤه ينسجل في العادة وحده، فتشوف وردك مع عاداتك اليومية وتقييمك.</p>
-      </div>
-      <div className="space-y-2 rounded-xl border p-3" style={{ borderColor: "var(--m-line)" }}>
-        <p className="text-sm font-semibold">عادة جديدة «ورد الختمة العلوية» 📖</p>
-        <p className="m-num text-xs m-muted">يوميًا، هدفها {perDay} {DIVISION_LABEL[cur.unit].unit} ({unitText(cur.unit, perDay)}).</p>
-        <select className="m-field" value={project} onChange={(e) => setProject(e.target.value)} aria-label="المشروع">
-          <option value="">في مشروع جديد «الختمة العلوية»</option>
-          {projects.map((p) => <option key={p.id} value={p.id}>في مشروع «{p.name}»</option>)}
-        </select>
-        <button
-          type="button"
-          className="m-btn m-btn-primary w-full"
-          disabled={k.busy || making}
-          onClick={async () => {
-            setMaking(true);
+    <section className="m-card space-y-2 p-4" aria-label="ربط الختمة بعادة">
+      {!k.habit && <p className="text-sm m-muted">كل {one} تقرؤه ينسجل في العادة وحده، فتشوف وردك مع عاداتك.</p>}
+      <HabitLinkButton
+        linked={k.habit}
+        habits={habits}
+        busy={k.busy}
+        what={`كل ${one} تقرؤه هنا يضيف 1 على العادة في يومه (والعادة اللي تنحسب «تم/لا» تصير تمّت).`}
+        onChange={(id) => k.post({ action: "link", habitId: id }, id ? "انربطت ✓" : "انفكّ الربط.")}
+        create={{
+          label: "أنشئ «ورد الختمة العلوية» واربطها",
+          hint: `عادة يومية، هدفها ${perDay} ${DIVISION_LABEL[cur.unit].unit} (${unitText(cur.unit, perDay)}).`,
+          extra: (
+            <select className="m-field" value={project} onChange={(e) => setProject(e.target.value)} aria-label="المشروع">
+              <option value="">في مشروع جديد «الختمة العلوية»</option>
+              {projects.map((p) => <option key={p.id} value={p.id}>في مشروع «{p.name}»</option>)}
+            </select>
+          ),
+          run: async () => {
             try {
               await k.store.mutate("/api/mahdi/khatma/mine", "POST", { action: "habit_new", ...(project ? { projectId: project } : {}) });
               k.refresh();
             } catch (e) {
               k.toast((e as Error).message);
             }
-            setMaking(false);
-          }}
-        >
-          <Icon name="plus" size={18} /> أنشئ العادة واربطها
-        </button>
-      </div>
-      {habits.length > 0 && (
-        <div className="flex gap-2">
-          <select className="m-field flex-1" value={pick} onChange={(e) => setPick(e.target.value)} aria-label="عادة من عاداتي">
-            <option value="">أو اختر عادة من عاداتك…</option>
-            {habits.map((h) => <option key={h.id} value={h.id}>{h.icon} {h.name}</option>)}
-          </select>
-          <button type="button" className="m-btn m-btn-ghost" disabled={!pick || k.busy} onClick={() => void k.post({ action: "link", habitId: pick }, "انربطت ✓")}>اربط</button>
-        </div>
-      )}
+          },
+        }}
+      />
     </section>
   );
 }
@@ -466,8 +511,8 @@ function ReadingTime() {
   if (!state) return null;
   return (
     <section className="m-card space-y-2 p-4" aria-labelledby="read-time">
-      <h2 id="read-time" className="font-semibold">⏱ وقت القراءة</h2>
-      <p className="m-num text-sm m-muted">قرأت اليوم {minutesText(wholeMinutes(state.todaySeconds))}. العدّاد يشتغل فوق القارئ، ويحسب وقتك وأنت فاتح الصفحة.</p>
+      <h2 id="read-time" className="font-semibold">وقت القراءة</h2>
+      <p className="m-num text-sm m-muted">قرأت اليوم {minutesText(wholeMinutes(state.todaySeconds))}. الحبة اللي فوق القارئ تحسب وقتك وأنت فاتح الصفحة، وتضغطها لو تبي توقفها.</p>
       <TimeHabitLink reader={state} onChange={(id) => void setHabit(id)} />
     </section>
   );

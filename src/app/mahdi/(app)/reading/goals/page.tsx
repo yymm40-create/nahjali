@@ -8,6 +8,7 @@ import { bySort, habitStatus, parseNumberInput } from "@/lib/mahdi/client/derive
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { duration } from "@/lib/mahdi/client/reading";
 import type { ReadingData } from "@/lib/mahdi/types";
+import HabitLinkButton from "@/components/mahdi/HabitLinkButton";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { useReading } from "@/components/mahdi/useReading";
@@ -138,13 +139,13 @@ export default function ReadingGoalsPage() {
 
         <fieldset className="space-y-2">
           <legend className="m-label">{t.reading.linkHabit}</legend>
-          <p className="m-hint">{t.reading.linkHabitHint}</p>
-          <select className="m-field" value={habitId} onChange={(e) => setHabitId(e.target.value)}>
-            <option value="">{t.reading.noHabit}</option>
-            {habits.map((h) => (
-              <option key={h.id} value={h.id}>{h.name}</option>
-            ))}
-          </select>
+          <HabitLinkButton
+            linked={habits.find((h) => h.id === habitId) ?? null}
+            habits={habits}
+            what={`${t.reading.linkHabitHint} ينحفظ الربط مع «${t.common.save}».`}
+            onChange={(id) => setHabitId(id ?? "")}
+            empty="ما عندك عادات بعد."
+          />
           {habitId && (
             <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={t.reading.habitMetric}>
               {(["minutes", "pages", "narrations"] as const).map((m) => (

@@ -88,6 +88,12 @@ describe("five destinations, nothing hidden (the plan of 26 November 2026)", () 
     expect(titleOf("/mahdi/khatma/groups")).toBe("ختمات المجموعات");
     expect(parentOf("/mahdi/khatma/free/3")).toBe("/mahdi/khatma/free");
     expect(parentOf("/mahdi/more/family")).toBe("/mahdi/more");
+    // the readers: a group's portion goes back to its khatma, a portion of mine skips the screen-less «/read»
+    const g = "/mahdi/khatma/0f8e7d6c-5b4a-4321-9abc-def012345678";
+    expect(titleOf(`${g}/read/3`)).toBe("ختمة المجموعة");
+    expect(parentOf(`${g}/read/3`)).toBe(g);
+    expect(parentOf("/mahdi/khatma/read/12")).toBe("/mahdi/khatma");
+    expect(titleOf("/mahdi/khatma/read/12")).toBe("القرآن");
   });
   it("no side menu and no floating robot", () => {
     const shell = read("src/components/mahdi/AppShell.tsx");

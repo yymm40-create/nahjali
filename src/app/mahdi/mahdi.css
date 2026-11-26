@@ -1723,3 +1723,62 @@ body {
 
 /* every tap answers under the finger */
 .mahdi-root .m-option:active, .mahdi-root .m-chip:active { transform: scale(0.97); }
+
+/* ── the Quran reader (one reader for «ختمتي», the free reading and a group's portion) ──
+ * A solid reading surface: no glass, no picture behind the words. While it is open (data-mreading on the root) the tab
+ * bar and the backdrop step away. «قراءة الليل» is a little warmer and softer — still a light page, never black. */
+.mahdi-root {
+  --m-read-bg: var(--m-surface-solid);
+  --m-read-ink: var(--m-ink);
+  --m-read-line: var(--m-line);
+  --m-read-mark: var(--m-gold-text);
+}
+.mahdi-root[data-mreading="night"] {
+  --m-read-bg: #f5eaed;
+  --m-read-ink: #3a2a30;
+  --m-read-line: #e6d3d9;
+}
+.mahdi-root[data-mreading] { background: var(--m-read-bg); }
+.mahdi-root[data-mreading] .m-backdrop,
+.mahdi-root[data-mreading] .m-bottom-nav { display: none; }
+.mahdi-root[data-mreading] .m-content-pad { padding-bottom: calc(var(--m-safe-b) + 32px); }
+.mahdi-root[data-mreading] .m-topbar { background: var(--m-read-bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+.m-reader-bar {
+  position: sticky;
+  top: calc(56px + env(safe-area-inset-top, 0px));
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline: -4px;
+  padding: 6px 4px;
+  background: var(--m-read-bg);
+  border-bottom: 1px solid var(--m-read-line);
+}
+@media (min-width: 1024px) { .m-reader-bar { top: 56px; } }
+.m-reader-page {
+  background: var(--m-read-bg);
+  color: var(--m-read-ink);
+  border: 1px solid var(--m-read-line);
+  border-radius: var(--m-radius);
+  box-shadow: none;
+  touch-action: pan-x pan-y; /* two fingers resize the letters instead of zooming the page */
+}
+.m-reader-page .m-reader-mark { color: var(--m-read-mark); white-space: nowrap; }
+.m-reader-page .m-reader-sura { border: 2px solid var(--m-gold); border-radius: 14px; }
+.m-time-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--m-ink);
+  background: var(--m-surface-2);
+  border: 1px solid var(--m-line);
+}
+.m-time-pill[aria-pressed="true"] { color: var(--m-accent-text); border-color: var(--m-accent); }
+.m-aa-btn { font-family: var(--m-display); font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; }

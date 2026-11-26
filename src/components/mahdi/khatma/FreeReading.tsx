@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
-import { arabicDigits, portionCount, portionSummary } from "@/lib/mahdi/khatma/portions";
+import { portionCount, portionSummary } from "@/lib/mahdi/khatma/portions";
 import { SURA_NAMES } from "@/lib/mahdi/khatma/quran-map";
 import { firstPage, pageOfVerse } from "@/lib/mahdi/khatma/reader";
 import { useReaderState } from "./ReaderClock";
@@ -47,11 +47,11 @@ export default function FreeReading({ compact = false }: { compact?: boolean }) 
     <section className="m-card space-y-3 p-4" aria-labelledby="free-read">
       <div>
         <h2 id="free-read" className="font-semibold">📖 قراءة حرة</h2>
-        <p className="text-sm m-muted">اقرأ من أي مكان بدون ختمة: تختار وين أنت، والعدّاد فوق يحسب وقتك وينضاف لعادة القراءة إذا ربطتها.</p>
+        <p className="text-sm m-muted">اقرأ من أي مكان بدون ختمة: تختار وين أنت، والحبة اللي فوق القارئ تحسب وقتك وتنضاف لعادة القراءة إذا ربطتها.</p>
       </div>
       {last && (
         <Link href={`/mahdi/khatma/free/${last}`} className="m-btn m-btn-primary w-full">
-          كمّل من صفحة {arabicDigits(last)}
+          كمّل من صفحة {last}
           <span className="m-num text-xs opacity-80">{openingOf(last)}</span>
         </Link>
       )}
@@ -76,9 +76,9 @@ export default function FreeReading({ compact = false }: { compact?: boolean }) 
             </span>
           </label>
           <label className="block space-y-1">
-            <span className="m-label">رقم الصفحة (١–٦٠٤)</span>
+            <span className="m-label">رقم الصفحة (1–604)</span>
             <span className="flex gap-2">
-              <input className="m-field m-num flex-1" inputMode="numeric" value={page} onChange={(e) => setPage(e.target.value)} placeholder="مثلًا ٥٠" />
+              <input className="m-field m-num flex-1" inputMode="numeric" value={page} onChange={(e) => setPage(e.target.value)} placeholder="مثلًا 50" />
               <Link href={`/mahdi/khatma/free/${pageNo || 1}`} className={`m-btn m-btn-ghost ${pageNo ? "" : "pointer-events-none opacity-50"}`} aria-disabled={!pageNo}>افتح</Link>
             </span>
           </label>

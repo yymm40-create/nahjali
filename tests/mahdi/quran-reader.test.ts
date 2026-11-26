@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { carriedDay, isCarried, khatmaStats, nextAfter, nextPortion } from "@/lib/mahdi/khatma/mine";
-import { CLOCK, clockText, firstPage, habitAfterReading, isTimeHabit, minutesInUnit, minutesText, pageOfVerse, portionsBefore, unreadOf, wholeMinutes } from "@/lib/mahdi/khatma/reader";
+import { CLOCK, clampSize, clockText, firstPage, habitAfterReading, isTimeHabit, minutesInUnit, minutesText, pageOfVerse, pillText, pinchSize, portionsBefore, QURAN_SIZE, readSize, readSurface, stepSize, unreadOf, wholeMinutes } from "@/lib/mahdi/khatma/reader";
 import { carryQuarters, loadMyKhatma, readQuarters, startMyKhatma, unreadQuarter } from "@/lib/mahdi/server/my-khatma";
 import { addTime, loadReader, setFreePage, setTimeHabit } from "@/lib/mahdi/server/quran-reader";
 import { fakeDb } from "./fake-db";
@@ -110,10 +110,23 @@ describe("free reading", () => {
 });
 
 describe("the reader's wiring", () => {
-  it("the clock sits on both readers and the tabs stay out of the way while reading", () => {
-    expect(read("src/app/mahdi/(app)/khatma/read/[q]/page.tsx")).toMatch(/<ReaderClock extra=\{extra\} \/>/);
-    expect(read("src/app/mahdi/(app)/khatma/free/[p]/page.tsx")).toMatch(/<ReaderClock extra=\{`قراءة حرة[^\n]*\} \/>/);
-    expect(read("src/app/mahdi/(app)/khatma/free/[p]/page.tsx")).not.toMatch(/<ReaderClock [^\n]*page=/);
+  it("one reader for the three: my khatma, the free reading and a group's portion — no glass, the tab bar away", () => {
+    for (const page of ["src/app/mahdi/(app)/khatma/read/[q]/page.tsx", "src/app/mahdi/(app)/khatma/free/[p]/page.tsx", "src/app/mahdi/(app)/khatma/[id]/read/[n]/page.tsx"]) {
+      const src = read(page);
+      expect(src, page).toMatch(/<QuranReader\b/);
+      // the reader draws the words and the clock itself
+      expect(src, page).not.toMatch(/<QuranText\b|<ReaderClock\b/);
+    }
+    const reader = read("src/components/mahdi/khatma/QuranReader.tsx");
+    expect(reader).toMatch(/<ReaderClock clock=\{clock\} \/>/);
+    expect(reader).toMatch(/useReadingMode\(prefs\.surface\)/);
+    expect(reader).toContain("Aa");
+    expect(reader).toContain("قراءة الليل");
+    expect(read("src/components/mahdi/khatma/useReaderPrefs.ts")).toMatch(/setAttribute\("data-mreading"/);
+    const css = read("src/app/mahdi/mahdi.css");
+    expect(css).toMatch(/\.mahdi-root\[data-mreading\] \.m-bottom-nav \{ display: none; \}/);
+    const page = css.slice(css.indexOf(".m-reader-page {"));
+    expect(page.slice(0, page.indexOf("}"))).not.toMatch(/backdrop-filter|blur|url\(/);
     expect(read("src/components/mahdi/khatma/KhatmaTabs.tsx")).toMatch(/\/free\//);
   });
   it("the stopwatch goes on from page to page (the owner's rule), and the day's total keeps counting too", () => {
@@ -124,6 +137,9 @@ describe("the reader's wiring", () => {
     expect(clock).toMatch(/visit\.seconds \+= 1/);
     expect(clock).not.toMatch(/seenPage|setSession\(0\)/);
     expect(clock).toMatch(/initial \+ \(session - from\)/);
+    // a pill with minutes, a tap pauses it; never the ticking seconds
+    expect(clock).toMatch(/pillText\(session\)/);
+    expect(clock).not.toMatch(/clockText\(/);
   });
   it("the tables are server-only and the time route credits the habit through the person's own client", () => {
     const sql = read("supabase/migrations/0084_mahdi_quran_reader.sql");
@@ -152,5 +168,43 @@ describe("reading wherever they like", () => {
   it("the choice is on the khatma page and the reader follows it", () => {
     expect(read("src/app/mahdi/(app)/khatma/page.tsx")).toMatch(/أقرأ من أي مكان/);
     expect(read("src/app/mahdi/(app)/khatma/read/[q]/page.tsx")).toMatch(/order === "free" \? nextAfter/);
+  });
+});
+
+describe("the reader's settings", () => {
+  it("the pill shows whole minutes", () => {
+    expect(pillText(0)).toBe("0 د");
+    expect(pillText(59)).toBe("0 د");
+    expect(pillText(61)).toBe("1 د");
+    expect(pillText(3725)).toBe("62 د");
+  });
+  it("the letter size: the old five steps carried over, the new rem kept, «أكبر/أصغر» and two fingers inside the bounds", () => {
+    expect(readSize(null, null)).toBe(QURAN_SIZE.def);
+    expect(readSize(null, "0")).toBe(1.25);
+    expect(readSize(null, "4")).toBe(2.2);
+    expect(readSize(null, "9")).toBe(QURAN_SIZE.def);
+    expect(readSize("2.05", "0")).toBe(2.05);
+    expect(readSize("99", null)).toBe(QURAN_SIZE.max);
+    expect(readSize("abc", null)).toBe(QURAN_SIZE.def);
+    expect(stepSize(1.65, 1)).toBe(1.8);
+    expect(stepSize(QURAN_SIZE.min, -1)).toBe(QURAN_SIZE.min);
+    expect(pinchSize(1.6, 1.5)).toBe(2.4);
+    expect(pinchSize(1.6, 10)).toBe(QURAN_SIZE.max);
+    expect(pinchSize(1.6, 0)).toBe(1.6);
+    expect(clampSize(Number.NaN)).toBe(QURAN_SIZE.def);
+  });
+  it("the reading surface: day unless night was picked", () => {
+    expect(readSurface(null)).toBe("day");
+    expect(readSurface("night")).toBe("night");
+    expect(readSurface("dark")).toBe("day");
+  });
+  it("«قراءة الليل» is a light surface, never black", () => {
+    const css = read("src/app/mahdi/mahdi.css");
+    const night = css.slice(css.indexOf('.mahdi-root[data-mreading="night"] {'));
+    const bg = night.slice(0, night.indexOf("}")).match(/--m-read-bg: #([0-9a-f]{6})/i)![1];
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(bg.slice(i, i + 2), 16));
+    expect(Math.min(r, g, b)).toBeGreaterThan(200);
+    // warmer: more red than blue
+    expect(r).toBeGreaterThan(b);
   });
 });

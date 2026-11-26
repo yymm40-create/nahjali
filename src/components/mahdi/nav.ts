@@ -85,9 +85,15 @@ const TITLES: [string, string][] = [
   ["/mahdi/more/sheikh-questions", "أسئلة الشيخ"],
 ];
 
+/** A group's khatma and the reader of one of its portions (/mahdi/khatma/<id>, /mahdi/khatma/<id>/read/<n>). */
+const GROUP_KHATMA = /^\/mahdi\/khatma\/[0-9a-f-]{36}(?=\/|$)/i;
+/** Titles with no screen of their own: «رجوع» skips them. */
+const NO_SCREEN = new Set(["/mahdi/khatma/read", "/mahdi/reading/read"]);
+
 export function titleOf(path: string): string {
   const root = TABS.find((x) => x.href === path);
   if (root) return root.label;
+  if (GROUP_KHATMA.test(path)) return "ختمة المجموعة";
   let best: [string, string] | null = null;
   for (const e of TITLES) if ((path === e[0] || path.startsWith(`${e[0]}/`)) && (!best || e[0].length > best[0].length)) best = e;
   return best?.[1] ?? tabOf(path)?.label ?? t.brand;
@@ -103,6 +109,8 @@ export function parentOf(path: string): string {
   while (parts.length > 1) {
     parts.pop();
     const up = `/${parts.join("/")}`;
+    if (NO_SCREEN.has(up)) continue;
+    if (GROUP_KHATMA.exec(up)?.[0] === up) return up;
     if (TITLES.some((e) => e[0] === up) || TABS.some((x) => x.href === up)) return up;
   }
   return tab?.href ?? "/mahdi";
