@@ -62,6 +62,7 @@ import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, stemsOf, type Stem } fro
 import { storage } from "@/lib/storage";
 import type { CartoonPlan } from "./cartoon";
 import { offer10Covers } from "./offer10";
+import { heldNow, unlimitedTicket, type UnlimitedTicket } from "./unlimited";
 const db = () => createAdminClient();
 
 export type JobStatus = "queued" | "submitting" | "running" | "saving" | "succeeded" | "failed" | "cancelled";
@@ -82,7 +83,7 @@ export interface JobRow {
    * modelPrompt: the prompt as the model receives it (each «@name» written the model's way, or Arabic words written
    * phonetically by «النطق الدقيق»), when it differs. diction: the words whose pronunciation was set.
    */
-  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; signupFreeImage?: boolean; /** «عرض الـ٢٥ ريال» made it free */ offer10?: boolean; /** fal: the endpoint a video was sent to (text- or image-to-video) */ falModel?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; /** the Claude model the person chose (config/claude-models.ts): «النطق الدقيق» runs on it, never dearer than its fixed price */ claude?: string; film?: { projectId: string; assetId?: string; genId?: string; title?: string }; /** «🎨 ذوقي» */ taste?: { id: string; name: string }; /** «طبّق هويتي» (and whether the logo went in) */ brand?: { logo: boolean }; /** «أدوات الصوت»: what a dub or a lip sync keeps until it is saved */ voiceTool?: VoiceToolInputs };
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; signupFreeImage?: boolean; /** «عرض الـ٢٥ ريال» made it free */ offer10?: boolean; /** «لامحدود»: the pass that made it free, fast or held until `holdUntil` */ unlimited?: UnlimitedTicket["inputs"]; /** fal: the endpoint a video was sent to (text- or image-to-video) */ falModel?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; /** the Claude model the person chose (config/claude-models.ts): «النطق الدقيق» runs on it, never dearer than its fixed price */ claude?: string; film?: { projectId: string; assetId?: string; genId?: string; title?: string }; /** «🎨 ذوقي» */ taste?: { id: string; name: string }; /** «طبّق هويتي» (and whether the logo went in) */ brand?: { logo: boolean }; /** «أدوات الصوت»: what a dub or a lip sync keeps until it is saved */ voiceTool?: VoiceToolInputs };
   refs: { uploadId: string; kind: string; role: RefRole; name?: string }[];
   price_coins: number;
   price_breakdown: { label: string; centi: number }[];
@@ -330,7 +331,9 @@ export async function createJob(user: { id: string; email?: string | null }, own
   const freeFirst = server.free === true && !signupFreeImage;
   // «عرض الـ٢٥ ريال»: a paid offer still running for this generator (config/jawad/offer10.ts) makes the job free
   const offer10 = !freeFirst && !signupFreeImage && !owner && !server.team && !server.cartoon && e.price.coins > 0 && (await offer10Covers(user.id, def.id, e.settings).catch(() => false));
-  const freeLine = signupFreeImage ? { label: "صورة ترحيبية مجانية", centi: 0 } : freeFirst ? { label: "أول تجربة مجانية", centi: 0 } : offer10 ? { label: "مجاني من عرض الـ٢٥ ريال", centi: 0 } : null;
+  // «لامحدود»: a running pass for this generator (and its quality) makes the job free: fast, or held before it is sent
+  const unlim = !freeFirst && !signupFreeImage && !offer10 && !owner && !server.team && !server.cartoon && e.price.coins > 0 ? await unlimitedTicket(user.id, def.id, e.settings).catch(() => null) : null;
+  const freeLine = signupFreeImage ? { label: "صورة ترحيبية مجانية", centi: 0 } : freeFirst ? { label: "أول تجربة مجانية", centi: 0 } : offer10 ? { label: "مجاني من عرض الـ٢٥ ريال", centi: 0 } : unlim ? { label: unlim.inputs.fast ? "لامحدود · توليد سريع" : "لامحدود · توليد بطيء", centi: 0 } : null;
   // a code's «بسعر التكلفة»: the tool's own cost (the price table's lines, in hundredths of a halala), no profit
   const atCost = !owner && !server.team && !freeLine && e.price.coins > 0 && (await perksOf(user.email)).atCost;
   const payCoins = atCost ? costOfLines(e.price.lines) : e.price.coins;
@@ -372,7 +375,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
       mode: e.mode.id,
       output_kind: def.output,
       prompt,
-      inputs: { settings: e.settings, instructions, refStyle, origin, ...(server.cartoon ? { cartoon: server.cartoon } : {}), ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(look?.taste ? { taste: { id: look.taste.id, name: look.taste.name } } : {}), ...(look?.brand ? { brand: { logo: Boolean(extra?.logo) } } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}), ...(signupFreeImage ? { signupFreeImage: true } : {}), ...(offer10 ? { offer10: true } : {}), ...(def.output === "audio" && findClaudeModel(b.model) ? { claude: String(b.model) } : {}) },
+      inputs: { settings: e.settings, instructions, refStyle, origin, ...(server.cartoon ? { cartoon: server.cartoon } : {}), ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(look?.taste ? { taste: { id: look.taste.id, name: look.taste.name } } : {}), ...(look?.brand ? { brand: { logo: Boolean(extra?.logo) } } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}), ...(signupFreeImage ? { signupFreeImage: true } : {}), ...(offer10 ? { offer10: true } : {}), ...(unlim ? { unlimited: unlim.inputs } : {}), ...(def.output === "audio" && findClaudeModel(b.model) ? { claude: String(b.model) } : {}) },
       refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
       price_coins: chargeCoins,
       price_breakdown: freeLine ? [freeLine] : payLines,
@@ -406,7 +409,8 @@ export async function createJob(user: { id: string; email?: string | null }, own
     }
   }
   if (row.created) noteJob(row.job_id);
-  if (row.created) after(() => runJob(row.job_id));
+  // a held «لامحدود» job waits: advanceJob (the studio's polling) or the minute cron sends it once its time comes
+  if (row.created && !unlim?.holdMs) after(() => runJob(row.job_id));
   return { kind: row.created ? "created" : "existing", job: job as JobRow, balance: row.balance };
 }
 
@@ -414,6 +418,9 @@ export async function createJob(user: { id: string; email?: string | null }, own
 
 /** Takes a queued job (only one worker ever does) and sends it. */
 export async function runJob(jobId: string) {
+  // «لامحدود»: a slow job is not sent before its wait is over
+  const { data: pre } = await db().from("jawad_jobs").select("inputs").eq("id", jobId).maybeSingle();
+  if (heldNow(pre?.inputs as JobRow["inputs"] | undefined)) return;
   const { data } = await db()
     .from("jawad_jobs")
     .update({ status: "submitting", submit_state: "sending", submitted_at: now(), lease_until: later(LEASE_MS) })
@@ -925,8 +932,10 @@ export async function advanceJob(job: JobRow, o: { force?: boolean } = {}) {
   const def = generatorById(job.generator_id);
 
   if (job.status === "queued") {
-    // The request that created it died before sending: start it now (the claim makes this happen once)
-    if (age > 60_000) after(() => runJob(job.id));
+    // «لامحدود»: a slow job waits its turn, then goes like any other
+    if (heldNow(job.inputs)) return;
+    // The request that created it died before sending, or its wait is over: start it now (the claim makes this happen once)
+    if (age > 60_000 || job.inputs.unlimited?.holdUntil) after(() => runJob(job.id));
     return;
   }
   if (job.status === "submitting") {
@@ -1071,4 +1080,10 @@ export async function advanceOpenJobs(userId?: string, limit = 25) {
   if (userId) q = q.eq("user_id", userId);
   const { data } = await q;
   for (const j of (data ?? []) as JobRow[]) await advanceJob(j).catch((e) => console.error("jawad advance failed", j.id, e));
+}
+
+/** «لامحدود»: sends the held jobs whose wait is over (the minute cron), so nobody has to keep the studio open. */
+export async function sendHeldJobs(limit = 50) {
+  const { data } = await db().from("jawad_jobs").select("*").eq("status", "queued").not("inputs->unlimited->>holdUntil", "is", null).order("created_at", { ascending: true }).limit(limit);
+  for (const j of (data ?? []) as JobRow[]) if (!heldNow(j.inputs)) await runJob(j.id).catch((e) => console.error("jawad held send failed", j.id, e));
 }

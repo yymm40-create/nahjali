@@ -3,6 +3,8 @@
 
 import { settleCourseFormPayment } from "@/lib/course/orders";
 import { settleOffer10Payment } from "@/lib/jawad/server/offer10";
+import { settleUnlimitedPayment } from "@/lib/jawad/server/unlimited";
+import { UNLIMITED } from "@config/jawad/unlimited";
 import { COURSE } from "@config/course";
 import { OFFER10 } from "@config/jawad/offer10";
 import { CHECKOUT_KINDS, landing, type CheckoutKind } from "./checkout";
@@ -15,7 +17,7 @@ const kindOf = (v: unknown): CheckoutKind | "" => (CHECKOUT_KINDS.includes(v as 
 export async function settleFormPayment(paymentId: string, hint = ""): Promise<{ kind: CheckoutKind | ""; paid: boolean; to: string }> {
   const id = paymentId.trim().slice(0, 80);
   const fallback = kindOf(hint);
-  const paths = { coursePath: COURSE.base, offerPath: OFFER10.path };
+  const paths = { coursePath: COURSE.base, offerPath: OFFER10.path, unlimitedPath: UNLIMITED.path };
   const unpaid = { kind: fallback, paid: false, to: landing(fallback, false, { ...paths, paymentId: fallback === "pay" ? id : undefined }) };
   if (!moyasarEnabled() || !/^[0-9a-f-]{36}$/i.test(id)) return unpaid;
   const p = await getPayment(id).catch((e) => {
@@ -37,6 +39,10 @@ export async function settleFormPayment(paymentId: string, hint = ""): Promise<{
     case "offer10": {
       const paid = await settleOffer10Payment(ref, p);
       return { kind, paid, to: landing(kind, paid, paths) };
+    }
+    case "unlim": {
+      const r = await settleUnlimitedPayment(ref, p);
+      return { kind, paid: r.paid, to: landing(kind, r.paid, { ...paths, unlimitedPath: `${UNLIMITED.path}${r.kind ? `/${r.kind === "video" ? "video" : "images"}` : ""}` }) };
     }
     case "pay":
       // a plain payment to JAWAD AI: nothing to add; the done page reads the payment again and shows it
