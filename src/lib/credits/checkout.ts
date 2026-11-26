@@ -13,12 +13,12 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { moyasarEnabled, type Payment } from "./moyasar";
 
-export type CheckoutKind = "credits" | "course" | "offer10" | "pay";
-export const CHECKOUT_KINDS: readonly CheckoutKind[] = ["credits", "course", "offer10", "pay"];
+export type CheckoutKind = "credits" | "course" | "offer10" | "unlim" | "pay";
+export const CHECKOUT_KINDS: readonly CheckoutKind[] = ["credits", "course", "offer10", "unlim", "pay"];
 
 export interface Ticket {
   k: CheckoutKind;
-  /** the order id (credits, course), the account id (offer10), "" (pay) */
+  /** the order id (credits, course), the account id (offer10), «account|pass|hours» («لامحدود»), "" (pay) */
   ref: string;
   /** halalas */
   a: number;
@@ -71,7 +71,7 @@ export const formPaymentPaid = (p: Payment, kind: CheckoutKind, ref: string, hal
   p.status === "paid" && p.currency === "SAR" && p.amount === halalas && p.metadata.kind === kind && p.metadata.ref === ref;
 
 /** Where the buyer lands after a purchase of this kind, paid or not. */
-export function landing(kind: CheckoutKind | "", paid: boolean, extra: { ref?: string; courseId?: string; paymentId?: string; coursePath?: string; offerPath?: string } = {}): string {
+export function landing(kind: CheckoutKind | "", paid: boolean, extra: { ref?: string; courseId?: string; paymentId?: string; coursePath?: string; offerPath?: string; unlimitedPath?: string } = {}): string {
   const flag = paid ? "paid" : "unpaid";
   switch (kind) {
     case "credits":
@@ -80,6 +80,8 @@ export function landing(kind: CheckoutKind | "", paid: boolean, extra: { ref?: s
       return `${extra.coursePath ?? "/jawad-ai/course"}${extra.courseId ? `/${extra.courseId}` : ""}?${flag}=1`;
     case "offer10":
       return `${extra.offerPath ?? "/jawad-ai/offer"}?${flag}=1`;
+    case "unlim":
+      return `${extra.unlimitedPath ?? "/jawad-ai/unlimited"}?${flag}=1`;
     case "pay":
       return `/jawad-ai/pay/done${extra.paymentId ? `?id=${encodeURIComponent(extra.paymentId)}` : ""}`;
     default:
