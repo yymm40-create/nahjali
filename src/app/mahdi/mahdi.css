@@ -29,6 +29,11 @@
   --m-pebble-rim: color-mix(in srgb, var(--m-gold) 75%, #000);
   /* «خانة الطوارئ»: the colour of an emergency day's goal, and of a goal reached in an emergency (never the project's) */
   --m-emergency: #f97316;
+  /* «أيام العذر والقضاء»: a missed day is soft orange (never red) and can be made up; an excused day is lighter still */
+  --m-missed: color-mix(in srgb, #ff8a3d 24%, var(--m-surface-solid, #fff));
+  --m-missed-line: color-mix(in srgb, #ff8a3d 55%, var(--m-surface-solid, #fff));
+  --m-excuse: color-mix(in srgb, #ffb36b 16%, var(--m-surface-solid, #fff));
+  --m-excuse-line: color-mix(in srgb, #ffb36b 50%, var(--m-surface-solid, #fff));
 
   position: relative;
   isolation: isolate;
@@ -1635,6 +1640,20 @@ body {
 
 /* «خانة الطوارئ»: a habit on an emergency day (its goal is the smaller one) wears the emergency colour, whatever its project's colour */
 [data-emergency="1"] { --pc: var(--m-emergency) !important; }
+/* «أيام العذر والقضاء»: calm cards and marks, never red */
+.m-missed-card { display: block; border-radius: var(--m-radius); color: var(--m-ink); background: var(--m-missed); box-shadow: inset 0 0 0 1px var(--m-missed-line); }
+.m-excuse-card { display: block; border-radius: var(--m-radius); color: var(--m-ink); background: var(--m-excuse); box-shadow: inset 0 0 0 1px var(--m-excuse-line); }
+.m-missed-card.flex, .m-excuse-card.flex { display: flex; }
+.m-qada-chip { color: var(--m-gold-ink); background: var(--m-gold); border-color: transparent; }
+/* «اليوم»: one card only — the first of the candidates that has something to say; the rest stay out of sight */
+.m-one > :not(:first-child) { display: none; }
+.m-one:empty { display: none; }
+/* «تقدّمي»: three tabs on the segmented control */
+.m-slider[data-n="3"] { grid-template-columns: repeat(3, 1fr); width: min(100%, 420px); }
+.m-slider[data-n="3"] .m-slider-knob { width: calc((100% - 8px) / 3); transform: translateX(calc(-100% * var(--k, 0))); }
+.m-slider a { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; min-height: 42px; border-radius: 999px; font-size: 0.95rem; font-weight: 700; color: var(--m-muted); transition: color 0.2s ease; }
+.m-slider a[aria-current="page"] { color: var(--m-gold-ink); }
+.m-slider a:focus-visible { outline: 2px solid var(--m-gold); outline-offset: 2px; }
 .m-emergency-chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 1px 10px; font-size: 0.78rem; font-weight: 700; color: var(--m-emergency); background: color-mix(in srgb, var(--m-emergency) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--m-emergency) 55%, transparent); }
 
 
@@ -1723,3 +1742,62 @@ body {
 
 /* every tap answers under the finger */
 .mahdi-root .m-option:active, .mahdi-root .m-chip:active { transform: scale(0.97); }
+
+/* ── the Quran reader (one reader for «ختمتي», the free reading and a group's portion) ──
+ * A solid reading surface: no glass, no picture behind the words. While it is open (data-mreading on the root) the tab
+ * bar and the backdrop step away. «قراءة الليل» is a little warmer and softer — still a light page, never black. */
+.mahdi-root {
+  --m-read-bg: var(--m-surface-solid);
+  --m-read-ink: var(--m-ink);
+  --m-read-line: var(--m-line);
+  --m-read-mark: var(--m-gold-text);
+}
+.mahdi-root[data-mreading="night"] {
+  --m-read-bg: #f5eaed;
+  --m-read-ink: #3a2a30;
+  --m-read-line: #e6d3d9;
+}
+.mahdi-root[data-mreading] { background: var(--m-read-bg); }
+.mahdi-root[data-mreading] .m-backdrop,
+.mahdi-root[data-mreading] .m-bottom-nav { display: none; }
+.mahdi-root[data-mreading] .m-content-pad { padding-bottom: calc(var(--m-safe-b) + 32px); }
+.mahdi-root[data-mreading] .m-topbar { background: var(--m-read-bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+.m-reader-bar {
+  position: sticky;
+  top: calc(56px + env(safe-area-inset-top, 0px));
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline: -4px;
+  padding: 6px 4px;
+  background: var(--m-read-bg);
+  border-bottom: 1px solid var(--m-read-line);
+}
+@media (min-width: 1024px) { .m-reader-bar { top: 56px; } }
+.m-reader-page {
+  background: var(--m-read-bg);
+  color: var(--m-read-ink);
+  border: 1px solid var(--m-read-line);
+  border-radius: var(--m-radius);
+  box-shadow: none;
+  touch-action: pan-x pan-y; /* two fingers resize the letters instead of zooming the page */
+}
+.m-reader-page .m-reader-mark { color: var(--m-read-mark); white-space: nowrap; }
+.m-reader-page .m-reader-sura { border: 2px solid var(--m-gold); border-radius: 14px; }
+.m-time-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--m-ink);
+  background: var(--m-surface-2);
+  border: 1px solid var(--m-line);
+}
+.m-time-pill[aria-pressed="true"] { color: var(--m-accent-text); border-color: var(--m-accent); }
+.m-aa-btn { font-family: var(--m-display); font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; }

@@ -1,13 +1,14 @@
 "use client";
 
-// «الختمة العلوية» · the counter at the top of the reader: the time spent reading, counted while the page is open and on
-// screen (pause / resume), reported to the server every few seconds (and when the page is left), which keeps the day's
-// total and adds each completed minute to the habit the person linked («عادة القراءة»). Used by the khatma's reader and
-// by the free reading.
+// «الختمة العلوية» · the time pill at the top of the reader: the time spent reading, counted while the page is open and on
+// screen (a tap pauses / resumes), shown in minutes, reported to the server every few seconds (and when the page is
+// left), which keeps the day's total and adds each completed minute to the habit the person linked («عادة القراءة»).
+// Used by the one Quran reader (my khatma, the free reading, a group's portion).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
-import { CLOCK, clockText, isTimeHabit, minutesText, wholeMinutes } from "@/lib/mahdi/khatma/reader";
+import { CLOCK, isTimeHabit, minutesText, pillText, wholeMinutes } from "@/lib/mahdi/khatma/reader";
+import HabitLinkButton from "../HabitLinkButton";
 import Icon from "../Icon";
 import { useMahdi } from "../Provider";
 
@@ -66,35 +67,26 @@ export function useTimeHabits() {
   });
 }
 
-/** What the linked habit is told, in the person's words. */
-export function TimeHabitLink({ reader, onChange }: { reader: ReaderState; onChange: (id: string | null) => void }) {
+/**
+ * The reading time's habit: «اربط بعادة», one button (the habits reading time can fill: minutes, hours, or done / not
+ * done). `inline` when it sits inside the reader's own sheet.
+ */
+export function TimeHabitLink({ reader, onChange, inline = false }: { reader: ReaderState; onChange: (id: string | null) => unknown; inline?: boolean }) {
   const habits = useTimeHabits();
   const linked = habits.find((h) => h.id === reader.timeHabitId) ?? null;
   const unit = linked?.versions.at(-1)?.unit ?? "";
+  const what = linked
+    ? `كل دقيقة تقرؤها تنضاف لعادة «${linked.name}» في يومها${linked.versions.at(-1)?.measure === "check" ? " (تصير تمّت)" : unit && !/ساع/.test(unit) && unit !== "دقيقة" ? ` (${unit})` : ""}.`
+    : "اختر عادة القراءة، فكل دقيقة تقرؤها تنضاف لها وحدها.";
   return (
-    <div className="space-y-2 text-sm">
-      {linked ? (
-        <>
-          <p>
-            مربوط بعادة «{linked.icon ? `${linked.icon} ` : ""}{linked.name}»: كل دقيقة تقرؤها تنضاف لها في يومها
-            {linked.versions.at(-1)?.measure === "check" ? " (تصير تمّت)" : unit && !/ساع/.test(unit) && unit !== "دقيقة" ? ` (${unit})` : ""}.
-          </p>
-          <button type="button" className="m-btn m-btn-quiet m-btn-sm" onClick={() => onChange(null)}>فك الربط</button>
-        </>
-      ) : habits.length === 0 ? (
-        <p className="m-muted">عندك عادة قراءة؟ أنشئ عادة بالدقائق (مثل «قراءة القرآن ٢٠ دقيقة») وتربطها هنا، فينحسب وقتك فيها وحده.</p>
-      ) : (
-        <>
-          <p className="m-muted">اربط وقت قراءتك بعادة القراءة، فكل دقيقة تنضاف لها وحدها.</p>
-          <select className="m-field" value="" onChange={(e) => e.target.value && onChange(e.target.value)} aria-label="عادة القراءة">
-            <option value="">اختر عادة القراءة…</option>
-            {habits.map((h) => (
-              <option key={h.id} value={h.id}>{h.icon} {h.name}{h.versions.at(-1)?.measure === "amount" ? ` · ${h.versions.at(-1)!.unit}` : ""}</option>
-            ))}
-          </select>
-        </>
-      )}
-    </div>
+    <HabitLinkButton
+      linked={linked}
+      habits={habits}
+      onChange={onChange}
+      what={what}
+      inline={inline}
+      empty="ما عندك عادة بالدقائق. أنشئ عادة مثل «قراءة القرآن 20 دقيقة» وترجع تربطها هنا."
+    />
   );
 }
 
@@ -116,17 +108,17 @@ const visitSeconds = () => {
 };
 
 /**
- * The bar at the top of the reader. `extra`: a line of the reader's own (e.g. the khatma's progress). The stopwatch does NOT start
- * again when the person moves to another portion: it goes on for the whole visit (the day's total keeps counting too).
+ * The clock of a reading visit, for the pill at the top of the reader. The stopwatch does NOT start again when the person
+ * moves to another portion: it goes on for the whole visit (the day's total keeps counting too). The screen is told only
+ * when a whole minute passes (the pill shows minutes), so the page of the Quran is not redrawn every second.
  */
-export default function ReaderClock({ extra }: { extra?: string }) {
+export function useReadingClock(rs: ReturnType<typeof useReaderState>) {
   const { store } = useMahdi();
-  const { state: reader, initial, setHabit, refresh } = useReaderState();
+  const { initial } = rs;
   const [running, setRunning] = useState(() => visit.running);
   // the visit's seconds when this screen opened (the day's total from the server already holds the ones reported before)
   const [from] = useState(visitSeconds);
   const [session, setSession] = useState(from);
-  const [panel, setPanel] = useState(false);
   const pending = useRef(0);
 
   const flush = useCallback(() => {
@@ -149,7 +141,8 @@ export default function ReaderClock({ extra }: { extra?: string }) {
       if (!running || document.visibilityState !== "visible") return;
       pending.current += 1;
       visit.seconds += 1;
-      setSession(visit.seconds);
+      // the same minute: React keeps the old value and draws nothing
+      setSession((s) => (wholeMinutes(s) === wholeMinutes(visit.seconds) ? s : visit.seconds));
       if (pending.current >= CLOCK.reportEvery) flush();
     }, 1000);
     const onHide = () => {
@@ -166,29 +159,34 @@ export default function ReaderClock({ extra }: { extra?: string }) {
     };
   }, [running, flush]);
 
+  const toggle = useCallback(
+    () =>
+      setRunning((v) => {
+        visit.running = !v;
+        return !v;
+      }),
+    [],
+  );
   const today = initial + (session - from);
+  return { session, today, running, toggle };
+}
+
+/**
+ * The small pill at the top of the reader: the visit's minutes, never seconds ticking in front of the person. A tap pauses
+ * it (and another goes on).
+ */
+export default function ReaderClock({ clock }: { clock: ReturnType<typeof useReadingClock> }) {
+  const { session, today, running, toggle } = clock;
   return (
-    <div className="sticky top-[calc(56px+env(safe-area-inset-top,0px))] z-10 -mx-1 mb-4 lg:top-16">
-      <div className="m-card space-y-2 px-3 py-2" style={{ background: "color-mix(in srgb, var(--m-surface-solid) 92%, transparent)", backdropFilter: "blur(10px)" }}>
-        <div className="flex items-center gap-3">
-          <span aria-hidden className="text-xl">⏱</span>
-          <span className="m-num text-2xl font-bold tabular-nums" role="timer" aria-label={`وقت القراءة ${clockText(session)}`}>{clockText(session)}</span>
-          <span className="min-w-0 flex-1 truncate text-xs m-muted">
-            اليوم {minutesText(wholeMinutes(today))}
-            {reader?.timeHabitId && " · 🔗 تنضاف لعادتك"}
-          </span>
-          <button type="button" className="m-icon-btn m-btn-ghost" onClick={() => setRunning((v) => { visit.running = !v; return !v; })} aria-label={running ? "أوقف العدّاد" : "كمّل العدّاد"} aria-pressed={!running}>
-            <Icon name={running ? "pause" : "play"} size={18} />
-          </button>
-          <button type="button" className="m-icon-btn m-btn-ghost" onClick={() => setPanel((v) => !v)} aria-label="اربط بعادة القراءة" aria-expanded={panel}>
-            <Icon name="target" size={18} />
-          </button>
-        </div>
-        {extra && <p className="m-num text-xs m-muted">{extra}</p>}
-        {!running && <p className="text-xs" style={{ color: "var(--m-gold)" }}>العدّاد موقوف.</p>}
-        {reader && !reader.ready && <p className="text-xs m-muted">وقتك ما ينحفظ لين تتفعّل تحديثات القاعدة.</p>}
-        {panel && reader && <TimeHabitLink reader={reader} onChange={(id) => void setHabit(id).then(refresh)} />}
-      </div>
-    </div>
+    <button
+      type="button"
+      className="m-time-pill m-num"
+      onClick={toggle}
+      aria-pressed={!running}
+      aria-label={`${running ? "وقت القراءة" : "العدّاد موقوف"}: ${minutesText(wholeMinutes(session))}، واليوم ${minutesText(wholeMinutes(today))}. ${running ? "اضغط توقفه" : "اضغط تكمّله"}`}
+    >
+      <Icon name={running ? "timer" : "pause"} size={16} />
+      {pillText(session)}
+    </button>
   );
 }

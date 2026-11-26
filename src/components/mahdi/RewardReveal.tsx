@@ -7,14 +7,23 @@ import { pickPhrase } from "@/lib/mahdi/client/derive";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
 import Sheet from "./Sheet";
+import { usePopupTurn } from "./usePopupTurn";
 
-/** A calm reveal when a milestone is reached: what it means and what it opens. */
+/**
+ * A calm reveal when a milestone is reached: what it means and what it opens. It waits its turn («نافذة وحدة بس في كل زيارة»):
+ * after something completed, and only if nothing else opened during this visit; otherwise it stays unseen until the next visit.
+ */
 export default function RewardReveal() {
-  const { revealed, closeReveal, state } = useMahdi();
+  const { revealed, closeReveal: markSeen, state } = useMahdi();
   const list = MILESTONES.filter((m) => revealed.includes(m.id));
   const phrase = pickPhrase(state.snap.phrases, "milestone", revealed.join());
+  const { show, done } = usePopupTurn("reward", list.length > 0);
+  const closeReveal = () => {
+    done();
+    markSeen();
+  };
   return (
-    <Sheet open={list.length > 0} onClose={closeReveal} title={t.rewards.newTitle}>
+    <Sheet open={show} onClose={closeReveal} title={t.rewards.newTitle}>
       <div className="space-y-5 text-center">
         <span className="m-reveal mx-auto grid size-20 place-items-center rounded-full" style={{ background: "linear-gradient(180deg, var(--m-gold-2), var(--m-gold))", color: "var(--m-gold-ink)" }}>
           <Icon name="sparkle" size={38} />

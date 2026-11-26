@@ -1,14 +1,15 @@
 "use client";
 
-// «الصحة العلوية» · the setup (/mahdi/health/setup) and the plan's parts. The person enters who they are and what they want
+// «الصحة العلوية» · the setup (/mahdi/health/setup?step=…, every step in the link) and the plan's parts. The person enters who they are and what they want
 // (gym only, nutrition only, or both), picks a complete ready plan or builds it with us one step at a time, and then
 // chooses how it goes into their habits (by days, by exercises or weekly, plus the nutrition habits) in a project of
 // its own. Everything is computed on the device from the research (no AI, no cost); the plan is saved to the account.
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
-import { useHealth, type SetupStep } from "./HealthProvider";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
+import { FOOD_STEPS, WIZARD_STEPS, resolveSetup, setupHref, type SetupStep } from "@/lib/mahdi/health/route";
+import { useHealth } from "./HealthProvider";
 import {
   EXERCISES,
   FOCUS,
@@ -92,16 +93,16 @@ export function Coach({ line }: { line: string }) {
 }
 
 type Screen = "home" | SetupStep | "plan" | "habits";
-const WIZARD: Screen[] = ["track", "about", "goal", "train", "mode"];
+const WIZARD: readonly Screen[] = WIZARD_STEPS;
 
 export function Barbell() {
   return (
     <svg className="barbell" viewBox="0 0 220 60" aria-hidden="true">
-      <rect x="10" y="27" width="200" height="6" rx="3" fill="#c6ff1a" />
-      <rect x="22" y="6" width="14" height="48" rx="3" fill="#c6ff1a" />
-      <rect x="38" y="12" width="10" height="36" rx="3" fill="#c6ff1a" />
-      <rect x="184" y="6" width="14" height="48" rx="3" fill="#c6ff1a" />
-      <rect x="172" y="12" width="10" height="36" rx="3" fill="#c6ff1a" />
+      <rect x="10" y="27" width="200" height="6" rx="3" />
+      <rect x="22" y="6" width="14" height="48" rx="3" />
+      <rect x="38" y="12" width="10" height="36" rx="3" />
+      <rect x="184" y="6" width="14" height="48" rx="3" />
+      <rect x="172" y="12" width="10" height="36" rx="3" />
     </svg>
   );
 }
@@ -133,17 +134,18 @@ export function Stepper({ label, value, set, step = 1, min, max, unit }: { label
 
 export default function HealthApp() {
   const router = useRouter();
-  const { loaded, plan, save, profile: p, setProfile: setP, step: screen, setStep } = useHealth();
-  const [dayIdx, setDayIdx] = useState(0);
-  const [foodIdx, setFoodIdx] = useState(0);
-  const top = useRef<HTMLDivElement>(null);
+  const params = useSearchParams();
+  const { plan, save, profile: p, setProfile: setP } = useHealth();
+  // the screen is the link's: «رجوع», a refresh or a shared link land on the same step (and the same day or target)
+  const { step: screen, i } = resolveSetup(params.get("step"), params.get("i"), plan);
+  const dayIdx = screen === "build-day" ? i : 0;
+  const foodIdx = screen === "build-food" ? i : 0;
 
-  const go = (s: Screen) => {
+  const go = (s: Screen, idx = 0) => {
     if (s === "plan") return router.push("/mahdi/health/plan");
     if (s === "home") return router.push("/mahdi/health");
     if (s === "habits") return router.push("/mahdi/health/habits");
-    setStep(s);
-    top.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    router.push(setupHref(s, idx));
   };
 
   const set = <K extends keyof HealthProfile>(k: K, v: HealthProfile[K]) => setP((o) => ({ ...o, [k]: v }));
@@ -155,19 +157,13 @@ export default function HealthApp() {
     const fresh = makePlan(p, mode);
     save(fresh);
     if (mode === "ready") go("plan");
-    else {
-      setFoodIdx(0);
-      setDayIdx(0);
-      go(fresh.food ? "build-food" : fresh.workout && !fresh.workout.blocked && fresh.workout.days.length ? "build-day" : "plan");
-    }
+    else go(fresh.food ? "build-food" : fresh.workout && !fresh.workout.blocked && fresh.workout.days.length ? "build-day" : "plan");
   };
-
-  if (!loaded) return <p className="gym-dim py-10 text-center">لحظة… 🏋️</p>;
 
   const wizardAt = WIZARD.indexOf(screen);
 
   return (
-    <div className="space-y-4" ref={top}>
+    <div className="space-y-4">
       {wizardAt >= 0 && (
         <div className="gym-bar" aria-label={`الخطوة ${wizardAt + 1} من ${WIZARD.length}`}>
           <b className="on" />
@@ -204,7 +200,7 @@ export default function HealthApp() {
             <Stepper label="الطول" value={p.heightCm} set={(v) => set("heightCm", v)} min={120} max={230} unit="سم" />
             <Stepper label={preg ? "الوزن قبل الحمل" : "الوزن"} value={p.weightKg} set={(v) => set("weightKg", v)} step={0.5} min={30} max={300} unit="كغ" />
           </div>
-          <p className="gym-small">مؤشر كتلة الجسم: <b className="text-white">{bmiOf(p.weightKg, p.heightCm)}</b></p>
+          <p className="gym-small">مؤشر كتلة الجسم: <b className="gym-ink">{bmiOf(p.weightKg, p.heightCm)}</b></p>
 
           {female && p.age >= 14 && p.age <= 55 && (
             <div className="gym-card space-y-3">
@@ -391,7 +387,7 @@ export default function HealthApp() {
             <div className="gym-stats">
               <div className="gym-stat"><b>{n.kcal}</b><span>سعرة باليوم</span></div>
               <div className="gym-stat"><b>{n.proteinG}</b><span>غرام بروتين</span></div>
-              <div className="gym-stat orange"><b>{n.waterCups}</b><span>أكواب ماء</span></div>
+              <div className="gym-stat"><b>{n.waterCups}</b><span>أكواب ماء</span></div>
             </div>
           )}
           <div className="gym-choices">
@@ -419,9 +415,9 @@ export default function HealthApp() {
           plan={plan}
           n={n}
           save={save}
-          back={() => (foodIdx ? setFoodIdx(foodIdx - 1) : go("mode"))}
+          back={() => (foodIdx ? go("build-food", foodIdx - 1) : go("mode"))}
           next={() => {
-            if (foodIdx < FOOD_STEPS.length - 1) setFoodIdx(foodIdx + 1);
+            if (foodIdx < FOOD_STEPS.length - 1) go("build-food", foodIdx + 1);
             else go(plan.workout && !plan.workout.blocked && plan.workout.days.length ? "build-day" : "plan");
           }}
         />
@@ -434,9 +430,9 @@ export default function HealthApp() {
           <p className="gym-small">هذي التمارين المقترحة. بدّل أي تمرين (🔄)، احذفه، غيّر المجموعات، أو أضف تمرين من تحت.</p>
           <DayCard plan={plan} day={plan.workout.days[dayIdx]} save={save} editable />
           <Nav
-            back={() => (dayIdx ? setDayIdx(dayIdx - 1) : plan.food ? (setFoodIdx(FOOD_STEPS.length - 1), go("build-food")) : go("mode"))}
-            next={() => (dayIdx < plan.workout!.days.length - 1 ? setDayIdx(dayIdx + 1) : go("plan"))}
-            nextLabel={dayIdx < plan.workout.days.length - 1 ? "اعتمد اليوم ←" : "اعتمد الجدول ✓"}
+            back={() => (dayIdx ? go("build-day", dayIdx - 1) : plan.food ? go("build-food", FOOD_STEPS.length - 1) : go("mode"))}
+            next={() => (dayIdx < plan.workout!.days.length - 1 ? go("build-day", dayIdx + 1) : go("plan"))}
+            nextLabel={dayIdx < plan.workout.days.length - 1 ? "اعتمد اليوم" : "اعتمد الجدول"}
           />
         </section>
       )}
@@ -445,16 +441,16 @@ export default function HealthApp() {
   );
 }
 
-export function Nav({ back, next, nextLabel = "التالي ←" }: { back?: () => void; next?: () => void; nextLabel?: string }) {
+export function Nav({ back, next, nextLabel = "التالي" }: { back?: () => void; next?: () => void; nextLabel?: string }) {
   return (
     <div className="flex items-center justify-between gap-2 pt-2">
       {back ? (
-        <button type="button" className="gym-btn ghost sm" onClick={back}>→ رجوع</button>
+        <button type="button" className="gym-btn ghost sm" onClick={back}>رجوع</button>
       ) : (
         <span />
       )}
       {next && (
-        <button type="button" className="gym-btn" onClick={next}>
+        <button type="button" className="gym-btn primary" onClick={next}>
           {nextLabel}
         </button>
       )}
@@ -481,18 +477,16 @@ export function PlanSummary({ plan, onOpen, onHabits, onEdit }: { plan: HealthPl
             <div className="gym-stat"><b>{plan.food.proteinG}</b><span>غ بروتين</span></div>
           </>
         )}
-        {w && !w.blocked && <div className="gym-stat orange"><b>{w.days.length}</b><span>أيام تمرين</span></div>}
+        {w && !w.blocked && <div className="gym-stat"><b>{w.days.length}</b><span>أيام تمرين</span></div>}
       </div>
       <div className="flex flex-wrap gap-2">
+        <button type="button" className="gym-btn primary sm" onClick={onHabits}>➕ أدخلها في عاداتي</button>
         <button type="button" className="gym-btn sm" onClick={onOpen}>📋 افتح الخطة</button>
-        <button type="button" className="gym-btn orange sm" onClick={onHabits}>➕ أدخلها في عاداتي</button>
         <button type="button" className="gym-btn ghost sm" onClick={onEdit}>✏️ عدّل معلوماتي</button>
       </div>
     </section>
   );
 }
-
-const FOOD_STEPS = ["kcal", "proteinG", "waterCups", "produce", "steps"] as const;
 
 function BuildFood({ idx, plan, n, save, back, next }: { idx: number; plan: HealthPlan; n: ReturnType<typeof nutrition>; save: (p: HealthPlan) => void; back: () => void; next: () => void }) {
   const k = FOOD_STEPS[idx];
@@ -517,11 +511,11 @@ function BuildFood({ idx, plan, n, save, back, next }: { idx: number; plan: Heal
         <div className="gym-stats">
           <div className="gym-stat"><b>{macrosOf(f, plan.profile).fatG}</b><span>غ دهون تقريبًا</span></div>
           <div className="gym-stat"><b>{n.fiberG}</b><span>غ ألياف</span></div>
-          <div className="gym-stat orange"><b>&lt;{n.sugarG}</b><span>غ سكر مضاف</span></div>
-          <div className="gym-stat orange"><b>&lt;{n.saltG}</b><span>غ ملح</span></div>
+          <div className="gym-stat"><b>&lt;{n.sugarG}</b><span>غ سكر مضاف</span></div>
+          <div className="gym-stat"><b>&lt;{n.saltG}</b><span>غ ملح</span></div>
         </div>
       )}
-      <Nav back={back} next={next} nextLabel="اعتمد ←" />
+      <Nav back={back} next={next} nextLabel="اعتمد" />
     </section>
   );
 }
@@ -673,8 +667,7 @@ export function DayCard({ plan, day, save, editable, onRemove }: { plan: HealthP
   );
 }
 
-export function PlanView({ plan, save, onHabits, onHome }: { plan: HealthPlan; save: (p: HealthPlan) => void; onHabits: () => void; onHome: () => void }) {
-  const [edit, setEdit] = useState(false);
+export function PlanView({ plan, save, onHabits, onHome, edit, setEdit }: { plan: HealthPlan; save: (p: HealthPlan) => void; onHabits: () => void; onHome: () => void; edit: boolean; setEdit: (on: boolean) => void }) {
   const n = plan.profile.track === "gym" ? null : nutrition(plan.profile);
   const w = plan.workout;
   const vol = w ? weeklySets(w) : {};
@@ -693,13 +686,13 @@ export function PlanView({ plan, save, onHabits, onHome }: { plan: HealthPlan; s
             <div className="gym-stat"><b>{plan.food.proteinG}</b><span>غ بروتين ({n.proteinMealG} غ للوجبة)</span></div>
             <div className="gym-stat"><b>{macrosOf(plan.food, plan.profile).fatG}</b><span>غ دهون</span></div>
             <div className="gym-stat"><b>{macrosOf(plan.food, plan.profile).carbG}</b><span>غ كربوهيدرات</span></div>
-            <div className="gym-stat orange"><b>{plan.food.waterCups}</b><span>أكواب ماء</span></div>
-            <div className="gym-stat orange"><b>{plan.food.produce}</b><span>حصص خضار وفواكه</span></div>
+            <div className="gym-stat"><b>{plan.food.waterCups}</b><span>أكواب ماء</span></div>
+            <div className="gym-stat"><b>{plan.food.produce}</b><span>حصص خضار وفواكه</span></div>
             <div className="gym-stat"><b>{n.fiberG}</b><span>غ ألياف</span></div>
             <div className="gym-stat"><b>{plan.food.steps.toLocaleString("en")}</b><span>خطوة</span></div>
           </div>
           {n.gwg && (
-            <p className="gym-card warn gym-small">🤰 الزيادة المناسبة في وزنك طول الحمل ({n.gwg.label}): <b className="text-white">{n.gwg.min}–{n.gwg.max} كغ</b> (معهد الطب الأمريكي 2009).</p>
+            <p className="gym-card warn gym-small">🤰 الزيادة المناسبة في وزنك طول الحمل ({n.gwg.label}): <b className="gym-ink">{n.gwg.min}–{n.gwg.max} كغ</b> (معهد الطب الأمريكي 2009).</p>
           )}
           {!!n.notes.length && (
             <ul className="gym-list gym-small">
@@ -738,7 +731,7 @@ export function PlanView({ plan, save, onHabits, onHome }: { plan: HealthPlan; s
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="gym-eyebrow">🏋️ جدول التمارين · {SPLIT_NAMES[w.split]}</span>
-            <button type="button" className={`gym-btn sm ${edit ? "" : "ghost"}`} onClick={() => setEdit(!edit)}>
+            <button type="button" className={`gym-btn sm ${edit ? "on" : "ghost"}`} onClick={() => setEdit(!edit)}>
               {edit ? "✓ خلصت التعديل" : "✏️ عدّل الجدول"}
             </button>
           </div>
@@ -764,7 +757,7 @@ export function PlanView({ plan, save, onHabits, onHome }: { plan: HealthPlan; s
                 <span key={m} className="gym-chip" aria-pressed={s >= 10}>{MUSCLE_NAMES[m]}: {s}</span>
               ))}
             </div>
-            <p className="gym-small">الأخضر = 10 مجموعات أو أكثر بالأسبوع (أفضل نمو حسب التحليلات). المبتدئ يبدأ أقل ويزيد شوي شوي.</p>
+            <p className="gym-small">الأصفر = 10 مجموعات أو أكثر بالأسبوع (أفضل نمو حسب التحليلات). المبتدئ يبدأ أقل ويزيد شوي شوي.</p>
           </div>
           <ul className="gym-list gym-small">
             {w.notes.map((x) => (
@@ -777,14 +770,14 @@ export function PlanView({ plan, save, onHabits, onHome }: { plan: HealthPlan; s
       <div className="gym-card hot space-y-2 text-center">
         <b className="text-lg">جاهز تبدأ؟</b>
         <p className="gym-small">خلّ الخطة تصير عادات يومية في «لأجل المهدي» وتتابعها وتشوف نسبتك كل يوم.</p>
-        <button type="button" className="gym-btn orange" onClick={onHabits}>➕ أدخلها في عاداتي</button>
+        <button type="button" className="gym-btn" onClick={onHabits}>➕ أدخلها في عاداتي</button>
       </div>
       <Disclaimer />
     </section>
   );
 }
 
-export function ToHabits({ plan, projects, back, apply }: { plan: HealthPlan; projects: { id: string; name: string; icon: string }[]; back: () => void; apply: (b: { gym: GymWay | null; food: FoodHabit[]; where: string; projectId?: string }) => Promise<string | null> }) {
+export function ToHabits({ plan, projects, back, apply, done, setDone }: { plan: HealthPlan; projects: { id: string; name: string; icon: string }[]; back: () => void; apply: (b: { gym: GymWay | null; food: FoodHabit[]; where: string; projectId?: string }) => Promise<string | null>; done: string | null; setDone: (projectId: string) => void }) {
   const hasGym = !!plan.workout && !plan.workout.blocked && plan.workout.days.length > 0;
   const foodList = foodHabitsFor(plan);
   const [gym, setGym] = useState<GymWay | null>(hasGym ? "days" : null);
@@ -792,7 +785,6 @@ export function ToHabits({ plan, projects, back, apply }: { plan: HealthPlan; pr
   const [where, setWhere] = useState<"one" | "two" | "existing">("one");
   const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
   const preview = habitsFor(plan, gym, food);
 
   if (done)
@@ -802,7 +794,7 @@ export function ToHabits({ plan, projects, back, apply }: { plan: HealthPlan; pr
         <h2 className="gym-title">صارت <em>عاداتك</em>!</h2>
         <p className="gym-small">كل يوم افتح «لأجل المهدي» وأشّر على اللي سويته. الاستمرار أهم من الكمال.</p>
         <div className="flex flex-wrap justify-center gap-2">
-          <Link href={`/mahdi/projects/${done}`} className="gym-btn">افتح المشروع</Link>
+          <Link href={`/mahdi/projects/${done}`} className="gym-btn primary">افتح المشروع</Link>
           <Link href="/mahdi" className="gym-btn ghost">يومي</Link>
         </div>
       </section>

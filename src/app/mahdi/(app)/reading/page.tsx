@@ -11,7 +11,7 @@ import { duration, flushPending, loadTimer, pendingCount, type TimerState } from
 import BookCover from "@/components/mahdi/BookCover";
 import Icon from "@/components/mahdi/Icon";
 import ReadChallengeLink from "@/components/mahdi/ReadChallengeLink";
-import SheikhLink from "@/components/mahdi/SheikhLink";
+import { SHEIKH_PATH } from "@/components/mahdi/SheikhLink";
 import { FeedbackCard } from "@/components/mahdi/Feedback";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { useReading } from "@/components/mahdi/useReading";
@@ -48,9 +48,15 @@ export default function ReadingPage() {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="m-display text-3xl">{t.reading.title}</h1>
-        <p className="m-muted">{t.reading.tagline}</p>
+      <header className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1 space-y-1">
+          <h1 className="m-display text-3xl">{t.reading.title}</h1>
+          <p className="m-muted">{t.reading.tagline}</p>
+        </div>
+        {/* «اسأل الشيخ» in plain sight at the top of the reading (the plan: the sheikh is a button in the reading) */}
+        <Link href={SHEIKH_PATH} className="m-btn m-btn-ghost m-btn-sm shrink-0">
+          <Icon name="chat" size={18} /> اسأل الشيخ
+        </Link>
       </header>
       <HubDoors doors={DOORS.reading} label="أبواب القراءة" />
       <ReadChallengeLink />
@@ -159,7 +165,6 @@ export default function ReadingPage() {
         )}
       </section>
 
-      <SheikhLink />
       <Link href="/mahdi/reading/guide" className="m-card flex items-center gap-4 p-4">
         <span className="m-soft grid size-12 shrink-0 place-items-center rounded-2xl">
           <Icon name="search" className="m-gold" />

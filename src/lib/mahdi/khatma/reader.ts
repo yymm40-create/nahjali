@@ -71,3 +71,34 @@ export function portionsBefore(range: PortionRange, n: number): number[] {
 
 /** The ones among `portions` not read yet. */
 export const unreadOf = (portions: number[], read: ReadonlySet<number>) => portions.filter((n) => !read.has(n));
+
+/** The small pill at the top of the reader: the visit's whole minutes («12 د»), never the seconds ticking. */
+export const pillText = (seconds: number) => `${wholeMinutes(seconds)} د`;
+
+/**
+ * The reader's letter size, in rem, kept on the device. The old reader kept one of five steps (0–4) under another key;
+ * that step is carried over once. Pinching with two fingers scales it smoothly between the bounds.
+ */
+export const QURAN_SIZE = { min: 1.1, max: 2.8, step: 0.15, def: 1.65 } as const;
+const OLD_STEPS = [1.25, 1.45, 1.65, 1.9, 2.2];
+
+export const clampSize = (rem: number) =>
+  Number.isFinite(rem) ? Math.round(Math.max(QURAN_SIZE.min, Math.min(QURAN_SIZE.max, rem)) * 100) / 100 : QURAN_SIZE.def;
+
+/** The kept size: the new key's rem, else the old step, else the default. */
+export function readSize(rem: string | null, oldStep: string | null): number {
+  const r = rem === null || rem === "" ? NaN : Number(rem);
+  if (Number.isFinite(r)) return clampSize(r);
+  const s = oldStep === null || oldStep === "" ? NaN : Number(oldStep);
+  return Number.isInteger(s) && s >= 0 && s < OLD_STEPS.length ? OLD_STEPS[s] : QURAN_SIZE.def;
+}
+
+/** One tap on «أصغر» / «أكبر». */
+export const stepSize = (rem: number, dir: 1 | -1) => clampSize(rem + dir * QURAN_SIZE.step);
+
+/** Two fingers: the size when they touched, times how far apart they are now against then. */
+export const pinchSize = (start: number, ratio: number) => (ratio > 0 && Number.isFinite(ratio) ? clampSize(start * ratio) : clampSize(start));
+
+/** The reading surface: «النهار» (the design's own plain surface) or «قراءة الليل» (a little warmer and softer, still light). */
+export type ReadSurface = "day" | "night";
+export const readSurface = (kept: string | null): ReadSurface => (kept === "night" ? "night" : "day");

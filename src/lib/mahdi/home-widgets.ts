@@ -36,8 +36,12 @@ export const WIDGETS: readonly WidgetDef[] = [
   { id: "stories", name: "قصص المتابَعين", hint: "قصص من تتابعهم في المجتمع", size: "full" },
 ];
 
-/** The standard home: the two goals side by side, the habits to tap, the day's note, then the day's plan. */
-export const DEFAULT_WIDGETS: readonly WidgetId[] = ["habits", "reading", "quick", "daily", "dayNote", "priorities", "tasks", "week", "book", "phrase"];
+/**
+ * The standard home is lean («اليوم» of the redesign, 26 November 2026): the day card (the two goals, drawn the design's way) and
+ * the habits to tap. Under them the home adds ONE card of its own (an excuse day, a note to write, a day to make up, the
+ * notifications, or «آية اليوم ورواية اليوم»). Every other card is one switch away in «رتّب رئيسيتك».
+ */
+export const DEFAULT_WIDGETS: readonly WidgetId[] = ["habits", "reading", "quick"];
 
 const IDS = new Set<string>(WIDGETS.map((w) => w.id));
 
