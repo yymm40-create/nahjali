@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { answeredHistory, cleanQuestion, linkPieces, pendingQuestion, plainAnswer, sheikhLeft, sheikhWording, SHEIKH_DAILY } from "@/lib/mahdi/sheikh";
+import { readFileSync } from "node:fs";
+import { answeredHistory, cleanQuestion, enterSends, linkPieces, pendingQuestion, plainAnswer, questionsLeftText, readEvents, renewText, riwayaWording, sheikhLeft, sheikhRenewAt, sheikhWording, SHEIKH_DAILY } from "@/lib/mahdi/sheikh";
 import { sheikhLog, type SheikhLogRow } from "@/lib/mahdi/sheikh-log";
 import { gradingLine, hadithQuery, hadithRows, normAr, type RawHadith } from "@/lib/mahdi/hadiths";
 
@@ -30,6 +31,64 @@ describe("«الشيخ الذكي»", () => {
       { t: "text", v: "." },
     ]);
     expect(plainAnswer("## عنوان\n- أولًا")).toBe("عنوان\n• أولًا");
+  });
+});
+
+describe("«الشيخ الذكي»: one chat, clearer and more honest", () => {
+  const read = (p: string) => readFileSync(p, "utf8");
+
+  it("tells a narration as «روي عن…», never «قال الإمام» as a fact, and never touches the quoted text", () => {
+    expect(riwayaWording("قال الإمام الصادق عليه السلام: «قال رسول الله صلى الله عليه وآله: …»")).toBe("روي عن الإمام الصادق عليه السلام: «قال رسول الله صلى الله عليه وآله: …»");
+    expect(riwayaWording("وقال أبو عبد الله عليه السلام")).toBe("وروي عن أبي عبد الله عليه السلام");
+    expect(riwayaWording("قال الشيخ الصدوق في كتابه")).toBe("قال الشيخ الصدوق في كتابه");
+    expect(sheikhWording("قال النبي ﷺ")).toBe("روي عن النبي صلى الله عليه وآله");
+  });
+
+  it("says how many questions are left, and that one comes back within 24 hours (never «بكرة»)", () => {
+    expect(questionsLeftText(8)).toBe("باقي لك 8 أسئلة اليوم");
+    expect(questionsLeftText(28)).toBe("باقي لك 28 سؤال اليوم");
+    expect(questionsLeftText(2)).toBe("باقي لك سؤالين اليوم");
+    expect(questionsLeftText(1)).toBe("باقي لك سؤال واحد اليوم");
+    expect(questionsLeftText(0)).toBe("خلصت أسئلتك اليوم");
+    const now = Date.parse("2026-11-26T12:00:00Z");
+    const at = sheikhRenewAt([new Date(now - 21 * 3600_000).toISOString(), new Date(now - 3600_000).toISOString(), new Date(now - 30 * 3600_000).toISOString()], now);
+    expect(at).toBe(now + 3 * 3600_000);
+    expect(renewText(at, now)).toBe("يتجدد لك سؤال خلال 3 ساعات");
+    expect(renewText(now + 40 * 60_000, now)).toBe("يتجدد لك سؤال خلال 40 دقيقة");
+    expect(sheikhRenewAt([], now)).toBeNull();
+    expect(read("src/app/api/mahdi/sheikh/route.ts")).not.toContain("بكرة");
+  });
+
+  it("reads the streamed answer line by line, keeping a cut line for the next piece", () => {
+    const a = readEvents('{"t":"search"}\n{"t":"text","v":"روي"}\n{"t":"te');
+    expect(a.events).toEqual([{ t: "search" }, { t: "text", v: "روي" }]);
+    const b = readEvents(`${a.rest}xt","v":" عن"}\nnot json\n`);
+    expect(b.events).toEqual([{ t: "text", v: " عن" }]);
+    expect(b.rest).toBe("");
+  });
+
+  it("on a phone Enter makes a new line; with a keyboard Enter sends", () => {
+    expect(enterSends(true, false, false)).toBe(false);
+    expect(enterSends(false, false, false)).toBe(true);
+    expect(enterSends(false, true, false)).toBe(false);
+    expect(enterSends(false, false, true)).toBe(false);
+  });
+
+  it("lives on /mahdi/sheikh only; clearing asks in a sheet, not the browser", () => {
+    expect(read("src/components/mahdi/AssistantFloat.tsx")).not.toContain("SheikhChat");
+    const chat = read("src/components/mahdi/SheikhChat.tsx");
+    expect(chat).not.toContain("window.confirm");
+    expect(chat).toContain("<ConfirmSheet");
+    expect(chat).toContain('aria-haspopup="menu"');
+    expect(chat).toContain("stream: true");
+  });
+
+  it("streams with the same model and limits, and a stopped question doesn't count", () => {
+    const server = read("src/lib/mahdi/server/sheikh.ts");
+    expect(server).toContain('const MODEL = "claude-haiku-5-5"');
+    expect(server).toContain("ROUNDS: Record<SheikhMode, number> = { quick: 6, deep: 14 }");
+    expect(server).toContain("claudeStream(");
+    expect(server).toMatch(/await db\(\)\.delete\(\)\.eq\("id", q\.id\);\s*if \(e instanceof SheikhStopped\) throw e;/);
   });
 });
 

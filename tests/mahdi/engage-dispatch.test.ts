@@ -67,13 +67,13 @@ beforeEach(() => {
 });
 
 describe("dispatchEngagement", () => {
-  it("«سلسلتك في خطر» at 19:30 of the person's own day, when a streak of days has one thing left", async () => {
+  it("«يومك قرّب يخلص» (never «انكسرت سلسلتك») at 19:30 of the person's own day, when a streak of days has one thing left", async () => {
     const { dispatchEngagement } = await import("@/lib/mahdi/server/engage");
     const tables = base();
     habitData.set(U, streakHabit());
     const r = await dispatchEngagement(makeDb(tables), at("16:35"));
     expect(r.sent).toBe(1);
-    expect(sent[0]).toMatchObject({ user: U, title: "سلسلتك في خطر", tag: "mahdi-streak" });
+    expect(sent[0]).toMatchObject({ user: U, title: "يومك قرّب يخلص", tag: "mahdi-streak" });
     expect(sent[0].body).toContain("5 يوم");
     expect(sent[0].body).toContain("عادة وحدة");
     // the next tick (15 minutes on) finds the claim: nothing twice

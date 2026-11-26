@@ -6,12 +6,16 @@ import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { ENGAGE, ENGAGE_DAILY_MAX, engageOn } from "@/lib/mahdi/engage";
 import { readHints, writeHints, type HintPrefs } from "@/lib/mahdi/client/review-hints";
+import { prayerMinutes } from "@/lib/mahdi/engine";
+import { clock12, prayerSlots } from "@/lib/mahdi/remind-offer";
 import type { NotificationSettings } from "@/lib/mahdi/types";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { deviceState, disablePush, enablePush, type Device } from "@/lib/mahdi/client/push";
 
-const MODES = ["off", "daily", "every_12h", "every_6h", "custom"] as const;
+/** One reminder a day (or none): the repeating modes stay only for whoever already chose one, so it isn't lost. */
+const MODES = ["off", "daily"] as const;
+const LEGACY = ["every_12h", "every_6h", "custom"] as const;
 
 interface Status {
   configured: boolean;
@@ -56,7 +60,8 @@ function SystemStatus({ status }: { status: Status }) {
   );
 }
 
-/** Reminder settings, and turning notifications on for this device. */
+/** «التذكير»: the one place for reminders — «هالجوال» (one switch showing the real state) at the top, then the day's one
+ *  reminder (tied to the prayers), each habit's own, and the ones that bring you back. */
 export default function NotificationsPage() {
   const { state, store, toast } = useMahdi();
   const saved = state.snap.notifications;
@@ -127,9 +132,13 @@ export default function NotificationsPage() {
     setBusy(false);
   }
 
-  const setTime = (i: number, v: string) => setForm((f) => ({ ...f, times: f.times.map((x, k) => (k === i ? v : x)) }));
+  const setTime = (i: number, v: string) => setForm((f) => ({ ...f, times: (f.times.length ? f.times : ["20:00"]).map((x, k) => (k === i ? v : x)) }));
   const times = form.times.length ? form.times : ["20:00"];
   const dirty = JSON.stringify(form) !== JSON.stringify(saved);
+  const modes = [...MODES, ...LEGACY.filter((m) => m === saved.mode || m === form.mode)];
+  const slots = prayerSlots(prayerMinutes(state.snap.profile.timeZone, state.today, state.snap.profile.dayStart));
+  // the switch: on only when this phone really gets them; it can't be moved where the phone can't (or said no)
+  const switchable = device === "on" || device === "off";
 
   const deviceNote: Partial<Record<Device, string>> = {
     unsupported: t.notify.unsupported,
@@ -143,39 +152,45 @@ export default function NotificationsPage() {
       <Link href="/mahdi/more" className="m-btn m-btn-quiet m-btn-sm -ms-3">
         <Icon name="chevronRight" size={18} /> {t.more.title}
       </Link>
-      <h1 className="m-display text-3xl">{t.notify.title}</h1>
+      <h1 className="m-display flex items-center gap-2 text-3xl">
+        <Icon name="bell" size={26} className="m-gold" /> {t.notify.title}
+      </h1>
       <p className="m-note">{t.notify.intro}</p>
 
-      <section className="m-card space-y-4 p-5" aria-labelledby="dev-title">
-        <h2 id="dev-title" className="font-semibold">{t.notify.device}</h2>
-        {device === "checking" && <p className="m-muted">{t.common.loading}</p>}
-        {deviceNote[device] && <p className="m-note">{deviceNote[device]}</p>}
-        {device === "off" && (
-          <>
-            <p className="text-sm m-muted">{t.notify.deviceOff}</p>
-            <button type="button" className="m-btn m-btn-primary w-full" disabled={busy} onClick={enable}>
-              <Icon name="sparkle" size={18} /> {t.notify.enable}
-            </button>
-          </>
-        )}
+      <section className="m-card space-y-3 p-5" aria-labelledby="dev-title">
+        <label className="flex min-h-12 items-center justify-between gap-4">
+          <span>
+            <span id="dev-title" className="block font-semibold">{t.notify.phone}</span>
+            <span className="block text-sm m-muted">{device === "checking" ? t.common.loading : device === "on" ? t.notify.phoneOn : t.notify.phoneOff}</span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            aria-label={t.notify.phoneSwitch}
+            className="size-7 shrink-0 accent-[var(--m-gold)]"
+            checked={device === "on"}
+            disabled={busy || !switchable}
+            onChange={(e) => void (e.target.checked ? enable() : disable())}
+          />
+        </label>
+        {deviceNote[device] && <p className="m-note text-sm">{deviceNote[device]}</p>}
         {device === "on" && (
-          <>
-            <p className="m-chip m-chip-success w-fit"><Icon name="check" size={14} /> {t.notify.enabled}</p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <button type="button" className="m-btn m-btn-ghost" disabled={busy} onClick={test}>{t.notify.test}</button>
-              <button type="button" className="m-btn m-btn-quiet" disabled={busy} onClick={disable}>{t.notify.disable}</button>
-            </div>
-          </>
+          <button type="button" className="m-btn m-btn-quiet m-btn-sm" disabled={busy} onClick={test}>
+            {t.notify.test}
+          </button>
         )}
       </section>
 
       <form className="m-card space-y-5 p-5" onSubmit={save} aria-labelledby="set-title">
-        <h2 id="set-title" className="font-semibold">{t.notify.settings}</h2>
+        <div>
+          <h2 id="set-title" className="font-semibold">{t.notify.dayTitle}</h2>
+          <p className="text-sm m-muted">{t.notify.dayHint}</p>
+        </div>
 
         <fieldset>
-          <legend className="m-label">{t.notify.mode}</legend>
+          <legend className="sr-only">{t.notify.mode}</legend>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="radiogroup" aria-label={t.notify.mode}>
-            {MODES.map((m) => (
+            {modes.map((m) => (
               <button key={m} type="button" role="radio" aria-checked={form.mode === m} className="m-option min-h-11 px-3 text-sm font-semibold" onClick={() => setForm((f) => ({ ...f, mode: m }))}>
                 {t.notify.modes[m]}
               </button>
@@ -183,9 +198,31 @@ export default function NotificationsPage() {
           </div>
         </fieldset>
 
-        {form.mode !== "off" && form.mode !== "custom" && (
+        {(LEGACY as readonly string[]).includes(form.mode) && <p className="m-note text-sm">{t.notify.legacyMode}</p>}
+
+        {form.mode === "daily" && (
+          <fieldset className="space-y-2">
+            <legend className="m-label">{t.notify.afterPrayer}</legend>
+            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={t.notify.afterPrayer}>
+              {slots.map((s) => (
+                <button key={s.id} type="button" role="radio" aria-checked={times[0] === s.at} className="m-option flex flex-col items-center gap-0.5 p-2.5 text-sm font-semibold" onClick={() => setTime(0, s.at)}>
+                  {s.label}
+                  <span className="m-num m-muted text-xs font-normal" dir="ltr">
+                    {clock12(s.at)}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <label className="block">
+              <span className="m-hint">{t.notify.otherTime}</span>
+              <input type="time" className="m-field m-num" dir="ltr" required value={times[0]} onChange={(e) => setTime(0, e.target.value)} />
+            </label>
+          </fieldset>
+        )}
+
+        {(form.mode === "every_12h" || form.mode === "every_6h") && (
           <label className="block">
-            <span className="m-label">{form.mode === "daily" ? t.notify.startTime : t.notify.startTimeFrom}</span>
+            <span className="m-label">{t.notify.startTimeFrom}</span>
             <input type="time" className="m-field m-num" dir="ltr" required value={times[0]} onChange={(e) => setTime(0, e.target.value)} />
           </label>
         )}

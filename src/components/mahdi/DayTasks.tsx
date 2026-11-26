@@ -82,9 +82,9 @@ export default function DayTasks() {
     setBusy(true);
     try {
       const timedNow = timed && Boolean(at);
-      // a task with a time: this device is asked for notifications (or its subscription is sent again, in case the
-      // server dropped it) right from the tap — never waited for, so a browser that never answers can't hang the form
-      if (timedNow && (device === "off" || device === "on")) void enablePush().then(setDevice, () => {});
+      // a task with a time on a device that already gets notifications: its subscription is sent again (in case the server
+      // dropped it), never waited for. A device that doesn't is never asked here: «أذكّرك بكرة؟» and «التذكير» do that
+      if (timedNow && device === "on") void enablePush().then(setDevice, () => {});
       const date = later && day && day > today ? day : null;
       const r = await mahdiFetch<{ tasks: DayTask[]; upcoming?: DayTask[] }>("/api/mahdi/tasks", {
         method: "POST",
@@ -157,7 +157,7 @@ export default function DayTasks() {
   const saveEdit = async (task: DayTask, draft: TaskDraft) => {
     const body = taskEditBody(task, draft);
     if (!body) return setEditing(null);
-    if (body.at && (device === "off" || device === "on")) void enablePush().then(setDevice, () => {});
+    if (body.at && device === "on") void enablePush().then(setDevice, () => {});
     const r = await mahdiFetch<{ tasks: DayTask[]; upcoming?: DayTask[] }>("/api/mahdi/tasks", { method: "PATCH", json: body });
     save(r.tasks);
     if (r.upcoming) setUpcoming(r.upcoming);
