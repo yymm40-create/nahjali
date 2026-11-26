@@ -6,9 +6,12 @@ import AppShell from "@/components/mahdi/AppShell";
 import MahdiProvider from "@/components/mahdi/Provider";
 import ThemeRoot from "@/components/mahdi/ThemeRoot";
 import HomeSlider from "@/components/mahdi/HomeSlider";
-import GymShell from "@/components/mahdi/health/GymShell";
-import HealthProvider from "@/components/mahdi/health/HealthProvider";
+import HealthFrame from "@/components/mahdi/health/HealthFrame";
 import TodayView from "@/components/mahdi/health/TodayView";
+import HealthApp from "@/components/mahdi/health/HealthApp";
+import { PlanPage } from "@/components/mahdi/health/PlanPages";
+import ProgressView from "@/components/mahdi/health/ProgressView";
+import { LearnView } from "@/components/mahdi/health/LearnView";
 import ProjectsPage from "@/app/mahdi/(app)/projects/page";
 import ReadingPage from "@/app/mahdi/(app)/reading/page";
 import KhatmaPage from "@/app/mahdi/(app)/khatma/page";
@@ -30,6 +33,10 @@ const PAGES: Record<string, [string, ComponentType]> = {
   khatma: ["/mahdi/khatma", KhatmaPage],
   groups: ["/mahdi/groups", GroupsPage],
   health: ["/mahdi/health", TodayView],
+  "health-plan": ["/mahdi/health/plan", PlanPage],
+  "health-progress": ["/mahdi/health/progress", ProgressView],
+  "health-learn": ["/mahdi/health/learn", LearnView],
+  "health-setup": ["/mahdi/health/setup", HealthApp],
   community: ["/mahdi/community", CommunityPage],
   challenges: ["/mahdi/challenges", ChallengesPage],
   progress: ["/mahdi/progress", ProgressPage],
@@ -63,17 +70,15 @@ try {
 createRoot(document.getElementById("root")!).render(
   <ThemeRoot initialTheme={snapshot.profile.theme} initialShrine={shrine} initialPlace={snapshot.profile.shrinePlace} fontClass="pv-fonts" skipLabel="تخطَّ إلى المحتوى">
     <MahdiProvider initial={snapshot}>
-      {key === "health" ? (
-        <HealthProvider>
-          <GymShell>
+      <AppShell>
+        {key.startsWith("health") ? (
+          <HealthFrame>
             <Page />
-          </GymShell>
-        </HealthProvider>
-      ) : (
-        <AppShell>
+          </HealthFrame>
+        ) : (
           <Page />
-        </AppShell>
-      )}
+        )}
+      </AppShell>
     </MahdiProvider>
   </ThemeRoot>,
 );
