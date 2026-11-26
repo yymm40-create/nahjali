@@ -136,7 +136,11 @@ export function shrineParts(spec: ShrineSpec): Part[] {
 /** The ways of drawing (each design picks one; colours come from the design's own tokens). */
 export type ArtStyle = "gold" | "flat" | "outline" | "silhouette" | "line" | "glow" | "gradient" | "dots" | "sketch";
 
-/** Where the shrine shows: behind every page, a banner on the home, a skyline under the greeting, the photo, or not. */
+/**
+ * Where the shrine shows: behind every page, a banner on the home, a skyline under the greeting, or not. «photo» (the
+ * shrine's photo behind the text) is no longer offered (the plan of 26 November 2026: nothing behind the words); a saved
+ * «photo» reads as «auto».
+ */
 export type ShrinePlace = "backdrop" | "banner" | "horizon" | "photo" | "off";
 
 export const SHRINE_PLACES: readonly { id: ShrinePlace | "auto"; label: string; hint: string }[] = [
@@ -144,7 +148,6 @@ export const SHRINE_PLACES: readonly { id: ShrinePlace | "auto"; label: string; 
   { id: "backdrop", label: "خلفية لكل الصفحات", hint: "الحرم مرسوم خلف التطبيق كله" },
   { id: "banner", label: "لوحة كبيرة فوق الرئيسية", hint: "رسمة الحرم بارزة أول ما تفتح" },
   { id: "horizon", label: "أفق تحت الترحيب", hint: "خط الحرم الهادئ تحت اسمك" },
-  { id: "photo", label: "الصورة بألوان التصميم", hint: "صورة الحرم الأصلية ملوّنة بتصميمك" },
   { id: "off", label: "بدون", hint: "بلا رسمة الحرم" },
 ];
 

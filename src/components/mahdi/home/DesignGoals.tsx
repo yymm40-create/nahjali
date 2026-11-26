@@ -51,16 +51,16 @@ export default function DesignGoals({ style }: { style: GoalsStyle }) {
       return (
         <Card className="space-y-3">
           <div className="grid place-items-center">
-            <Ring value={d.score} r={92} w={20} color="#fa114f" track="#3b0a17">
-              <Ring value={readingShare(d)} r={68} w={20} color="#a6ff00" track="#243a00">
-                <Ring value={d.week} r={44} w={20} color="#00e5ff" track="#00343a" />
+            <Ring value={d.score} r={92} w={20} color="#fa114f" track="#fde1e9">
+              <Ring value={readingShare(d)} r={68} w={20} color="#4cc800" track="#e3f6d6">
+                <Ring value={d.week} r={44} w={20} color="#00b7d4" track="#d7f3f8" />
               </Ring>
             </Ring>
           </div>
           <div className="grid grid-cols-3 text-center text-xs">
-            <span><b className="m-num block text-lg" style={{ color: "#fa114f" }}>{d.done}/{d.required}</b>عادات</span>
-            <span><b className="m-num block text-lg" style={{ color: "#a6ff00" }}>{pct(readingShare(d))}</b>القراءة</span>
-            <span><b className="m-num block text-lg" style={{ color: "#00e5ff" }}>{pct(d.week)}</b>الأسبوع</span>
+            <span><b className="m-num block text-lg" style={{ color: "#d70f44" }}>{d.done}/{d.required}</b>عادات</span>
+            <span><b className="m-num block text-lg" style={{ color: "#2f7d00" }}>{pct(readingShare(d))}</b>القراءة</span>
+            <span><b className="m-num block text-lg" style={{ color: "#007a8f" }}>{pct(d.week)}</b>الأسبوع</span>
           </div>
         </Card>
       );
@@ -354,6 +354,45 @@ export default function DesignGoals({ style }: { style: GoalsStyle }) {
           {d.streak > 0 && <p className="m-num text-sm">{d.streak} يوم متتالي</p>}
         </section>
       );
+    case "pebbles": {
+      // «حبّة الإنجاز» (the default design, 26 November 2026): every habit done is a glossy sun-yellow pebble; the week
+      // is a row of small pebbles; orange is kept for the one action, so nothing here is orange
+      const count = Math.min(Math.max(d.required, 1), 12);
+      const on = d.required <= 12 ? d.done : Math.round(d.score * count);
+      const week = d.series(7);
+      return (
+        <Card className="space-y-4">
+          <div className="flex items-end gap-2">
+            <b className="m-display m-num text-6xl leading-[.9]">{d.done}</b>
+            <span className="m-num m-muted pb-1 text-2xl">/{d.required}</span>
+            <span className="flex-1" />
+            {d.streak > 0 && <span className="m-chip m-num text-sm font-bold">{d.streak} يوم متتالي</span>}
+          </div>
+          <p className="m-muted -mt-2 text-sm">{d.hasGoals && d.done >= d.required ? "يومك كامل، ما شاء الله" : habitsLine(d)}</p>
+          <div className="m-pebbles" role="img" aria-label={habitsLine(d)} data-full={d.hasGoals && d.done >= d.required ? "" : undefined}>
+            {Array.from({ length: count }, (_, k) => (
+              <span key={k} className="m-pebble" data-on={k < on ? "" : undefined} />
+            ))}
+          </div>
+          <Link href="/mahdi/reading" className="block space-y-1.5">
+            <p className="flex items-center text-sm">
+              <b className="flex-1">القراءة</b>
+              <span className="m-num m-muted">{readingText(d.reading)}</span>
+            </p>
+            <Bar value={readingShare(d)} h={8} />
+          </Link>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold">الأسبوع</span>
+            <span className="flex flex-1 justify-between gap-1">
+              {week.map((p, k) => (
+                <span key={p.date} className="m-pebble m-pebble-sm" data-on={(p.score ?? 0) >= 0.8 ? "" : undefined} data-today={k === week.length - 1 ? "" : undefined} />
+              ))}
+            </span>
+            <span className="m-num m-muted text-sm">{pct(d.week)}</span>
+          </div>
+        </Card>
+      );
+    }
     case "chip":
       return (
         <p className="flex flex-wrap items-center gap-2">

@@ -1,5 +1,7 @@
 "use client";
 
+import HubDoors from "@/components/mahdi/HubDoors";
+import { DOORS } from "@/components/mahdi/nav";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { goalProgress, type ReadingMetric } from "@/lib/mahdi/engine";
@@ -50,6 +52,7 @@ export default function ReadingPage() {
         <h1 className="m-display text-3xl">{t.reading.title}</h1>
         <p className="m-muted">{t.reading.tagline}</p>
       </header>
+      <HubDoors doors={DOORS.reading} label="أبواب القراءة" />
       <ReadChallengeLink />
 
       {timerBook && (

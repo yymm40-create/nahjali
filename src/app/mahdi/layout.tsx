@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
-import { Almarai, Amiri, Amiri_Quran, Cairo, Changa, IBM_Plex_Sans_Arabic, Lemonada, Marhey, Rubik, Tajawal } from "next/font/google";
+import { Alexandria, Almarai, Amiri, Amiri_Quran, Cairo, Changa, IBM_Plex_Sans_Arabic, Lemonada, Marhey, Rubik, Tajawal } from "next/font/google";
 import localFont from "next/font/local";
 import RegisterSW from "@/components/mahdi/RegisterSW";
 import ThemeRoot from "@/components/mahdi/ThemeRoot";
@@ -11,6 +11,8 @@ import { PICK_COOKIE, resolveTheme } from "@/lib/mahdi/look-pick";
 import { DEFAULT_THEME, LIGHT_THEMES, MAHDI_THEMES } from "@config/mahdi";
 import "./mahdi.css";
 
+// the letters of the default design «شمس وبرتقال» (26 November 2026): Alexandria for the titles and the big numbers
+const alexandria = Alexandria({ variable: "--font-alexandria", subsets: ["arabic", "latin"], weight: ["500", "700", "800"], display: "swap" });
 const sans = IBM_Plex_Sans_Arabic({ variable: "--font-plex", subsets: ["arabic", "latin"], weight: ["400", "500", "600", "700"] });
 const display = Amiri({ variable: "--font-amiri", subsets: ["arabic"], weight: ["400", "700"] });
 // the mushaf's letters (OFL): every Quran text of the app (the khatma, the reader, «آية اليوم» on the home) wears them, whatever the design — a
@@ -55,7 +57,7 @@ export default async function MahdiLayout({ children }: { children: React.ReactN
       initialVariant={profile?.themeVariant ?? ""}
       initialShrine={pickShrine(shrines, profile?.shrineId)}
       initialPlace={profile?.shrinePlace}
-      fontClass={`${sans.variable} ${display.variable} ${quran.variable} ${readex.variable} ${lalezar.variable} ${baloo.variable} ${rubik.variable} ${tajawal.variable} ${cairo.variable} ${almarai.variable} ${lemonada.variable} ${changa.variable} ${marhey.variable}`}
+      fontClass={`${alexandria.variable} ${sans.variable} ${display.variable} ${quran.variable} ${readex.variable} ${lalezar.variable} ${baloo.variable} ${rubik.variable} ${tajawal.variable} ${cairo.variable} ${almarai.variable} ${lemonada.variable} ${changa.variable} ${marhey.variable}`}
       skipLabel={t.common.skipToContent}
     >
       <RegisterSW />

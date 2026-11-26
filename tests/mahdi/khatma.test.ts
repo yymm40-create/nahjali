@@ -24,7 +24,7 @@ import {
   type Division,
 } from "@/lib/mahdi/khatma/portions";
 import { portionText } from "@/lib/mahdi/khatma/text";
-import { navGroups } from "@/components/mahdi/nav";
+import { DOORS } from "@/components/mahdi/nav";
 import { MAHDI_FEATURES } from "@config/mahdi/app-knowledge";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 
@@ -215,8 +215,8 @@ describe("the weekly schedule", () => {
 });
 
 describe("the branch is wired in", () => {
-  it("is in the side menu, inside every private group, and in the knowledge", () => {
-    expect(navGroups("ali").flatMap((g) => g.items).map((i) => i.href)).toContain("/mahdi/khatma");
+  it("is a door of «القراءة», inside every private group, and in the knowledge", () => {
+    expect(DOORS.reading.map((i) => i.href)).toContain("/mahdi/khatma");
     expect(read("src/app/mahdi/(app)/groups/[id]/page.tsx")).toContain("/mahdi/khatma/${id}");
     expect(MAHDI_FEATURES.some((f) => f.id === "khatma")).toBe(true);
     expect(JAWAD_KNOWLEDGE).toContain("الختمة العلوية");

@@ -2,11 +2,6 @@
 
 import Link from "next/link";
 import BookletCard from "@/components/mahdi/BookletCard";
-import HealthCard from "@/components/mahdi/health/HealthCard";
-import KhatmaCard from "@/components/mahdi/khatma/KhatmaCard";
-import GrowCard from "@/components/mahdi/GrowCard";
-import SheikhLink from "@/components/mahdi/SheikhLink";
-import SupportLink from "@/components/mahdi/support/SupportLink";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { MAHDI_LIMITS, designOf, type MahdiTheme } from "@config/mahdi";
@@ -26,15 +21,12 @@ import { ShrinePicker, ThemePicker } from "@/components/mahdi/LookPickers";
 import { SHRINE_PLACES, type ShrinePlace } from "@/lib/mahdi/shrine-art";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { useLook } from "@/components/mahdi/ThemeRoot";
-import Robot from "@/components/mahdi/Robot";
-import { setAssistantPrefs, useAssistantPrefs } from "@/lib/mahdi/client/assistant-prefs";
 
 /** Account and settings: name, picture, look, calendar, time zone, «بداية يومي», sign out. */
 export default function MorePage() {
   const router = useRouter();
   const { state, store, toast } = useMahdi();
   const look = useLook();
-  const assistant = useAssistantPrefs();
   const { profile, shrines } = state.snap;
   const [name, setName] = useState(profile.displayName);
   const [busy, setBusy] = useState(false);
@@ -92,31 +84,34 @@ export default function MorePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="m-display text-3xl">{t.more.title}</h1>
-
-      <nav className="grid gap-2 sm:grid-cols-2" aria-label={t.more.title}>
+      {/* «أنا»: one list of every personal place (the plan of 26 November 2026), then the settings */}
+      <Link href={state.snap.username ? `/mahdi/u/${state.snap.username}` : "/mahdi/more"} className="m-card flex items-center gap-4 p-4">
+        <Avatar profile={profile} size={56} />
+        <span className="min-w-0 flex-1">
+          <span className="m-display block truncate text-xl">{profile.displayName}</span>
+          <span className="m-hint block">صفحتي</span>
+        </span>
+        <Icon name="chevronLeft" size={18} />
+      </Link>
+      <nav className="m-card m-rows" aria-label={t.more.title}>
         {(
           [
+            ["/mahdi/sheikh", "chat", "الشيخ الذكي"],
+            ["/mahdi/more/notifications", "bell", "التذكير"],
             ["/mahdi/more/family", "users", t.family.link],
-            ["/mahdi/reading", "book", t.reading.title],
-            ["/mahdi/groups", "users", t.groups.title],
-            ["/mahdi/race", "sparkle", "المسابقة"],
-            ["/mahdi/more/rewards", "sparkle", t.rewards.title],
-            ["/mahdi/community", "globe", t.community.title],
             ["/mahdi/more/privacy", "lock", t.privacy.title],
-            ["/mahdi/more/notifications", "settings", t.notify.title],
+            ["/mahdi/more/rewards", "star", t.rewards.title],
+            ["/mahdi/more#look", "sparkle", "المظهر"],
+            ["/mahdi/support", "sun", "ادعم التطبيق"],
           ] as const
         ).map(([href, icon, label]) => (
-          <Link key={href} href={href} className="m-card flex items-center gap-3 p-4 font-semibold">
-            <Icon name={icon} className="m-gold" /> <span className="flex-1">{label}</span> <Icon name="chevronLeft" size={18} />
+          <Link key={href} href={href} className="m-row">
+            <span className="m-row-ic"><Icon name={icon} size={20} /></span>
+            <span className="flex-1">{label}</span>
+            <Icon name="chevronLeft" size={18} className="m-muted" />
           </Link>
         ))}
       </nav>
-      <SupportLink />
-      <SheikhLink />
-      <HealthCard />
-      <KhatmaCard />
-      <GrowCard />
       <BookletCard />
       <FeedbackCard place="more" />
       <InstallCard />
@@ -201,15 +196,6 @@ export default function MorePage() {
         <h2 className="pt-2 font-semibold">{t.more.shrine}</h2>
         <ShrinePicker shrines={shrines} value={look.shrine?.id ?? profile.shrineId} onChange={chooseShrine} />
         {look.shrine?.isArtwork && <p className="m-hint">{t.more.artwork}</p>}
-        {/* The floating «المساعد» (shown or hidden on this device) */}
-        <label className="flex items-start gap-3 border-t pt-4" style={{ borderColor: "var(--m-line)" }}>
-          <Robot size={40} className="shrink-0" />
-          <span className="flex-1">
-            <span className="block font-semibold">{t.assistant.setting}</span>
-            <span className="m-hint block">{t.assistant.settingHint}</span>
-          </span>
-          <input type="checkbox" role="switch" className="mt-1 size-6 shrink-0 accent-[var(--m-gold)]" checked={!assistant.hidden} onChange={(e) => setAssistantPrefs({ hidden: !e.target.checked })} aria-label={t.assistant.show} />
-        </label>
       </section>
 
       <section className="m-card space-y-4 p-5">
