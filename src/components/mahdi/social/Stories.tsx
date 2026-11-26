@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fmtNum, t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
+import { deferDelete } from "@/lib/mahdi/client/undo";
+import { UNDO_MS } from "@config/mahdi";
 import { STORY_BACKGROUNDS, type SocialUser, type StoryGroup } from "@/lib/mahdi/social";
 import Avatar from "../Avatar";
 import Icon from "../Icon";
@@ -22,7 +24,12 @@ const clock = new Intl.DateTimeFormat("ar-u-nu-latn", { hour: "numeric", minute:
  */
 export function StoriesBar({ compact = false, big = false }: { compact?: boolean; big?: boolean }) {
   const { state } = useMahdi();
-  const [groups, setGroups] = useState<StoryGroup[] | null>(null);
+  const [all, setGroups] = useState<StoryGroup[] | null>(null);
+  // stories deleted here and still within «تراجع»: hidden at once, even when the list is read again
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  const groups = all
+    ? all.map((g) => ({ ...g, stories: g.stories.filter((x) => !hidden.has(x.id)) })).filter((g) => g.stories.length > 0)
+    : null;
   const [open, setOpen] = useState<number | null>(null);
   const [camera, setCamera] = useState(false);
   const [reload, setReload] = useState(0);
@@ -37,7 +44,17 @@ export function StoriesBar({ compact = false, big = false }: { compact?: boolean
     };
   }, [reload]);
 
-  if (!groups) return compact ? null : <p className="m-muted text-sm">{t.common.loading}</p>;
+  if (!groups)
+    return compact ? null : (
+      <div className="flex gap-3 overflow-hidden" role="status" aria-label={t.common.loading}>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className={`${big ? "w-[80px]" : "w-[72px]"} flex shrink-0 flex-col items-center gap-1.5`} aria-hidden="true">
+            <div className="m-skel !rounded-full" style={{ width: (big ? 66 : 58) + 10, height: (big ? 66 : 58) + 10 }} />
+            <div className="m-skel h-2.5 w-3/4" />
+          </div>
+        ))}
+      </div>
+    );
   const mine = groups.find((g) => g.mine);
   const me = state.snap.profile;
   const pic = big ? 66 : 58;
@@ -82,6 +99,8 @@ export function StoriesBar({ compact = false, big = false }: { compact?: boolean
         <StoryViewer
           groups={groups}
           start={open}
+          onHide={(id) => setHidden((h) => new Set([...h, id]))}
+          onUnhide={(id) => setHidden((h) => new Set([...h].filter((x) => x !== id)))}
           onClose={() => {
             setOpen(null);
             setReload((n) => n + 1);
@@ -93,9 +112,10 @@ export function StoriesBar({ compact = false, big = false }: { compact?: boolean
   );
 }
 
+/** The ring around a face: the achievement yellow while there is a story not seen yet, a quiet line after. */
 function Ring({ fresh, children }: { fresh: boolean; children: React.ReactNode }) {
   return (
-    <span className="grid rounded-full p-[3px]" style={{ background: fresh ? "conic-gradient(from 200deg, var(--m-gold-2), var(--m-gold), #b8862f, var(--m-gold-2))" : "var(--m-line)" }}>
+    <span className="grid rounded-full p-[3px]" style={{ background: fresh ? "conic-gradient(from 200deg, var(--m-gold-2), var(--m-gold), var(--m-pebble-rim), var(--m-gold-2))" : "var(--m-line)" }}>
       <span className="grid rounded-full p-[2px]" style={{ background: "var(--m-bg)" }}>{children}</span>
     </span>
   );
@@ -104,7 +124,7 @@ function Ring({ fresh, children }: { fresh: boolean; children: React.ReactNode }
 const QUOTE_BG: Record<string, string> = STORY_BACKGROUNDS;
 
 /** Full screen, one person after another; tap the far side for the next story, the near side for the previous. */
-function StoryViewer({ groups, start, onClose }: { groups: StoryGroup[]; start: number; onClose: () => void }) {
+function StoryViewer({ groups, start, onClose, onHide, onUnhide }: { groups: StoryGroup[]; start: number; onClose: () => void; onHide: (id: string) => void; onUnhide: (id: string) => void }) {
   const { toast } = useMahdi();
   const [gi, setGi] = useState(start);
   const [si, setSi] = useState(() => Math.max(0, groups[start].stories.findIndex((s) => !s.seen)));
@@ -232,14 +252,20 @@ function StoryViewer({ groups, start, onClose }: { groups: StoryGroup[]; start: 
               <button
                 type="button"
                 className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-2 text-sm"
-                onClick={async () => {
-                  try {
-                    await mahdiFetch(`/api/mahdi/social/stories/${story.id}`, { method: "DELETE" });
-                    toast(S.deleted);
-                    onClose();
-                  } catch (e) {
-                    toast((e as Error).message);
-                  }
+                onClick={() => {
+                  // a small deletion: gone at once, with «تراجع»; sent when the undo time is over
+                  const id = story.id;
+                  onHide(id);
+                  const pending = deferDelete({
+                    ms: UNDO_MS,
+                    run: () => mahdiFetch(`/api/mahdi/social/stories/${id}`, { method: "DELETE", keepalive: true }),
+                    restore: (error) => {
+                      onUnhide(id);
+                      if (error) toast(error.message);
+                    },
+                  });
+                  toast(t.groups.kind.storyDeleted, { label: t.groups.kind.undo, run: pending.undo });
+                  onClose();
                 }}
               >
                 <Icon name="trash" size={18} /> {S.delete}

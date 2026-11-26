@@ -159,10 +159,10 @@ function CameraDialog({ onClose, onPublished }: { onClose: () => void; onPublish
                 {text.trim() ? (
                   <div className="space-y-3">
                     <QuoteCard text={text.trim()} />
-                    <textarea className="m-field min-h-20 bg-black/40 text-white" maxLength={500} dir="auto" value={text} onChange={(e) => setText(e.target.value)} />
+                    <textarea className="m-field min-h-20 bg-white/85 text-[var(--m-ink)]" maxLength={500} dir="auto" value={text} onChange={(e) => setText(e.target.value)} />
                   </div>
                 ) : (
-                  <textarea autoFocus className="m-field min-h-40 bg-black/40 text-center text-xl text-white" maxLength={500} dir="auto" placeholder={C.textPlaceholder} value={text} onChange={(e) => setText(e.target.value)} />
+                  <textarea autoFocus className="m-field min-h-40 bg-white/85 text-center text-xl text-[var(--m-ink)]" maxLength={500} dir="auto" placeholder={C.textPlaceholder} value={text} onChange={(e) => setText(e.target.value)} />
                 )}
               </label>
             </div>
