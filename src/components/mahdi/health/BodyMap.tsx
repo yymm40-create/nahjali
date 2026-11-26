@@ -41,7 +41,7 @@ function Figure({ shapes, main, help, label, extra = [] }: { shapes: Record<stri
   return (
     <svg viewBox="0 0 120 240" className="gym-body" role="img" aria-label={label}>
       {/* the silhouette */}
-      <g fill="#20252d">
+      <g className="gym-body-shape">
         <circle cx="60" cy="22" r="13" />
         <rect x="54" y="33" width="12" height="10" rx="3" />
         <path d="M34 46 Q60 40 86 46 L92 64 L84 116 Q60 124 36 116 L28 64 Z" />
@@ -51,7 +51,7 @@ function Figure({ shapes, main, help, label, extra = [] }: { shapes: Record<stri
       </g>
       {[...Object.entries(shapes).map(([id, list]) => [id, list] as const), ...(extra.length ? [["calves", extra] as const] : [])].map(([id, list]) =>
         list.map((s, i) => (
-          <ellipse key={`${id}-${i}`} cx={s.cx} cy={s.cy} rx={s.rx} ry={s.ry} fill={main.has(id) ? "#c6ff1a" : help.has(id) ? "#ff7a1a" : "#2c333d"} opacity={main.has(id) ? 0.95 : help.has(id) ? 0.85 : 1}>
+          <ellipse key={`${id}-${i}`} cx={s.cx} cy={s.cy} rx={s.rx} ry={s.ry} className={main.has(id) ? "gym-muscle-main" : help.has(id) ? "gym-muscle-help" : "gym-muscle"}>
             <title>{id}</title>
           </ellipse>
         )),

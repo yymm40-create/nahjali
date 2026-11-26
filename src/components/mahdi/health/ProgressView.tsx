@@ -5,12 +5,13 @@
 // max), the body weight, and how close the days came to the nutrition targets.
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { GROUPS, MUSCLES, type MuscleGroup } from "@config/mahdi/exercise-guide";
 import { exerciseById } from "@/lib/mahdi/health/plan";
 import { sessionMin, history, record, setsByMuscle, weekOf, WEEK_TARGET, FOOD_KEYS, MEASUREMENT_KEYS, MEASUREMENT_NAMES, type FoodKey, type MeasurementKey } from "@/lib/mahdi/health/tracker";
+import { setupHref } from "@/lib/mahdi/health/route";
 import { useHealth } from "./HealthProvider";
+import { useView } from "./useView";
 
 function Line({ points, unit }: { points: { x: string; y: number }[]; unit: string }) {
   if (points.length < 2) return <p className="gym-small">سجّل مرتين على الأقل وتطلع لك الرسمة.</p>;
@@ -23,16 +24,16 @@ function Line({ points, unit }: { points: { x: string; y: number }[]; unit: stri
   const xy = points.map((p, i) => [16 + (i * (W - 32)) / (points.length - 1), H - 22 - ((p.y - lo) / span) * (H - 44)] as const);
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`من ${lo} إلى ${hi} ${unit}`}>
-      <path d={xy.map(([x, y], i) => `${i ? "L" : "M"}${x},${y}`).join(" ")} fill="none" stroke="#c6ff1a" strokeWidth="2.5" strokeLinejoin="round" />
-      <path d={`${xy.map(([x, y], i) => `${i ? "L" : "M"}${x},${y}`).join(" ")} L${xy[xy.length - 1][0]},${H - 18} L${xy[0][0]},${H - 18} Z`} fill="rgba(198,255,26,0.1)" />
+      <path d={`${xy.map(([x, y], i) => `${i ? "L" : "M"}${x},${y}`).join(" ")} L${xy[xy.length - 1][0]},${H - 18} L${xy[0][0]},${H - 18} Z`} className="gym-line-area" />
+      <path d={xy.map(([x, y], i) => `${i ? "L" : "M"}${x},${y}`).join(" ")} className="gym-line-stroke" strokeWidth="2.5" strokeLinejoin="round" />
       {xy.map(([x, y], i) => (
-        <circle key={i} cx={x} cy={y} r="3.5" fill="#0c0e11" stroke="#c6ff1a" strokeWidth="2" />
+        <circle key={i} cx={x} cy={y} r="3.5" className="gym-line-dot" strokeWidth="2" />
       ))}
-      <text x={xy[xy.length - 1][0]} y={xy[xy.length - 1][1] - 8} fill="#f3f4f1" fontSize="11" fontWeight="800" textAnchor="middle">
+      <text x={xy[xy.length - 1][0]} y={xy[xy.length - 1][1] - 8} className="gym-line-ink" fontSize="11" fontWeight="800" textAnchor="middle">
         {points[points.length - 1].y}
       </text>
-      <text x="16" y={H - 4} fill="#9aa3ad" fontSize="9">{points[0].x.slice(5)}</text>
-      <text x={W - 16} y={H - 4} fill="#9aa3ad" fontSize="9" textAnchor="end">{points[points.length - 1].x.slice(5)}</text>
+      <text x="16" y={H - 4} className="gym-line-dim" fontSize="9">{points[0].x.slice(5)}</text>
+      <text x={W - 16} y={H - 4} className="gym-line-dim" fontSize="9" textAnchor="end">{points[points.length - 1].x.slice(5)}</text>
     </svg>
   );
 }
@@ -42,11 +43,13 @@ const FOOD_LINKS: Record<FoodKey, string> = { kcal: "kcal", proteinG: "protein",
 
 export default function ProgressView() {
   const { plan, days, today, day, saveDay, habitValue } = useHealth();
-  const params = useSearchParams();
+  // the exercise and the measurement shown are the link's (/mahdi/health/progress?ex=…&m=…)
+  const view = useView();
   const all = useMemo(() => Object.values(days).sort((a, b) => a.date.localeCompare(b.date)), [days]);
   const logged = useMemo(() => [...new Set(all.flatMap((d) => Object.keys(d.sets)))].filter((id) => exerciseById(id)), [all]);
-  const [ex, setEx] = useState<string>(() => params.get("ex") ?? "");
-  const [measurement, setMeasurement] = useState<MeasurementKey>("arm");
+  const ex = view.get("ex") ?? "";
+  const m = view.get("m");
+  const measurement: MeasurementKey = MEASUREMENT_KEYS.find((k) => k === m) ?? "arm";
   const shown = ex && logged.includes(ex) ? ex : logged[0] ?? "";
 
   const week = weekOf(today);
@@ -72,18 +75,18 @@ export default function ProgressView() {
     saveDay({ ...todayLog, measurements });
   };
 
-  if (!plan) return <p className="gym-card">سوّ خطتك أول، وبعدها تسجّل وتشوف تقدمك هنا. <Link href="/mahdi/health/setup" className="underline">يلا نبدأ</Link></p>;
+  if (!plan) return <p className="gym-card">سوّ خطتك أول، وبعدها تسجّل وتشوف تقدمك هنا. <Link href={setupHref()} className="underline">يلا نبدأ</Link></p>;
 
   return (
     <div className="space-y-4">
       <h1 className="gym-title">
-        تقدمك <em>📈</em>
+        <em>تقدمك</em> 📈
       </h1>
 
       <section className="gym-stats">
         <div className="gym-stat"><b>{workouts}/{plan.workout?.days.length ?? 0}</b><span>تمارين هالأسبوع</span></div>
         <div className="gym-stat"><b>{sets}</b><span>مجموعة</span></div>
-        <div className="gym-stat orange"><b>{cardio}</b><span>دقيقة كارديو</span></div>
+        <div className="gym-stat"><b>{cardio}</b><span>دقيقة كارديو</span></div>
         {timed.length > 0 && <div className="gym-stat"><b>{Math.round(trainedMin)}</b><span>دقيقة تمرين (متوسط {Math.round(trainedMin / timed.length)} للحصة)</span></div>}
       </section>
       {timed.length > 0 && (
@@ -92,7 +95,7 @@ export default function ProgressView() {
           <ul className="gym-list gym-small">
             {timed.slice(-7).reverse().map((d) => (
               <li key={d.date}>
-                {new Date(`${d.date}T12:00:00Z`).toLocaleDateString("ar", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" })}: <b className="text-white">{Math.round(sessionMin(d))} دقيقة</b>
+                {new Date(`${d.date}T12:00:00Z`).toLocaleDateString("ar", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" })}: <b className="gym-ink">{Math.round(sessionMin(d))} دقيقة</b>
               </li>
             ))}
           </ul>
@@ -130,7 +133,7 @@ export default function ProgressView() {
         <h2 className="text-lg font-black">🏋️ قوتك في كل تمرين</h2>
         {logged.length ? (
           <>
-            <select className="gym-select" value={shown} onChange={(e) => setEx(e.target.value)} aria-label="التمرين">
+            <select className="gym-select" value={shown} onChange={(e) => view.set({ ex: e.target.value })} aria-label="التمرين">
               {logged.map((id) => (
                 <option key={id} value={id}>{exerciseById(id)?.name}</option>
               ))}
@@ -179,7 +182,7 @@ export default function ProgressView() {
         </div>
         <div className="flex flex-wrap gap-1.5">
           {MEASUREMENT_KEYS.map((key) => (
-            <button key={key} type="button" className="gym-chip" aria-pressed={measurement === key} onClick={() => setMeasurement(key)}>{MEASUREMENT_NAMES[key]}</button>
+            <button key={key} type="button" className="gym-chip" aria-pressed={measurement === key} onClick={() => view.set({ m: key === "arm" ? null : key })}>{MEASUREMENT_NAMES[key]}</button>
           ))}
         </div>
         <Line points={measurementPoints} unit="سم" />

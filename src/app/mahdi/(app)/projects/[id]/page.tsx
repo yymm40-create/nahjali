@@ -15,15 +15,20 @@ import Icon from "@/components/mahdi/Icon";
 import ProjectForm from "@/components/mahdi/ProjectForm";
 import GoalPlanView from "@/components/mahdi/goals/GoalPlanView";
 import { useMahdi } from "@/components/mahdi/Provider";
+import Sheet from "@/components/mahdi/Sheet";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { daySeries } from "@/lib/mahdi/engine";
 
-/** One project (or strategic goal, with its milestones): its own progress, streak and habits, plus edit / archive / delete. */
+/**
+ * One project (or strategic goal, with its milestones): a clear header, its own progress, streak and habits, and ONE action —
+ * «أضف عادة». Edit, emergency, archive and delete live inside ⋯.
+ */
 export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { state, store, items, toast } = useMahdi();
+  const { state, store, items, toast, timeline: mainTimeline } = useMahdi();
   const { snap, today } = state;
+  const [menu, setMenu] = useState(false);
   const [editing, setEditing] = useState(false);
   const [emergency, setEmergency] = useState(false);
   const [adding, setAdding] = useState<{ milestoneId: string | null } | null>(null);
@@ -41,7 +46,7 @@ export default function ProjectPage() {
   }
 
   const habits = snap.habits.filter((h) => h.projectId === id).sort(bySort);
-  const ctx = { asOf: today, weekStart: snap.profile.weekStart };
+  const ctx = { asOf: today, weekStart: snap.profile.weekStart, excused: mainTimeline.ctx.excused };
   // This project's own timeline: its scores and streak count only its habits
   const tl = buildTimeline(items.filter((i) => i.projectId === id), snap.logsFrom, today, ctx);
   const todayScore = dayScore(tl, today);
@@ -108,25 +113,17 @@ export default function ProjectPage() {
   return (
     <div className={`p-${project.color} space-y-6`}>
       <header className="space-y-2">
-        <Link href="/mahdi/projects" className="m-btn m-btn-quiet m-btn-sm -ms-3">
-          <Icon name="chevronRight" size={18} /> {t.nav.projects}
-        </Link>
         <div className="flex items-center gap-3">
           <span className="m-dot size-3" style={{ background: "var(--pc)" }} />
           <h1 className="m-display flex-1 truncate text-3xl">
             {project.icon && <span aria-hidden="true">{project.icon} </span>}
             {project.name}
           </h1>
-          <button type="button" className="m-icon-btn" onClick={() => setEditing(true)} aria-label={t.project.editTitle}>
-            <Icon name="edit" />
+          <button type="button" className="m-menu-btn" onClick={() => setMenu(true)} aria-label="خيارات المشروع" aria-haspopup="dialog">
+            <Icon name="more" size={24} strokeWidth={2.6} />
           </button>
         </div>
         {archived && <p className="m-note text-sm">{t.project.archivedNote}</p>}
-        {!archived && (
-          <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setEmergency(true)}>
-            <Icon name="shield" size={16} /> خانة الطوارئ
-          </button>
-        )}
       </header>
 
       <section className="grid gap-3 sm:grid-cols-3" aria-label={t.project.stats}>
@@ -162,8 +159,8 @@ export default function ProjectPage() {
         <>
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">{t.project.habits}</h2>
-          {!archived && (
-            <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setAdding({ milestoneId: null })}>
+          {!archived && habits.length > 0 && (
+            <button type="button" className="m-btn m-btn-primary m-btn-sm" onClick={() => setAdding({ milestoneId: null })}>
               <Icon name="plus" size={18} /> {t.project.addHabit}
             </button>
           )}
@@ -191,14 +188,35 @@ export default function ProjectPage() {
       </section>
       )}
 
-      <section className="flex flex-wrap gap-3">
-        <button type="button" className="m-btn m-btn-ghost" disabled={busy} onClick={() => setArchived(!archived)}>
-          <Icon name="archive" /> {archived ? t.project.unarchive : t.project.archive}
-        </button>
-        <button type="button" className="m-btn m-btn-danger" onClick={() => setDeleting(true)}>
-          <Icon name="trash" /> {t.common.delete}
-        </button>
-      </section>
+      <Sheet open={menu} onClose={() => setMenu(false)} title={project.name}>
+        <div className="m-card m-rows">
+          {[
+            { icon: "edit" as const, label: t.project.editTitle, go: () => setEditing(true), on: true, danger: false },
+            { icon: "shield" as const, label: "خانة الطوارئ", go: () => setEmergency(true), on: !archived, danger: false },
+            { icon: "archive" as const, label: archived ? t.project.unarchive : t.project.archive, go: () => setArchived(!archived), on: true, danger: false },
+            { icon: "trash" as const, label: t.common.delete, go: () => setDeleting(true), on: true, danger: true },
+          ]
+            .filter((o) => o.on)
+            .map((o) => (
+              <button
+                key={o.label}
+                type="button"
+                className="m-row w-full text-start"
+                disabled={busy}
+                style={o.danger ? { color: "var(--m-error)" } : undefined}
+                onClick={() => {
+                  setMenu(false);
+                  o.go();
+                }}
+              >
+                <span className="m-row-ic" style={o.danger ? { color: "var(--m-error)" } : undefined}>
+                  <Icon name={o.icon} size={20} />
+                </span>
+                <span className="flex-1">{o.label}</span>
+              </button>
+            ))}
+        </div>
+      </Sheet>
 
       <ProjectForm open={editing} onClose={() => setEditing(false)} project={project} />
       {emergency && <EmergencySetup open onClose={() => setEmergency(false)} projectIds={[project.id]} />}

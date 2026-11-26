@@ -26,6 +26,7 @@ import ProjectForm from "./ProjectForm";
 import ReviewNote from "./ReviewNote";
 import { useMahdi } from "./Provider";
 import { useLook } from "./ThemeRoot";
+import { DayMarkCard } from "./DayMarks";
 
 /** The daily screen: today on the home page, or any earlier day (clearly marked) at /mahdi/day/[date]. */
 export default function DayView({ date: requested, home = false }: { date?: ISODate; home?: boolean }) {
@@ -116,6 +117,8 @@ export default function DayView({ date: requested, home = false }: { date?: ISOD
           <Icon name="calendar" size={18} /> {t.home.editingPast(fmtRelativeDay(date, today))}
         </p>
       )}
+      {/* «أيام العذر والقضاء»: a missed day can be made up here («قضاء») or marked as an excuse day; never a red mark */}
+      {projects.length > 0 && <DayMarkCard day={date} />}
 
       {home && <ReadingCard />}
       {home && <HealthCard />}
