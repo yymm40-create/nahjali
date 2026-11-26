@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { refundCoins, reserveCoins, reserveTeamCoins, settleCoins } from "@/lib/coins";
-import { giveBackUnlimitedFast, takeUnlimitedFast } from "@/lib/jawad/server/unlimited";
+import { giveBackUnlimitedFast, takeUnlimited } from "@/lib/jawad/server/unlimited";
 import { giveAttempt, teamPayment, teamSeriesOf } from "./team";
 import { serviceKind } from "./credits";
 import { hasAdminAccess } from "./admin-access";
@@ -56,8 +56,8 @@ export interface StartJobInput {
   units: number;
   unit: string;
   assetId?: string | null;
-  /** «لامحدود»: the studio generator and settings this job is, so a running pass's fast balance can make it free */
-  unlimited?: { generatorId: string; settings: Record<string, unknown> };
+  /** «لامحدود»: the studio generator and settings this job is, so a running pass makes it free (`hold`: a slow one waits before it is sent) */
+  unlimited?: { generatorId: string; settings: Record<string, unknown>; hold?: boolean };
 }
 
 /**
@@ -79,7 +79,7 @@ export async function payerOf(projectId: string, actor: { id: string; email?: st
  * Creates a job and reserves its estimated cost. If a job with this key already exists it is returned
  * as is (created: false) and nothing new is reserved.
  */
-export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; created: boolean }> {
+export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; created: boolean; /** «لامحدود»: ms a slow free job waits before it is sent */ holdMs?: number }> {
   const db = createAdminClient();
   const existing = await db.from("film_jobs").select("*").eq("idempotency_key", input.idempotencyKey).maybeSingle();
   if (existing.data) return { job: existing.data as FilmJob, created: false };
@@ -131,14 +131,16 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
     throw e2;
   }
   // «النقود الذكية»: hold the operation's coins (when coins are required); a short balance cancels the job
+  let holdMs = 0;
   try {
     const label = COIN_LABELS[input.operation] ?? input.operation;
     // the profit follows what the job makes: Claude's own work (the screenwriter, the sheets maker, the director's
     // replies, سجاد) its real usage + 40٪, a GPT Image 2 picture 30٪, a video 40٪, the rest the general margin
     const claude = serviceKind(input.service);
     // «لامحدود»: the payer's running pass, while its fast balance lasts, makes a video or picture free (nothing held; the cost is still logged)
-    const free = !team && input.unlimited ? await takeUnlimitedFast(payer.id, input.unlimited.generatorId, input.unlimited.settings, `film:${input.idempotencyKey}`) : false;
-    if (free) {
+    const pass = !team && input.unlimited ? await takeUnlimited(payer.id, input.unlimited.generatorId, input.unlimited.settings, `film:${input.idempotencyKey}`, input.unlimited.hold ? "hold" : "free") : { free: false, holdMs: 0 };
+    holdMs = pass.holdMs;
+    if (pass.free) {
       /* nothing to hold */
     } else if (team) await reserveTeamCoins(team.id, input.user, job.id, input.estimateUsd, label, claude);
     else await reserveCoins(payer, job.id, input.estimateUsd, label, claude);
@@ -146,7 +148,7 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
     await failJob(job.id, e);
     throw e;
   }
-  return { job, created: true };
+  return { job, created: true, holdMs };
 }
 
 /**
