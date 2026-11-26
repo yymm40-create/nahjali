@@ -11,8 +11,13 @@ import BoardList, { type BoardRow } from "@/components/mahdi/BoardList";
 import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
+import PageHead from "@/components/mahdi/social/PageHead";
+import { Empty, ErrorState, Skeleton } from "@/components/mahdi/social/States";
 
-/** One unified challenge: its definition, joining and leaving, my progress, and the ranking of those who chose to appear. */
+/**
+ * One unified challenge: its definition, joining and leaving, my progress, and a small ranking of those who chose to
+ * appear (the first places and my own, never who is at the bottom). One primary action: «انضم» until joined.
+ */
 export default function ChallengePage() {
   const { id } = useParams<{ id: string }>();
   const { state, store, timeline, toast } = useMahdi();
@@ -22,7 +27,7 @@ export default function ChallengePage() {
   const active = Boolean(member && !member.leftOn);
   const [busy, setBusy] = useState(false);
   const [leaving, setLeaving] = useState(false);
-  const [board, setBoard] = useState<{ entries: BoardRow[]; total: number } | null>(null);
+  const [board, setBoard] = useState<{ entries: BoardRow[]; me: BoardRow | null; total: number } | null>(null);
   const [boardError, setBoardError] = useState("");
 
   const [reload, setReload] = useState(0);
@@ -31,7 +36,7 @@ export default function ChallengePage() {
   useEffect(() => {
     if (!hasBoard) return;
     let live = true;
-    mahdiFetch<{ entries: BoardRow[]; total: number }>(`/api/mahdi/challenges/${id}`)
+    mahdiFetch<{ entries: BoardRow[]; me: BoardRow | null; total: number }>(`/api/mahdi/challenges/${id}`)
       .then((res) => {
         if (!live) return;
         setBoard(res);
@@ -45,10 +50,9 @@ export default function ChallengePage() {
 
   if (!c) {
     return (
-      <div className="m-card space-y-4 p-6 text-center">
-        <p>{t.errors.notFound}</p>
-        <Link href="/mahdi/challenges" className="m-btn m-btn-ghost">{t.challenges.back}</Link>
-      </div>
+      <Empty icon="flag" title={t.errors.notFound}>
+        <Link href="/mahdi/challenges" className="m-btn m-btn-ghost m-btn-sm">{t.challenges.back}</Link>
+      </Empty>
     );
   }
 
@@ -72,15 +76,7 @@ export default function ChallengePage() {
 
   return (
     <div className="space-y-6">
-      <Link href="/mahdi/challenges" className="m-btn m-btn-quiet m-btn-sm -ms-3">
-        <Icon name="chevronRight" size={18} /> {t.challenges.back}
-      </Link>
-
-      <header className="space-y-2">
-        <p className="m-eyebrow">{section?.icon} {section?.name}</p>
-        <h1 className="m-display text-3xl">{c.title}</h1>
-        {c.description && <p className="whitespace-pre-line">{c.description}</p>}
-      </header>
+      <PageHead title={c.title} eyebrow={section ? <>{section.icon} {section.name}</> : undefined} sub={c.description ? <p className="whitespace-pre-line">{c.description}</p> : undefined} />
 
       <section className="m-card space-y-3 p-5">
         <dl className="grid gap-3 sm:grid-cols-2">
@@ -148,15 +144,15 @@ export default function ChallengePage() {
       {c.leaderboard ? (
         <section className="space-y-3" aria-labelledby="board-title">
           <h2 id="board-title" className="text-lg font-semibold">{t.challenges.ranking}</h2>
-          <p className="text-sm m-muted">{t.challenges.rankingNote}</p>
+          <p className="text-sm m-muted">{t.challenges.rankingNote} {t.groups.kind.weekHint}</p>
           {boardError ? (
-            <p className="m-error" role="alert">{boardError} <button type="button" className="underline" onClick={loadBoard}>{t.common.retry}</button></p>
+            <ErrorState message={t.groups.kind.boardError} onRetry={loadBoard} />
           ) : !board ? (
-            <p className="m-muted">{t.common.loading}</p>
+            <Skeleton count={2} label={t.common.loading} />
           ) : board.entries.length ? (
-            <BoardList entries={board.entries} label={t.challenges.ranking} />
+            <BoardList entries={board.entries} me={board.me} label={t.challenges.ranking} />
           ) : (
-            <p className="m-card p-5 text-center m-muted">{t.challenges.rankingEmpty}</p>
+            <Empty icon="flag" title={t.challenges.rankingEmpty} />
           )}
         </section>
       ) : (

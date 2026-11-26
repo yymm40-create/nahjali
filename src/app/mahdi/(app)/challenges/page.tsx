@@ -2,16 +2,21 @@
 
 import { t } from "@/lib/mahdi/i18n";
 import ChallengeList from "@/components/mahdi/ChallengeList";
+import FriendsBoard from "@/components/mahdi/FriendsBoard";
 import ReadChallengeLink from "@/components/mahdi/ReadChallengeLink";
+import PageHead from "@/components/mahdi/social/PageHead";
 
-/** Unified challenges set by the admin: the same definition for everyone, so comparing is fair. */
+/**
+ * «التحديات»: every challenge in one place (المجتمع › التحديات). The unified challenges set by the admin (the same
+ * definition for everyone, so comparing is fair), «تحدي القراءة», and a small weekly ranking among friends.
+ */
 export default function ChallengesPage() {
   return (
     <div className="space-y-6">
-      <h1 className="m-display text-3xl">{t.challenges.title}</h1>
-      <p className="m-note">{t.challenges.intro}</p>
+      <PageHead title={t.community.challenges} sub={t.challenges.intro} />
       <ReadChallengeLink />
       <ChallengeList />
+      <FriendsBoard />
     </div>
   );
 }

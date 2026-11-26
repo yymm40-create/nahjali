@@ -13,6 +13,9 @@ import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
 import Sheet from "@/components/mahdi/Sheet";
 import GroupProgram, { type ProgramData } from "@/components/mahdi/groups/GroupProgram";
+import PageHead from "@/components/mahdi/social/PageHead";
+import { Empty, ErrorState, Skeleton } from "@/components/mahdi/social/States";
+import type { SteadyRow } from "@/lib/mahdi/groups/kind";
 import GroupStats from "@/components/mahdi/groups/GroupStats";
 import VisibilityChoice from "@/components/mahdi/groups/VisibilityChoice";
 import type { GroupVisibility } from "@/lib/mahdi/groups/privacy";
@@ -30,6 +33,8 @@ interface Member {
   appointedBy?: string;
   canRemove?: boolean;
   canAdmin?: boolean;
+  /** «ذكّرته بلطف» today already (undefined: not for this member — me, or not active) */
+  nudged?: boolean;
 }
 interface Detail {
   group: { id: string; name: string; isLeader: boolean };
@@ -39,7 +44,12 @@ interface Detail {
   program?: ProgramData;
   members: Member[];
   requests?: { displayName: string; username: string; avatarUrl: string | null }[];
-  ranking: { ranked: BoardRow[]; unranked: { displayName: string; username: string; avatarUrl: string | null; mine: boolean }[]; min?: number; onlyMine?: boolean };
+  /** small for everyone: the first places and my own (`me`, when I am below them); `unranked` is only ever me */
+  ranking: { ranked: BoardRow[]; me?: BoardRow | null; total?: number; unranked: { displayName: string; username: string; avatarUrl: string | null; mine: boolean }[]; min?: number; onlyMine?: boolean };
+  /** «أهل الثبات»: only who earned it (in a private group, only me) */
+  steady?: SteadyRow[];
+  /** SQL 0135 is in the database («ذكّرته بلطف») */
+  nudgesReady?: boolean;
   // in a private group a member gets only their own tick (no counts); the leaders also get who did it
   works: { id: string; title: string; details: string; cadence: "daily" | "once"; dueDate: string | null; mineDone: boolean; doneCount: number | null; memberCount: number | null; doneBy?: string[] }[];
   worksReady: boolean;
@@ -50,15 +60,17 @@ type Tab = "home" | "program" | "stats" | "people";
 const TABS: Tab[] = ["home", "program", "stats", "people"];
 
 /**
- * One group, run like its own «لأجل المهدي»: its khatma, shared works and closed ranking; its program (projects and
- * habits its leaders build); every member's numbers and comparisons; its members, the admins under the leader and
- * their permissions. Each tool shows to whoever holds its permission (the leader holds them all).
+ * One group, run like its own «لأجل المهدي»: «اليوم» (its khatma, shared works, a small weekly ranking and «أهل
+ * الثبات»), its program, every member's numbers, and its members («ذكّرته بلطف» once a day; each member's commands
+ * behind «⋯»). The settings live in a sheet. Each tool shows to whoever holds its permission (the leader holds them
+ * all); in a private group a member never sees the others' progress (PR 838).
  */
 export default function GroupPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { toast } = useMahdi();
-  const [period, setPeriod] = useState<"week" | "month">("week");
+  // the group ranking is a small weekly one (the plan of 26 November 2026)
+  const period = "week";
   const [metric, setMetric] = useState<"score" | "reading">("score");
   const [result, setResult] = useState<{ key: string; data: Detail } | null>(null);
   const [error, setError] = useState("");
@@ -72,6 +84,10 @@ export default function GroupPage() {
   const [workCadence, setWorkCadence] = useState<"daily" | "once">("daily");
   const [workDate, setWorkDate] = useState("");
   const [confirm, setConfirm] = useState<Confirm>(null);
+  const [settings, setSettings] = useState(false);
+  const [addingWork, setAddingWork] = useState(false);
+  const [member, setMember] = useState<Member | null>(null);
+  const [nudging, setNudging] = useState<string | null>(null);
   const params = useSearchParams();
   const [tab, setTab] = useState<Tab>(() => {
     const want = params.get("tab") as Tab | null;
@@ -141,15 +157,35 @@ export default function GroupPage() {
     }
   }
 
+  // «ذكّرته بلطف»: once a day to another member; says nothing about how they are doing
+  async function nudge(m: Member) {
+    if (nudging) return;
+    setNudging(m.username);
+    try {
+      await mahdiFetch(`/api/mahdi/groups/${id}`, { method: "POST", json: { action: "nudge", username: m.username } });
+      setResult((cur) => (cur ? { ...cur, data: { ...cur.data, members: cur.data.members.map((x) => (x.username === m.username ? { ...x, nudged: true } : x)) } } : cur));
+      toast(t.groups.kind.nudgeSent);
+    } catch (e) {
+      toast((e as Error).message);
+    }
+    setNudging(null);
+  }
+
   if (error && !data) {
     return (
-      <div className="m-card space-y-4 p-6 text-center">
-        <p>{error}</p>
-        <Link href="/mahdi/groups" className="m-btn m-btn-ghost">{t.groups.back}</Link>
-      </div>
+      <ErrorState message={error} onRetry={() => setReload((n) => n + 1)}>
+        <Link href="/mahdi/groups" className="m-btn m-btn-quiet m-btn-sm">{t.groups.back}</Link>
+      </ErrorState>
     );
   }
-  if (!data) return <p className="m-muted">{t.common.loading}</p>;
+  if (!data)
+    return (
+      <div className="space-y-4" role="status" aria-label={t.common.loading}>
+        <div className="m-skel h-9 w-1/2" />
+        <div className="m-skel h-11" />
+        <Skeleton count={3} label={t.common.loading} />
+      </div>
+    );
   const { group, members, ranking } = data;
   const isPrivate = data.privacy?.visibility === "leaders";
   const active = members.filter((m) => m.status === "active");
@@ -157,6 +193,13 @@ export default function GroupPage() {
   // what I may do here (before migration 0083 the leader alone, as before)
   const mine = data.me?.perms ?? [];
   const may = (perm: GroupPerm) => group.isLeader || mine.includes(perm);
+  const K = t.groups.kind;
+  const full = data.privacy ? data.privacy.full : true;
+  const steady = data.steady ?? [];
+  const mySteady = steady.find((x) => x.mine);
+  const meUnranked = ranking.unranked.find((u) => u.mine);
+  // the commands a member's «⋯» holds (for those who may act on them)
+  const hasCommands = (m: Member) => !m.mine && (m.canAdmin || (group.isLeader && m.status === "active") || (m.canRemove ?? group.isLeader));
   const pickTab = (next: Tab) => {
     setTab(next);
     window.history.replaceState(null, "", next === "home" ? window.location.pathname : `?tab=${next}`);
@@ -164,25 +207,30 @@ export default function GroupPage() {
 
   return (
     <div className="space-y-6">
-      <Link href="/mahdi/groups" className="m-btn m-btn-quiet m-btn-sm -ms-3">
-        <Icon name="chevronRight" size={18} /> {t.groups.back}
-      </Link>
-      <header className="space-y-1">
-        <p className="m-eyebrow">{t.groups.title}</p>
-        <h1 className="m-display text-3xl">{group.name}</h1>
-        <p className="m-num text-sm m-muted">{t.groups.members(active.length)}</p>
-        {isPrivate && <p className="m-note text-sm">{data.privacy?.full ? t.groups.privacy.leaderNote : t.groups.privacy.memberNote}</p>}
-        {data.me?.role === "admin" && (
-          <p className="text-sm">
-            <span className="m-chip m-chip-gold">{t.groups.admin}</span> <span className="m-muted">{t.groups.admins.yours}: {mine.map((x) => t.groups.admins.short[x]).join("، ")}</span>
-          </p>
-        )}
-      </header>
+      <PageHead
+        eyebrow={t.groups.title}
+        title={group.name}
+        sub={
+          <>
+            <span className="m-num">{t.groups.members(active.length)}</span>
+            {data.me?.role === "admin" && (
+              <span className="mt-1 block">
+                <span className="m-chip m-chip-gold">{t.groups.admin}</span> {t.groups.admins.yours}: {mine.map((x) => t.groups.admins.short[x]).join("، ")}
+              </span>
+            )}
+          </>
+        }
+      >
+        <button type="button" className="m-icon-btn" aria-label={K.settings} aria-haspopup="dialog" onClick={() => setSettings(true)}>
+          <Icon name="settings" size={22} />
+        </button>
+      </PageHead>
+      {isPrivate && <p className="m-note text-sm">{data.privacy?.full ? t.groups.privacy.leaderNote : t.groups.privacy.memberNote}</p>}
 
-      <div className="m-card grid grid-cols-4 gap-1 p-1" role="tablist" aria-label={group.name}>
+      <div className="grid grid-cols-4 gap-1.5" role="tablist" aria-label={group.name}>
         {TABS.map((k) => (
-          <button key={k} type="button" role="tab" aria-selected={tab === k} className={`min-h-10 rounded-xl px-2 text-sm font-semibold transition-colors ${tab === k ? "" : "m-muted"}`} style={tab === k ? { background: "var(--m-gold)", color: "var(--m-gold-ink)" } : undefined} onClick={() => pickTab(k)}>
-            {t.groups.tabs[k]}
+          <button key={k} type="button" role="tab" aria-selected={tab === k} className="m-option min-h-11 px-1 text-sm font-semibold" onClick={() => pickTab(k)}>
+            {k === "home" ? K.today : t.groups.tabs[k]}
           </button>
         ))}
       </div>
@@ -193,7 +241,7 @@ export default function GroupPage() {
       {tab === "home" && (<>
 
       <Link href={`/mahdi/khatma/${id}`} className="m-card flex items-center gap-3 p-4">
-        <span className="grid size-10 shrink-0 place-items-center rounded-2xl" style={{ background: "color-mix(in srgb, #16a34a 18%, transparent)", color: "#16a34a" }}>
+        <span className="m-row-ic" aria-hidden="true">
           <Icon name="book" size={21} />
         </span>
         <span className="min-w-0 flex-1">
@@ -205,19 +253,21 @@ export default function GroupPage() {
 
       <section className="space-y-3" aria-labelledby="group-works">
         <div className="flex items-start gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-2xl" style={{ background: "color-mix(in srgb, var(--m-gold) 16%, transparent)", color: "var(--m-gold)" }}>
-            <Icon name="check" size={21} />
-          </span>
           <span className="min-w-0 flex-1">
             <h2 id="group-works" className="text-lg font-semibold">{t.groups.worksTitle}</h2>
             <p className="text-sm m-muted">{t.groups.worksHint}</p>
           </span>
+          {may("program") && data.worksReady && (
+            <button type="button" className="m-btn m-btn-primary m-btn-sm shrink-0" onClick={() => setAddingWork(true)}>
+              <Icon name="plus" size={18} /> {t.groups.workAdd}
+            </button>
+          )}
         </div>
 
         {!data.worksReady ? (
           <p className="m-note">{t.groups.worksNotReady}</p>
         ) : data.works.length === 0 ? (
-          <p className="m-card p-5 text-center m-muted">{t.groups.worksEmpty}</p>
+          <Empty icon="check" title={t.groups.worksEmpty} />
         ) : (
           <ul className="m-card divide-y" style={{ borderColor: "var(--m-line)" }}>
             {data.works.map((work) => (
@@ -230,7 +280,7 @@ export default function GroupPage() {
                   disabled={workBusy === work.id}
                   onClick={() => void toggleWork(work)}
                   className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full border-2 transition-all active:scale-90"
-                  style={{ borderColor: work.mineDone ? "var(--m-gold)" : "var(--m-line)", background: work.mineDone ? "var(--m-gold)" : "transparent", color: "var(--m-bg, #fff)" }}
+                  style={{ borderColor: work.mineDone ? "var(--m-gold)" : "var(--m-line)", background: work.mineDone ? "var(--m-gold)" : "transparent", color: "var(--m-gold-ink)" }}
                 >
                   {work.mineDone && <Icon name="check" size={18} />}
                 </button>
@@ -249,7 +299,7 @@ export default function GroupPage() {
                   {work.doneBy && <span className="mt-1 block text-xs m-muted">{work.doneBy.length ? t.groups.privacy.doneBy(work.doneBy.join("، ")) : t.groups.privacy.doneByNone}</span>}
                 </span>
                 {may("program") && (
-                  <button type="button" className="m-icon-btn m-btn-ghost shrink-0" disabled={workBusy === work.id} aria-label={t.groups.workRemove} onClick={() => act({ action: "work_archive", workId: work.id }, t.groups.workArchived)}>
+                  <button type="button" className="m-icon-btn shrink-0 m-muted" disabled={workBusy === work.id} aria-label={t.groups.workRemove} onClick={() => act({ action: "work_archive", workId: work.id }, t.groups.workArchived)}>
                     <Icon name="trash" size={16} />
                   </button>
                 )}
@@ -257,45 +307,43 @@ export default function GroupPage() {
             ))}
           </ul>
         )}
+      </section>
 
-        {may("program") && data.worksReady && (
-          <form
-            className="m-card space-y-3 p-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              act(
-                { action: "work_create", title: workTitle, details: workDetails, cadence: workCadence, dueDate: workCadence === "once" ? workDate : null },
-                t.groups.workCreated,
-                () => (setWorkTitle(""), setWorkDetails(""), setReload((n) => n + 1)),
-              );
-            }}
-          >
-            <h3 className="font-semibold">{t.groups.workAdd}</h3>
-            <input className="m-field" required maxLength={120} value={workTitle} onChange={(event) => setWorkTitle(event.target.value)} placeholder={t.groups.workTitlePlaceholder} aria-label={t.groups.workTitle} />
-            <textarea className="m-field min-h-20 resize-y" maxLength={500} value={workDetails} onChange={(event) => setWorkDetails(event.target.value)} placeholder={t.groups.workDetailsPlaceholder} aria-label={t.groups.workDetails} />
-            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t.groups.workAdd}>
-              {(["daily", "once"] as const).map((cadence) => (
-                <button key={cadence} type="button" role="radio" aria-checked={workCadence === cadence} className="m-option min-h-11 px-3 font-semibold" onClick={() => (setWorkCadence(cadence), cadence === "once" && !workDate && setWorkDate(data.today))}>
-                  {cadence === "daily" ? t.groups.workDaily : t.groups.workOnce}
-                </button>
-              ))}
-            </div>
-            {workCadence === "once" && (
-              <label className="block">
-                <span className="m-label">{t.groups.workDueDate}</span>
-                <input type="date" className="m-field m-num" required min={data.today} value={workDate} onChange={(event) => setWorkDate(event.target.value)} />
-              </label>
-            )}
-            <button className="m-btn m-btn-primary w-full" disabled={busy || !workTitle.trim() || (workCadence === "once" && !workDate)}>
-              <Icon name="plus" size={18} /> {t.groups.workAdd}
-            </button>
-          </form>
+      <section className="space-y-3" aria-labelledby="steady">
+        <div>
+          <h2 id="steady" className="text-lg font-semibold">{K.steadyTitle}</h2>
+          <p className="text-sm m-muted">{K.steadyHint}</p>
+        </div>
+        {!full ? (
+          mySteady ? (
+            <p className="m-card flex items-center gap-3 p-4 font-semibold">
+              <span className="m-empty-ic !size-10 !rounded-2xl" aria-hidden="true"><Icon name="star" size={20} /></span>
+              {K.steadyMine}
+            </p>
+          ) : null
+        ) : steady.length ? (
+          <ul className="m-card divide-y" style={{ borderColor: "var(--m-line)" }} aria-label={K.steadyTitle}>
+            {steady.map((x) => (
+              <li key={x.username || x.displayName} className="flex items-center gap-3 px-4 py-3">
+                <Avatar profile={x} size={34} />
+                <span className="min-w-0 flex-1 truncate font-semibold">
+                  {t.mawla(x.displayName)}
+                  {x.mine && <span className="m-chip m-chip-gold ms-2">{t.leaderboard.you}</span>}
+                </span>
+                <span className="m-chip m-chip-gold m-num shrink-0"><Icon name="star" size={14} /> {K.steadyDays(x.days)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm m-muted">{K.steadyEmpty}</p>
         )}
       </section>
 
       <section className="space-y-3" aria-labelledby="rank">
-        <h2 id="rank" className="text-lg font-semibold">{t.groups.ranking}</h2>
-        <p className="text-sm m-muted">{ranking.onlyMine ? t.groups.privacy.rankingMine : t.groups.rankingHint}</p>
+        <div>
+          <h2 id="rank" className="text-lg font-semibold">{K.weekTitle}</h2>
+          <p className="text-sm m-muted">{ranking.onlyMine ? t.groups.privacy.rankingMine : K.weekHint}</p>
+        </div>
         <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t.leaderboard.metric}>
           {(["score", "reading"] as const).map((m) => (
             <button key={m} type="button" role="radio" aria-checked={metric === m} className="m-option min-h-10 px-3 text-sm font-semibold" onClick={() => setMetric(m)}>
@@ -303,25 +351,13 @@ export default function GroupPage() {
             </button>
           ))}
         </div>
-        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t.leaderboard.title}>
-          {(["week", "month"] as const).map((p) => (
-            <button key={p} type="button" role="radio" aria-checked={period === p} className="m-option min-h-10 px-3 text-sm font-semibold" onClick={() => setPeriod(p)}>
-              {t.leaderboard[p]}
-            </button>
-          ))}
-        </div>
         <div className={fresh ? "" : "opacity-60"} aria-busy={!fresh}>
-          {ranking.ranked.length > 0 ? <BoardList entries={ranking.ranked} label={t.groups.ranking} /> : <p className="m-card p-5 text-center m-muted">{t.leaderboard.empty}</p>}
-          {ranking.unranked.length > 0 && (
-            <div className="mt-3 space-y-1">
-              <p className="text-sm m-muted">{t.groups.belowMin}{ranking.min ? ` (${t.leaderboard.min(ranking.min)})` : ""}</p>
-              <ul className="flex flex-wrap gap-2">
-                {ranking.unranked.map((u) => (
-                  <li key={u.username || u.displayName} className="m-chip">{u.displayName}{u.mine && ` · ${t.leaderboard.you}`}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {ranking.ranked.length > 0 || ranking.me ? (
+            <BoardList entries={ranking.ranked} me={ranking.me ?? null} label={K.weekTitle} />
+          ) : !meUnranked ? (
+            <Empty icon="progress" title={t.leaderboard.empty} />
+          ) : null}
+          {meUnranked && <p className="mt-3 text-sm m-muted">{K.notYet(ranking.min ?? 7)}</p>}
         </div>
       </section>
 
@@ -332,7 +368,7 @@ export default function GroupPage() {
         <h2 id="members" className="text-lg font-semibold">{t.groups.membersTitle}</h2>
         <ul className="m-card divide-y" style={{ borderColor: "var(--m-line)" }}>
           {[...active, ...invited].map((m) => (
-            <li key={m.username || m.displayName} className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <li key={m.username || m.displayName} className="flex items-center gap-3 px-4 py-3">
               <Avatar profile={m} size={36} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-semibold">{t.mawla(m.displayName)}</span>
@@ -349,18 +385,21 @@ export default function GroupPage() {
                   </span>
                 )}
               </span>
-              {!m.mine && (group.isLeader || m.canRemove || m.canAdmin) && (
-                <span className="flex flex-wrap gap-1">
-                  {m.canAdmin && (
-                    <button type="button" className="m-btn m-btn-quiet m-btn-sm" onClick={() => setPerms({ m, list: m.perms?.length ? m.perms : [] })}>
-                      {m.admin ? t.groups.admins.edit : t.groups.admins.make}
-                    </button>
-                  )}
-                  {group.isLeader && m.status === "active" && (
-                    <button type="button" className="m-btn m-btn-quiet m-btn-sm" onClick={() => setConfirm({ kind: "transfer", m })}>{t.groups.makeLeader}</button>
-                  )}
-                  {(m.canRemove ?? group.isLeader) && <button type="button" className="m-btn m-btn-quiet m-btn-sm" onClick={() => setConfirm({ kind: "remove", m })}>{t.groups.remove}</button>}
-                </span>
+              {data.nudgesReady && m.nudged !== undefined && (
+                <button
+                  type="button"
+                  className="m-btn m-btn-quiet m-btn-sm shrink-0"
+                  disabled={m.nudged || nudging === m.username}
+                  aria-pressed={m.nudged}
+                  onClick={() => void nudge(m)}
+                >
+                  {m.nudged ? <><Icon name="check" size={16} /> {K.nudged}</> : <><Icon name="bell" size={16} /> {K.nudge}</>}
+                </button>
+              )}
+              {hasCommands(m) && (
+                <button type="button" className="m-icon-btn shrink-0 m-muted" aria-label={t.mawla(m.displayName)} aria-haspopup="dialog" onClick={() => setMember(m)}>
+                  <Icon name="more" size={22} />
+                </button>
               )}
             </li>
           ))}
@@ -381,32 +420,11 @@ export default function GroupPage() {
                 <li key={r.username || r.displayName} className="flex items-center gap-3 py-2">
                   <Avatar profile={{ ...r }} size={32} />
                   <span className="min-w-0 flex-1 truncate font-semibold">{t.mawla(r.displayName)} <bdi dir="auto" className="text-sm font-normal m-muted">{r.username}</bdi></span>
-                  <button type="button" className="m-btn m-btn-primary m-btn-sm" disabled={busy} onClick={() => act({ action: "approve", username: r.username }, t.groups.approved)}>{t.groups.approve}</button>
+                  <button type="button" className="m-btn m-btn-ghost m-btn-sm" disabled={busy} onClick={() => act({ action: "approve", username: r.username }, t.groups.approved)}>{t.groups.approve}</button>
                   <button type="button" className="m-btn m-btn-quiet m-btn-sm" disabled={busy} onClick={() => act({ action: "reject", username: r.username }, t.groups.rejected)}>{t.groups.reject}</button>
                 </li>
               ))}
             </ul>
-          </div>
-        )}
-
-        {may("members") && (
-          <div className="m-card space-y-3 p-4">
-            <h3 className="font-semibold">{t.groups.linkTitle}</h3>
-            <p className="text-sm m-muted">{t.groups.linkHint}</p>
-            {!token ? (
-              <button type="button" className="m-btn m-btn-ghost w-full" onClick={() => getLink()}>{t.groups.linkShow}</button>
-            ) : (
-              <div className="space-y-3 text-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {qr && <img src={qr} alt="QR" width={180} height={180} className="mx-auto rounded-lg bg-white" />}
-                <input className="m-field" dir="ltr" readOnly value={link} onFocus={(e) => e.currentTarget.select()} aria-label={t.groups.linkTitle} />
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" className="m-btn m-btn-primary" onClick={() => navigator.clipboard?.writeText(link).then(() => toast(t.groups.linkCopied)).catch(() => {})}>{t.groups.linkCopy}</button>
-                  <button type="button" className="m-btn m-btn-ghost" onClick={() => (navigator.share ? navigator.share({ title: group.name, url: link }).catch(() => {}) : navigator.clipboard?.writeText(link).then(() => toast(t.groups.linkCopied)))}>{t.groups.linkShare}</button>
-                </div>
-                <button type="button" className="m-btn m-btn-quiet m-btn-sm" onClick={() => getLink(true)}>{t.groups.linkReset}</button>
-              </div>
-            )}
           </div>
         )}
 
@@ -425,11 +443,34 @@ export default function GroupPage() {
             <button className="m-btn m-btn-primary w-full" disabled={busy || !username.trim()}>{t.groups.inviteSend}</button>
           </form>
         )}
-      </section>
 
-      <section className="m-card space-y-2 p-4">
-        {group.isLeader && data.privacy && (
-          <div className="pb-2">
+        {may("members") && (
+          <div className="m-card space-y-3 p-4">
+            <h3 className="font-semibold">{t.groups.linkTitle}</h3>
+            <p className="text-sm m-muted">{t.groups.linkHint}</p>
+            {!token ? (
+              <button type="button" className="m-btn m-btn-ghost w-full" onClick={() => getLink()}>{t.groups.linkShow}</button>
+            ) : (
+              <div className="space-y-3 text-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {qr && <img src={qr} alt="QR" width={180} height={180} className="mx-auto rounded-lg bg-white" />}
+                <input className="m-field" dir="ltr" readOnly value={link} onFocus={(e) => e.currentTarget.select()} aria-label={t.groups.linkTitle} />
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" className="m-btn m-btn-ghost" onClick={() => navigator.clipboard?.writeText(link).then(() => toast(t.groups.linkCopied)).catch(() => {})}>{t.groups.linkCopy}</button>
+                  <button type="button" className="m-btn m-btn-ghost" onClick={() => (navigator.share ? navigator.share({ title: group.name, url: link }).catch(() => {}) : navigator.clipboard?.writeText(link).then(() => toast(t.groups.linkCopied)))}>{t.groups.linkShare}</button>
+                </div>
+                <button type="button" className="m-btn m-btn-quiet m-btn-sm" onClick={() => getLink(true)}>{t.groups.linkReset}</button>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+      </>)}
+
+      {/* the group's settings: who sees the progress, the name, and leaving or deleting */}
+      <Sheet open={settings} onClose={() => setSettings(false)} title={K.settings}>
+        <div className="space-y-4">
+          {group.isLeader && data.privacy && (
             <VisibilityChoice
               value={data.privacy.visibility}
               disabled={!data.privacy.canChange}
@@ -437,39 +478,98 @@ export default function GroupPage() {
               note={data.privacy.ready ? t.groups.privacy.leaderOnly : t.groups.privacy.notReady}
               onChange={(v) => v !== data.privacy?.visibility && act({ action: "privacy", visibility: v }, t.groups.privacy.saved)}
             />
-          </div>
-        )}
-        {may("settings") && (
-          rename === null ? (
-            <button type="button" className="m-btn m-btn-ghost w-full justify-start" onClick={() => setRename(group.name)}>
-              <Icon name="edit" /> {t.groups.rename}
+          )}
+          {may("settings") && (
+            rename === null ? (
+              <button type="button" className="m-btn m-btn-ghost w-full justify-start" onClick={() => setRename(group.name)}>
+                <Icon name="edit" /> {t.groups.rename}
+              </button>
+            ) : (
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  act({ action: "rename", name: rename }, t.groups.renamed, () => (setRename(null), setReload((n) => n + 1)));
+                }}
+              >
+                <input className="m-field flex-1" required maxLength={40} value={rename} onChange={(e) => setRename(e.target.value)} aria-label={t.groups.name} autoFocus />
+                <button className="m-btn m-btn-ghost" disabled={busy}>{t.common.save}</button>
+              </form>
+            )
+          )}
+          {group.isLeader ? (
+            <button type="button" className="m-btn m-btn-danger w-full justify-start" onClick={() => (setSettings(false), setConfirm({ kind: "delete" }))}>
+              <Icon name="trash" /> {t.groups.delete}
             </button>
           ) : (
-            <form
-              className="flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                act({ action: "rename", name: rename }, t.groups.renamed, () => (setRename(null), setReload((n) => n + 1)));
-              }}
-            >
-              <input className="m-field flex-1" required maxLength={40} value={rename} onChange={(e) => setRename(e.target.value)} aria-label={t.groups.name} autoFocus />
-              <button className="m-btn m-btn-ghost" disabled={busy}>{t.common.save}</button>
-            </form>
-          )
+            <button type="button" className="m-btn m-btn-danger w-full justify-start" onClick={() => (setSettings(false), setConfirm({ kind: "leave" }))}>
+              <Icon name="logout" /> {t.groups.leave}
+            </button>
+          )}
+          {group.isLeader && <p className="text-sm m-muted">{t.groups.leaderLeave}</p>}
+          <p className="m-num text-center text-xs m-muted">{fmtNum(members.length)} / 50</p>
+        </div>
+      </Sheet>
+
+      {/* one member's commands («⋯»): permissions, the leadership, removing */}
+      <Sheet open={Boolean(member)} onClose={() => setMember(null)} title={member ? t.mawla(member.displayName) : ""}>
+        {member && (
+          <div className="m-card m-rows">
+            {member.canAdmin && (
+              <button type="button" className="m-row w-full text-start" onClick={() => (setMember(null), setPerms({ m: member, list: member.perms?.length ? member.perms : [] }))}>
+                <span className="m-row-ic" aria-hidden="true"><Icon name="shield" size={20} /></span>
+                {member.admin ? t.groups.admins.edit : t.groups.admins.make}
+              </button>
+            )}
+            {group.isLeader && member.status === "active" && (
+              <button type="button" className="m-row w-full text-start" onClick={() => (setMember(null), setConfirm({ kind: "transfer", m: member }))}>
+                <span className="m-row-ic" aria-hidden="true"><Icon name="star" size={20} /></span>
+                {t.groups.makeLeader}
+              </button>
+            )}
+            {(member.canRemove ?? group.isLeader) && (
+              <button type="button" className="m-row w-full text-start" style={{ color: "var(--m-error)" }} onClick={() => (setMember(null), setConfirm({ kind: "remove", m: member }))}>
+                <span className="m-row-ic" aria-hidden="true"><Icon name="logout" size={20} /></span>
+                {t.groups.remove}
+              </button>
+            )}
+          </div>
         )}
-        {group.isLeader ? (
-          <button type="button" className="m-btn m-btn-danger w-full justify-start" onClick={() => setConfirm({ kind: "delete" })}>
-            <Icon name="trash" /> {t.groups.delete}
+      </Sheet>
+
+      {/* adding a shared work: the screen's one primary action for whoever holds «البرنامج» */}
+      <Sheet open={addingWork} onClose={() => setAddingWork(false)} title={t.groups.workAdd}>
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            act(
+              { action: "work_create", title: workTitle, details: workDetails, cadence: workCadence, dueDate: workCadence === "once" ? workDate : null },
+              t.groups.workCreated,
+              () => (setWorkTitle(""), setWorkDetails(""), setAddingWork(false), setReload((n) => n + 1)),
+            );
+          }}
+        >
+          <input className="m-field" required maxLength={120} value={workTitle} onChange={(event) => setWorkTitle(event.target.value)} placeholder={t.groups.workTitlePlaceholder} aria-label={t.groups.workTitle} />
+          <textarea className="m-field min-h-20 resize-y" maxLength={500} value={workDetails} onChange={(event) => setWorkDetails(event.target.value)} placeholder={t.groups.workDetailsPlaceholder} aria-label={t.groups.workDetails} />
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t.groups.workAdd}>
+            {(["daily", "once"] as const).map((cadence) => (
+              <button key={cadence} type="button" role="radio" aria-checked={workCadence === cadence} className="m-option min-h-11 px-3 font-semibold" onClick={() => (setWorkCadence(cadence), cadence === "once" && !workDate && setWorkDate(data.today))}>
+                {cadence === "daily" ? t.groups.workDaily : t.groups.workOnce}
+              </button>
+            ))}
+          </div>
+          {workCadence === "once" && (
+            <label className="block">
+              <span className="m-label">{t.groups.workDueDate}</span>
+              <input type="date" className="m-field m-num" required min={data.today} value={workDate} onChange={(event) => setWorkDate(event.target.value)} />
+            </label>
+          )}
+          <button className="m-btn m-btn-primary w-full" disabled={busy || !workTitle.trim() || (workCadence === "once" && !workDate)}>
+            <Icon name="plus" size={18} /> {t.groups.workAdd}
           </button>
-        ) : (
-          <button type="button" className="m-btn m-btn-danger w-full justify-start" onClick={() => setConfirm({ kind: "leave" })}>
-            <Icon name="logout" /> {t.groups.leave}
-          </button>
-        )}
-        {group.isLeader && <p className="text-sm m-muted">{t.groups.leaderLeave}</p>}
-        <p className="m-num text-center text-xs m-muted">{fmtNum(members.length)} / 50</p>
-      </section>
-      </>)}
+        </form>
+      </Sheet>
 
       <Sheet open={Boolean(perms)} onClose={() => setPerms(null)} title={perms ? t.groups.admins.sheetTitle(perms.m.displayName) : ""}>
         {perms && (

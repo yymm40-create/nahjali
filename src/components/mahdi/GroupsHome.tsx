@@ -7,8 +7,11 @@ import { fmtNum, t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
+import Sheet from "./Sheet";
 import UsernameForm from "./UsernameForm";
 import VisibilityChoice from "./groups/VisibilityChoice";
+import PageHead from "./social/PageHead";
+import { Empty, ErrorState, Skeleton } from "./social/States";
 
 interface GroupItem {
   id: string;
@@ -20,14 +23,19 @@ interface GroupItem {
   visibility?: "all" | "leaders";
 }
 type Visibility = "all" | "leaders";
+const K = t.groups.kind;
 
-/** «إخوة الولاية»: my groups, invitations waiting for me, and creating a group. */
+/**
+ * «المجموعات» (إخوة الولاية): invitations waiting for me, my groups, and one primary action — «مجموعة جديدة», which
+ * opens its form in a sheet. Loading, empty and error look like the rest of «المجتمع».
+ */
 export default function GroupsHome() {
   const router = useRouter();
   const { state, toast } = useMahdi();
   const [data, setData] = useState<{ groups: GroupItem[]; invites: GroupItem[]; privacyReady?: boolean } | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(false);
   const [reload, setReload] = useState(0);
+  const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   // who sees each member's progress in the new group (everyone, as before, unless the leader picks otherwise)
   const [visibility, setVisibility] = useState<Visibility>("all");
@@ -37,8 +45,8 @@ export default function GroupsHome() {
   useEffect(() => {
     let live = true;
     mahdiFetch<{ groups: GroupItem[]; invites: GroupItem[]; privacyReady?: boolean }>("/api/mahdi/groups")
-      .then((d) => live && (setData(d), setError("")))
-      .catch((e: Error) => live && setError(e.message));
+      .then((d) => live && (setData(d), setError(false)))
+      .catch(() => live && setError(true));
     return () => {
       live = false;
     };
@@ -71,9 +79,17 @@ export default function GroupsHome() {
     setBusy(false);
   }
 
+  const canCreate = hasUsername && data !== null;
+
   return (
-    <div className="space-y-5">
-      <p className="m-note">{t.groups.intro}</p>
+    <div className="space-y-6">
+      <PageHead title={t.groups.title} sub={t.groups.intro}>
+        {canCreate && (
+          <button type="button" className="m-btn m-btn-primary m-btn-sm" onClick={() => setCreating(true)}>
+            <Icon name="plus" size={18} /> {K.newGroup}
+          </button>
+        )}
+      </PageHead>
 
       {!hasUsername && (
         <section className="m-card space-y-2 p-5">
@@ -82,12 +98,8 @@ export default function GroupsHome() {
         </section>
       )}
 
-      {error && (
-        <p className="m-error" role="alert">
-          {error} <button type="button" className="underline" onClick={() => setReload((n) => n + 1)}>{t.common.retry}</button>
-        </p>
-      )}
-      {!data && !error && <p className="m-muted">{t.common.loading}</p>}
+      {error && !data && <ErrorState message={K.listError} onRetry={() => setReload((n) => n + 1)} />}
+      {!data && !error && <Skeleton count={3} label={t.common.loading} />}
 
       {data && data.invites.length > 0 && (
         <section className="space-y-2" aria-labelledby="invites">
@@ -102,7 +114,9 @@ export default function GroupsHome() {
                   </span>
                   <span className="block text-sm m-muted">{t.groups.invitedBy(g.invitedBy ?? g.leaderName)}</span>
                 </span>
-                <button type="button" className="m-btn m-btn-primary m-btn-sm" disabled={busy} onClick={() => respond(g.id, "accept")}>{t.groups.accept}</button>
+                <button type="button" className="m-btn m-btn-ghost m-btn-sm" disabled={busy} onClick={() => respond(g.id, "accept")}>
+                  <Icon name="check" size={16} /> {t.groups.accept}
+                </button>
                 <button type="button" className="m-btn m-btn-quiet m-btn-sm" disabled={busy} onClick={() => respond(g.id, "decline")}>{t.groups.decline}</button>
               </li>
             ))}
@@ -114,13 +128,15 @@ export default function GroupsHome() {
         <section className="space-y-2" aria-labelledby="mine">
           <h2 id="mine" className="text-lg font-semibold">{t.groups.mine}</h2>
           {data.groups.length === 0 ? (
-            <p className="m-card p-5 text-center m-muted">{t.groups.none}</p>
+            <Empty icon="users" title={K.noneTitle} body={K.noneBody} />
           ) : (
             <ul className="space-y-2">
               {data.groups.map((g) => (
                 <li key={g.id}>
                   <Link href={`/mahdi/groups/${g.id}`} className="m-card flex items-center gap-3 p-4">
-                    <Icon name="users" className="m-gold" />
+                    <span className="m-row-ic" aria-hidden="true">
+                      <Icon name="users" size={20} />
+                    </span>
                     <span className="min-w-0 flex-1">
                       <span className="block font-semibold">
                         {g.name}
@@ -139,19 +155,21 @@ export default function GroupsHome() {
         </section>
       )}
 
-      {hasUsername && data && (
-        <form className="m-card space-y-3 p-5" onSubmit={create}>
-          <label className="block">
-            <span className="m-label">{t.groups.create}</span>
-            <input className="m-field" required maxLength={40} value={name} onChange={(e) => setName(e.target.value)} placeholder={t.groups.namePlaceholder} aria-label={t.groups.name} />
-          </label>
-          <VisibilityChoice value={visibility} onChange={setVisibility} disabled={!data.privacyReady} />
-          <button className="m-btn m-btn-primary w-full" disabled={busy || !name.trim()}>
-            <Icon name="plus" size={18} /> {t.groups.create}
-          </button>
-          <p className="m-num text-center text-xs m-muted">{fmtNum(data.groups.length + data.invites.length)} / 5</p>
-        </form>
-      )}
+      <Sheet open={creating} onClose={() => setCreating(false)} title={t.groups.create}>
+        {data && (
+          <form className="space-y-4" onSubmit={create}>
+            <label className="block">
+              <span className="m-label">{t.groups.name}</span>
+              <input className="m-field" required maxLength={40} value={name} onChange={(e) => setName(e.target.value)} placeholder={t.groups.namePlaceholder} autoFocus />
+            </label>
+            <VisibilityChoice value={visibility} onChange={setVisibility} disabled={!data.privacyReady} />
+            <button className="m-btn m-btn-primary w-full" disabled={busy || !name.trim()}>
+              <Icon name="plus" size={18} /> {t.groups.create}
+            </button>
+            <p className="m-num text-center text-xs m-muted">{fmtNum(data.groups.length + data.invites.length)} / 5</p>
+          </form>
+        )}
+      </Sheet>
     </div>
   );
 }

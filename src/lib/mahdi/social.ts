@@ -90,10 +90,12 @@ export interface StoryGroup {
 
 /** The backgrounds of text stories (the server keeps the same names). */
 export const STORY_BACKGROUNDS = {
-  gold: "radial-gradient(120% 120% at 50% 0%, #3a2f1c, #14110c 70%)",
-  night: "radial-gradient(120% 120% at 50% 0%, #1b2440, #0b0e18 70%)",
-  green: "radial-gradient(120% 120% at 50% 0%, #163a2c, #0a1510 70%)",
-  rose: "radial-gradient(120% 120% at 50% 0%, #3a1c26, #150b0f 70%)",
+  // light, like every screen since 26 November 2026 (the keys stay: they are saved with each story).
+  // «green» keeps its key for old stories but is drawn lilac now (no green identity).
+  gold: "radial-gradient(120% 120% at 50% 0%, color-mix(in srgb, var(--m-gold, #f5b400) 34%, #fff), color-mix(in srgb, var(--m-gold, #f5b400) 12%, #fff) 70%)",
+  night: "radial-gradient(120% 120% at 50% 0%, #dbe7ff, #f5f8ff 70%)",
+  green: "radial-gradient(120% 120% at 50% 0%, #e9e1ff, #f8f5ff 70%)",
+  rose: "radial-gradient(120% 120% at 50% 0%, #ffdfe8, #fff6f8 70%)",
 } as const;
 export type StoryStyle = keyof typeof STORY_BACKGROUNDS;
 

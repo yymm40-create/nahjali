@@ -7,6 +7,7 @@ import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import type { PostView } from "@/lib/mahdi/social";
 import Icon from "./Icon";
 import PostCard from "./social/PostCard";
+import { Empty, ErrorState, Skeleton } from "./social/States";
 
 const S = t.social;
 
@@ -106,19 +107,21 @@ export default function CommunityFeed({ source = "following", user, empty, flat 
     setLoading(false);
   }
 
-  if (error && !posts) {
-    return (
-      <p className="m-error" role="alert">
-        {error} <button type="button" className="underline" onClick={() => setReload((n) => n + 1)}>{t.common.retry}</button>
-      </p>
-    );
-  }
-  if (!posts) return <p className="m-muted">{t.common.loading}</p>;
+  if (error && !posts) return <ErrorState message={t.groups.kind.feedError} onRetry={() => setReload((n) => n + 1)} />;
+  if (!posts) return <Skeleton kind="posts" count={2} label={t.common.loading} />;
 
   return (
     <div className="space-y-5">
       {posts.length === 0 ? (
-        (empty ?? <p className="m-card p-6 text-center m-muted">{source === "explore" ? S.exploreEmpty : S.followingEmpty}</p>)
+        (empty ?? (
+          <Empty icon={source === "explore" ? "globe" : "users"} title={source === "explore" ? S.exploreEmpty : S.followingEmpty}>
+            {!user && source === "following" && (
+              <Link href="/mahdi/community?tab=explore" className="m-btn m-btn-ghost m-btn-sm">
+                <Icon name="search" size={18} /> {t.community.tabLabels.explore}
+              </Link>
+            )}
+          </Empty>
+        ))
       ) : (
         <ul className={flat ? "m-feed-flat" : "space-y-5"} aria-label={t.community.feed}>
           {posts.map((p) => (
@@ -133,11 +136,6 @@ export default function CommunityFeed({ source = "following", user, empty, flat 
         <button type="button" className="m-btn m-btn-ghost w-full" disabled={loading} onClick={() => loadMore(posts[posts.length - 1].createdAt)}>
           {loading ? t.common.loading : t.community.loadMore}
         </button>
-      )}
-      {!user && !empty && source === "following" && posts.length === 0 && (
-        <Link href="/mahdi/community?tab=explore" className="m-btn m-btn-ghost w-full">
-          <Icon name="search" size={18} /> {t.community.tabLabels.explore}
-        </Link>
       )}
     </div>
   );
