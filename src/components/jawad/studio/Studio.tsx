@@ -350,6 +350,31 @@ export default function Studio({ section, studioSections, generators: allGenerat
     return () => window.removeEventListener(BALANCE_EVENT, on);
   }, []);
 
+  // «لامحدود»: opening a generator the person has a pass for puts its settings on the pass at once (once per generator and
+  // visit; a quality they then pick by hand stays theirs, with the warning under the button)
+  const passAuto = useRef(new Set<string>());
+  const passAutoKey = !owner && hydrated && draft.generatorId ? draft.generatorId : "";
+  useEffect(() => {
+    if (!passAutoKey || passAuto.current.has(passAutoKey)) return;
+    const d = passes.map((p) => unlimitedPass(p.pass)).find((x) => x?.generatorId === passAutoKey);
+    if (!d) return;
+    passAuto.current.add(passAutoKey);
+    let live = true;
+    queueMicrotask(() => {
+      if (!live) return;
+      setDraft((dr) => {
+        const cur = { ...(dr.settings[passAutoKey] ?? {}) } as Settings;
+        if (passCovers(d, passAutoKey, { ...cur, duration: cur.duration ?? 5 })) return dr;
+        const patch: Settings = Object.fromEntries(Object.entries(d.match).map(([k, vals]) => [k, vals[0]]));
+        if (d.kind === "video" && Number(cur.duration ?? 0) > UNLIMITED.maxVideoSec) patch.duration = UNLIMITED.maxVideoSec;
+        return { ...dr, settings: { ...dr.settings, [passAutoKey]: { ...cur, ...patch } } };
+      });
+    });
+    return () => {
+      live = false;
+    };
+  }, [passAutoKey, passes]);
+
   // a code's «بسعر الأداة»: the quote is the tool's own cost (the server charges the same)
   const atCost = useAtCost();
   // A performance description only goes to generators that take one (it stays in the draft for when the user switches back)
@@ -638,6 +663,13 @@ export default function Studio({ section, studioSections, generators: allGenerat
   const passHere = !owner && ev?.price.ok ? passFor(ev.settings) : null;
   // a pass for this generator whose quality (or video length) the settings miss: one tap puts them right
   const passMiss = !owner && def && !passHere ? passes.map((p) => unlimitedPass(p.pass)).find((d) => d?.generatorId === def.id) ?? null : null;
+  /** Puts the settings on the pass (its quality, a video no longer than the pass allows): one change for all of them. */
+  const applyPass = (d: NonNullable<ReturnType<typeof unlimitedPass>>) => {
+    if (!def) return;
+    const patch: Settings = Object.fromEntries(Object.entries(d.match).map(([k, vals]) => [k, vals[0]]));
+    if (d.kind === "video" && Number(ev?.settings.duration ?? 0) > UNLIMITED.maxVideoSec) patch.duration = UNLIMITED.maxVideoSec;
+    setDraft((dr) => ({ ...dr, settings: { ...dr.settings, [def.id]: { ...settings, ...patch } } }));
+  };
   const coinsOfPlan = (x: { ev: typeof ev }) => (x.ev?.price.ok ? (!owner && passFor(x.ev.settings) ? 0 : x.ev.price.coins) : 0);
   const price = plan ? (plan.every((x) => x.ev.price.ok) ? plan.reduce((t, x) => t + coinsOfPlan(x), 0) : null) : ev?.price.ok ? (passHere ? 0 : ev.price.coins) : null;
   async function submitAll() {
@@ -1307,14 +1339,10 @@ export default function Studio({ section, studioSections, generators: allGenerat
               <button
                 type="button"
                 className="w-full rounded-xl border border-[#3d5cff] bg-[#3d5cff]/10 px-3 py-2 text-start text-xs font-bold text-jw-ink"
-                onClick={() => {
-                  // one change for all of them (setSetting one by one would keep only the last)
-                  const patch: Settings = Object.fromEntries(Object.entries(passMiss.match).map(([k, vals]) => [k, vals[0]]));
-                  if (passMiss.kind === "video" && Number(ev?.settings.duration ?? 0) > UNLIMITED.maxVideoSec) patch.duration = UNLIMITED.maxVideoSec;
-                  if (def) setDraft((d) => ({ ...d, settings: { ...d.settings, [def.id]: { ...settings, ...patch } } }));
-                }}
+                onClick={() => applyPass(passMiss)}
               >
-                ⚡ عندك لامحدود {passMiss.name}{passMiss.quality ? ` بدقة ${passMiss.quality}` : ""}{passMiss.kind === "video" ? ` (لين ${UNLIMITED.maxVideoSec} ثانية)` : ""}. اضغط هنا وتصير الإعدادات عليه ويطلع مجاني ←
+                <span className="block text-jw-danger">⚠️ انتبه: هذا التوليد خارج لامحدودك{passMiss.quality ? ` (لامحدودك بدقة ${passMiss.quality}${passMiss.kind === "video" ? ` ولين ${UNLIMITED.maxVideoSec} ثانية` : ""})` : ""}، فبيخصم من رصيدك.</span>
+                <span className="mt-1 block">⚡ اضغط هنا وتصير الإعدادات على لامحدودك ويطلع مجاني ←</span>
               </button>
             )}
             {!user ? (
