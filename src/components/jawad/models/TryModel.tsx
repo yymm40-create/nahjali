@@ -4,14 +4,14 @@ import { useRouter } from "next/navigation";
 import { putCreativeUse } from "@/lib/jawad/creative-use";
 
 /** «جرّبه الحين»: opens the Creative Studio with this generator already chosen (the same hand-off as «طرق إبداعية»). */
-export default function TryModel({ id, name, className }: { id: string; name: string; className?: string }) {
+export default function TryModel({ id, name, className, settings = {} }: { id: string; name: string; className?: string; /** the settings it opens on (e.g. a «لامحدود» pass's quality) */ settings?: Record<string, string | number | boolean> }) {
   const router = useRouter();
   return (
     <button
       type="button"
       className={className}
       onClick={() => {
-        putCreativeUse({ generatorId: id, settings: {}, prompt: "", label: name, refs: [] });
+        putCreativeUse({ generatorId: id, settings, prompt: "", label: name, refs: [] });
         router.push("/jawad-ai/images?use=1");
       }}
     >

@@ -1,4 +1,5 @@
 import { CARTOON_IMAGE, CARTOON_VIDEO, CARTOON_PLACES, CARTOON_PRICE, CARTOON_STYLES, AUDIENCE_RULES, cartoonFilm, cartoonParts, cartoonVideoSettings, cartoonImagePrompt, cartoonVideoPrompt, hasArabic, type CartoonInput } from "@config/jawad/cartoon";
+import { unlimitedTicket } from "./unlimited";
 import { DIRECTOR_PRICE_KEY, generatorById } from "@config/jawad/generators";
 import type { ClaudePart } from "@/lib/film/anthropic";
 import { unlimitedFor } from "@/lib/access";
@@ -25,7 +26,7 @@ export interface CartoonPlan {
   freeOffer?: "pic" | "video";
 }
 export const planOf = (job: JobRow) => (job.inputs as JobRow["inputs"] & { cartoon?: CartoonPlan }).cartoon;
-export async function cartoonQuote(input: CartoonInput) {
+export async function cartoonQuote(input: CartoonInput, userId?: string | null) {
   const rt = await loadRuntime();
   const image = rt.generators.find(generator => generator.id === CARTOON_IMAGE);
   const video = rt.generators.find(generator => generator.id === CARTOON_VIDEO);
@@ -41,8 +42,13 @@ export async function cartoonQuote(input: CartoonInput) {
   // «المخرج الخارق» develops each part of a character's story, at the studio's own price for one development
   const centi = rt.prices[CARTOON_VIDEO]?.[DIRECTOR_PRICE_KEY];
   const directorCoins = input.mode !== "scene" && input.scenes.length && centi != null ? Math.ceil(centi / 100) * input.scenes.length : 0;
+  // «لامحدود»: a running pass for GPT Image 2 (the pictures) or Seedance 2.0 at 480p (the parts) makes that part free
+  const imagePass = userId ? await unlimitedTicket(userId, CARTOON_IMAGE, { aspect: input.aspect, resolution: "std", quality: "medium", count: 1 }).catch(() => null) : null;
+  const videoPass = userId && parts ? await unlimitedTicket(userId, CARTOON_VIDEO, cartoonVideoSettings(input)).catch(() => null) : null;
+  if (videoPass) partCoins = 0;
   const videoCoins = partCoins * parts;
-  return { imageCoins: CARTOON_PRICE * input.count, videoCoins, partCoins, parts, directorCoins, totalCoins: CARTOON_PRICE * input.count + videoCoins + directorCoins, imageSection: image?.sectionId ?? "images", videoSection: video?.sectionId ?? "video" };
+  const imageCoins = imagePass ? 0 : CARTOON_PRICE * input.count;
+  return { imageCoins, videoCoins, partCoins, parts, directorCoins, totalCoins: imageCoins + videoCoins + directorCoins, imageSection: image?.sectionId ?? "images", videoSection: video?.sectionId ?? "video" };
 }
 export function requireCreated(result: CreateResult) {
   if (result.kind === "issues") throw new UserError(result.issues[0]?.message ?? "تعذّر التوليد.", 422);

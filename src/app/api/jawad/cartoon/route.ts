@@ -64,7 +64,7 @@ async function film(req: Request, body: Record<string, unknown>, user: { id: str
   }
   const live = rt.generators.find(generator => generator.id === CARTOON_VIDEO);
   if (!live || !(live.live || (owner && live.keyConfigured)) || !(await can(user.email, permForGenerator(generatorById(CARTOON_VIDEO)!)))) throw new UserError("صناعة الفيلم غير متاحة لحسابك حاليًا.", 403);
-  const full = await cartoonQuote(input);
+  const full = await cartoonQuote(input, owner ? null : user.id);
   // the opening offer: only the first 2 accounts get one film free — its first part (and the director's work on it)
   const freeVideo = !owner && (await cartoonFree(user.id, "video"));
   const perDirector = input.scenes.length ? full.directorCoins / input.scenes.length : 0;
@@ -108,14 +108,14 @@ export const POST = handle(async (req: Request) => {
   }
   // a run saved before the parts existed: the person's story, in Arabic, made English for the film (Seedance 2.0 reads no Arabic)
   if (input.video && !input.scenes.length && input.story === "custom" && hasArabic(input.customStory)) input.storyEn = await storyInEnglish(input.customStory);
-  const full = await cartoonQuote(input);
+  const full = await cartoonQuote(input, owner ? null : user.id);
   // «أول تجربة مجانية»: the account's first attempt — its first picture — while the offer is open (more pictures and the film are paid)
   const key = "cartoon_" + body.key;
   const db = createAdminClient();
   const existing = isUuid(body.key) ? await db.from("jawad_jobs").select("*").eq("user_id", user.id).eq("idempotency_key", key + "_0").maybeSingle() : { data: null };
   // the opening offer: the first 20 accounts get their first attempt's picture free (config/jawad/cartoon-offer.ts)
   const firstFree = !owner && !existing.data && (await cartoonFree(user.id, "pic"));
-  const quote = firstFree ? { ...full, imageCoins: full.imageCoins - CARTOON_PRICE, totalCoins: full.totalCoins - CARTOON_PRICE } : full;
+  const quote = firstFree && full.imageCoins > 0 ? { ...full, imageCoins: full.imageCoins - CARTOON_PRICE, totalCoins: full.totalCoins - CARTOON_PRICE } : full;
   if (body.action === "quote") return NextResponse.json({ quote, free: owner, firstFree });
   if (!isUuid(body.key)) throw new UserError("معرّف طلب غير صالح.", 400);
   if (existing.data) return NextResponse.json({ key, jobs: await jobViews([existing.data as JobRow], { owner }) });
@@ -135,7 +135,7 @@ export const POST = handle(async (req: Request) => {
   const result = requireCreated(await createJob(user, owner, {
     idempotencyKey: key + "_0", generatorId: CARTOON_IMAGE, sectionId: quote.imageSection,
     prompt: cartoonImagePrompt(input), settings: { aspect: input.aspect, resolution: "std", quality: "medium", count: 1 },
-    refs: body.uploads.map((uploadId: string) => ({ uploadId, role: "reference" })), refStyle: "references", expectedCoins: firstFree ? 0 : CARTOON_PRICE,
+    refs: body.uploads.map((uploadId: string) => ({ uploadId, role: "reference" })), refStyle: "references", expectedCoins: firstFree || full.imageCoins === 0 ? 0 : CARTOON_PRICE,
   }, new URL(req.url).origin, { free: firstFree, cartoon: { key, input, videoCoins: quote.partCoins, position: 0, expiresAt: Date.now() + 24 * 3600_000, ...(firstFree ? { freeOffer: "pic" as const } : {}) } }));
   // only the parts the director actually wrote are paid, once the run has really started
   if (directorCoins && result.kind === "created") await holdCoins(user.id, directorCoins, `cartoon-director:${key}`, "JAWAD AI · المخرج الخارق · فيلم الكرتون").catch(error => console.error("cartoon director charge", error));

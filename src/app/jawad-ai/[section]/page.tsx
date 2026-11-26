@@ -9,6 +9,7 @@ import { worksPage } from "@/lib/jawad/server/works";
 import { signupFreeImageAvailable } from "@/lib/jawad/server/free-image";
 import { STUDIO_SECTION_IDS } from "@config/jawad/sections";
 import { directorGeneratorsOf } from "@/lib/jawad/server/director-generators";
+import { unlimitedStatus } from "@/lib/jawad/server/unlimited";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -51,6 +52,8 @@ export default async function SectionPage({ params }: PageProps<"/jawad-ai/[sect
   const hasImageGenerator = generators.some((generator) => generatorById(generator.id)?.output === "image");
   const freeImageAvailable = Boolean(user && allowed && !free && hasImageGenerator && await signupFreeImageAvailable(user.id, user.created_at));
   const directorGenerators = directorGeneratorsOf(generators);
+  // «لامحدود»: the running passes, so the studio shows a covered generation as free (the server decides it again)
+  const passes = user && allowed && !free ? (await unlimitedStatus(user.id).catch(() => [])).map((p) => ({ pass: p.pass, fastLeft: p.fastLeft })) : [];
 
   return <Studio
       key={s.id}
@@ -67,5 +70,6 @@ export default async function SectionPage({ params }: PageProps<"/jawad-ai/[sect
       balance={balance}
       initialWorks={initialWorks}
       freeImageAvailable={freeImageAvailable}
+      passes={passes}
     />;
 }

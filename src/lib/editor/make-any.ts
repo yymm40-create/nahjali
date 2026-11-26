@@ -3,6 +3,7 @@
 // (the owner's prices); the job is then made by JAWAD AI's job system (its checks, its coins, its refunds), the result
 // lands in «أعمالي» and the page brings it into the project and places it. Server only.
 
+import { unlimitedTicket } from "@/lib/jawad/server/unlimited";
 import { coinStr } from "@config/coins";
 import type { Fit } from "./motion-build";
 import { giveAttempt, takeAttempt } from "@/lib/film/team";
@@ -198,6 +199,8 @@ export async function planMake(who: Who & { email?: string | null }, s: MakeSpec
   }
   if (!picked) return { error: why };
   const { def, section, e, prompt } = picked;
+  // «لامحدود»: a running pass for this generator makes it free (createJob decides it again when it starts)
+  const pass = who.owner ? null : await unlimitedTicket(who.id, def.id, e.settings).catch(() => null);
   const kindName = { image: "صورة", video: "فيديو", speech: "صوت", sfx: "مؤثر", music: "موسيقى" }[s.makeKind];
   return {
     plan: {
@@ -207,8 +210,8 @@ export async function planMake(who: Who & { email?: string | null }, s: MakeSpec
       sectionId: section.id,
       prompt,
       settings: e.settings,
-      coins: e.price.coins,
-      free: who.owner || e.price.coins === 0,
+      coins: pass ? 0 : e.price.coins,
+      free: who.owner || !!pass || e.price.coins === 0,
       place: (["over", "main", "audio", "library"] as const).includes(s.place) ? s.place : s.makeKind === "image" || s.makeKind === "video" ? "over" : "audio",
       at: Math.max(0, Math.round(Number(s.at) || 0)),
       alsoAt: (Array.isArray(s.alsoAt) ? s.alsoAt : []).map((x) => Math.max(0, Math.round(Number(x) || 0))).slice(0, 60),
@@ -260,6 +263,7 @@ export async function planSeedanceExtend(
       reason = e.price.reason;
       continue;
     }
+    const pass = who.owner ? null : await unlimitedTicket(who.id, def.id, e.settings).catch(() => null);
     return {
       plan: {
         kind: "video",
@@ -268,8 +272,8 @@ export async function planSeedanceExtend(
         sectionId: section.id,
         prompt: prompt.slice(0, def.prompt.max),
         settings: e.settings,
-        coins: e.price.coins,
-        free: who.owner || e.price.coins === 0,
+        coins: pass ? 0 : e.price.coins,
+        free: who.owner || !!pass || e.price.coins === 0,
         place: "library",
         at: 0,
         name: edge === "start" ? "تمديد بداية المقطع" : "تمديد نهاية المقطع",
