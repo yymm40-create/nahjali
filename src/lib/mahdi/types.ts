@@ -1,6 +1,6 @@
 // Data shapes shared by the server, the browser store and (later) a native app.
 import type { MahdiTheme, MilestonePeriod, ProjectColor } from "@config/mahdi";
-import type { BookUnit, DayStart, ISODate, ReadingGoals, ReadingSession, Version } from "./engine";
+import type { BookUnit, DayMark, DayStart, ISODate, ReadingGoals, ReadingSession, Version } from "./engine";
 import type { GroupPlan } from "./groups/program";
 
 export interface Shrine {
@@ -139,6 +139,8 @@ export interface Snapshot {
   milestoneLogs?: Record<string, Record<ISODate, number>>;
   /** «خانة الطوارئ»: habitId → the days the person chose «اليوم طوارئ» for it (from `logsFrom` on); empty before SQL 0098 */
   emergencyDays?: Record<string, ISODate[]>;
+  /** «أيام العذر والقضاء»: the days marked as excused, paused or made up (from `logsFrom` on); null before SQL 0131 (kept on the device) */
+  dayMarks?: DayMark[] | null;
   /** habitId → date → value. Only days from `logsFrom` on. */
   logs: Record<string, Record<ISODate, number>>;
   logsFrom: ISODate;

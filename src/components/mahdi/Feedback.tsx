@@ -7,6 +7,7 @@ import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
 import Sheet from "./Sheet";
+import { usePopupTurn } from "./usePopupTurn";
 
 const F = t.feedback;
 const KINDS = Object.keys(F.kinds) as (keyof typeof F.kinds)[];
@@ -124,33 +125,37 @@ let askedThisVisit = false;
 const skipThisVisit = typeof window !== "undefined" && Math.random() < 0.5;
 
 /**
- * The occasional popup «كيف تجربتك؟». Only on the home screen, a few seconds after it opens, about every other visit,
- * and only when the server says it is time (account a few days old, no recent answer or «ليس الآن»).
+ * The occasional popup «كيف تجربتك؟». Only on the home screen, about every other visit, and only when the server says it is time
+ * (account a few days old, no recent answer or «ليس الآن»). It waits its turn («نافذة وحدة بس في كل زيارة»): after the person
+ * completes something, and only if nothing else opened during this visit.
  */
 export function FeedbackPrompt() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const [due, setDue] = useState(false);
+  const onHome = pathname === "/mahdi";
 
   useEffect(() => {
-    if (pathname !== "/mahdi" || askedThisVisit || skipThisVisit) return;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (!onHome || askedThisVisit || skipThisVisit) return;
     let alive = true;
     mahdiFetch<{ prompt: boolean }>("/api/mahdi/feedback")
       .then(({ prompt }) => {
-        if (!prompt || !alive) return;
-        timer = setTimeout(() => {
-          // Never on top of another open sheet
-          if (askedThisVisit || location.pathname !== "/mahdi" || document.querySelector("dialog[open]")) return;
-          askedThisVisit = true;
-          setOpen(true);
-        }, 8000);
+        if (prompt && alive) setDue(true);
       })
       .catch(() => {});
     return () => {
       alive = false;
-      clearTimeout(timer);
     };
-  }, [pathname]);
+  }, [onHome]);
+
+  const { show, done } = usePopupTurn("feedback", due && onHome);
+  const open = show;
+  const setOpen = (v: boolean) => {
+    if (!v) {
+      askedThisVisit = true;
+      setDue(false);
+      done();
+    }
+  };
 
   return (
     <FeedbackSheet

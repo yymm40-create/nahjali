@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { addDays, addMonths, dayGoals, dayScore, daysInMonth, startOfMonth, startOfWeek, weekday, type ISODate } from "@/lib/mahdi/engine";
+import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
+import { addDays, addMonths, dayGoals, dayScore, dayState, daysInMonth, startOfMonth, startOfWeek, weekday, type DayState, type ISODate } from "@/lib/mahdi/engine";
 import { itemsOn } from "@/lib/mahdi/planner";
 import { fmtDateLong, fmtMonth, fmtNum, fmtPct, orderedWeekdays, t } from "@/lib/mahdi/i18n";
 import { quantity } from "@/lib/mahdi/client/derive";
@@ -24,9 +25,16 @@ const STYLE: Record<Level, { mix: number; mark: string }> = {
   full: { mix: 100, mark: "✓" },
 };
 
+/** «أيام العذر والقضاء»: a missed day is soft orange (never red, it can still be made up), an excused day lighter, a made-up day marked. */
+const SOFT: Partial<Record<DayState, { bg: string; mark: string; label: string }>> = {
+  missed: { bg: "var(--m-missed)", mark: "↺", label: "فات، تقدر تقضيه" },
+  excused: { bg: "var(--m-excuse)", mark: "عذر", label: "يوم عذر" },
+  qada: { bg: "color-mix(in srgb, var(--m-gold) 100%, var(--m-track))", mark: "قضاء", label: "قضاء" },
+};
+
 /** Month calendar: each day shows how far its goals were reached. Tap a day for its details. */
 export default function CalendarView({ month }: { month?: string }) {
-  const { state, timeline, items } = useMahdi();
+  const { state, timeline, items, dayMarks } = useMahdi();
   const { snap, today } = state;
   const current = startOfMonth(today);
   // the planner reaches a year ahead: the calendar can be opened on any month until then
@@ -100,23 +108,24 @@ export default function CalendarView({ month }: { month?: string }) {
               const s = future ? null : dayScore(timeline, d).score;
               const lvl = future ? "none" : levelOf(s);
               const st = STYLE[lvl];
+              const soft = future ? undefined : SOFT[dayState(timeline, d, CONSISTENCY_THRESHOLD, dayMarks)];
               return (
                 <li key={d}>
                   <button
                     type="button"
                     onClick={() => setSelected(d)}
                     aria-pressed={selected === d}
-                    aria-label={`${fmtDateLong(d)}: ${future ? "" : `${t.calendar.levels[lvl]}${s !== null ? ` ${fmtPct(s)}` : ""}`}`}
+                    aria-label={`${fmtDateLong(d)}: ${future ? "" : `${soft ? `${soft.label}، ` : ""}${t.calendar.levels[lvl]}${s !== null ? ` ${fmtPct(s)}` : ""}`}`}
                     className={`relative flex aspect-square min-h-[3.6rem] w-full flex-col items-center justify-center rounded-xl text-sm transition ${future && plans.length === 0 ? "opacity-60" : ""}`}
                     style={{
-                      background: lvl === "none" ? "var(--m-surface-2)" : `color-mix(in srgb, var(--m-gold) ${st.mix}%, var(--m-track))`,
-                      color: lvl === "full" || lvl === "high" ? "var(--m-gold-ink)" : "var(--m-ink)",
+                      background: soft ? soft.bg : lvl === "none" ? "var(--m-surface-2)" : `color-mix(in srgb, var(--m-gold) ${st.mix}%, var(--m-track))`,
+                      color: soft?.mark === "قضاء" || (!soft && (lvl === "full" || lvl === "high")) ? "var(--m-gold-ink)" : "var(--m-ink)",
                       outline: d === today ? "2px solid var(--m-gold-text)" : selected === d ? "2px solid var(--m-ink)" : undefined,
                       outlineOffset: 1,
                     }}
                   >
                     <span className="m-num font-semibold">{Number(d.slice(8))}</span>
-                    <span className="text-[10px] leading-none" aria-hidden="true">{st.mark}</span>
+                    <span className="text-[10px] leading-none" aria-hidden="true">{soft ? soft.mark : st.mark}</span>
                     <SquareText items={plans} />
                   </button>
                 </li>
@@ -130,6 +139,14 @@ export default function CalendarView({ month }: { month?: string }) {
                   {STYLE[l].mark}
                 </span>
                 {t.calendar.levels[l]}
+              </li>
+            ))}
+            {Object.values(SOFT).map((x) => (
+              <li key={x.label} className="flex items-center gap-1.5">
+                <span className="grid h-5 min-w-5 place-items-center rounded-md px-0.5 text-[9px]" style={{ background: x.bg, color: x.mark === "قضاء" ? "var(--m-gold-ink)" : "var(--m-ink)" }} aria-hidden="true">
+                  {x.mark}
+                </span>
+                {x.label}
               </li>
             ))}
           </ul>
