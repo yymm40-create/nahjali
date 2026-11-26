@@ -117,7 +117,8 @@ export default async function JawadLayout({ children }: { children: React.ReactN
       {/* the page's robot introduces itself (a movable bubble afterwards) */}
       {!preview && <RobotGuide />}
       {popupPacks.length > 0 && <SubscribePopup packs={popupPacks} />}
-      {!preview && <ConnectPopup packsFirst={popupPacks.length > 0} />}
+      {/* «لامحدود»: nothing covers the offer's own pages */}
+      {!preview && !path.startsWith(UNLIMITED.path) && <ConnectPopup packsFirst={popupPacks.length > 0} />}
     </div>
   );
 }
