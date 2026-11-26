@@ -8,6 +8,7 @@ import { UserError } from "@/lib/api";
 import { halalas, moyasarEnabled, type Payment } from "@/lib/credits/moyasar";
 import { checkoutUrl, formEnabled, formPaymentPaid } from "@/lib/credits/checkout";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { coinBalance } from "@/lib/coins";
 import {
   UNLIMITED,
   UNLIMITED_PASSES,
@@ -267,6 +268,24 @@ export interface RoomPass {
   fastCap: number;
   /** slow jobs in this cycle (the next one waits longer) */
   slowInCycle: number;
+  paymentId: string;
+  /** minutes the owner added */
+  bonusMin: number;
+  /** the owner's Telegram message about this purchase went */
+  telegram: boolean;
+}
+
+/** A generation the person PAID for while a pass was running (the thing to watch: was it meant to be free?). */
+export interface RoomPaid {
+  id: string;
+  at: string;
+  generatorId: string;
+  quality: string;
+  seconds: number | null;
+  coins: number;
+  status: string;
+  /** on a pass's generator, just outside its terms (another quality, too long) */
+  onPassGenerator: boolean;
 }
 
 export interface RoomPerson {
@@ -277,11 +296,20 @@ export interface RoomPerson {
   now: { state: "idle" | "working" | "held"; until?: string; count: number };
   lastAt: string | null;
   spentSar: number;
+  /** the wallet now, in halalas */
+  balance: number | null;
+  /** generations paid from the wallet while a pass ran */
+  paid: RoomPaid[];
+  paidCoins: number;
+  /** the owner's refunds and gifts (grants) since the first purchase */
+  grants: { at: string; coins: number; label: string }[];
 }
 
 /** Everyone who bought a pass: what they bought, what they made with it, how much, and what is happening for them now. */
 export async function unlimitedRoom(emails: Map<string, string>, now = Date.now()): Promise<RoomPerson[]> {
   const { data: rows } = await db().from("jawad_settings").select("key, value").like("key", "unlimited:%");
+  const { data: tg } = await db().from("jawad_settings").select("key").like("key", "tgpaid:%");
+  const sentTg = new Set((tg ?? []).map((r) => String(r.key)));
   const people: RoomPerson[] = [];
   for (const r of rows ?? []) {
     const userId = String(r.key).slice("unlimited:".length);
@@ -324,9 +352,33 @@ export async function unlimitedRoom(emails: Map<string, string>, now = Date.now(
           fastLeft: running(b, now) ? Math.max(0, cap - fastUsed) : 0,
           fastCap: cap,
           slowInCycle: inCycle.filter((j) => !j.inputs.unlimited?.fast).length,
+          paymentId: b.paymentId,
+          bonusMin: Math.max(0, Number(b.bonusMin) || 0),
+          telegram: sentTg.has(`tgpaid:${b.paymentId}`),
         },
       ];
     });
+    // what they paid for from the wallet while a pass ran, and the owner's grants since the first purchase
+    const first = list.map((b) => b.paidAt).sort()[0];
+    const windows = list.map((b) => [Date.parse(b.paidAt), endOf(b)] as const);
+    const [{ data: paidRows }, { data: grantRows }, balance] = await Promise.all([
+      db().from("jawad_jobs").select("id, created_at, generator_id, inputs, price_coins, status").eq("user_id", userId).gt("price_coins", 0).gte("created_at", first).order("created_at", { ascending: false }).limit(200),
+      db().from("smart_coin_ledger").select("created_at, delta, label").eq("user_id", userId).eq("reason", "grant").gte("created_at", first).order("created_at", { ascending: false }).limit(50),
+      coinBalance(userId).catch(() => null),
+    ]);
+    const passGens = new Set(list.map((b) => unlimitedPass(b.pass)?.generatorId).filter(Boolean));
+    const paid: RoomPaid[] = ((paidRows ?? []) as { id: string; created_at: string; generator_id: string; inputs: { settings?: Record<string, unknown>; unlimited?: unknown }; price_coins: number; status: string }[])
+      .filter((j) => !j.inputs?.unlimited && windows.some(([a, z]) => { const t = Date.parse(j.created_at); return t >= a && t < z; }))
+      .map((j) => ({
+        id: j.id,
+        at: j.created_at,
+        generatorId: j.generator_id,
+        quality: String(j.inputs?.settings?.resolution ?? j.inputs?.settings?.quality ?? ""),
+        seconds: j.inputs?.settings?.duration != null ? Number(j.inputs.settings.duration) : null,
+        coins: j.price_coins,
+        status: j.status,
+        onPassGenerator: passGens.has(j.generator_id),
+      }));
     const open = jobs.filter((j) => ["queued", "submitting", "running", "saving"].includes(j.status));
     const held = open.filter((j) => heldNow(j.inputs, now));
     const state: RoomPerson["now"]["state"] = held.length ? "held" : open.length ? "working" : "idle";
@@ -338,8 +390,26 @@ export async function unlimitedRoom(emails: Map<string, string>, now = Date.now(
       now: { state, ...(state === "held" && until ? { until } : {}), count: open.length },
       lastAt: jobs[0]?.created_at ?? null,
       spentSar: passes.reduce((n, p) => n + p.priceSar, 0),
+      balance,
+      paid,
+      paidCoins: paid.filter((j) => !["failed", "cancelled"].includes(j.status)).reduce((n, j) => n + j.coins, 0),
+      grants: ((grantRows ?? []) as { created_at: string; delta: number; label: string }[]).map((g) => ({ at: g.created_at, coins: g.delta, label: g.label })),
     });
   }
   // the active ones first, then the most recent
   return people.sort((a, b) => Number(b.passes.some((p) => p.active)) - Number(a.passes.some((p) => p.active)) || String(b.lastAt ?? b.passes[0]?.paidAt ?? "").localeCompare(String(a.lastAt ?? a.passes[0]?.paidAt ?? "")));
+}
+
+/** The owner: adds (or takes back, negative) minutes on one purchase of a person's pass. Returns the new total of added minutes. */
+export async function addPassMinutes(userId: string, paymentId: string, minutes: number): Promise<number> {
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) throw new UserError("الحساب غير صحيح.", 400);
+  const m = Math.round(Number(minutes));
+  if (!Number.isFinite(m) || m === 0 || Math.abs(m) > 24 * 60) throw new UserError("اكتب عدد دقايق (موجب يضيف، سالب ينقص) لين ١٤٤٠.", 400);
+  const [bought, extras] = await Promise.all([readBought(userId), readExtras(userId)]);
+  const b = bought.find((x) => x.paymentId === paymentId);
+  if (!b) throw new UserError("ما لقينا هذا الاشتراك.", 404);
+  const total = Math.max(0, (Number(b.bonusMin) || 0) + m);
+  b.bonusMin = total;
+  await writeBought(userId, bought, extras);
+  return total;
 }
