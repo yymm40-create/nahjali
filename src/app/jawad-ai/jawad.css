@@ -1,39 +1,66 @@
 /*
  * «الجواد الذكي!» | JAWAD AI — its own look, independent from the rest of the site.
  * Everything is scoped to .jw (the branch's root element), so nothing here reaches «نهج علي».
- * Colours come from the --jw-* tokens; --jw-accent is set from the owner's setting (default: the logo's electric blue).
+ *
+ * Identity «كوبالت» (the owner, 26 November 2026): one blue in many steps, on two bases the visitor picks from
+ * «الخلفية» in the header — فاتحة (the default) or سوداء. Pages are moved to the light base one by one: a page that is
+ * ready carries `.jw-light-ok` somewhere inside it; until then a page keeps the black base whatever the visitor picked,
+ * so no half-converted page is ever shown light. The choice is remembered on the device (`jw-theme`, ThemeToggle).
+ *
+ * Overlays use `rgba(var(--jw-tint), a)` (white on black, deep cobalt ink on light) instead of a fixed white, so the same
+ * rule draws a faint layer on either base.
  */
 
 html:has(.jw),
 html:has(.jw) body {
-  background: #0b0c0f;
+  background: #05070f;
   color-scheme: dark;
   /* nothing may widen the page past the phone's screen (in-app browsers then shift it sideways over a black strip) */
   overflow-x: clip;
 }
+html:has(.jw[data-jw-theme="light"] .jw-light-ok),
+html:has(.jw[data-jw-theme="light"] .jw-light-ok) body {
+  background: #eef3ff;
+  color-scheme: light;
+}
 
+/* ── «كوبالت» on the black base: every page until it is ready for light, and everyone who picks «سوداء» ── */
 .jw {
-  --jw-bg: #0b0c0f;
-  --jw-bg-2: #0f1115;
-  --jw-surface: #14161b;
-  --jw-surface-2: #1a1d23;
-  --jw-surface-3: #22262e;
-  --jw-line: rgba(255, 255, 255, 0.075);
-  --jw-line-strong: rgba(255, 255, 255, 0.14);
-  --jw-ink: #eef1f6;
-  --jw-muted: #a3abb9;
-  --jw-faint: #737c8c;
+  --jw-bg: #05070f;
+  --jw-bg-2: #0a0f22;
+  --jw-surface: #0d1330;
+  --jw-surface-2: #16204a;
+  --jw-surface-3: #1e2a5a;
+  --jw-line: rgba(143, 166, 255, 0.14);
+  --jw-line-strong: rgba(143, 166, 255, 0.3);
+  --jw-ink: #eef2ff;
+  --jw-muted: #b6c3ee;
+  --jw-faint: #94a3d6;
+  --jw-accent: #3d5cff;
+  --jw-accent-hi: #6582ff;
+  --jw-accent-deep: #2e4be8;
+  --jw-accent-rim: #1f36b8;
+  --jw-accent-text: #8fa6ff;
   --jw-on-accent: #ffffff;
-  --jw-accent-soft: color-mix(in srgb, var(--jw-accent) 16%, transparent);
-  --jw-accent-line: color-mix(in srgb, var(--jw-accent) 55%, transparent);
-  --jw-danger: #ff7a7a;
-  --jw-ok: #3ecf8e;
-  --jw-warn: #f5b84b;
-  --jw-gold: #e9b546;
+  --jw-accent-soft: #18245e;
+  --jw-accent-line: color-mix(in srgb, var(--jw-accent) 60%, transparent);
+  --jw-accent-rgb: 61, 92, 255;
+  --jw-danger: #ff8a80;
+  --jw-ok: #8fa6ff;
+  --jw-warn: #ffc83d;
+  --jw-gold: #ffc83d;
+  /* overlays and depth */
+  --jw-tint: 255, 255, 255;
+  --jw-shade: 0, 0, 0;
+  --jw-hl: rgba(255, 255, 255, 0.09);
+  --jw-glass: rgba(12, 16, 36, 0.86);
+  --jw-scrim: rgba(0, 0, 0, 0.62);
   --jw-radius: 14px;
   --jw-header-h: 56px;
   --jw-bar-h: 48px;
   --jw-font: var(--font-readex), system-ui, sans-serif;
+  --jw-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --jw-ease: cubic-bezier(0.23, 1, 0.32, 1);
 
   /* Components shared with the main site (sign-in, username, the film maker) read these: same widgets, JAWAD's look */
   --page: var(--jw-bg);
@@ -41,10 +68,10 @@ html:has(.jw) body {
   --surface-2: var(--jw-surface-2);
   --ink: var(--jw-ink);
   --muted: var(--jw-muted);
-  --line: rgba(255, 255, 255, 0.1);
+  --line: var(--jw-line);
   --gold: var(--jw-accent);
-  --gold-2: color-mix(in srgb, var(--jw-accent) 70%, white);
-  --on-gold: #ffffff;
+  --gold-2: var(--jw-accent-hi);
+  --on-gold: var(--jw-on-accent);
   --teal: #2f9e8f;
   --teal-2: #237a6f;
   --glow: transparent;
@@ -61,10 +88,45 @@ html:has(.jw) body {
   line-height: 1.75;
   color: var(--jw-ink);
   background:
-    radial-gradient(900px 380px at 85% -120px, color-mix(in srgb, var(--jw-accent) 9%, transparent), transparent 70%),
+    radial-gradient(900px 380px at 85% -120px, rgba(var(--jw-accent-rgb), 0.14), transparent 70%),
     var(--jw-bg);
   color-scheme: dark;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* ── «كوبالت» on the light base: the default, on pages that are ready (`.jw-light-ok`) ── */
+.jw[data-jw-theme="light"]:has(.jw-light-ok) {
+  --jw-bg: #eef3ff;
+  --jw-bg-2: #e4ecff;
+  --jw-surface: #ffffff;
+  --jw-surface-2: #d9e4ff;
+  --jw-surface-3: #c9d6f5;
+  --jw-line: #c9d6f5;
+  --jw-line-strong: #6f82b8;
+  --jw-ink: #0e1b4d;
+  --jw-muted: #34437a;
+  --jw-faint: #4a5a8f;
+  --jw-accent: #1f3fe0;
+  --jw-accent-hi: #4a6bff;
+  --jw-accent-deep: #1a35c2;
+  --jw-accent-rim: #142aa0;
+  --jw-accent-text: #1f3fe0;
+  --jw-on-accent: #ffffff;
+  --jw-accent-soft: #d6e1ff;
+  --jw-accent-rgb: 31, 63, 224;
+  --jw-danger: #b42318;
+  --jw-ok: #1f3fe0;
+  --jw-warn: #8a5a00;
+  --jw-gold: #4a3300;
+  --jw-tint: 14, 27, 77;
+  --jw-shade: 20, 40, 120;
+  --jw-hl: rgba(255, 255, 255, 0.92);
+  --jw-glass: rgba(244, 247, 255, 0.84);
+  --jw-scrim: rgba(200, 214, 250, 0.6);
+  color-scheme: light;
+  background:
+    radial-gradient(900px 380px at 85% -120px, rgba(var(--jw-accent-rgb), 0.1), transparent 70%),
+    var(--jw-bg);
 }
 
 .jw-path-rail {
@@ -77,18 +139,18 @@ html:has(.jw) body {
 }
 .jw-path-rail::-webkit-scrollbar { display: none; }
 .jw-path-rail-inner { display: flex; width: max-content; min-width: 100%; height: 100%; align-items: center; gap: 7px; padding: 6px max(12px, calc((100vw - 1600px) / 2)); }
-.jw-path-item { display: inline-flex; height: 36px; flex: none; align-items: center; gap: 7px; border: 1px solid var(--jw-line); border-radius: 12px; padding: 0 12px; color: var(--jw-muted); background: rgba(255,255,255,.025); font-size: 12px; font-weight: 650; text-decoration: none; transition: .16s ease; }
+.jw-path-item { display: inline-flex; height: 36px; flex: none; align-items: center; gap: 7px; border: 1px solid var(--jw-line); border-radius: 12px; padding: 0 12px; color: var(--jw-muted); background: rgba(var(--jw-tint),.025); font-size: 12px; font-weight: 650; text-decoration: none; transition: .16s ease; }
 .jw-path-item:hover { color: var(--jw-ink); border-color: var(--jw-line-strong); transform: translateY(-1px); }
-.jw-path-item[aria-current="page"] { color: #fff; border-color: var(--jw-accent-line); background: linear-gradient(135deg, var(--jw-accent-soft), rgba(255,255,255,.06)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--jw-accent) 18%, transparent); }
-.jw-path-icon { display: grid; place-items: center; color: color-mix(in srgb, var(--jw-accent) 75%, white); }
+.jw-path-item[aria-current="page"] { color: var(--jw-ink); border-color: var(--jw-accent-line); background: linear-gradient(135deg, var(--jw-accent-soft), rgba(var(--jw-tint),.06)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--jw-accent) 18%, transparent); }
+.jw-path-icon { display: grid; place-items: center; color: var(--jw-accent-text); }
 
 .site-menu-view button { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 7px; border-radius: 9px; color: var(--jw-muted); font-size: 12px; font-weight: 700; }
-.site-menu-view button.is-active { color: #fff; background: var(--jw-accent-soft); box-shadow: inset 0 0 0 1px var(--jw-accent-line); }
+.site-menu-view button.is-active { color: var(--jw-ink); background: var(--jw-accent-soft); box-shadow: inset 0 0 0 1px var(--jw-accent-line); }
 .site-menu-items { display: grid; gap: 6px; }
 .site-menu-drawer.is-cards .site-menu-items { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
-.site-menu-drawer.is-cards .site-menu-link { min-height: 86px; align-content: center; border: 1px solid var(--jw-line); background: linear-gradient(145deg, rgba(255,255,255,.045), rgba(255,255,255,.015)); padding: 14px; }
+.site-menu-drawer.is-cards .site-menu-link { min-height: 86px; align-content: center; border: 1px solid var(--jw-line); background: linear-gradient(145deg, rgba(var(--jw-tint),.045), rgba(var(--jw-tint),.015)); padding: 14px; }
 .site-menu-drawer.is-cards .site-menu-link:hover { border-color: var(--jw-accent-line); background: var(--jw-accent-soft); transform: translateY(-2px); }
-.site-menu-drawer.is-cards .site-menu-icon { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 11px; color: #fff; background: color-mix(in srgb, var(--jw-accent) 24%, transparent); }
+.site-menu-drawer.is-cards .site-menu-icon { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 11px; color: var(--jw-accent-text); background: var(--jw-accent-soft); }
 .site-menu-drawer.is-cards .site-menu-personal { grid-template-columns: repeat(4, minmax(0,1fr)); }
 @media (max-width: 520px) {
   .site-menu-drawer.is-cards .site-menu-items { grid-template-columns: 1fr 1fr; }
@@ -99,11 +161,11 @@ html:has(.jw) body {
 .jw-admin-nav { display: grid; gap: 10px; }
 .jw-admin-rail { display: flex; gap: 7px; overflow-x: auto; padding: 2px 1px 7px; scrollbar-width: thin; }
 .jw-admin-rail a { display: inline-flex; min-height: 38px; flex: none; align-items: center; gap: 7px; border: 1px solid var(--jw-line); border-radius: 11px; padding: 0 12px; color: var(--jw-muted); background: var(--jw-surface); font-size: 12px; text-decoration: none; }
-.jw-admin-rail a[aria-current="page"] { color: #fff; border-color: var(--jw-accent-line); background: var(--jw-accent-soft); }
+.jw-admin-rail a[aria-current="page"] { color: var(--jw-ink); border-color: var(--jw-accent-line); background: var(--jw-accent-soft); }
 .jw-admin-menu-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--jw-line-strong); border-radius: 15px; padding: 11px 14px; color: var(--jw-ink); background: linear-gradient(135deg, var(--jw-surface-2), color-mix(in srgb, var(--jw-accent) 8%, var(--jw-surface))); text-align: start; }
 .jw-admin-menu-toggle span:first-child { display: grid; gap: 1px; }
 .jw-admin-menu-toggle small { color: var(--jw-muted); font-size: 11px; }
-.jw-admin-groups { display: grid; gap: 12px; border: 1px solid var(--jw-line); border-radius: 20px; padding: 12px; background: rgba(8,9,12,.94); box-shadow: 0 24px 70px -42px #000; }
+.jw-admin-groups { display: grid; gap: 12px; border: 1px solid var(--jw-line); border-radius: 20px; padding: 12px; background: var(--jw-glass); box-shadow: 0 24px 70px -42px rgba(var(--jw-shade),.9); }
 @media (min-width: 900px) { .jw-admin-groups { grid-template-columns: repeat(3, minmax(0,1fr)); } }
 .jw-admin-groups section { border: 1px solid var(--jw-line); border-radius: 16px; padding: 10px; background: var(--jw-surface); }
 .jw-admin-groups h2 { display: flex; align-items: center; gap: 7px; margin: 2px 4px 8px; color: var(--jw-muted); font-size: 12px; font-weight: 700; }
@@ -111,7 +173,7 @@ html:has(.jw) body {
 .jw-admin-groups a { display: flex; min-height: 46px; align-items: center; gap: 9px; border-radius: 11px; padding: 7px 10px; color: var(--jw-muted); background: var(--jw-surface-2); font-size: 12px; text-decoration: none; }
 .jw-admin-groups a b { flex: 1; color: inherit; }
 .jw-admin-groups a em { color: var(--jw-faint); font-style: normal; }
-.jw-admin-groups a:hover, .jw-admin-groups a[aria-current="page"] { color: #fff; background: var(--jw-accent-soft); box-shadow: inset 0 0 0 1px var(--jw-accent-line); }
+.jw-admin-groups a:hover, .jw-admin-groups a[aria-current="page"] { color: var(--jw-ink); background: var(--jw-accent-soft); box-shadow: inset 0 0 0 1px var(--jw-accent-line); }
 
 /* The main site's .card/.btn/.display, as they appear inside JAWAD AI (film maker, sign-in) */
 .jw .card {
@@ -153,6 +215,8 @@ html:has(.jw) body {
 }
 
 /* ── JAWAD components ── */
+/* Buttons «كوبالت»: depth you can feel — a lit top edge, a darker lip at the bottom, a rim, and a soft coloured glow.
+   Hover lifts 2px; a press sinks 1px and shrinks (0.08 s); release springs back. Every state is designed. */
 .jw-btn {
   display: inline-flex;
   align-items: center;
@@ -160,45 +224,95 @@ html:has(.jw) body {
   gap: 0.5rem;
   min-height: 2.5rem;
   padding: 0 1rem;
-  border-radius: 10px;
-  border: 1px solid var(--jw-line-strong);
-  background: var(--jw-surface-2);
+  border-radius: 12px;
+  border: 0;
+  background: var(--jw-surface);
   color: var(--jw-ink);
-  font-weight: 500;
+  font-weight: 600;
   font-size: 0.9rem;
-  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  line-height: 1;
+  box-shadow:
+    inset 0 1px 0 var(--jw-hl),
+    inset 0 -2px 0 rgba(var(--jw-shade), 0.1),
+    0 0 0 1.5px var(--jw-line),
+    0 2px 3px rgba(var(--jw-shade), 0.08),
+    0 6px 14px -8px rgba(var(--jw-shade), 0.3);
+  transition: transform 0.32s var(--jw-spring), box-shadow 0.2s var(--jw-ease), background-color 0.18s ease, color 0.18s ease;
   cursor: pointer;
   white-space: nowrap;
+  user-select: none;
 }
 .jw-btn:hover {
-  background: var(--jw-surface-3);
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 var(--jw-hl),
+    inset 0 -2px 0 rgba(var(--jw-shade), 0.1),
+    0 0 0 1.5px var(--jw-line-strong),
+    0 4px 6px rgba(var(--jw-shade), 0.1),
+    0 14px 24px -12px rgba(var(--jw-shade), 0.4);
 }
 .jw-btn:active {
-  transform: scale(0.98);
+  transform: translateY(1px) scale(0.96);
+  transition-duration: 0.08s;
+  background: var(--jw-surface-2);
+  box-shadow: inset 0 2px 4px rgba(var(--jw-shade), 0.2), 0 0 0 1.5px var(--jw-line-strong);
 }
 .jw-btn:disabled,
 .jw-btn[aria-disabled="true"] {
-  opacity: 0.45;
+  opacity: 0.42;
   cursor: not-allowed;
   transform: none;
+  box-shadow: 0 0 0 1.5px var(--jw-line);
 }
 .jw-btn-primary {
-  background: var(--jw-accent);
-  border-color: transparent;
   color: var(--jw-on-accent);
-  font-weight: 600;
+  background: linear-gradient(180deg, var(--jw-accent-hi) 0%, var(--jw-accent) 48%, var(--jw-accent-deep) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -3px 0 rgba(var(--jw-shade), 0.22),
+    0 0 0 1px var(--jw-accent-rim),
+    0 2px 3px rgba(var(--jw-accent-rgb), 0.3),
+    0 12px 24px -10px rgba(var(--jw-accent-rgb), 0.75);
 }
 .jw-btn-primary:hover {
-  background: color-mix(in srgb, var(--jw-accent) 88%, white);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -3px 0 rgba(var(--jw-shade), 0.22),
+    0 0 0 1px var(--jw-accent-rim),
+    0 4px 6px rgba(var(--jw-accent-rgb), 0.3),
+    0 20px 34px -12px rgba(var(--jw-accent-rgb), 0.85);
+}
+.jw-btn-primary:active {
+  background: linear-gradient(180deg, var(--jw-accent) 0%, var(--jw-accent-deep) 100%);
+  box-shadow: inset 0 2px 5px rgba(var(--jw-shade), 0.3), 0 0 0 1px var(--jw-accent-rim), 0 1px 2px rgba(var(--jw-accent-rgb), 0.25);
+}
+.jw-btn-primary:disabled,
+.jw-btn-primary[aria-disabled="true"] {
+  box-shadow: 0 0 0 1px var(--jw-accent-rim);
 }
 .jw-btn-quiet {
   background: transparent;
-  border-color: transparent;
   color: var(--jw-muted);
+  box-shadow: none;
 }
 .jw-btn-quiet:hover {
-  background: var(--jw-surface-2);
-  color: var(--jw-ink);
+  background: var(--jw-accent-soft);
+  color: var(--jw-accent-text);
+  box-shadow: none;
+  transform: none;
+}
+.jw-btn-quiet:active {
+  background: var(--jw-accent-soft);
+  box-shadow: none;
+  transform: scale(0.96);
+}
+/* a cost inside a button: «ولّد | 0.5 ر.س» */
+.jw-btn .jw-cost {
+  font-weight: 500;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+  padding-inline-start: 0.6rem;
+  border-inline-start: 1.5px solid color-mix(in srgb, currentColor 30%, transparent);
 }
 .jw-btn-icon {
   width: 2.25rem;
@@ -270,16 +384,21 @@ html:has(.jw) body {
   align-items: center;
   gap: 0.375rem;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease, transform 0.3s var(--jw-spring);
 }
 .jw-seg button:hover {
   color: var(--jw-ink);
+  border-color: var(--jw-line-strong);
+}
+.jw-seg button:active {
+  transform: scale(0.94);
 }
 .jw-seg button[aria-checked="true"],
 .jw-seg button[aria-selected="true"] {
-  border-color: var(--jw-accent-line);
+  border-color: var(--jw-accent-text);
   background: var(--jw-accent-soft);
-  color: var(--jw-ink);
+  color: var(--jw-accent-text);
+  font-weight: 700;
 }
 .jw-seg button:disabled {
   opacity: 0.4;
@@ -302,7 +421,7 @@ html:has(.jw) body {
 
 /* Focus: always visible for the keyboard */
 .jw :focus-visible {
-  outline: 2px solid var(--jw-accent);
+  outline: 2px solid var(--jw-accent-text);
   outline-offset: 2px;
 }
 
@@ -382,7 +501,7 @@ html:has(.jw) body {
   max-height: calc(100dvh - 2rem);
 }
 .jw-dialog::backdrop {
-  background: rgba(5, 6, 8, 0.72);
+  background: var(--jw-scrim);
   backdrop-filter: blur(3px);
 }
 
@@ -414,7 +533,7 @@ html:has(.jw) body {
 }
 
 /* «🛒 الدورات» in the header: the shop of courses, light and warm so it stands apart from the dark pills */
-.jw-course-pill { background: #f6f5f1; color: #141414; border: 1px solid #fff; box-shadow: 0 6px 18px -8px rgba(232, 87, 42, 0.7); text-decoration: none; transition: transform .15s; }
+.jw-course-pill { background: linear-gradient(140deg, #ffe58a, #ffc83d); color: #4a3300; border: 1px solid rgba(200, 140, 0, 0.45); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 6px 16px -8px rgba(200, 140, 0, 0.8); text-decoration: none; transition: transform .15s; }
 .jw-course-pill:hover { transform: translateY(-1px); }
 
 /* «الجواد في كلاود وشات جي بي تي»: the header's one moving pill (Claude's clay to ChatGPT's green), with «جديد» */
@@ -439,31 +558,41 @@ html:has(.jw) body {
 @keyframes jw-connect-flow { to { background-position: -250% 0; } }
 @media (prefers-reduced-motion: reduce) { .jw-connect-pill { animation: none; } }
 
-/* «.jw-paper»: a page of JAWAD drawn LIGHT (the owner: «مانبي صفحات سواد») — the same --jw-* tokens, so every jw-panel, chip,
-   button and text colour of the page follows; the warm paper with a faint dot grid of the shop. */
+/* «.jw-paper»: a page of JAWAD that was drawn light before the identity (the owner: «مانبي صفحات سواد»). It now wears the
+   light «كوبالت» on either base (the same --jw-* tokens, so every jw-panel, chip, button and text colour of the page follows). */
 .jw-paper {
-  --jw-bg: #f6f5f1;
-  --jw-bg-2: #efede8;
+  --jw-bg: #eef3ff;
+  --jw-bg-2: #e4ecff;
   --jw-surface: #ffffff;
-  --jw-surface-2: #f6f5f1;
-  --jw-surface-3: #ebe8e2;
-  --jw-line: #e7e3dc;
-  --jw-line-strong: #d9d4cb;
-  --jw-ink: #121212;
-  --jw-muted: #6d6a64;
-  --jw-faint: #a29e96;
-  --jw-danger: #c2410c;
-  --jw-ok: #16a34a;
-  --jw-warn: #b45309;
-  --line: #e7e3dc;
-  --page: #f6f5f1;
+  --jw-surface-2: #eef3ff;
+  --jw-surface-3: #d9e4ff;
+  --jw-line: #c9d6f5;
+  --jw-line-strong: #6f82b8;
+  --jw-ink: #0e1b4d;
+  --jw-muted: #34437a;
+  --jw-faint: #4a5a8f;
+  --jw-accent: #1f3fe0;
+  --jw-accent-hi: #4a6bff;
+  --jw-accent-deep: #1a35c2;
+  --jw-accent-rim: #142aa0;
+  --jw-accent-text: #1f3fe0;
+  --jw-accent-soft: #d6e1ff;
+  --jw-accent-rgb: 31, 63, 224;
+  --jw-danger: #b42318;
+  --jw-ok: #1f3fe0;
+  --jw-warn: #8a5a00;
+  --jw-tint: 14, 27, 77;
+  --jw-shade: 20, 40, 120;
+  --jw-hl: rgba(255, 255, 255, 0.92);
+  --line: #c9d6f5;
+  --page: #eef3ff;
   --surface: #ffffff;
-  --surface-2: #f6f5f1;
-  --ink: #121212;
-  --muted: #6d6a64;
+  --surface-2: #eef3ff;
+  --ink: #0e1b4d;
+  --muted: #34437a;
   color: var(--jw-ink);
   color-scheme: light;
   min-height: calc(100dvh - var(--jw-header-h) - var(--jw-bar-h));
-  background: radial-gradient(circle at 1px 1px, rgba(20, 16, 10, .075) 1px, transparent 1.2px) 0 0 / 22px 22px, var(--jw-bg);
+  background: radial-gradient(900px 380px at 85% -120px, rgba(31, 63, 224, 0.1), transparent 70%), var(--jw-bg);
 }
-.jw-paper .jw-panel { background: var(--jw-surface); border-color: var(--jw-line); box-shadow: 0 1px 2px rgba(20, 16, 10, .05), 0 22px 48px -28px rgba(20, 16, 10, .28); }
+.jw-paper .jw-panel { background: var(--jw-surface); border-color: var(--jw-line); box-shadow: 0 1px 2px rgba(20, 40, 120, .06), 0 22px 48px -28px rgba(20, 40, 120, .3); }
