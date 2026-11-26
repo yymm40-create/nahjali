@@ -45,7 +45,7 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export const viewport: Viewport = { themeColor: "#0b0c0f", colorScheme: "dark" };
+export const viewport: Viewport = { themeColor: "#05070f", colorScheme: "light dark" };
 
 /** The packages popup leaves a wallet with this much (¤10, in halalas) or more alone. */
 const POPUP_BELOW_HALALAS = 1000;
@@ -94,9 +94,10 @@ export default async function JawadLayout({ children }: { children: React.ReactN
   const sale = path.startsWith(JAWAD.base + "/admin") || path.startsWith(COURSE.base) ? null : await courseSaleBar();
   const bar = { ...rt, sections: await barSections(rt, user, owner) };
   return (
-    <div className={`jw ${readex.variable}`} dir="rtl" lang="ar" style={{ ["--jw-accent" as string]: rt.brand.accent }} suppressHydrationWarning>
-      {/* «عرض الديسكتوب» remembered on this device: applied before the first paint (LayoutToggle) */}
-      <script dangerouslySetInnerHTML={{ __html: "try{if(localStorage.getItem('jw-layout')==='wide')document.currentScript.parentElement.classList.add('jw-wide')}catch(e){}" }} />
+    <div className={`jw ${readex.variable}`} dir="rtl" lang="ar" data-jw-theme="light" suppressHydrationWarning>
+      {/* «عرض الديسكتوب» and «الخلفية: سوداء» remembered on this device: applied before the first paint (LayoutToggle, ThemeToggle).
+          The colours are the «كوبالت» identity (jawad.css), so the old accent setting no longer paints the platform. */}
+      <script dangerouslySetInnerHTML={{ __html: "try{var r=document.currentScript.parentElement;if(localStorage.getItem('jw-layout')==='wide')r.classList.add('jw-wide');if(localStorage.getItem('jw-theme')==='dark')r.dataset.jwTheme='dark'}catch(e){}" }} />
       <a href="#jw-main" className="sr-only z-50 rounded-lg bg-jw-accent px-3 py-2 text-white focus:not-sr-only focus:fixed focus:start-3 focus:top-3">
         تخطَّ إلى المحتوى
       </a>

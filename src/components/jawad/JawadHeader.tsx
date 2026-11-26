@@ -7,6 +7,7 @@ import AccountMenu from "./AccountMenu";
 import CoinBalance from "./CoinBalance";
 import { SoundToggle } from "@/components/UiSounds";
 import LayoutToggle from "./LayoutToggle";
+import ThemeToggle from "./ThemeToggle";
 import LoginLink from "./LoginLink";
 import ReportButton from "./ReportButton";
 import ShareReward from "./ShareReward";
@@ -62,6 +63,8 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
             {boss && <ReportButton />}
             {user && !preview && <MemoryMenu />}
             {!preview && <LayoutToggle />}
+            {/* «الخلفية»: فاتحة or سوداء, for everyone */}
+            <ThemeToggle />
             <SoundToggle />
             {!preview && <SecretKey />}
             {user ? (

@@ -35,11 +35,11 @@ export default function OfferBar({ href, price, was, endsAt, serverNow, until, n
   if (hidden || left <= 0) return null;
   const hal = (sar: number) => Math.round(sar * 100);
   return (
-    <div className="relative z-40 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-[linear-gradient(110deg,#7c4dff,#ff4f8b_55%,#ff8a3d)] px-10 py-2 text-center text-[13px] font-semibold leading-6 text-white sm:text-sm" role="region" aria-label="عرض خاص">
+    <div className="relative z-40 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-[linear-gradient(110deg,#1a35c2,#3d5cff_55%,#6582ff)] px-10 py-2 text-center text-[13px] font-semibold leading-6 text-white sm:text-sm" role="region" aria-label="عرض خاص">
       <span>⏳ خصم خاص على «{name}» لين {until}:</span>
       <Riyal halalas={hal(price)} was={was > price ? hal(was) : null} size={16} className="text-base font-bold" />
       <span dir="ltr" className="rounded-full bg-black/25 px-2 tabular-nums" role="timer" aria-label={`الوقت المتبقي ${countdown(left)}`}>{countdown(left)}</span>
-      <Link href={href} className="rounded-full bg-white px-3 py-0.5 text-[#5b2bd6] no-underline">سجّل الحين ←</Link>
+      <Link href={href} className="rounded-full bg-white px-3 py-0.5 text-[#1f3fe0] no-underline">سجّل الحين ←</Link>
       <button
         type="button"
         aria-label="إخفاء"

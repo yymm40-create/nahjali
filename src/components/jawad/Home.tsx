@@ -19,7 +19,7 @@ export interface RecentWork {
 export default function Home({ first, owner, userId, freeImageAvailable, sections, tools, siteTools = [], recent, ads }: { first: string; owner: boolean; userId: string; freeImageAvailable: boolean; sections: QuickSection[]; tools: LandingTool[]; siteTools?: LandingTool[]; recent: RecentWork[]; ads: ReactNode }) {
   const works = `/jawad-ai/${sections.find((s) => s.output)?.id ?? "images"}?tab=works`;
   return (
-    <div className="ld hm" dir="rtl">
+    <div className="ld hm jw-light-ok" dir="rtl">
       <Link href={CREDITS.base} className="ld-promo">🎁 بدون اشتراك: كل ريال تشحنه يصير ريال رصيد، وما ينتهي — <b>اشحن رصيدك</b></Link>
 
       <header className="ld-hero hm-hero">

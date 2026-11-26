@@ -58,7 +58,7 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
   const cheapest = packs.length ? packs.reduce((a, b) => (b.price < a.price ? b : a)) : null;
   if (!prices.length && cheapest) prices.push(<>باقات من <Riyal halalas={cheapest.price * 100} size={13} /></>);
   return (
-    <div className="ld" dir="rtl">
+    <div className="ld jw-light-ok" dir="rtl">
       {freeImageOn ? (
         <Link href={loginHref} className="ld-promo">🎁 سجّل وخذ <b>أول صورة مجانًا</b> — بدون بطاقة</Link>
       ) : giftOpen() ? (
