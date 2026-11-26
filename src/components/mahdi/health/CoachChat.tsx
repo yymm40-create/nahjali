@@ -4,17 +4,16 @@
 // and changes the plan directly (the setup's answers, the nutrition targets, the table), moves the person to a page or a
 // step, and can start the setup again from the beginning. He also sees the last two weeks of the tracker.
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import MovableBubble from "@/components/MovableBubble";
 import RobotFace from "@/components/RobotFace";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import type { HealthPlan, HealthProfile } from "@/lib/mahdi/health/plan";
+import { WIZARD_STEPS, coachScreen, setupHref } from "@/lib/mahdi/health/route";
 import type { DayLog } from "@/lib/mahdi/health/tracker";
 import { COACH } from "./HealthApp";
-import { useHealth, type SetupStep } from "./HealthProvider";
-
-const SETUP = ["track", "about", "goal", "train", "mode"] as const;
+import { useHealth } from "./HealthProvider";
 
 /** The tracker of the last 14 days, for عباس to see how it is going. */
 function recentDays(days: Record<string, DayLog>, today: string): DayLog[] {
@@ -33,24 +32,23 @@ interface CoachMsg {
 export default function CoachChat() {
   const router = useRouter();
   const path = usePathname() ?? "";
-  const { uid, profile, setProfile, plan, save, step, setStep, days, today } = useHealth();
+  const params = useSearchParams();
+  const { uid, profile, setProfile, plan, save, days, today } = useHealth();
   const female = profile.sex === "female";
-  // where the person is: a step of the setup, or a page of the app
-  const screen = path.endsWith("/setup") ? step : (path.split("/mahdi/health/")[1] ?? "today").split("/")[0] || "today";
+  // where the person is: a step of the setup (from the link), or a page of the app
+  const screen = coachScreen(path, params.get("step"));
   const onResult = (r: { profile: HealthProfile; plan: HealthPlan | null; go: string; restart?: boolean }) => {
     setProfile(r.profile);
     if (r.plan && plan) save(r.plan);
     if (r.restart) {
-      setStep("track");
-      router.push("/mahdi/health/setup");
+      router.push(setupHref("track"));
       return;
     }
     const g = r.go;
     if (!g) return;
-    if ((SETUP as readonly string[]).includes(g)) {
-      setStep(g as SetupStep);
-      router.push("/mahdi/health/setup");
-    } else if (g === "today") router.push("/mahdi/health");
+    const step = WIZARD_STEPS.find((x) => x === g);
+    if (step) router.push(setupHref(step));
+    else if (g === "today") router.push("/mahdi/health");
     else if (plan || !["plan", "habits"].includes(g)) router.push(`/mahdi/health/${g}`);
   };
   const key = `mahdi-health-chat:${uid}`;
@@ -126,7 +124,7 @@ export default function CoachChat() {
 
   return (
     <>
-      <MovableBubble id="mahdi-coach" corner="left" size={52} label="عباس سبع القنطرة: اسألني" gradient="linear-gradient(135deg, #c6ff1a, #5c7a00)" hidden={open} onPress={() => setOpen(true)}>
+      <MovableBubble id="mahdi-coach" corner="left" size={52} label="عباس سبع القنطرة: اسألني" gradient="var(--m-gold)" hidden={open} onPress={() => setOpen(true)}>
         <RobotFace id="sabaa" size={38} />
       </MovableBubble>
       {open && (
@@ -173,7 +171,7 @@ export default function CoachChat() {
                 }
               }}
             />
-            <button type="submit" className="gym-btn sm" disabled={busy || !draft.trim()}>
+            <button type="submit" className="gym-btn primary sm" disabled={busy || !draft.trim()}>
               إرسال
             </button>
           </form>

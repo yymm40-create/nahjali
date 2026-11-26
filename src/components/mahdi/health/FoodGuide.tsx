@@ -111,7 +111,7 @@ export default function FoodGuide({ t }: { t: FoodTargets }) {
             <button type="button" className="gym-chip" aria-pressed={!perMeal} onClick={() => setPerMeal(false)}>لليوم كله</button>
           </div>
           <p className="gym-small">
-            عشان تاخذ <b className="text-white">{n0(wanted(tab))} غ {NUTRIENT_NAME[tab]}</b> {perMeal ? "في الوجبة" : "في اليوم"}، اختر واحد من هذي (نوّع بينها):
+            عشان تاخذ <b className="gym-ink">{n0(wanted(tab))} غ {NUTRIENT_NAME[tab]}</b> {perMeal ? "في الوجبة" : "في اليوم"}، اختر واحد من هذي (نوّع بينها):
           </p>
           {Object.entries(groupBy(sourcesFor(tab, wanted(tab)), (s) => s.food.group)).map(([g, list]) => (
             <div key={g} className="space-y-1">
