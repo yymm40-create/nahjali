@@ -7,8 +7,8 @@ import Icon from "../Icon";
 export default function SupportLink() {
   return (
     <Link href={SUPPORT_PATH} className="m-card flex items-center gap-3 p-4">
-      <span className="m-soft grid size-11 shrink-0 place-items-center text-xl" aria-hidden="true">
-        💛
+      <span className="m-soft grid size-11 shrink-0 place-items-center" style={{ color: "var(--m-gold-text)" }} aria-hidden="true">
+        <Icon name="heart" size={22} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block font-semibold">{t.support.card}</span>

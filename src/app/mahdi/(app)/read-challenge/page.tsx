@@ -7,10 +7,10 @@ import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import type { ReadChallenge, ReadPhase } from "@/lib/mahdi/read-challenge";
 import Avatar from "@/components/mahdi/Avatar";
 import Icon from "@/components/mahdi/Icon";
+import { MEDAL_COLORS } from "@/components/mahdi/PublicReadingCard";
 import ReadChallengeDetail from "@/components/mahdi/ReadChallengeDetail";
 
 const R = t.readChallenge;
-const MEDALS = ["🥇", "🥈", "🥉"];
 
 interface Row {
   rank: number;
@@ -82,7 +82,10 @@ export default function ReadChallengePage() {
   return (
     <div className="space-y-6">
       <header className="space-y-2">
-        <h1 className="m-display text-3xl">📖 {data.challenge.title}</h1>
+        <h1 className="m-display text-3xl">
+          <Icon name="book" size={28} className="m-ico m-gold" />
+          {data.challenge.title}
+        </h1>
         <p className="m-chip w-fit">
           {data.phase === "soon" ? R.soon(new Date(`${data.challenge.startsOn}T12:00:00Z`).toLocaleDateString("ar", { day: "numeric", month: "long", timeZone: "UTC" })) : over ? R.overChip : R.dayOf(data.day ?? 1, data.length ?? 7, data.left ?? 0)}
         </p>
@@ -91,7 +94,9 @@ export default function ReadChallengePage() {
 
       {over && winners.length > 0 && (
         <section className="m-card space-y-1 p-5 text-center">
-          <p className="text-4xl" aria-hidden="true">🏆</p>
+          <p className="flex justify-center m-gold" aria-hidden="true">
+            <Icon name="trophy" size={44} strokeWidth={1.5} />
+          </p>
           <p className="m-display m-gold text-2xl">{R.winner(winners.map((w) => w.displayName).join(" و "))}</p>
           <p className="m-muted">{R.pagesN(winners[0].pages)}</p>
         </section>
@@ -158,12 +163,19 @@ export default function ReadChallengePage() {
                   onClick={() => setDetail({ who: r.mine ? "me" : r.id!, name: r.displayName })}
                   aria-label={r.mine || r.id ? R.detail.open(r.displayName) : undefined}
                 >
-                <span className="m-num w-9 shrink-0 text-center text-lg font-bold">{r.pages > 0 && r.rank <= 3 ? MEDALS[r.rank - 1] : fmtNum(r.rank)}</span>
+                <span className="m-num w-9 shrink-0 text-center text-lg font-bold">{r.pages > 0 && r.rank <= 3 ? (
+                    <span className="inline-flex" style={{ color: MEDAL_COLORS[r.rank - 1] }} aria-label={fmtNum(r.rank)}>
+                      <Icon name="medal" size={24} strokeWidth={2.2} />
+                    </span>
+                  ) : (
+                    fmtNum(r.rank)
+                  )}</span>
                 <Avatar profile={{ displayName: r.displayName, avatarUrl: r.avatarUrl }} size={36} />
                 <span className="min-w-0 flex-1 truncate font-semibold" dir="auto">
                   {r.displayName}
                   {r.mine && <span className="m-gold"> · {R.you}</span>}
-                  {r.flag && <span className="block text-xs font-normal" style={{ color: "var(--m-error)" }}>⚠️ {R.flag(r.flag.repeats, r.flag.maxDay)}</span>}
+                  {r.flag && <span className="block text-xs font-normal" style={{ color: "var(--m-error)" }}><Icon name="alert" size={13} className="m-ico" />
+                      {R.flag(r.flag.repeats, r.flag.maxDay)}</span>}
                 </span>
                 <span className="m-num shrink-0 text-end">
                   <b>{fmtNum(r.pages)}</b> <span className="m-muted text-sm">{R.pageWord}</span>

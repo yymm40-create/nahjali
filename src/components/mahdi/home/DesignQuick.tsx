@@ -94,7 +94,9 @@ export default function DesignQuick({ style }: { style: QuickStyle }) {
       <p className="m-widget-title">
         <Icon name="check" size={18} className="m-gold" /> اضغط وأنجز
       </p>
-      <span className="m-chip m-num">{left ? `باقي ${left}` : "كملت كلها 🎉"}</span>
+      <span className="m-chip m-num">
+        {left ? `باقي ${left}` : <><Icon name="sparkle" size={14} className="m-ico m-gold" />كملت كلها</>}
+      </span>
     </div>
   );
   // by project, in the projects' order; each project's check has its own shape (or the one the person chose)
@@ -263,7 +265,7 @@ export default function DesignQuick({ style }: { style: QuickStyle }) {
   }
 }
 
-/** «البطاقة اللي تسحبها»: one habit at a time — ✓ completes it, ⏭ leaves it for later; the next card comes up. */
+/** «البطاقة اللي تسحبها»: one habit at a time — the tick completes it, «بعدين» leaves it for later; the next card comes up. */
 function SwipeStack({ habits, date }: { habits: DayHabit[]; date: string }) {
   const [skipped, setSkipped] = useState<string[]>([]);
   const queue = habits.filter((h) => h.inst.progress < 1 && !skipped.includes(h.inst.key));
@@ -288,17 +290,17 @@ function SwipeStack({ habits, date }: { habits: DayHabit[]; date: string }) {
                 <span className="absolute inset-x-5 top-5 bottom-0 rounded-[28px]" style={{ background: "var(--m-track)", rotate: "-4deg" }} />
                 <span className="absolute inset-x-2.5 top-2.5 bottom-0 rounded-[28px]" style={{ background: "var(--m-surface-2)", rotate: "3deg" }} />
                 <div className="m-swipe-card absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-[28px] p-5 text-center text-white">
-                  <span className="text-6xl" aria-hidden="true">{h.habit.icon || "⭐"}</span>
+                  <span className="text-6xl" aria-hidden="true">{h.habit.icon || <Icon name="star" size={56} strokeWidth={1.4} />}</span>
                   <b className="text-2xl">{h.habit.name}</b>
                   {amount(h) && <span className="m-num opacity-90">{amount(h)}</span>}
                 </div>
               </div>
               <div className="flex items-center justify-center gap-7">
                 <button type="button" className="m-swipe-btn" onClick={() => setSkipped([...skipped, h.inst.key])} aria-label={`بعدين: ${h.habit.name}`}>
-                  ⏭️
+                  <Icon name="skip" size={26} />
                 </button>
                 <button type="button" className="m-swipe-btn m-swipe-ok" onClick={x.tap} aria-label={x.label}>
-                  ✓
+                  <Icon name="check" size={30} strokeWidth={2.4} />
                 </button>
               </div>
             </div>
@@ -306,7 +308,9 @@ function SwipeStack({ habits, date }: { habits: DayHabit[]; date: string }) {
         </Tap>
       ) : (
         <div className="m-card space-y-2 p-6 text-center">
-          <p className="text-4xl" aria-hidden="true">{doneN === habits.length ? "🎉" : "⏭️"}</p>
+          <p className="flex justify-center m-gold" aria-hidden="true">
+            <Icon name={doneN === habits.length ? "sparkle" : "skip"} size={40} />
+          </p>
           <b>{doneN === habits.length ? "كملت عادات اليوم كلها" : "خلّصت البطاقات"}</b>
           {skipped.length > 0 && (
             <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setSkipped([])}>

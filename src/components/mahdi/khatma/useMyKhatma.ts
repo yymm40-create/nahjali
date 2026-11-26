@@ -87,7 +87,7 @@ export function useMyKhatma() {
       const r = await post<{ added: number[]; finished: boolean; today: string }>({ action: "read", quarters });
       if (r) {
         bumpHabit(r.today, r.added.length);
-        toast(r.finished ? "تمّت ختمتك بحمد الله 🤍 تقبّل الله." : "تقبّل الله ✓");
+        toast(r.finished ? "تمّت ختمتك بحمد الله، تقبّل الله." : "تقبّل الله ✓");
       }
       return r;
     },

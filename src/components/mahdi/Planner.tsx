@@ -101,7 +101,7 @@ function PlanRow({ item, planner }: { item: PlanItem; planner: PlannerApi }) {
       <span className="min-w-0 flex-1">
         <span className="block font-semibold">{item.title}</span>
         {item.note && <span className="block text-xs m-muted">{item.note}</span>}
-        {item.repeat !== "none" && <span className="block text-xs m-muted">🔁 {t.planner.repeatNote[item.repeat]}</span>}
+        {item.repeat !== "none" && <span className="block text-xs m-muted"><Icon name="repeat" size={13} className="m-ico" />{t.planner.repeatNote[item.repeat]}</span>}
       </span>
       {planner.alerts && <AlertBell name={item.title} time={item.remind && item.start ? item.start : null} hint={t.alert.planHint} onSave={(time) => planner.setAlert(item, time)} />}
       <button type="button" className="m-icon-btn shrink-0" aria-label={t.planner.remove} title={item.repeat !== "none" ? t.planner.removeSeries : t.planner.remove} onClick={() => void planner.remove(item.id)}>
@@ -118,7 +118,7 @@ export function PlanDay({ day, planner }: { day: ISODate; planner: PlannerApi })
   return (
     <section className="space-y-3" aria-label={t.planner.title}>
       <div className="flex items-center justify-between gap-2">
-        <h3 className="font-semibold">📅 {t.planner.title}</h3>
+        <h3 className="font-semibold"><Icon name="calendar" size={16} className="m-ico" />{t.planner.title}</h3>
         {planner.ready && !adding && (
           <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setAdding(true)}>
             <Icon name="plus" size={16} /> {t.planner.add}
@@ -170,7 +170,8 @@ function PlanForm({ day, planner, onDone }: { day: ISODate; planner: PlannerApi;
       </div>
       {planner.alerts && start && (
         <button type="button" className="m-option px-3 py-1 text-xs" aria-pressed={remind} onClick={() => setRemind((v) => !v)}>
-          🔔 {t.alert.make}
+          <Icon name="bell" size={13} className="m-ico" />
+          {t.alert.make}
         </button>
       )}
       <div className="flex gap-2">

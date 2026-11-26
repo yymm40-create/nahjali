@@ -6,15 +6,16 @@
 import { useMemo, useState } from "react";
 import { DAILY_NEED, FOOD_GROUPS, MICRO_LABELS, type Food, type Micros } from "@config/mahdi/foods";
 import { amountTotals, richIn, sourcesFor, suggestDay, type Amount, type Nutrient, type Totals } from "@/lib/mahdi/health/meals";
+import Icon, { type IconName } from "../Icon";
 
 type Tab = "day" | Nutrient | "micro";
-const TABS: { id: Tab; label: string }[] = [
+const TABS: { id: Tab; label: string; icon?: IconName }[] = [
   { id: "day", label: "يوم مقترح" },
-  { id: "p", label: "🥩 بروتين" },
-  { id: "c", label: "🍚 كارب" },
-  { id: "f", label: "🥑 دهون" },
-  { id: "fib", label: "🌾 ألياف" },
-  { id: "micro", label: "💊 فيتامينات" },
+  { id: "p", label: "بروتين", icon: "protein" },
+  { id: "c", label: "كارب", icon: "grain" },
+  { id: "f", label: "دهون", icon: "drop" },
+  { id: "fib", label: "ألياف", icon: "leaf" },
+  { id: "micro", label: "فيتامينات", icon: "pill" },
 ];
 
 const NUTRIENT_NAME: Record<Nutrient, string> = { p: "بروتين", c: "كربوهيدرات", f: "دهون", fib: "ألياف" };
@@ -61,10 +62,14 @@ export default function FoodGuide({ t }: { t: FoodTargets }) {
 
   return (
     <div className="gym-card space-y-3" id="food-guide">
-      <span className="gym-eyebrow">🍽️ وش تاكل عشان توصل أرقامك؟</span>
+      <span className="gym-eyebrow">
+        <Icon name="plate" size={15} className="m-ico" />
+        وش تاكل عشان توصل أرقامك؟
+      </span>
       <div className="gym-chips" role="group" aria-label="دليل الأكل">
         {TABS.map((x) => (
           <button key={x.id} type="button" aria-pressed={tab === x.id} className="gym-chip" onClick={() => setTab(x.id)}>
+            {x.icon && <Icon name={x.icon} size={14} className="m-ico" />}
             {x.label}
           </button>
         ))}
@@ -100,7 +105,10 @@ export default function FoodGuide({ t }: { t: FoodTargets }) {
             <div className="gym-stat"><b>{n0(day.totals.fib)}</b><span>غ ألياف ({n0(t.fiberG)})</span></div>
           </div>
           <MicroBar totals={day.totals} sex={t.sex} />
-          <button type="button" className="gym-btn sm ghost" onClick={() => setVariant((v) => v + 1)}>🔄 يوم ثاني بأكل مختلف</button>
+          <button type="button" className="gym-btn sm ghost" onClick={() => setVariant((v) => v + 1)}>
+            <Icon name="flip" size={15} className="m-ico" />
+            يوم ثاني بأكل مختلف
+          </button>
         </div>
       )}
 

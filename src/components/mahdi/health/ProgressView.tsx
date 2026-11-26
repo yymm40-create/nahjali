@@ -12,6 +12,7 @@ import { sessionMin, history, record, setsByMuscle, weekOf, WEEK_TARGET, FOOD_KE
 import { setupHref } from "@/lib/mahdi/health/route";
 import { useHealth } from "./HealthProvider";
 import { useView } from "./useView";
+import Icon, { type IconName } from "../Icon";
 
 function Line({ points, unit }: { points: { x: string; y: number }[]; unit: string }) {
   if (points.length < 2) return <p className="gym-small">سجّل مرتين على الأقل وتطلع لك الرسمة.</p>;
@@ -38,7 +39,8 @@ function Line({ points, unit }: { points: { x: string; y: number }[]; unit: stri
   );
 }
 
-const FOOD_NAMES: Record<FoodKey, string> = { kcal: "🔥 السعرات", proteinG: "🥩 البروتين", waterCups: "💧 الماء", produce: "🥗 خضار وفواكه", steps: "👟 الخطوات" };
+const FOOD_NAMES: Record<FoodKey, string> = { kcal: "السعرات", proteinG: "البروتين", waterCups: "الماء", produce: "خضار وفواكه", steps: "الخطوات" };
+const FOOD_ICONS: Record<FoodKey, IconName> = { kcal: "streak", proteinG: "protein", waterCups: "drop", produce: "food", steps: "walk" };
 const FOOD_LINKS: Record<FoodKey, string> = { kcal: "kcal", proteinG: "protein", waterCups: "water", produce: "produce", steps: "steps" };
 
 export default function ProgressView() {
@@ -80,7 +82,8 @@ export default function ProgressView() {
   return (
     <div className="space-y-4">
       <h1 className="gym-title">
-        <em>تقدمك</em> 📈
+        <Icon name="trend" size={26} className="m-ico" />
+        <em>تقدمك</em>
       </h1>
 
       <section className="gym-stats">
@@ -91,7 +94,10 @@ export default function ProgressView() {
       </section>
       {timed.length > 0 && (
         <section className="gym-card space-y-2">
-          <h2 className="text-lg font-black">⏱️ وقت تمرينك</h2>
+          <h2 className="text-lg font-black">
+          <Icon name="timer" size={20} className="m-ico" />
+          وقت تمرينك
+        </h2>
           <ul className="gym-list gym-small">
             {timed.slice(-7).reverse().map((d) => (
               <li key={d.date}>
@@ -104,7 +110,10 @@ export default function ProgressView() {
 
       <section className="gym-card space-y-3">
         <div>
-          <h2 className="text-lg font-black">💪 مجموعات كل عضلة (آخر 7 أيام)</h2>
+          <h2 className="text-lg font-black">
+          <Icon name="muscle" size={20} className="m-ico" />
+          مجموعات كل عضلة (آخر 7 أيام)
+        </h2>
           <p className="gym-small">الهدف حسب الأبحاث: {WEEK_TARGET} مجموعات أو أكثر للعضلة بالأسبوع لأفضل نمو (المساعدة تنحسب نص).</p>
         </div>
         {(Object.keys(GROUPS) as MuscleGroup[]).map((g) => {
@@ -130,7 +139,10 @@ export default function ProgressView() {
       </section>
 
       <section className="gym-card space-y-3">
-        <h2 className="text-lg font-black">🏋️ قوتك في كل تمرين</h2>
+        <h2 className="text-lg font-black">
+          <Icon name="dumbbell" size={20} className="m-ico" />
+          قوتك في كل تمرين
+        </h2>
         {logged.length ? (
           <>
             <select className="gym-select" value={shown} onChange={(e) => view.set({ ex: e.target.value })} aria-label="التمرين">
@@ -140,7 +152,7 @@ export default function ProgressView() {
             </select>
             <Line points={h.map((p) => ({ x: p.date, y: weighted ? p.e1rm : p.best.reps }))} unit={weighted ? "كغ" : "تكرار"} />
             <p className="gym-small">{weighted ? "الرسمة = أقصى وزن تقدر ترفعه مرة وحدة (تقدير من أفضل مجموعة)." : "الرسمة = أكثر تكرار في مجموعة."}</p>
-            {pr && <p className="text-sm">🏆 رقمك القياسي: <b dir="ltr">{pr.kg ? `${pr.kg} كغ × ${pr.reps}` : `${pr.reps} تكرار`}</b></p>}
+            {pr && <p className="text-sm"><Icon name="trophy" size={15} className="m-ico" />رقمك القياسي: <b dir="ltr">{pr.kg ? `${pr.kg} كغ × ${pr.reps}` : `${pr.reps} تكرار`}</b></p>}
             <div className="gym-hist">
               {h.slice(-6).reverse().map((p) => (
                 <div key={p.date}>
@@ -157,13 +169,19 @@ export default function ProgressView() {
       </section>
 
       <section className="gym-card space-y-2">
-        <h2 className="text-lg font-black">⚖️ وزن جسمك</h2>
+        <h2 className="text-lg font-black">
+          <Icon name="scale" size={20} className="m-ico" />
+          وزن جسمك
+        </h2>
         <Line points={weights.map((p) => ({ x: p.x, y: p.y }))} unit="كغ" />
       </section>
 
       <section className="gym-card space-y-3">
         <div>
-          <h2 className="text-lg font-black">📏 قياسات الجسم والعضلات (اختياري)</h2>
+          <h2 className="text-lg font-black">
+          <Icon name="ruler" size={20} className="m-ico" />
+          قياسات الجسم والعضلات (اختياري)
+        </h2>
           <p className="gym-small">قِس بنفس الشريط ونفس المكان والوقت كل مرة. مو لازم تدخلها كلها.</p>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -189,7 +207,10 @@ export default function ProgressView() {
       </section>
 
       <section className="gym-card space-y-2">
-        <h2 className="text-lg font-black">🥗 التغذية (آخر 7 أيام)</h2>
+        <h2 className="text-lg font-black">
+          <Icon name="food" size={20} className="m-ico" />
+          التغذية (آخر 7 أيام)
+        </h2>
         {FOOD_KEYS.filter((k) => plan.food?.[k]).map((k) => {
           const target = plan.food![k];
           const vals = week.map((d) => habitValue(FOOD_LINKS[k], d) ?? days[d]?.food[k] ?? 0);
@@ -197,7 +218,10 @@ export default function ProgressView() {
           return (
             <div key={k} className="space-y-1">
               <div className="flex justify-between text-sm">
-                <b>{FOOD_NAMES[k]}</b>
+                <b>
+                  <Icon name={FOOD_ICONS[k]} size={15} className="m-ico" />
+                  {FOOD_NAMES[k]}
+                </b>
                 <span className="gym-small">وصلت الهدف {hit} من 7 أيام</span>
               </div>
               <div className="gym-days7">

@@ -61,8 +61,8 @@ export function FeedbackSheet({ open, onClose, place, intro }: { open: boolean; 
                 className="m-option grid min-h-16 place-items-center gap-0.5 px-1 py-2"
                 onClick={() => setRating(rating === i + 1 ? null : i + 1)}
               >
-                <span className="text-2xl leading-none" aria-hidden="true" style={{ filter: rating !== null && i + 1 <= rating ? undefined : "grayscale(1) opacity(0.45)" }}>
-                  ⭐
+                <span aria-hidden="true" style={{ color: rating !== null && i + 1 <= rating ? "var(--m-gold)" : "var(--m-muted)" }}>
+                  <Icon name="star" size={26} fill={rating !== null && i + 1 <= rating ? "currentColor" : "none"} />
                 </span>
                 <span className="text-[0.7rem] font-semibold leading-tight">{label}</span>
               </button>

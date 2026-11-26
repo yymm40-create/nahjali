@@ -12,6 +12,7 @@ import RaceTools, { RaceLog, type ToolRound } from "./RaceTools";
 import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
 import Icon from "@/components/mahdi/Icon";
 import Sheet from "@/components/mahdi/Sheet";
+import { useBackClose } from "@/components/mahdi/useBackClose";
 import PageHead from "@/components/mahdi/social/PageHead";
 import { ErrorState, Skeleton } from "@/components/mahdi/social/States";
 
@@ -107,7 +108,9 @@ function Winner({ v }: { v: View }) {
   if (!w) return null;
   return (
     <div className="m-card space-y-2 p-6 text-center">
-      <div className="text-6xl">{w === "tie" ? "🤝" : "🏆"}</div>
+      <div className="flex justify-center m-gold" aria-hidden="true">
+        <Icon name={w === "tie" ? "users" : "trophy"} size={64} strokeWidth={1.5} />
+      </div>
       <h2 className="m-display text-3xl">{w === "tie" ? "تعادل!" : `الفايز: ${teamById(v, w)?.name ?? ""}`}</h2>
       <p className="m-muted">{v.race.teams.map((t) => `${t.name} ${v.scores[t.id] ?? 0}`).join(" · ")}</p>
     </div>
@@ -121,6 +124,7 @@ function PhotoGrid({ v, photos, act }: { v: View; photos: Photo[]; act?: (b: Rec
   const [open, setOpen] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
   const big = photos.find((p) => p.id === open);
+  useBackClose(Boolean(big), () => setOpen(null));
   return (
     <>
       <div className="grid grid-cols-3 gap-2">
@@ -140,13 +144,13 @@ function PhotoGrid({ v, photos, act }: { v: View; photos: Photo[]; act?: (b: Rec
         ))}
       </div>
       {big && (
-        <div className="fixed inset-0 z-50 flex flex-col gap-3 overflow-y-auto bg-black/90 p-4" role="dialog" aria-modal="true" aria-label="صورة تذكارية">
+        <div className="fixed inset-0 z-50 flex flex-col gap-3 overflow-y-auto bg-[var(--m-bg)] p-4" role="dialog" aria-modal="true" aria-label="صورة تذكارية">
           <button type="button" className="m-btn m-btn-ghost self-start" onClick={() => setOpen(null)}>
             إغلاق
           </button>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={photoUrl(v.race.id, big.id)} alt="" className="max-h-[70vh] w-full rounded-xl object-contain" />
-          {!act && big.caption && <p className="text-center font-bold text-white">{big.caption}</p>}
+          {!act && big.caption && <p className="text-center font-bold">{big.caption}</p>}
           {act && (
             <div className="m-card space-y-2 p-3">
               <input className="m-field" value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={200} placeholder="تعليق على الصورة" aria-label="تعليق على الصورة" />
@@ -213,7 +217,7 @@ function AddPhotos({ raceId, round, onDone }: { raceId: string; round?: string; 
         }}
       />
       <button type="button" className="m-btn m-btn-ghost w-full" disabled={left > 0} onClick={() => input.current?.click()}>
-        {left > 0 ? `يرفع… باقي ${left}` : "📷 أضف صور"}
+        {left > 0 ? `يرفع… باقي ${left}` : <><Icon name="camera" size={18} className="m-ico" />أضف صور</>}
       </button>
     </>
   );
@@ -225,7 +229,12 @@ function RoundResult({ v, r }: { v: View; r: Round }) {
   if (!r.done || (!w && !r.result)) return null;
   return (
     <div className="rounded-xl p-3" style={{ border: `2px solid ${w?.color ?? "var(--m-gold)"}` }}>
-      {w && <p className="font-black">🏆 فاز: {w.emoji} {w.name}</p>}
+      {w && (
+        <p className="font-black">
+          <Icon name="trophy" size={18} className="m-ico m-gold" />
+          فاز: {w.emoji} {w.name}
+        </p>
+      )}
       {r.result && <p className="whitespace-pre-line">{r.result}</p>}
     </div>
   );
@@ -247,7 +256,7 @@ function FinishRound({ v, r, act }: { v: View; r: Round; act: (b: Record<string,
       </div>
       <textarea className="m-field" rows={3} value={result} onChange={(e) => setResult(e.target.value)} maxLength={1000} placeholder="شنو سوينا؟ النتيجة وأحلى موقف" aria-label="النتيجة وشنو سوينا" />
       <button type="button" className="m-btn m-btn-primary w-full" onClick={() => act({ action: "roundResult", round: r.id, winner: winner || null, result })}>
-        {r.done ? "احفظ النتيجة" : "✅ خلصت: أعلنها للشباب"}
+        {r.done ? "احفظ النتيجة" : <><Icon name="check" size={18} className="m-ico" strokeWidth={2.4} />خلصت: أعلنها للشباب</>}
       </button>
     </div>
   );
@@ -281,7 +290,12 @@ function RoundCard({ v, r, current, children }: { v: View; r: Round; current: bo
               {r.pts && <>النقاط: {r.pts}</>}
             </p>
           )}
-          {r.water && <p className="font-bold">🛟 كبير يراقب، والصغار في الضحل.</p>}
+          {r.water && (
+            <p className="font-bold">
+              <Icon name="lifebuoy" size={18} className="m-ico" />
+              كبير يراقب، والصغار في الضحل.
+            </p>
+          )}
           <RoundResult v={v} r={r} />
           {!children && v.photos.some((p) => p.round_id === r.id) && <PhotoGrid v={v} photos={v.photos.filter((p) => p.round_id === r.id)} />}
           {children}
@@ -362,7 +376,10 @@ function Rosters({ v }: { v: View }) {
           {v.players.filter((p) => p.team === t.id).map((p) => (
             <div key={p.id} className="flex items-center gap-2 font-semibold">
               <Face raceId={v.race.id} p={p} size={40} /> <span className="min-w-0 flex-1">{p.name}</span>
-              {v.race.revealed && p.spy && <span className="m-chip m-chip-gold">🕵️ جاسوس</span>}
+              {v.race.revealed && p.spy && <span className="m-chip m-chip-gold">
+                  <Icon name="spy" size={14} className="m-ico" />
+                  جاسوس
+                </span>}
             </div>
           ))}
         </div>
@@ -392,7 +409,7 @@ function SelfieButton({ raceId, again, forUser, onDone }: { raceId: string; agai
     <>
       <input ref={input} type="file" accept="image/*" capture={forUser ? "environment" : "user"} hidden onChange={(e) => pick(e.target.files?.[0])} />
       <button type="button" className={`m-btn w-full ${again ? "m-btn-ghost" : "m-btn-primary"}`} disabled={busy} onClick={() => input.current?.click()}>
-        {busy ? "يرفع…" : forUser ? (again ? "غيّر الصورة" : "📸 صوّره") : again ? "غيّر السلفي" : "📸 صوّر سلفي"}
+        {busy ? "يرفع…" : again ? (forUser ? "غيّر الصورة" : "غيّر السلفي") : <><Icon name="camera" size={18} className="m-ico" />{forUser ? "صوّره" : "صوّر سلفي"}</>}
       </button>
     </>
   );
@@ -423,21 +440,32 @@ function PlayerSide({ v, reload }: { v: View; reload: () => void }) {
             <Hold kind="role_seen" label="امسك هنا عشان تشوف دورك السري">
               {me.spy ? (
                 <>
-                  <span className="text-xl">🕵️ أنت الجاسوس!</span>
+                  <span className="text-xl">
+                    <Icon name="spy" size={22} className="m-ico" />
+                    أنت الجاسوس!
+                  </span>
                   <span>تشتغل ضد فريقك:</span>
                   {me.missions.map((m) => (
                     <span key={m} className="font-medium">• {m}</span>
                   ))}
                 </>
               ) : (
-                <span className="text-xl">✅ أنت عضو عادي. دوّر على الجاسوس في فريقك</span>
+                <span className="text-xl">
+                  <Icon name="check" size={22} className="m-ico" strokeWidth={2.4} />
+                  أنت عضو عادي. دوّر على الجاسوس في فريقك
+                </span>
               )}
             </Hold>
           )}
           {me.sv > 0 && <SelfieButton raceId={v.race.id} again onDone={reload} />}
         </div>
       )}
-      {v.race.banned && <p className="m-card p-3 text-center font-bold">🚫 الكلمة الممنوعة: «{v.race.banned}»</p>}
+      {v.race.banned && (
+        <p className="m-card p-3 text-center font-bold">
+          <Icon name="ban" size={18} className="m-ico" />
+          الكلمة الممنوعة: «{v.race.banned}»
+        </p>
+      )}
       {current && (
         <section className="space-y-2">
           <h2 className="text-lg font-black">الجولة الحين</h2>
@@ -458,7 +486,10 @@ function PlayerSide({ v, reload }: { v: View; reload: () => void }) {
       )}
       {v.photos.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-lg font-black">📸 صور تذكارية</h2>
+          <h2 className="text-lg font-black">
+            <Icon name="camera" size={20} className="m-ico" />
+            صور تذكارية
+          </h2>
           <PhotoGrid v={v} photos={v.photos} />
         </section>
       )}
@@ -621,7 +652,8 @@ function JoinMyself({ v, reload }: { v: View; reload: () => void }) {
           .catch((e: Error) => toast(e.message))
       }
     >
-      🎮 ألعب معهم
+      <Icon name="gamepad" size={18} className="m-ico" />
+      ألعب معهم
     </button>
   );
 }
@@ -739,7 +771,8 @@ function RecordTab({ v }: { v: View }) {
   return (
     <div className="space-y-3">
       <a className="m-btn m-btn-primary w-full" href={`/api/mahdi/race/${v.race.id}/export`} download>
-        ⬇️ استخرج سجل اليوم كامل
+        <Icon name="download" size={18} className="m-ico" />
+        استخرج سجل اليوم كامل
       </a>
       <p className="m-muted text-sm">كل حركة في الصفحة تنسجل بوقتها الدقيق، عشان نطابقها مع التصوير في المونتاج. استخرج الملف قبل ما تمسح المسابقة.</p>
       <div className="m-card space-y-1 p-3">
@@ -764,7 +797,7 @@ function ScoreTab({ v, act }: { v: View; act: (b: Record<string, unknown>) => vo
     <div className="space-y-3">
       <PointsPad v={v} act={act} reason="من القائد" />
       <div className="m-card space-y-2 p-4">
-        <h3 className="font-black">🚫 الكلمة الممنوعة</h3>
+        <h3 className="font-black"><Icon name="ban" size={18} className="m-ico" />الكلمة الممنوعة</h3>
         <p className="font-bold">{v.race.banned || "ما فيه"}</p>
         <div className="flex flex-wrap gap-2">
           {RACE_BANNED.map((w) => (
@@ -778,7 +811,7 @@ function ScoreTab({ v, act }: { v: View; act: (b: Record<string, unknown>) => vo
         </div>
       </div>
       <div className="m-card space-y-2 p-4">
-        <h3 className="font-black">⚡ مهمة مفاجئة</h3>
+        <h3 className="font-black"><Icon name="bolt" size={18} className="m-ico" />مهمة مفاجئة</h3>
         {surprise && <p className="text-lg font-bold">{surprise}</p>}
         <button type="button" className="m-btn m-btn-ghost w-full" onClick={() => {
             const s = RACE_SURPRISES[Math.floor(Math.random() * RACE_SURPRISES.length)];
@@ -800,7 +833,7 @@ function SpiesTab({ v, act }: { v: View; act: (b: Record<string, unknown>) => vo
   const spies = v.players.filter((p) => p.spy);
   return (
     <div className="m-card space-y-3 p-4">
-      <h3 className="font-black">🕵️ الجواسيس</h3>
+      <h3 className="font-black"><Icon name="spy" size={18} className="m-ico" />الجواسيس</h3>
       <p className="m-muted text-sm">جاسوس واحد لكل فريق، يشوف دوره ومهامه على جواله بس. وزّع الفريقين قبل السحب.</p>
       <Twice label={v.race.spiesOn ? "اسحب جواسيس من جديد" : "اسحب الجواسيس"} again="ينسحب جواسيس جدد ويتغير اللي قبلهم." cls="m-btn-primary" onGo={() => act({ action: "spies" })} />
       {v.race.spiesOn && (
@@ -844,7 +877,7 @@ function FinishTab({ v, act, onDelete }: { v: View; act: (b: Record<string, unkn
   return (
     <div className="space-y-3">
       <div className="m-card space-y-3 p-4">
-        <h3 className="font-black">🏷️ الحسم النهائي</h3>
+        <h3 className="font-black"><Icon name="tag" size={18} className="m-ico" />الحسم النهائي</h3>
         <p className="m-muted text-sm">لعبة «الحسم النهائي» في تبويب الألعاب. بعدها اكشف الجواسيس، وأعلن الفايز.</p>
         {v.race.winner ? (
           <button type="button" className="m-btn m-btn-ghost w-full" onClick={() => act({ action: "unfinish" })}>
@@ -862,7 +895,7 @@ function FinishTab({ v, act, onDelete }: { v: View; act: (b: Record<string, unkn
             </button>
           </div>
         ) : (
-          <Twice label={`🏆 أعلن الفايز: ${lead.name}`} again="يطلع الإعلان عند الكل على طول." cls="m-btn-primary" onGo={() => act({ action: "finish" })} />
+          <Twice label={`أعلن الفايز: ${lead.name}`} again="يطلع الإعلان عند الكل على طول." cls="m-btn-primary" onGo={() => act({ action: "finish" })} />
         )}
       </div>
       <div className="m-card space-y-2 p-4">

@@ -48,7 +48,8 @@ function SystemStatus({ status }: { status: Status }) {
         {rows.map(([label, ok, note]) => (
           <li key={label} className="flex items-center justify-between gap-3">
             <span>{label}</span>
-            <span className="m-num font-semibold" style={{ color: ok === null ? "var(--m-muted)" : ok ? "var(--m-success)" : "var(--m-warning)" }}>{ok === null ? "؟" : ok ? "✓" : "✗"} {note}</span>
+            <span className="m-num font-semibold" style={{ color: ok === null ? "var(--m-muted)" : ok ? "var(--m-success)" : "var(--m-warning)" }}>{ok === null ? "؟" : <Icon name={ok ? "check" : "close"} size={15} className="m-ico" strokeWidth={2.6} />}
+              {note}</span>
           </li>
         ))}
       </ul>

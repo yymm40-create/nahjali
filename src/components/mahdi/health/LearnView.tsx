@@ -12,8 +12,9 @@ import BodyMap from "./BodyMap";
 import ExerciseFigure, { ExerciseThumb } from "./ExerciseFigure";
 import { useHealth } from "./HealthProvider";
 import { useView } from "./useView";
+import Icon from "../Icon";
 
-const where = (e: (typeof EXERCISES)[number]) => [e.gym && !e.body && "🏟️ جيم", e.home && !e.body && "🏠 جيم بيتي", e.body && "🤸 بدون أدوات"].filter(Boolean).join(" · ");
+const where = (e: (typeof EXERCISES)[number]) => [e.gym && !e.body && "جيم", e.home && !e.body && "جيم بيتي", e.body && "بدون أدوات"].filter(Boolean).join(" · ");
 
 export function LearnView() {
   const { plan } = useHealth();
@@ -30,7 +31,10 @@ export function LearnView() {
   return (
     <div className="space-y-4">
       <section className="gym-hero space-y-2">
-        <span className="gym-eyebrow">🧠 تعلّم</span>
+        <span className="gym-eyebrow">
+          <Icon name="cap" size={15} className="m-ico" />
+          تعلّم
+        </span>
         <h1 className="gym-title">
           اعرف <em>عضلاتك</em>
         </h1>
@@ -46,7 +50,10 @@ export function LearnView() {
             <small className="gym-small" dir="ltr">{m.aka}</small>
             <p className="text-sm leading-7"><b>وينها؟</b> {m.where}</p>
             <p className="text-sm leading-7"><b>وش تسوي لك؟</b> {m.does}</p>
-            <p className="gym-small">💡 {m.tip}</p>
+            <p className="gym-small">
+              <Icon name="bulb" size={14} className="m-ico" />
+              {m.tip}
+            </p>
             {trains.length > 0 && (
               <div className="gym-chips">
                 {trains.map((e) => (
@@ -80,7 +87,7 @@ export function LearnView() {
         <h2 className="gym-title text-2xl">
           كل <em>التمارين</em>
         </h2>
-        <input className="gym-input" placeholder="🔎 ابحث عن تمرين أو عضلة…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="gym-input" placeholder="ابحث عن تمرين أو عضلة…" value={q} onChange={(e) => setQ(e.target.value)} />
         <div className="gym-list-ex">
           {list.map((e) => (
             <Link key={e.id} href={`/mahdi/health/learn/${e.id}`}>
@@ -88,14 +95,17 @@ export function LearnView() {
               <b>{e.name}</b>
               <small>
                 {MUSCLE_NAMES[e.muscle]} · {where(e)}
-                {e.preg ? " · 🤰 آمن للحامل" : ""}
+                {e.preg ? " · آمن للحامل" : ""}
               </small>
               {inPlan.has(e.id) && <span className="tag">في خطتك</span>}
             </Link>
           ))}
         </div>
       </section>
-      <Link href="/mahdi/health/research" className="gym-btn ghost w-full">📚 البحث والمصادر العالمية</Link>
+      <Link href="/mahdi/health/research" className="gym-btn ghost w-full">
+        <Icon name="book" size={16} className="m-ico" />
+        البحث والمصادر العالمية
+      </Link>
     </div>
   );
 }
@@ -122,12 +132,15 @@ export function ExerciseView({ id }: { id: string }) {
         <h1 className="gym-title">{ex.name}</h1>
         <p className="gym-small">
           {where(ex)}
-          {ex.preg ? " · 🤰 مناسب للحامل" : " · ⚠️ مو مناسب في الحمل"}
+          {ex.preg ? " · مناسب للحامل" : <>{" · "}<Icon name="alert" size={14} className="m-ico" />مو مناسب في الحمل</>}
         </p>
       </section>
 
       <section className="gym-card space-y-2">
-        <h2 className="text-lg font-black">🎬 شوف الحركة</h2>
+        <h2 className="text-lg font-black">
+          <Icon name="video" size={20} className="m-ico" />
+          شوف الحركة
+        </h2>
         <ExerciseFigure id={ex.id} name={ex.name} />
       </section>
 
@@ -147,7 +160,10 @@ export function ExerciseView({ id }: { id: string }) {
       </div>
 
       <section className="gym-card space-y-2">
-        <h2 className="text-lg font-black">🎓 الطريقة الصحيحة</h2>
+        <h2 className="text-lg font-black">
+          <Icon name="cap" size={20} className="m-ico" />
+          الطريقة الصحيحة
+        </h2>
         <ol className="gym-steps">
           {g.steps.map((s, i) => (
             <li key={s}>
@@ -156,12 +172,21 @@ export function ExerciseView({ id }: { id: string }) {
             </li>
           ))}
         </ol>
-        <p className="gym-small">🫁 التنفس: {g.breath}</p>
-        <p className="gym-small">🎯 تذكّر: {ex.cue}</p>
+        <p className="gym-small">
+          <Icon name="wind" size={14} className="m-ico" />
+          التنفس: {g.breath}
+        </p>
+        <p className="gym-small">
+          <Icon name="target" size={14} className="m-ico" />
+          تذكّر: {ex.cue}
+        </p>
       </section>
 
       <section className="gym-card warn space-y-1">
-        <h2 className="font-black">🚫 أخطاء شائعة</h2>
+        <h2 className="font-black">
+          <Icon name="ban" size={18} className="m-ico" />
+          أخطاء شائعة
+        </h2>
         <ul className="gym-list text-sm">
           {g.mistakes.map((s) => (
             <li key={s}>{s}</li>
@@ -171,10 +196,14 @@ export function ExerciseView({ id }: { id: string }) {
 
       {(pr || h.length > 0) && (
         <section className="gym-card space-y-1">
-          <h2 className="font-black">📈 أنت في هالتمرين</h2>
+          <h2 className="font-black">
+          <Icon name="trend" size={18} className="m-ico" />
+          أنت في هالتمرين
+        </h2>
           {pr && (
             <p className="text-sm">
-              🏆 أفضل مجموعة: <b dir="ltr">{pr.kg ? `${pr.kg} كغ × ${pr.reps}` : `${pr.reps} تكرار`}</b>
+              <Icon name="trophy" size={15} className="m-ico" />
+              أفضل مجموعة: <b dir="ltr">{pr.kg ? `${pr.kg} كغ × ${pr.reps}` : `${pr.reps} تكرار`}</b>
             </p>
           )}
           <p className="gym-small">سجّلته {h.length} مرة. <Link href={`/mahdi/health/progress?ex=${id}`} className="underline">شوف الرسم البياني</Link></p>

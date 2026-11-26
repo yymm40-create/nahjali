@@ -104,7 +104,7 @@ export function CoverPicker({ title, onChange, current = null }: { title: string
       <div className="flex items-start gap-4">
         <span className="relative shrink-0">
           <BookCover book={{ title: title || R.bookTitle, coverUrl: shown }} width={84} />
-          {working && <span className="absolute inset-0 grid place-items-center rounded-lg bg-black/45 text-xs font-semibold text-white">…</span>}
+          {working && <span className="absolute inset-0 grid place-items-center rounded-lg bg-white/75 text-xs font-semibold text-[var(--m-ink)]">…</span>}
         </span>
         <div className="min-w-0 space-y-2">
           <p className="m-label">{R.cover}</p>

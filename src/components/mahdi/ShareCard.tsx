@@ -6,19 +6,19 @@ import { t } from "@/lib/mahdi/i18n";
 /** The card as HTML (shown in the community and as the preview). */
 export function ShareCardView({ payload, name, closing, image }: { payload: SharePayload; name?: string; closing?: string; image?: string | null }) {
   return (
-    <div className="relative overflow-hidden rounded-3xl p-6 text-center" style={{ background: "#0d0c0b", color: "#f7f0e3", minHeight: 260 }}>
+    <div className="relative overflow-hidden rounded-3xl p-6 text-center" style={{ background: "var(--m-surface)", color: "var(--m-ink)", border: "1px solid var(--m-line)", minHeight: 260 }}>
       {image && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={image} alt="" className="absolute inset-0 size-full object-cover opacity-60" />
+        <img src={image} alt="" className="absolute inset-0 size-full object-cover opacity-40" />
       )}
-      <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(13,12,11,0.2), rgba(13,12,11,0.9) 70%)" }} />
+      <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, color-mix(in srgb, var(--m-surface) 20%, transparent), color-mix(in srgb, var(--m-surface) 92%, transparent) 70%)" }} />
       <div className="relative flex h-full flex-col items-center justify-end gap-1 pt-16">
-        <p className="m-display text-2xl" style={{ color: "#efcd7e" }}>{t.brand}</p>
+        <p className="m-display text-2xl" style={{ color: "var(--m-gold-text)" }}>{t.brand}</p>
         {name && <p className="text-sm">{t.mawla(name)}</p>}
         <p className="mt-3 text-sm opacity-90">{payload.title}{payload.label ? ` · ${payload.label}` : ""}</p>
-        <p className="m-num text-5xl font-semibold" style={{ color: "#f4da95" }}>{payload.value}</p>
+        <p className="m-num text-5xl font-semibold" style={{ color: "var(--m-ink)" }}>{payload.value}</p>
         {payload.sub && <p className="text-sm opacity-90">{payload.sub}</p>}
-        {closing && <p className="mt-2 text-sm" style={{ color: "#efcd7e" }}>{closing}</p>}
+        {closing && <p className="mt-2 text-sm" style={{ color: "var(--m-gold-text)" }}>{closing}</p>}
       </div>
     </div>
   );
@@ -26,14 +26,18 @@ export function ShareCardView({ payload, name, closing, image }: { payload: Shar
 
 // ───────────────────────────── the pictures (canvas) ─────────────────────────────
 // Drawn in the browser so the Arabic text is shaped by it. Both pictures share one look: the chosen shrine behind,
-// a thin gold frame, the person's achievement on a dark panel, and an invitation to «لأجل المهدي» with the site's logo
+// a thin sun-yellow frame, the person's achievement on a white panel (light only, like the app), and an invitation to «لأجل المهدي» with the site's logo
 // and the site's address.
 
-const GOLD = "#efcd7e";
-const GOLD_BRIGHT = "#f4da95";
-const INK = "#f7f0e3";
-const SOFT = "#e8dfcf";
-const NIGHT = "#0d0c0b";
+// the colours of the default design «شمس وبرتقال» (mahdi.css): the pictures are light, like the app
+const GOLD = "#b0420a"; // accent text (--m-gold-text), readable on white
+const GOLD_BRIGHT = "#14213d"; // the big value, in the navy ink
+const SUN = "#ffc61a"; // the yellow of achievement: frames and the ring around the picture
+const ORANGE = "#ff6a13";
+const INK = "#14213d";
+const SOFT = "#5a6480";
+const BASE = "#f7f8fc";
+const veil = (a: number) => `rgba(247,248,252,${a})`;
 const LOGO = "/mahdi/brand/logo-v3.png";
 
 export interface PictureLook {
@@ -83,14 +87,14 @@ function rounded(g: CanvasRenderingContext2D, x: number, y: number, w: number, h
   g.closePath();
 }
 
-/** The shrine behind, darkened where the text sits, and the thin double gold frame. */
+/** The shrine behind, veiled in white where the text sits, and the thin double yellow frame. */
 async function backdrop(g: CanvasRenderingContext2D, W: number, H: number, image: string | null | undefined, stops: [number, string][]) {
-  g.fillStyle = NIGHT;
+  g.fillStyle = BASE;
   g.fillRect(0, 0, W, H);
   const bg = image ? await loadImage(image) : null;
   if (bg) {
     const s = Math.max(W / bg.naturalWidth, H / bg.naturalHeight);
-    g.globalAlpha = 0.7;
+    g.globalAlpha = 0.55;
     g.drawImage(bg, (W - bg.naturalWidth * s) * 0.44, (H - bg.naturalHeight * s) / 2, bg.naturalWidth * s, bg.naturalHeight * s);
     g.globalAlpha = 1;
   }
@@ -98,11 +102,11 @@ async function backdrop(g: CanvasRenderingContext2D, W: number, H: number, image
   for (const [at, color] of stops) grad.addColorStop(at, color);
   g.fillStyle = grad;
   g.fillRect(0, 0, W, H);
-  g.strokeStyle = "rgba(239,205,126,0.55)";
+  g.strokeStyle = SUN;
   g.lineWidth = 3;
   rounded(g, 36, 36, W - 72, H - 72, 44);
   g.stroke();
-  g.strokeStyle = "rgba(239,205,126,0.22)";
+  g.strokeStyle = "rgba(255,198,26,0.4)";
   g.lineWidth = 1.5;
   rounded(g, 50, 50, W - 100, H - 100, 34);
   g.stroke();
@@ -140,7 +144,7 @@ function wrap(g: CanvasRenderingContext2D, text: string, max: number, size: numb
   return lines;
 }
 
-/** The achievement on a dark panel: title, the big value, the line under it, and the closing words. */
+/** The achievement on a white panel: title, the big value, the line under it, and the closing words. */
 function achievement(g: CanvasRenderingContext2D, payload: SharePayload, closing: string | undefined, f: PictureLook["fonts"], W: number, top: number, scale = 1) {
   const x = 90;
   const w = W - 180;
@@ -154,10 +158,10 @@ function achievement(g: CanvasRenderingContext2D, payload: SharePayload, closing
   if (closing) rows.push({ text: closing, size: Math.round(48 * scale), color: GOLD, font: f.display, weight: 700, gap: Math.round(80 * scale) });
   const pad = Math.round(70 * scale);
   const height = pad + 40 * scale + rows.reduce((t, r) => t + r.gap, 0) + pad * 0.7;
-  g.fillStyle = "rgba(13,12,11,0.58)";
+  g.fillStyle = "rgba(255,255,255,0.92)";
   rounded(g, x, top, w, height, 36);
   g.fill();
-  g.strokeStyle = "rgba(239,205,126,0.45)";
+  g.strokeStyle = "rgba(255,198,26,0.7)";
   g.lineWidth = 2;
   g.stroke();
   let y = top + pad + 20 * scale;
@@ -172,10 +176,10 @@ function achievement(g: CanvasRenderingContext2D, payload: SharePayload, closing
 async function invitation(g: CanvasRenderingContext2D, look: PictureLook, W: number, top: number, height: number) {
   const x = 90;
   const w = W - 180;
-  g.fillStyle = "rgba(13,12,11,0.78)";
+  g.fillStyle = "rgba(255,255,255,0.95)";
   rounded(g, x, top, w, height, 32);
   g.fill();
-  g.strokeStyle = "rgba(239,205,126,0.5)";
+  g.strokeStyle = "rgba(255,198,26,0.7)";
   g.lineWidth = 2;
   g.stroke();
   const logo = await loadImage(LOGO);
@@ -199,7 +203,7 @@ async function avatar(g: CanvasRenderingContext2D, name: string, url: string | n
   g.save();
   g.beginPath();
   g.arc(cx, cy, R + 10, 0, Math.PI * 2);
-  g.fillStyle = GOLD;
+  g.fillStyle = SUN;
   g.fill();
   g.beginPath();
   g.arc(cx, cy, R, 0, Math.PI * 2);
@@ -209,10 +213,10 @@ async function avatar(g: CanvasRenderingContext2D, name: string, url: string | n
     const s = Math.max((2 * R) / img.naturalWidth, (2 * R) / img.naturalHeight);
     g.drawImage(img, cx - (img.naturalWidth * s) / 2, cy - (img.naturalHeight * s) / 2, img.naturalWidth * s, img.naturalHeight * s);
   } else {
-    g.fillStyle = "#d7ad55";
+    g.fillStyle = "#ffe9a6";
     g.fillRect(cx - R, cy - R, 2 * R, 2 * R);
     g.font = `700 ${Math.round(R)}px ${sans}`;
-    g.fillStyle = "#2b2110";
+    g.fillStyle = INK;
     g.textBaseline = "middle";
     g.textAlign = "center";
     g.fillText([...name.trim()][0] ?? "؟", cx, cy + 6);
@@ -229,7 +233,7 @@ export async function renderCardPng(payload: SharePayload, opts: { name?: string
   const H = 1350;
   await ensureFonts(opts.fonts);
   const { c, g } = canvas(W, H);
-  await backdrop(g, W, H, opts.image, [[0, "rgba(13,12,11,0.35)"], [0.45, "rgba(13,12,11,0.55)"], [1, "rgba(13,12,11,0.92)"]]);
+  await backdrop(g, W, H, opts.image, [[0, veil(0.35)], [0.45, veil(0.6)], [1, veil(0.94)]]);
   write(g, t.brand, W / 2, 210, 92, GOLD, opts.fonts.display, 700);
   if (opts.name) write(g, t.mawla(opts.name), W / 2, 285, 42, INK, opts.fonts.sans, 600);
   achievement(g, payload, opts.closing, opts.fonts, W, 360, 0.9);
@@ -247,7 +251,7 @@ export async function renderStoryPng(payload: SharePayload, opts: { name: string
   const H = 1920;
   await ensureFonts(opts.fonts);
   const { c, g } = canvas(W, H);
-  await backdrop(g, W, H, opts.image, [[0, "rgba(13,12,11,0.6)"], [0.3, "rgba(13,12,11,0.3)"], [0.62, "rgba(13,12,11,0.82)"], [1, "rgba(13,12,11,0.96)"]]);
+  await backdrop(g, W, H, opts.image, [[0, veil(0.6)], [0.3, veil(0.35)], [0.62, veil(0.85)], [1, veil(0.96)]]);
 
   // Who
   await avatar(g, opts.name, opts.avatarUrl, W / 2, 400, 125, opts.fonts.sans);
@@ -266,7 +270,7 @@ export async function renderStoryPng(payload: SharePayload, opts: { name: string
   if (opts.username) {
     const y = Math.min(Math.max(bottom + 120, 1180), 1290);
     write(g, t.social.instagram.tapLink, W / 2, y, 50, INK, opts.fonts.sans, 700);
-    g.strokeStyle = GOLD;
+    g.strokeStyle = ORANGE;
     g.lineWidth = 6;
     g.lineCap = "round";
     g.lineJoin = "round";

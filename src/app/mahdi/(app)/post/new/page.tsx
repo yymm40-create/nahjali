@@ -112,10 +112,10 @@ export default function NewPostPage() {
             {file ? (
               <div className="space-y-2">
                 {kind === "video" ? (
-                  <video src={file.url} controls playsInline className="max-h-[50vh] w-full rounded-2xl bg-black" />
+                  <video src={file.url} controls playsInline className="max-h-[50vh] w-full rounded-2xl bg-[var(--m-surface-2)]" />
                 ) : (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={file.url} alt="" className="max-h-[50vh] w-full rounded-2xl bg-black object-contain" />
+                  <img src={file.url} alt="" className="max-h-[50vh] w-full rounded-2xl bg-[var(--m-surface-2)] object-contain" />
                 )}
                 <button type="button" className="m-btn m-btn-ghost m-btn-sm" disabled={busy !== false} onClick={() => input.current?.click()}>
                   <Icon name="edit" size={16} /> {P.change}

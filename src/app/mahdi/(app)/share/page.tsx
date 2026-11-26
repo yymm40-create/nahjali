@@ -249,7 +249,7 @@ export default function SharePage() {
             ))}
           </div>
           {payload ? (
-            <div className={`mx-auto overflow-hidden rounded-3xl bg-[#0d0c0b] shadow-xl ${format === "story" ? "aspect-[9/16] max-w-[min(100%,340px)]" : "aspect-[4/5] max-w-[min(100%,420px)]"}`}>
+            <div className={`mx-auto overflow-hidden rounded-3xl bg-[var(--m-surface-2)] shadow-xl ${format === "story" ? "aspect-[9/16] max-w-[min(100%,340px)]" : "aspect-[4/5] max-w-[min(100%,420px)]"}`}>
               {preview ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={preview} alt={I.preview} className="size-full object-contain" />

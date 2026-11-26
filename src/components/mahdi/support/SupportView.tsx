@@ -55,8 +55,8 @@ export default function SupportView() {
           <Icon name="chevronLeft" size={18} />
         </button>
         <button type="button" className="m-option flex w-full items-center gap-3 p-4 text-start" onClick={() => setRating(true)}>
-          <span className="m-soft grid size-11 shrink-0 place-items-center text-xl" aria-hidden="true">
-            ⭐
+          <span className="m-soft grid size-11 shrink-0 place-items-center" style={{ color: "var(--m-gold-text)" }} aria-hidden="true">
+            <Icon name="star" size={22} />
           </span>
           <span className="min-w-0 flex-1">
             <span className="block font-semibold">{S.rate}</span>

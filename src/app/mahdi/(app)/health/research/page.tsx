@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { RESEARCH, SOURCES, sourceById } from "@config/mahdi/health-research";
+import Icon from "@/components/mahdi/Icon";
 
 export const metadata: Metadata = { title: "الصحة العلوية: البحث والمصادر" };
 
@@ -9,7 +10,10 @@ export default function HealthResearchPage() {
   return (
     <div className="space-y-4">
       <section className="gym-hero space-y-2">
-        <span className="gym-eyebrow">📚 البحث</span>
+        <span className="gym-eyebrow">
+          <Icon name="book" size={15} className="m-ico" />
+          البحث
+        </span>
         <h1 className="gym-title">
           التوصيات <em>العالمية</em> في التمرين والتغذية
         </h1>
@@ -56,7 +60,10 @@ export default function HealthResearchPage() {
       ))}
 
       <section className="gym-card space-y-2">
-        <h2 className="text-lg font-black">🔗 المصادر</h2>
+        <h2 className="text-lg font-black">
+          <Icon name="link" size={18} className="m-ico" />
+          المصادر
+        </h2>
         <ol className="space-y-2 text-sm">
           {SOURCES.map((s, i) => (
             <li key={s.id} id={`src-${s.id}`} className="scroll-mt-20">

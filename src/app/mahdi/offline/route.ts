@@ -4,7 +4,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 
 /**
  * The page shown when the app cannot be reached. It is one self-contained document (no scripts, no other files), because it
- * has to work with no connection at all; the service worker keeps a copy of it. Colours use the same --m-* token names as mahdi.css.
+ * has to work with no connection at all; the service worker keeps a copy of it. Colours use the same --m-* token names as mahdi.css: the default design «شمس وبرتقال», light only.
  */
 export function GET() {
   const html = `<!doctype html>
@@ -15,16 +15,15 @@ export function GET() {
 <meta name="robots" content="noindex">
 <title>${esc(t.pwa.offlineTitle)} · ${esc(t.brand)}</title>
 <style>
-:root{--m-bg:#0d0c0b;--m-surface:#1a1714;--m-ink:#f7f0e3;--m-muted:#cbc1b0;--m-line:rgba(255,234,196,.18);--m-gold:#e2bc66;--m-gold-2:#f4da95;--m-gold-ink:#1c1406;color-scheme:dark}
-@media (prefers-color-scheme:light){:root{--m-bg:#faf6ee;--m-surface:#fff;--m-ink:#1f1b16;--m-muted:#675e52;--m-line:#e8ddcb;--m-gold:#bf9746;--m-gold-2:#ddbe72;--m-gold-ink:#1f1505;color-scheme:light}}
+:root{--m-bg:#f7f8fc;--m-surface:#fff;--m-ink:#14213d;--m-muted:#5a6480;--m-line:#e1e5ef;--m-gold:#ffc61a;--m-accent:#ff6a13;--m-accent-ink:#14213d;color-scheme:light}
 *{box-sizing:border-box}
 body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:24px;background:var(--m-bg);color:var(--m-ink);font-family:system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;line-height:1.7}
 .m-card{max-width:420px;width:100%;padding:28px 22px;text-align:center;background:var(--m-surface);border:1px solid var(--m-line);border-radius:20px}
-.m-display{margin:0 0 6px;font-family:"Amiri","Noto Naskh Arabic",serif;font-size:2rem;color:var(--m-gold)}
+.m-display{margin:0 0 6px;font-weight:700;font-size:1.8rem;color:var(--m-ink)}
 h1{margin:0 0 10px;font-size:1.3rem}
 p{margin:0 0 20px;color:var(--m-muted)}
-.m-btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 22px;border:0;border-radius:14px;font:inherit;font-weight:600;color:var(--m-gold-ink);background:linear-gradient(180deg,var(--m-gold-2),var(--m-gold));text-decoration:none;cursor:pointer}
-.m-btn:focus-visible{outline:3px solid var(--m-gold);outline-offset:3px}
+.m-btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 22px;border:0;border-radius:14px;font:inherit;font-weight:600;color:var(--m-accent-ink);background:var(--m-accent);text-decoration:none;cursor:pointer}
+.m-btn:focus-visible{outline:3px solid var(--m-accent);outline-offset:3px}
 </style>
 </head>
 <body>

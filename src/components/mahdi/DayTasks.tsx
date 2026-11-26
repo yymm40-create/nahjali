@@ -215,12 +215,13 @@ export default function DayTasks() {
                     <span className="m-num block text-xs m-muted">
                       {task.at && (
                         <>
-                          🕒 {task.at}
+                          <Icon name="clock" size={13} className="m-ico" />
+                          {task.at}
                           {late && <span className="m-gold"> · {t.tasks.late}</span>}
                         </>
                       )}
                       {task.at && habit && " · "}
-                      {habit && <>↺ {habit.name}</>}
+                      {habit && <><Icon name="repeat" size={13} className="m-ico" />{habit.name}</>}
                     </span>
                   )}
                 </span>
@@ -264,7 +265,8 @@ export default function DayTasks() {
                 if (!day || day <= today) setDay(addDays(today, 1));
               }}
             >
-              📅 {t.tasks.otherDay}
+              <Icon name="calendar" size={14} className="m-ico" />
+              {t.tasks.otherDay}
             </button>
             {later && (
               <input type="date" className="m-field m-num !w-auto !py-1.5" min={addDays(today, 1)} max={addDays(today, 365)} value={day} onChange={(e) => setDay(e.target.value)} aria-label={t.tasks.pickDay} />
@@ -285,15 +287,16 @@ export default function DayTasks() {
                 if (!at) setAt(nowHHMM());
               }}
             >
-              🕒 {t.tasks.atTime}
+              <Icon name="clock" size={14} className="m-ico" />
+              {t.tasks.atTime}
             </button>
             {timed && <input type="time" className="m-field m-num !w-auto !py-1.5" value={at} onChange={(e) => setAt(e.target.value)} aria-label={t.tasks.atTime} />}
             {habits.length > 0 && (
               <select className="m-field !w-auto !py-1.5 text-sm" value={habitId} onChange={(e) => setHabitId(e.target.value)} aria-label={t.tasks.linkHabit}>
-                <option value="">↺ {t.tasks.noHabit}</option>
+                <option value="">{t.tasks.noHabit}</option>
                 {habits.map((h) => (
                   <option key={h.id} value={h.id}>
-                    ↺ {h.name}
+                    {h.name}
                   </option>
                 ))}
               </select>
@@ -320,7 +323,7 @@ export default function DayTasks() {
 
       {upcoming.length > 0 && (
         <div className="space-y-2 pt-1">
-          <h3 className="text-sm font-semibold">📅 {t.tasks.upcoming}</h3>
+          <h3 className="text-sm font-semibold"><Icon name="calendar" size={15} className="m-ico" />{t.tasks.upcoming}</h3>
           <p className="m-hint">{t.tasks.upcomingHint}</p>
           {upcomingDays.map((d) => (
             <div key={d}>
@@ -334,7 +337,7 @@ export default function DayTasks() {
                     <li key={task.id} className="flex items-center gap-3 py-1.5">
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm">{task.title}</span>
-                        {task.at && <span className="m-num block text-xs m-muted">🕒 {task.at}</span>}
+                        {task.at && <span className="m-num block text-xs m-muted"><Icon name="clock" size={13} className="m-ico" />{task.at}</span>}
                       </span>
                       <button type="button" className="m-icon-btn m-btn-ghost" aria-label={`${t.tasks.editTask}: ${task.title}`} onClick={() => setEditing(task)}>
                         <Icon name="edit" size={16} />
@@ -398,7 +401,8 @@ function TaskEdit({ task, today, onSave, onCancel, onFail }: { task: DayTask; to
             {t.tasks.today}
           </button>
           <button type="button" className={`m-option min-h-9 px-3 text-sm ${later ? "font-semibold" : ""}`} aria-pressed={later} onClick={() => setLater(true)}>
-            📅 {t.tasks.otherDay}
+            <Icon name="calendar" size={14} className="m-ico" />
+              {t.tasks.otherDay}
           </button>
           {later && <input type="date" className="m-field m-num !w-auto !py-1.5" min={addDays(today, 1)} max={lastTaskDay(today)} value={day} onChange={(e) => setDay(e.target.value)} aria-label={t.tasks.pickDay} />}
         </div>
@@ -418,7 +422,8 @@ function TaskEdit({ task, today, onSave, onCancel, onFail }: { task: DayTask; to
               if (!at) setAt(nowHHMM());
             }}
           >
-            🕒 {t.tasks.atTime}
+            <Icon name="clock" size={14} className="m-ico" />
+              {t.tasks.atTime}
           </button>
           {timed && <input type="time" className="m-field m-num !w-auto !py-1.5" dir="ltr" value={at} onChange={(e) => setAt(e.target.value)} aria-label={t.tasks.atTime} />}
         </div>

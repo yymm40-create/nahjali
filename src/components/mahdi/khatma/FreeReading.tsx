@@ -9,6 +9,7 @@ import { portionCount, portionSummary } from "@/lib/mahdi/khatma/portions";
 import { SURA_NAMES } from "@/lib/mahdi/khatma/quran-map";
 import { firstPage, pageOfVerse } from "@/lib/mahdi/khatma/reader";
 import { useReaderState } from "./ReaderClock";
+import Icon from "../Icon";
 
 export const FREE_KEY = "mahdi-free-page";
 
@@ -46,7 +47,10 @@ export default function FreeReading({ compact = false }: { compact?: boolean }) 
   return (
     <section className="m-card space-y-3 p-4" aria-labelledby="free-read">
       <div>
-        <h2 id="free-read" className="font-semibold">📖 قراءة حرة</h2>
+        <h2 id="free-read" className="font-semibold">
+          <Icon name="book" size={18} className="m-ico m-gold" />
+          قراءة حرة
+        </h2>
         <p className="text-sm m-muted">اقرأ من أي مكان بدون ختمة: تختار وين أنت، والحبة اللي فوق القارئ تحسب وقتك وتنضاف لعادة القراءة إذا ربطتها.</p>
       </div>
       {last && (

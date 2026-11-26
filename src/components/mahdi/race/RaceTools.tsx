@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { RACE_LETTERS, RACE_WORDS } from "@config/mahdi-race";
 import { finalPoints, shuffled, type RaceTeam, type RaceTeamInfo } from "@/lib/mahdi/race";
+import Icon from "@/components/mahdi/Icon";
 
 export interface ToolRound {
   id: string;
@@ -132,7 +133,9 @@ function Bomb({ teams, add }: { teams: RaceTeamInfo[]; add: Add }) {
   if (blown)
     return (
       <div className="space-y-3 text-center">
-        <div className="text-7xl">💥</div>
+        <div className="flex justify-center" style={{ color: "var(--m-accent)" }} aria-hidden="true">
+          <Icon name="burst" size={80} strokeWidth={1.4} />
+        </div>
         <p className="text-xl font-black">انفجرت! عند منو؟</p>
         <div className="flex flex-wrap gap-2">
           {teams.map((t) => (
@@ -156,7 +159,9 @@ function Bomb({ teams, add }: { teams: RaceTeamInfo[]; add: Add }) {
     );
   return (
     <div className="space-y-3 text-center">
-      <div className="text-7xl">💣</div>
+      <div className="flex justify-center" style={{ color: "var(--m-ink)" }} aria-hidden="true">
+        <Icon name="bomb" size={80} strokeWidth={1.4} />
+      </div>
       {c.left !== null ? (
         <p className="font-bold">العداد مخفي… العبوا!</p>
       ) : (

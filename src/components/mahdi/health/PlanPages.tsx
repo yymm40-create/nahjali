@@ -17,7 +17,9 @@ function NoPlan() {
       <Barbell />
       <h1 className="gym-title">ما عندك <em>خطة</em> للحين</h1>
       <p className="gym-small">جاوب على كم سؤال وأسوي لك جدولك ونظامك الغذائي.</p>
-      <Link href={setupHref()} className="gym-btn primary">يلا نبدأ 💪</Link>
+      <Link href={setupHref()} className="gym-btn primary">
+        يلا نبدأ
+      </Link>
     </section>
   );
 }
@@ -68,7 +70,7 @@ export function HabitsPage() {
           const r = await store.mutate<{ made: number; projectId: string; links: Record<string, string> }>("/api/mahdi/health/apply", "POST", { plan, ...body });
           // the habits made are remembered with the plan: what is tracked here fills them
           save({ ...plan, links: { ...(plan.links ?? {}), ...(r.links ?? {}) } });
-          toast(`تمت إضافة ${r.made} عادة 💪`);
+          toast(`تمت إضافة ${r.made} عادة`);
           return r.projectId;
         } catch (e) {
           toast((e as Error).message);

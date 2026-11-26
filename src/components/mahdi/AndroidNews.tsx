@@ -57,7 +57,9 @@ function News({ show, floating = false, android, onClose }: { show: boolean; flo
   };
   return (
     <section className={`m-card flex flex-wrap items-center gap-3 p-4 ${floating ? "fixed inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-40 mx-auto max-w-lg shadow-lg" : "mx-4 mt-3 sm:mx-6 lg:mx-10"}`} role="status" aria-labelledby="android-news">
-      <span className="text-2xl" aria-hidden="true">📱</span>
+      <span className="shrink-0" style={{ color: "var(--m-gold-text)" }} aria-hidden="true">
+        <Icon name="phone" size={26} />
+      </span>
       <div className="min-w-0 flex-1">
         <p id="android-news" className="font-semibold">{A.title}</p>
         <p className="m-muted text-sm">{android ? A.body : A.bodyOther}</p>

@@ -6,9 +6,11 @@
 // (useDay), with the percentage written beside the drawing (the research: a figure next to the shape reads best).
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import type { GoalsStyle } from "@config/mahdi";
 import { fmtPct } from "@/lib/mahdi/i18n";
 import { readingText, useDay, XP_LEVEL } from "./useDay";
+import Icon from "../Icon";
 
 type Day = ReturnType<typeof useDay>;
 const pct = (v: number) => fmtPct(v);
@@ -80,7 +82,12 @@ export default function DesignGoals({ style }: { style: GoalsStyle }) {
               <Bar value={Number(v)} h={14} color={String(c)} />
             </div>
           ))}
-          {d.streak > 0 && <p className="m-num text-sm m-muted">🔥 {d.streak} يوم متتالي</p>}
+          {d.streak > 0 && (
+            <p className="m-num text-sm m-muted">
+              <Icon name="streak" size={15} className="m-ico" />
+              {d.streak} يوم متتالي
+            </p>
+          )}
         </Card>
       );
     case "liquid": {
@@ -121,7 +128,7 @@ export default function DesignGoals({ style }: { style: GoalsStyle }) {
             ))}
           </div>
           <div className="grid grid-cols-3 gap-2">
-            {[["العادات", `${d.done}/${d.required}`], ["القراءة", d.reading ? `${d.reading.done}` : "—"], ["السلسلة", `${d.streak} 🔥`]].map(([l, v]) => (
+            {([["العادات", `${d.done}/${d.required}`], ["القراءة", d.reading ? `${d.reading.done}` : "—"], ["السلسلة", <>{d.streak} <Icon name="streak" size={16} className="m-ico" /></>]] as [string, ReactNode][]).map(([l, v]) => (
               <span key={l} className="m-soft p-2">
                 <small className="m-muted block">{l}</small>
                 <b className="m-num text-lg">{v}</b>
@@ -143,7 +150,10 @@ export default function DesignGoals({ style }: { style: GoalsStyle }) {
           </section>
           <section className="p-3" style={{ background: "var(--m-gold-2)", borderRadius: "var(--m-radius)", color: "#1e1b16" }}>
             <small>السلسلة</small>
-            <b className="m-num block text-2xl">🔥 {d.streak}</b>
+            <b className="m-num block text-2xl">
+              <Icon name="streak" size={22} className="m-ico" />
+              {d.streak}
+            </b>
           </section>
           <Link href="/mahdi/reading" className="space-y-1 p-3" style={{ background: "#e8dcff", borderRadius: "var(--m-radius)", color: "#1e1b16" }}>
             <small>القراءة</small>
@@ -205,9 +215,15 @@ export default function DesignGoals({ style }: { style: GoalsStyle }) {
       return (
         <div className="space-y-3">
           <p className="flex items-center gap-3 font-extrabold">
-            <span style={{ color: "#ff9600" }}>🔥 {d.streak}</span>
+            <span style={{ color: "#ff9600" }}>
+              <Icon name="streak" size={18} className="m-ico" />
+              {d.streak}
+            </span>
             <span className="flex-1" />
-            <span style={{ color: "#1cb0f6" }}>📖 {d.reading ? pct(d.reading.share) : "—"}</span>
+            <span style={{ color: "#1cb0f6" }}>
+              <Icon name="book" size={18} className="m-ico" />
+              {d.reading ? pct(d.reading.share) : "—"}
+            </span>
           </p>
           <section className="p-3 text-white" style={{ background: "var(--m-gold)", borderRadius: "var(--m-radius)" }}>
             <small>اليوم</small>
@@ -220,7 +236,7 @@ export default function DesignGoals({ style }: { style: GoalsStyle }) {
               const bg = now ? "#ffc800" : ok ? "#58cc02" : "#e5e5e5";
               return (
                 <span key={p.date} className="absolute grid place-items-center rounded-full text-xl text-white" style={{ top: k * 54, left: `${xs[k]}%`, translate: "-50% 0", width: now ? 62 : 50, height: now ? 62 : 50, background: bg, boxShadow: `0 6px 0 ${now ? "#e0a800" : ok ? "#46a302" : "#c4c4c4"}` }}>
-                  {now ? <b className="m-num text-base">{pct(d.score)}</b> : ok ? "✓" : "·"}
+                  {now ? <b className="m-num text-base">{pct(d.score)}</b> : ok ? <Icon name="check" size={22} strokeWidth={2.6} /> : "·"}
                 </span>
               );
             })}
@@ -231,19 +247,21 @@ export default function DesignGoals({ style }: { style: GoalsStyle }) {
     case "flame":
       return (
         <section className="flex flex-col items-center gap-2 text-center" aria-label="سلسلة أيامك">
-          <span className="m-flame-big" aria-hidden="true">🔥</span>
+          <span className="m-flame-big inline-block" style={{ color: "var(--m-accent)" }} aria-hidden="true">
+            <Icon name="streak" size={88} strokeWidth={1.5} />
+          </span>
           <b className="m-num text-6xl leading-none">{d.streak}</b>
           <span>يوم متتالي</span>
           <div className="flex gap-1.5">
             {d.series(7).map((p, k) => (
               <span key={p.date} className="grid size-7 place-items-center rounded-full text-xs font-bold" style={{ background: k === 6 ? "#fff" : (p.score ?? 0) >= 0.6 ? "#ffd166" : "rgba(255,255,255,.2)", color: "#7a1a1a" }}>
-                {k === 6 ? "🔥" : (p.score ?? 0) >= 0.6 ? "✓" : ""}
+                {k === 6 ? <Icon name="streak" size={15} strokeWidth={2.2} /> : (p.score ?? 0) >= 0.6 ? <Icon name="check" size={14} strokeWidth={2.6} /> : ""}
               </span>
             ))}
           </div>
           <div className="m-card w-full space-y-1.5 p-3 text-start">
             <p className="flex text-sm">
-              <b className="flex-1">{d.required - d.done > 0 ? `باقي ${d.required - d.done} تكمّل يومك` : "يومك كامل 🎉"}</b>
+              <b className="flex-1">{d.required - d.done > 0 ? `باقي ${d.required - d.done} تكمّل يومك` : "يومك كامل"}</b>
               <span className="m-num">{pct(d.score)}</span>
             </p>
             <Bar value={d.score} h={10} />
@@ -287,11 +305,16 @@ export default function DesignGoals({ style }: { style: GoalsStyle }) {
     case "rpg":
       return (
         <Card className="flex items-center gap-3">
-          <span className="grid size-16 shrink-0 place-items-center text-4xl" style={{ background: "var(--m-surface-2)", borderRadius: 12 }} aria-hidden="true">🧕</span>
+          <span className="grid size-16 shrink-0 place-items-center" style={{ background: "var(--m-surface-2)", borderRadius: 12, color: "var(--m-gold-text)" }} aria-hidden="true">
+            <Icon name="user" size={36} />
+          </span>
           <div className="min-w-0 flex-1 space-y-1">
             <p className="flex items-center">
               <b className="m-display flex-1 text-lg">المستوى {d.level}</b>
-              <span className="m-num" style={{ color: "var(--m-gold)" }}>🔥 {d.streak}</span>
+              <span className="m-num" style={{ color: "var(--m-gold)" }}>
+                <Icon name="streak" size={15} className="m-ico" />
+                {d.streak}
+              </span>
             </p>
             <small className="m-muted">يومك {d.done}/{d.required}</small>
             <Bar value={d.score} h={8} color="var(--m-error)" radius={4} />
@@ -303,8 +326,8 @@ export default function DesignGoals({ style }: { style: GoalsStyle }) {
     case "stickers":
       return (
         <div className="flex flex-wrap gap-3 py-1">
-          <span className="m-sticker" style={{ background: "#ffe08a", rotate: "-3deg" }}>عاداتي {d.done}/{d.required} ✓</span>
-          <Link href="/mahdi/reading" className="m-sticker" style={{ background: "#bde0fe", rotate: "2deg" }}>قريت {d.reading ? d.reading.done : 0} 📖</Link>
+          <span className="m-sticker" style={{ background: "#ffe08a", rotate: "-3deg" }}>عاداتي {d.done}/{d.required} <Icon name="check" size={15} className="m-ico" strokeWidth={2.4} /></span>
+          <Link href="/mahdi/reading" className="m-sticker" style={{ background: "#bde0fe", rotate: "2deg" }}>قريت {d.reading ? d.reading.done : 0} <Icon name="book" size={15} className="m-ico" /></Link>
           <span className="m-sticker" style={{ background: "#ffc6d3", rotate: "-1.5deg" }}>سلسلتي {"●".repeat(Math.min(12, d.streak)) || "—"} {d.streak}</span>
         </div>
       );
@@ -324,7 +347,10 @@ export default function DesignGoals({ style }: { style: GoalsStyle }) {
           </svg>
           <span className="m-num">{habitsLine(d)}</span>
           <Link href="/mahdi/reading" className="m-card flex w-full items-center p-3 text-sm">
-            <span className="flex-1 text-start">📖 القراءة</span>
+            <span className="flex-1 text-start">
+              <Icon name="book" size={16} className="m-ico" />
+              القراءة
+            </span>
             <span className="m-num">{readingText(d.reading)}</span>
           </Link>
         </section>
@@ -397,8 +423,16 @@ export default function DesignGoals({ style }: { style: GoalsStyle }) {
       return (
         <p className="flex flex-wrap items-center gap-2">
           <span className="m-chip m-num text-sm font-bold">اليوم {d.done}/{d.required}</span>
-          <span className="m-chip m-num text-sm font-bold">📖 {readingText(d.reading)}</span>
-          {d.streak > 0 && <span className="m-flame m-num">🔥 {d.streak}</span>}
+          <span className="m-chip m-num text-sm font-bold">
+            <Icon name="book" size={15} className="m-ico" />
+            {readingText(d.reading)}
+          </span>
+          {d.streak > 0 && (
+            <span className="m-flame m-num">
+              <Icon name="streak" size={15} />
+              {d.streak}
+            </span>
+          )}
         </p>
       );
     default:

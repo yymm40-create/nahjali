@@ -64,8 +64,12 @@ export default function MyKhatmaReader() {
         </>
       ) : (
         <>
-          <button type="button" className="m-btn m-btn-primary w-full" disabled={k.busy} onClick={() => void markRead(true)}>قرأته ✓ والتالي</button>
-          <button type="button" className="m-btn m-btn-ghost w-full" disabled={k.busy} onClick={() => void markRead(false)}>قرأته ✓</button>
+          <button type="button" className="m-btn m-btn-primary w-full" disabled={k.busy} onClick={() => void markRead(true)}>
+            قرأته <Icon name="check" size={16} className="m-ico" strokeWidth={2.4} /> والتالي
+          </button>
+          <button type="button" className="m-btn m-btn-ghost w-full" disabled={k.busy} onClick={() => void markRead(false)}>
+            قرأته <Icon name="check" size={16} className="m-ico" strokeWidth={2.4} />
+          </button>
           {k.habit && <p className="text-center text-xs m-muted">ينضاف على عادة «{k.habit.name}».</p>}
         </>
       )}

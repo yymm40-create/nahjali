@@ -3,10 +3,12 @@
 import { useEffect, useId, useRef } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import Icon from "./Icon";
+import { useBackClose } from "./useBackClose";
 
 /**
  * Bottom sheet on phones, centred dialog on larger screens. Built on the native <dialog>, so focus stays inside,
- * Esc closes it, and screen readers announce it as a dialog.
+ * Esc closes it, and screen readers announce it as a dialog. The phone's back button closes it too, instead of leaving
+ * the screen (useBackClose).
  */
 export default function Sheet({
   open,
@@ -23,6 +25,7 @@ export default function Sheet({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  useBackClose(open, onClose);
 
   useEffect(() => {
     const d = ref.current;

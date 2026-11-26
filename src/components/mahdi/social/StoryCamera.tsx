@@ -7,6 +7,7 @@ import { checkMediaFile, uploadMedia } from "@/lib/mahdi/client/media";
 import { STORY_BACKGROUNDS, type StoryStyle } from "@/lib/mahdi/social";
 import Icon from "../Icon";
 import { useMahdi } from "../Provider";
+import { useBackClose } from "../useBackClose";
 import { QuoteCard } from "./PostCard";
 
 const C = t.social.stories.camera;
@@ -26,6 +27,7 @@ export default function StoryCamera({ open, onClose, onPublished }: { open: bool
 function CameraDialog({ onClose, onPublished }: { onClose: () => void; onPublished?: () => void }) {
   const { toast } = useMahdi();
   const ref = useRef<HTMLDialogElement>(null);
+  useBackClose(true, onClose);
   const video = useRef<HTMLVideoElement>(null);
   const files = useRef<HTMLInputElement>(null);
   const native = useRef<HTMLInputElement>(null);

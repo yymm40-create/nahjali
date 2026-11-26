@@ -72,7 +72,7 @@ export default function GroupKhatmas() {
                     </span>
                     {running && (
                       <span className="mt-2 block h-1.5 overflow-hidden rounded-full" style={{ background: "var(--m-track)" }}>
-                        <span className="block h-full rounded-full" style={{ width: `${Math.round((k.done / k.total) * 100)}%`, background: "#22c55e" }} />
+                        <span className="block h-full rounded-full" style={{ width: `${Math.round((k.done / k.total) * 100)}%`, background: "var(--m-gold)" }} />
                       </span>
                     )}
                   </span>

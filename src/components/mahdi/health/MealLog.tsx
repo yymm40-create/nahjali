@@ -1,6 +1,6 @@
 "use client";
 
-// «الصحة العلوية» · «🍽️ شنو أكلت؟»: the person says what they ate — in their own words («صحن كبسة وبيضتين»), counted
+// «الصحة العلوية» · «شنو أكلت؟»: the person says what they ate — in their own words («صحن كبسة وبيضتين»), counted
 // from the catalogue, or picked by hand: the kind (every rice, every egg…), the household measure («لقمة يد»،
 // «ملعقة طعام عادية»، «صحن متوسط»، «بيضة») and how many — and the page counts the calories, protein, carbs and fat.
 // Nothing needs weighing. What is added goes into the day's calories and protein (and the habits linked to them).
@@ -9,6 +9,7 @@ import { useMemo, useState } from "react";
 import { MEAL_CATS, MEAL_FOODS, MEAL_QTYS, mealFoodById, mealOf, type MealCat } from "@config/mahdi/meal-foods";
 import { mealTotals, type MealItem } from "@/lib/mahdi/health/tracker";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
+import Icon from "../Icon";
 
 const newId = () => Math.random().toString(36).slice(2, 12);
 const qtyText = (q: number) => (q === 0.5 ? "نص" : q === 1.5 ? "واحد ونص" : String(q).replace(".5", "½").replace(".25", "¼").replace(".75", "¾"));
@@ -41,7 +42,7 @@ export default function MealLog({ meals, onChange }: { meals: MealItem[]; onChan
   };
   const addPicked = () => {
     onChange([...meals, { id: newId(), foodId: food.id, name: food.name, unit: shown.unit.label, qty, g: shown.g, kcal: shown.kcal, p: shown.p, c: shown.c, f: shown.f }]);
-    setNote(`✅ انضاف: ${qtyText(qty)} ${shown.unit.label} ${food.name} · ${shown.kcal} سعرة`);
+    setNote(`انضاف: ${qtyText(qty)} ${shown.unit.label} ${food.name} · ${shown.kcal} سعرة`);
   };
   const read = async () => {
     if (!text.trim() || busy) return;
@@ -74,7 +75,7 @@ export default function MealLog({ meals, onChange }: { meals: MealItem[]; onChan
   const addFound = () => {
     if (!found?.length) return;
     onChange([...meals, ...found.map((m) => ({ ...m, id: newId() }))]);
-    setNote(`✅ انضاف ${found.length} · ${mealTotals(found).kcal} سعرة`);
+    setNote(`انضاف ${found.length} · ${mealTotals(found).kcal} سعرة`);
     setFound(null);
     setText("");
   };
@@ -82,7 +83,10 @@ export default function MealLog({ meals, onChange }: { meals: MealItem[]; onChan
   return (
     <div className="gym-card space-y-3">
       <div className="flex items-baseline justify-between gap-2">
-        <b>🍽️ شنو أكلت؟</b>
+        <b>
+          <Icon name="plate" size={16} className="m-ico" />
+          شنو أكلت؟
+        </b>
         {meals.length > 0 && (
           <span className="gym-small" dir="ltr">
             {total.kcal} kcal · P {total.p}g · C {total.c}g · F {total.f}g
@@ -92,10 +96,10 @@ export default function MealLog({ meals, onChange }: { meals: MealItem[]; onChan
 
       <label className="gym-field">
         <span>اكتب شنو أكلت وكم تقريبًا — بكلامك</span>
-        <textarea className="gym-input min-h-[70px] py-2" dir="auto" maxLength={800} value={text} placeholder="مثلًا: صحن كبسة دجاج متوسط، بيضتين مقلية، كوب لبن، ٣ تمرات" onChange={(e) => setText(e.target.value)} />
+        <textarea className="gym-input min-h-[70px] py-2" dir="auto" maxLength={800} value={text} placeholder="مثلًا: صحن كبسة دجاج متوسط، بيضتين مقلية، كوب لبن، 3 تمرات" onChange={(e) => setText(e.target.value)} />
       </label>
       <button type="button" className="gym-btn sm" disabled={busy || !text.trim()} onClick={() => void read()}>
-        {busy ? "أحسب…" : "🧮 احسبها لي"}
+        {busy ? "أحسب…" : <><Icon name="calc" size={15} className="m-ico" />احسبها لي</>}
       </button>
 
       {found && (
@@ -125,7 +129,8 @@ export default function MealLog({ meals, onChange }: { meals: MealItem[]; onChan
           ))}
           <div className="flex flex-wrap gap-2">
             <button type="button" className="gym-btn sm" disabled={!found.length} onClick={addFound}>
-              ✓ أضفها ({mealTotals(found).kcal} سعرة)
+              <Icon name="check" size={15} className="m-ico" strokeWidth={2.4} />
+              أضفها ({mealTotals(found).kcal} سعرة)
             </button>
             <button type="button" className="gym-btn ghost sm" onClick={() => setFound(null)}>
               إلغاء

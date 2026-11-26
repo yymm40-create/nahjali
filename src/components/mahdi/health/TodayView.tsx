@@ -19,6 +19,7 @@ import { useHealth } from "./HealthProvider";
 import ExerciseFigure from "./ExerciseFigure";
 import MealLog from "./MealLog";
 import { useView } from "./useView";
+import Icon, { type IconName } from "../Icon";
 
 const weekdayOf = (date: string) => new Date(`${date}T12:00:00Z`).getUTCDay();
 /**
@@ -75,12 +76,12 @@ function nextDay(w: Workout, days: DayLog[], date: string): PlanDay | undefined 
 
 const shortDate = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString("ar", { day: "numeric", month: "short", timeZone: "UTC" });
 
-const FOOD: { key: FoodKey; link: string; icon: string; name: string; unit: string; adds: number[] }[] = [
-  { key: "proteinG", link: "protein", icon: "🥩", name: "البروتين", unit: "غ", adds: [10, 25] },
-  { key: "waterCups", link: "water", icon: "💧", name: "الماء", unit: "كوب", adds: [1] },
-  { key: "produce", link: "produce", icon: "🥗", name: "خضار وفواكه", unit: "حصة", adds: [1] },
-  { key: "kcal", link: "kcal", icon: "🔥", name: "السعرات", unit: "سعرة", adds: [100, 300] },
-  { key: "steps", link: "steps", icon: "👟", name: "الخطوات", unit: "خطوة", adds: [1000] },
+const FOOD: { key: FoodKey; link: string; icon: IconName; name: string; unit: string; adds: number[] }[] = [
+  { key: "proteinG", link: "protein", icon: "protein", name: "البروتين", unit: "غ", adds: [10, 25] },
+  { key: "waterCups", link: "water", icon: "drop", name: "الماء", unit: "كوب", adds: [1] },
+  { key: "produce", link: "produce", icon: "food", name: "خضار وفواكه", unit: "حصة", adds: [1] },
+  { key: "kcal", link: "kcal", icon: "streak", name: "السعرات", unit: "سعرة", adds: [100, 300] },
+  { key: "steps", link: "steps", icon: "walk", name: "الخطوات", unit: "خطوة", adds: [1000] },
 ];
 
 function Welcome() {
@@ -89,20 +90,28 @@ function Welcome() {
     <div className="space-y-4">
       <section className="gym-hero space-y-3">
         <Barbell />
-        <span className="gym-eyebrow">🏋️ الصحة العلوية</span>
+        <span className="gym-eyebrow">
+          <Icon name="dumbbell" size={15} className="m-ico" />
+          الصحة العلوية
+        </span>
         <h1 className="gym-title">
           جسمك <em>أمانة</em>،<br />خلّه قوي.
         </h1>
         <p className="gym-small max-w-md">جدول جيم (في النادي، أو جيم بيتي، أو بدون أدوات) ونظام تغذية مبني على توصيات المنظمات الطبية العالمية، للرجل والمرأة والحامل والمرضعة. تسجّل أوزانك وأكلك كل يوم، وتشوف تقدمك، وكل شي مربوط بعاداتك في «لأجل المهدي».</p>
         <div className="flex flex-wrap gap-2">
-          <Link href={setupHref()} className="gym-btn primary">يلا نبدأ 💪</Link>
-          <Link href="/mahdi/health/learn" className="gym-btn ghost">🧠 تعلّم عضلاتك</Link>
+          <Link href={setupHref()} className="gym-btn primary">
+            يلا نبدأ
+          </Link>
+          <Link href="/mahdi/health/learn" className="gym-btn ghost">
+            <Icon name="cap" size={16} className="m-ico" />
+            تعلّم عضلاتك
+          </Link>
         </div>
       </section>
       <section className="gym-card flex items-start gap-3">
         <RobotFace id="sabaa" size={64} />
         <div className="space-y-1">
-          <b className="text-lg font-black">هلا! أنا {COACH} 🦁</b>
+          <b className="text-lg font-black">هلا! أنا {COACH}</b>
           <p className="gym-small">
             مدربك هنا. أسوي لك الخطة، وأتابع أوزانك وأكلك، وأشرح لك كل تمرين وكل عضلة. أي شي ما فهمته أو {profile.sex === "female" ? "تبين تغيرينه" : "تبي تغيره"}، اضغط وجهي على الجنب وكلمني، وأنا أعدّل خطتك بنفسي.
           </p>
@@ -130,8 +139,9 @@ function RestTimer({ until, onDone }: { until: number; onDone: () => void }) {
   }, [left]);
   return (
     <div className="gym-rest" role="timer" aria-live="polite">
-      ⏱️ راحة <b>{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</b>
-      {left === 0 ? <span>يلا المجموعة الجاية! 💪</span> : null}
+      <Icon name="timer" size={16} className="m-ico" />
+      راحة <b>{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</b>
+      {left === 0 ? <span>يلا المجموعة الجاية!</span> : null}
       <button type="button" className="gym-btn sm ghost" onClick={onDone}>
         {left === 0 ? "تم" : "تخطّى"}
       </button>
@@ -165,10 +175,18 @@ function ExerciseLog({ item, log, days, date, onSets, onRest }: { item: PlanItem
             {(g?.primary ?? []).map((m) => muscleInfo(m)?.name).join("، ")} · {item.sets} × {item.reps} · راحة {item.restSec % 60 === 0 ? `${item.restSec / 60} د` : `${item.restSec} ث`}
           </small>
         </div>
-        {pr && <span className="tag">🏆 رقم قياسي</span>}
+        {pr && (
+          <span className="tag">
+            <Icon name="trophy" size={13} className="m-ico" />
+            رقم قياسي
+          </span>
+        )}
       </header>
       <details className="gym-ex-how">
-        <summary>👀 شوف الطريقة</summary>
+        <summary>
+          <Icon name="eye" size={15} className="m-ico" />
+          شوف الطريقة
+        </summary>
         <div className="px-3 pb-2">
           <ExerciseFigure id={ex.id} name={ex.name} compact />
         </div>
@@ -181,7 +199,8 @@ function ExerciseLog({ item, log, days, date, onSets, onRest }: { item: PlanItem
               <br />
             </>
           ) : null}
-          💡 {suggestion(last?.sets, item.reps, ex.body && !(last?.sets ?? []).some((s) => s.kg > 0))}
+          <Icon name="bulb" size={14} className="m-ico" />
+          {suggestion(last?.sets, item.reps, ex.body && !(last?.sets ?? []).some((s) => s.kg > 0))}
         </p>
         <div className="gym-sets">
           <span className="h">#</span>
@@ -220,7 +239,7 @@ function ExerciseLog({ item, log, days, date, onSets, onRest }: { item: PlanItem
                     onRest(item.restSec);
                   }}
                 >
-                  {done ? "✓" : "▶"}
+                  <Icon name={done ? "check" : "play"} size={16} strokeWidth={2.2} />
                 </button>
               </div>
             );
@@ -236,7 +255,8 @@ function ExerciseLog({ item, log, days, date, onSets, onRest }: { item: PlanItem
             </button>
           )}
           <Link href={`/mahdi/health/learn/${ex.id}`} className="gym-btn ghost sm">
-            🎓 التكنيك
+            <Icon name="cap" size={15} className="m-ico" />
+            التكنيك
           </Link>
         </div>
       </div>
@@ -281,7 +301,7 @@ export default function TodayView() {
     setLog(done && log.startedAt ? { done, startedAt: null, durationMin: Math.round(sessionMin(log) * 10) / 10 } : { done });
     // the habits follow what was really trained that day (the session picked, its exercises and sets), both ways
     for (const w of gymHabitWrites({ done, session: planned?.weekday ?? null, recorded: log.planDay, sets: log.sets })) logHabit(w.key, date, w.value);
-    if (done) toast(habitFor(planned ? `day-${planned.weekday}` : "weekly") || habitFor("weekly") ? "عاش! تمرين اليوم انسجّل وانحسب في عاداتك 🔥" : "عاش! تمرين اليوم انسجّل 🔥");
+    if (done) toast(habitFor(planned ? `day-${planned.weekday}` : "weekly") || habitFor("weekly") ? "عاش! تمرين اليوم انسجّل وانحسب في عاداتك" : "عاش! تمرين اليوم انسجّل");
   };
 
   const foodValue = (f: (typeof FOOD)[number]) => habitValue(f.link, date) ?? log.food[f.key] ?? 0;
@@ -329,7 +349,12 @@ export default function TodayView() {
           <h1 className="gym-title">
             {date === today ? "تمرين اليوم" : `تمرين ${WEEKDAYS[wd]}`} {planned ? <em>· {dayLabel(plannedIdx)}: {focusName(planned)}</em> : null}
           </h1>
-          {finished && <span className="gym-chip" aria-pressed="true">✓ خلصته</span>}
+          {finished && (
+            <span className="gym-chip" aria-pressed="true">
+              <Icon name="check" size={14} className="m-ico" strokeWidth={2.4} />
+              خلصته
+            </span>
+          )}
         </div>
 
         {w?.blocked && <p className="gym-card stop gym-small">{w.blocked}</p>}
@@ -339,13 +364,18 @@ export default function TodayView() {
           <div className="gym-card space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="gym-small">
-                ⏱️ مدة التمرين: <SessionClock log={log} />
+                <Icon name="timer" size={15} className="m-ico" />
+                مدة التمرين: <SessionClock log={log} />
                 {!running && !log.durationMin ? " · اضغط «ابدأ» أول ما تبدأ" : ""}
               </div>
               {running ? (
-                <button type="button" className="gym-btn sm ghost" onClick={stopClock}>⏸ وقّف الوقت</button>
+                <button type="button" className="gym-btn sm ghost" onClick={stopClock}>
+                  <Icon name="pause" size={15} className="m-ico" />
+                  وقّف الوقت
+                </button>
               ) : (
-                <button type="button" className="gym-btn sm" onClick={startClock}>{log.durationMin ? "▶ كمّل الوقت" : "▶ ابدأ التمرين"}</button>
+                <button type="button" className="gym-btn sm" onClick={startClock}><Icon name="play" size={15} className="m-ico" />
+                  {log.durationMin ? "كمّل الوقت" : "ابدأ التمرين"}</button>
               )}
             </div>
             {w.days.length > 1 && (
@@ -361,7 +391,7 @@ export default function TodayView() {
               </div>
             )}
             <button type="button" className={`gym-btn sm ${editing ? "on" : "ghost"}`} onClick={() => view.set({ edit: !editing })}>
-              {editing ? "✓ خلصت التعديل" : "✏️ عدّل تمارين هالحصة"}
+              {editing ? <><Icon name="check" size={15} className="m-ico" />خلصت التعديل</> : <><Icon name="edit" size={15} className="m-ico" />عدّل تمارين هالحصة</>}
             </button>
             {editing && <DayCard plan={plan} day={planned} save={save} editable />}
           </div>
@@ -387,7 +417,10 @@ export default function TodayView() {
         {planned && (
           <div className="gym-card flex flex-wrap items-center justify-between gap-3">
             <label className="gym-field">
-              <span>🚶 كارديو اليوم (دقيقة) · المقترح {planned.cardioMin}</span>
+              <span>
+                <Icon name="walk" size={15} className="m-ico" />
+                كارديو اليوم (دقيقة) · المقترح {planned.cardioMin}
+              </span>
               <NumField
                 decimal={false}
                 value={log.cardioMin}
@@ -400,7 +433,7 @@ export default function TodayView() {
               />
             </label>
             <button type="button" className={`gym-btn ${finished ? "ghost" : "primary"}`} onClick={finish}>
-              {log.done ? "↩︎ تراجع" : "✓ خلصت تمرين اليوم"}
+              {log.done ? <><Icon name="undo" size={16} className="m-ico" />تراجع</> : <><Icon name="check" size={16} className="m-ico" strokeWidth={2.4} />خلصت تمرين اليوم</>}
             </button>
           </div>
         )}
@@ -419,7 +452,8 @@ export default function TodayView() {
               <div key={f.key} className="gym-food">
                 <div className="top">
                   <b>
-                    {f.icon} {f.name}
+                    <Icon name={f.icon} size={16} className="m-ico" />
+                    {f.name}
                   </b>
                   <span dir="ltr">
                     <em>{v.toLocaleString("en")}</em> / {target.toLocaleString("en")} {f.unit}
@@ -440,7 +474,12 @@ export default function TodayView() {
                     </button>
                   )}
                   <input className="gym-input w-24" inputMode="numeric" aria-label={`${f.name}: الرقم`} value={v || ""} placeholder="0" onChange={(e) => setFood(f, Number(e.target.value.replace(/\D/g, "")) || 0)} />
-                  {linked && <small className="gym-small">🔗 عادتك</small>}
+                  {linked && (
+                    <small className="gym-small">
+                      <Icon name="link" size={13} className="m-ico" />
+                      عادتك
+                    </small>
+                  )}
                 </div>
               </div>
             );
@@ -450,7 +489,10 @@ export default function TodayView() {
 
       <section className="gym-card flex flex-wrap items-end justify-between gap-3">
         <label className="gym-field">
-          <span>⚖️ وزنك اليوم (اختياري)</span>
+          <span>
+            <Icon name="scale" size={15} className="m-ico" />
+            وزنك اليوم (اختياري)
+          </span>
           <NumField
             className="gym-input w-32"
             value={log.bodyKg}
@@ -458,7 +500,10 @@ export default function TodayView() {
             onValue={(n) => setLog({ bodyKg: n ? Math.round(n * 10) / 10 : null })}
           />
         </label>
-        <Link href="/mahdi/health/progress" className="gym-btn ghost sm">📈 شوف تقدمك</Link>
+        <Link href="/mahdi/health/progress" className="gym-btn ghost sm">
+          <Icon name="trend" size={15} className="m-ico" />
+          شوف تقدمك
+        </Link>
       </section>
     </div>
   );
