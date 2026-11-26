@@ -1,5 +1,7 @@
 "use client";
 
+import HubDoors from "@/components/mahdi/HubDoors";
+import { DOORS } from "@/components/mahdi/nav";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useRef } from "react";
@@ -66,6 +68,7 @@ export default function CommunityPage() {
           </div>
         )}
       </div>
+      <HubDoors doors={DOORS.community} label="أقسام المجتمع" />
       <PeopleSearch />
       <div role="tablist" aria-label={t.community.tabs} className="m-scroll-x -mx-1 flex gap-1.5 px-1 pb-1">
         {TABS.map((k, i) => (

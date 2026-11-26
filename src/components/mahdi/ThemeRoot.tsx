@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { createContext, useCallback, useContext, useState } from "react";
 import { designOf, type MahdiTheme } from "@config/mahdi";
 import { readPlace, type ShrinePlace } from "@/lib/mahdi/shrine-art";
@@ -69,16 +68,6 @@ export default function ThemeRoot({
           {(() => {
             const design = designOf(theme);
             const where = shownPlace(place, design.place);
-            // the photo made earlier, in the design's colours (as it is for «الحرم» and the older night look)
-            if (where === "photo" && shrine?.imageUrl) {
-              const own = theme === "cinematic" || theme === "night";
-              return (
-                <>
-                  <Image src={shrine.imageUrl} alt="" fill sizes="100vw" loading="eager" fetchPriority="high" style={{ objectPosition: shrine.imagePosition }} className={own ? undefined : "m-photo-tinted"} />
-                  {!own && <span className="m-photo-tint" />}
-                </>
-              );
-            }
             // the shrine drawn in code, in the design's drawing style, standing at the bottom of every page
             if (where === "backdrop") return <ShrineArt shrineId={shrine?.id} style={design.art} className="m-shrine-backdrop" sky />;
             return null;
@@ -91,4 +80,7 @@ export default function ThemeRoot({
 }
 
 /** Where the shrine shows: the person's choice, else the design's own. */
-export const shownPlace = (place: ShrinePlace | "auto", own: ShrinePlace): ShrinePlace => (place === "auto" ? own : place);
+export const shownPlace = (place: ShrinePlace | "auto", own: ShrinePlace): ShrinePlace => {
+  const p = place === "auto" ? own : place;
+  return p === "photo" ? "banner" : p;
+};

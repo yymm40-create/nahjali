@@ -37,6 +37,7 @@ import DesignQuick from "./home/DesignQuick";
 import EmergencySetup from "./EmergencySetup";
 import Tick, { TICK_SHAPES, useTickPref } from "./home/Tick";
 import { shownPlace, useLook } from "./ThemeRoot";
+import TasbihButton from "./Tasbih";
 import ShrineArt from "./ShrineArt";
 import SheikhLink from "./SheikhLink";
 import { designOf } from "@config/mahdi";
@@ -135,10 +136,11 @@ export default function HomeBoard() {
             {fmtDateLong(state.today)}
             {profile.showHijri && <> · {fmtHijri(state.today, profile.hijriOffset)}</>}
           </p>
-          <h1 className="m-display m-shadow-text text-2xl sm:text-3xl">أهلًا {profile.displayName.split(" ")[0]} 👋</h1>
+          <h1 className="m-display m-shadow-text text-2xl sm:text-3xl">أهلًا {profile.displayName.split(" ")[0]}</h1>
           <p className="m-shadow-text text-sm font-semibold m-gold">{t.greeting}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <TasbihButton />
           {/* «خانة الطوارئ»: pick the projects, then which of their habits get a smaller goal for emergency days */}
           {hasProjects && (
             <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setEmergency(true)}>

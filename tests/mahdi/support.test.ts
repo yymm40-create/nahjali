@@ -16,6 +16,6 @@ describe("«ادعم التطبيق»", () => {
     expect(src).toContain("S.rate");
   });
   it("is reachable from «المزيد»", () => {
-    expect(read("src/app/mahdi/(app)/more/page.tsx")).toContain("<SupportLink />");
+    expect(read("src/app/mahdi/(app)/more/page.tsx")).toContain('"/mahdi/support"');
   });
 });

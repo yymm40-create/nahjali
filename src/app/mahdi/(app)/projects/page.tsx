@@ -1,5 +1,7 @@
 "use client";
 
+import HubDoors from "@/components/mahdi/HubDoors";
+import { DOORS } from "@/components/mahdi/nav";
 import Link from "next/link";
 import { useState } from "react";
 import { dayGoals, scoreBy, startOfWeek, summarize, weekGoals } from "@/lib/mahdi/engine";
@@ -50,6 +52,7 @@ export default function ProjectsPage() {
           </button>
         </div>
       </header>
+      <HubDoors doors={DOORS.habits} label="أقسام عاداتي" />
 
       {active.length === 0 && (
         <section className="m-card space-y-3 p-6 text-center">

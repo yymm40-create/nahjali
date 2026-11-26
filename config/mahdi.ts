@@ -14,10 +14,10 @@ export const MAHDI_AUTH = {
 export type MahdiTheme =
   | "rings" | "bars" | "liquid" | "buttons" | "heatmap" | "bento" | "pop" | "garden" | "path" | "flame"
   | "gauge" | "swipe" | "timeline" | "cells" | "rpg" | "aurora" | "neon" | "journal" | "zakhrafa" | "mono"
-  | "cinematic" | "minimal" | "night";
+  | "cinematic" | "minimal" | "night" | "sun";
 
 /** How a design draws the day's two goals (habits, reading) at the top of the home. */
-export type GoalsStyle = "ring" | "rings3" | "bar" | "liquid" | "heatmap" | "bento" | "segments" | "garden" | "path" | "flame" | "gauge" | "rpg" | "stickers" | "star" | "number" | "chip";
+export type GoalsStyle = "ring" | "rings3" | "bar" | "liquid" | "heatmap" | "bento" | "segments" | "garden" | "path" | "flame" | "gauge" | "rpg" | "stickers" | "star" | "number" | "chip" | "pebbles";
 /** How a design lays out the habits to tap. */
 export type QuickStyle = "tiles" | "list" | "circles" | "cells" | "swipe" | "timeline" | "xp";
 
@@ -48,36 +48,39 @@ export interface MahdiDesign {
  * «الحرم» keeps the shrine; «السكينة» and «زيارة الليل» are older looks kept for whoever chose them.
  */
 export const MAHDI_THEMES: MahdiDesign[] = [
-  { key: "rings", n: 1, label: "حلقات النشاط", from: "Apple Fitness", description: "داكن بثلاث حلقات متداخلة: العادات والقراءة والأسبوع، تقفلها كل يوم.", themeColor: "#000000", light: false, goals: "rings3", quick: "list", art: "glow", place: "backdrop" },
+  // the default since 26 November 2026 (the owner approved the plan «واجهة لأجل المهدي الجديدة»): a light base, sun
+  // yellow for every achievement (the glossy «حبّة الإنجاز» pebbles), orange only for the one action on each screen
+  { key: "sun", n: 24, label: "شمس وبرتقال", from: "لأجل المهدي ٢٠٢٦", description: "أبيض نظيف، كل إنجاز حبّة صفرا تلمع، والبرتقالي للزر الوحيد اللي يطلب منك شي.", themeColor: "#f7f8fc", light: true, goals: "pebbles", quick: "list", art: "line", place: "horizon" },
+  { key: "rings", n: 1, label: "حلقات النشاط", from: "Apple Fitness", description: "فاتح بثلاث حلقات متداخلة: العادات والقراءة والأسبوع، تقفلها كل يوم.", themeColor: "#f3f4f8", light: true, goals: "rings3", quick: "list", art: "glow", place: "backdrop" },
   { key: "bars", n: 2, label: "الشريط اللي يتعبّى", from: "Things · Todoist", description: "فاتح ونظيف، أشرطة عريضة تتعبّى وتقارن أهدافك بنظرة.", themeColor: "#fbfbfd", light: true, goals: "bar", quick: "list", art: "line", place: "horizon" },
   { key: "liquid", n: 3, label: "الكوب اللي يمتلي", from: "Plant Nanny · WaterMinder", description: "مائي، أهدافك كؤوس يرتفع فيها الماء مع إنجازك.", themeColor: "#eaf5ff", light: true, goals: "liquid", quick: "tiles", art: "gradient", place: "banner" },
-  { key: "buttons", n: 4, label: "الأزرار الكبيرة", from: "Streaks", description: "كل عادة زر دائري ضخم بحلقة حوله: ضغطة وتكمل.", themeColor: "#ff6b4a", light: false, goals: "chip", quick: "circles", art: "silhouette", place: "banner" },
-  { key: "heatmap", n: 5, label: "خريطة الحرارة", from: "GitHub · Loop", description: "داكن، مربعات أيامك من أسابيع تبيّن ثباتك.", themeColor: "#0d1117", light: false, goals: "heatmap", quick: "cells", art: "dots", place: "backdrop" },
+  { key: "buttons", n: 4, label: "الأزرار الكبيرة", from: "Streaks", description: "كل عادة زر دائري ضخم بحلقة مرجانية حوله: ضغطة وتكمل.", themeColor: "#fff1ec", light: true, goals: "chip", quick: "circles", art: "silhouette", place: "banner" },
+  { key: "heatmap", n: 5, label: "خريطة الحرارة", from: "GitHub · Loop", description: "فاتح، مربعات أيامك من أسابيع تبيّن ثباتك.", themeColor: "#f6f8fa", light: true, goals: "heatmap", quick: "cells", art: "dots", place: "backdrop" },
   { key: "bento", n: 6, label: "بنتو ملوّن", from: "اتجاه ٢٠٢٥–٢٠٢٦", description: "بطاقات ملوّنة بأحجام مختلفة، كل معلومة بحجم أهميتها.", themeColor: "#f4f1ea", light: true, goals: "bento", quick: "tiles", art: "flat", place: "banner" },
   { key: "pop", n: 7, label: "نيو بروتال", from: "ستايل Gen Z", description: "جريء: حدود سوداء عريضة، ظلال صلبة، وألوان فاقعة.", themeColor: "#fff4dc", light: true, goals: "segments", quick: "tiles", art: "outline", place: "banner" },
   { key: "garden", n: 8, label: "النبتة تكبر", from: "Finch · Forest", description: "إنجازك يكبّر نبتتك مرحلة بعد مرحلة.", themeColor: "#e3f6e0", light: true, goals: "garden", quick: "tiles", art: "flat", place: "horizon" },
   { key: "path", n: 9, label: "طريق المراحل", from: "Duolingo", description: "أيامك عُقد على طريق، تشوف وين وصلت ووين باقي.", themeColor: "#ffffff", light: true, goals: "path", quick: "list", art: "flat", place: "horizon" },
-  { key: "flame", n: 10, label: "الشعلة الكبيرة", from: "Duolingo · Snapchat", description: "رقم سلسلتك بطل الشاشة، وأيام أسبوعك تحته.", themeColor: "#b8174f", light: false, goals: "flame", quick: "list", art: "silhouette", place: "banner" },
-  { key: "gauge", n: 11, label: "العدّاد", from: "Oura · لوحة السيارة", description: "داكن، يومك درجة على عدّاد نصف دائري.", themeColor: "#0f1220", light: false, goals: "gauge", quick: "list", art: "glow", place: "backdrop" },
+  { key: "flame", n: 10, label: "الشعلة الكبيرة", from: "Duolingo · Snapchat", description: "رقم سلسلتك بطل الشاشة بشعلة حمرا، وأيام أسبوعك تحته.", themeColor: "#fff0f4", light: true, goals: "flame", quick: "list", art: "silhouette", place: "banner" },
+  { key: "gauge", n: 11, label: "العدّاد", from: "Oura · لوحة السيارة", description: "يومك درجة على عدّاد نصف دائري بنفسجي.", themeColor: "#f1f2fa", light: true, goals: "gauge", quick: "list", art: "glow", place: "backdrop" },
   { key: "swipe", n: 12, label: "البطاقة اللي تسحبها", from: "Headspace", description: "عادة وحدة قدامك: سويتها أو بعدين، بدون تشتيت.", themeColor: "#f6f2ff", light: true, goals: "bar", quick: "swipe", art: "gradient", place: "banner" },
   { key: "timeline", n: 13, label: "الخط الزمني لليوم", from: "Structured · Tiimo", description: "يومك مرتب بالأوقات من الفجر لليل.", themeColor: "#fffaf5", light: true, goals: "bar", quick: "timeline", art: "line", place: "horizon" },
   { key: "cells", n: 14, label: "خلايا البطارية", from: "Habitify · Productive", description: "كل عادة شريط خلايا لأيام أسبوعها.", themeColor: "#f7f8fa", light: true, goals: "chip", quick: "cells", art: "silhouette", place: "horizon" },
-  { key: "rpg", n: 15, label: "شخصية تلعب", from: "Habitica", description: "كل عادة نقاط خبرة ترفع مستوى شخصيتك.", themeColor: "#2b1d4e", light: false, goals: "rpg", quick: "xp", art: "dots", place: "banner" },
+  { key: "rpg", n: 15, label: "شخصية تلعب", from: "Habitica", description: "كل عادة نقاط خبرة ترفع مستوى شخصيتك.", themeColor: "#f4eeff", light: true, goals: "rpg", quick: "xp", art: "dots", place: "banner" },
   { key: "aurora", n: 16, label: "شفق زجاجي", from: "iOS · Arc", description: "فاتح ومبهج: تدرّج بنفسجي وردي برتقالي على زجاج.", themeColor: "#f6f0ff", light: true, goals: "ring", quick: "tiles", art: "gradient", place: "backdrop" },
-  { key: "neon", n: 17, label: "نيون", from: "ألعاب · Cyberpunk", description: "داكن بإضاءات نيون تلمع، وعناوين عريضة كالملصق.", themeColor: "#07070d", light: false, goals: "ring", quick: "list", art: "glow", place: "backdrop" },
+  { key: "neon", n: 17, label: "نيون", from: "ألعاب · Cyberpunk", description: "فاتح بإضاءات وردية تلمع، وعناوين عريضة كالملصق.", themeColor: "#f7f7ff", light: true, goals: "ring", quick: "list", art: "glow", place: "backdrop" },
   { key: "journal", n: 18, label: "الدفتر", from: "Bullet Journal · Daylio", description: "ورق مسطّر وخط يد وستيكرات.", themeColor: "#fdf8ee", light: true, goals: "stickers", quick: "list", art: "sketch", place: "banner" },
-  { key: "zakhrafa", n: 19, label: "الزخرفة الإسلامية", from: "العمارة الإسلامية", description: "ذهبي وفيروزي، نجمة ثمانية تمتلي مع إنجازك.", themeColor: "#0b1f1c", light: false, goals: "star", quick: "tiles", art: "gold", place: "banner" },
+  { key: "zakhrafa", n: 19, label: "الزخرفة الإسلامية", from: "العمارة الإسلامية", description: "ذهبي وفيروزي على أبيض، نجمة ثمانية تمتلي مع إنجازك.", themeColor: "#f2f7f6", light: true, goals: "star", quick: "tiles", art: "gold", place: "banner" },
   { key: "mono", n: 20, label: "الأرقام الكبيرة", from: "(Not Boring) Habits · Things", description: "هادئ جدًا: رقم كبير وقائمة نظيفة، بلا زحمة.", themeColor: "#ffffff", light: true, goals: "number", quick: "list", art: "line", place: "horizon" },
-  { key: "cinematic", n: 0, label: "الحرم", from: "لأجل المهدي", description: "صورة الحرم حاضرة، إضاءة ذهبية وخط عربي كلاسيكي.", themeColor: "#0d0c0b", light: false, goals: "ring", quick: "tiles", art: "gold", place: "photo" },
+  { key: "cinematic", n: 0, label: "الحرم", from: "لأجل المهدي", description: "رسمة الحرم بإضاءة ذهبية دافية وخط عربي كلاسيكي.", themeColor: "#f7f3ec", light: true, goals: "ring", quick: "tiles", art: "gold", place: "banner" },
   { key: "minimal", n: 0, label: "السكينة", from: "لأجل المهدي", description: "فاتح وهادئ: عاجي وذهبي خفيف ومساحات مريحة.", themeColor: "#faf6ee", light: true, goals: "ring", quick: "tiles", art: "gold", place: "photo", legacy: true },
-  { key: "night", n: 0, label: "زيارة الليل", from: "لأجل المهدي", description: "داكن فاخر بإضاءة الحرم الذهبية.", themeColor: "#0b0c0e", light: false, goals: "ring", quick: "tiles", art: "gold", place: "photo", legacy: true },
+  { key: "night", n: 0, label: "زيارة الفجر", from: "لأجل المهدي", description: "فاتح كالفجر بذهبي ناعم وأزرق هادي.", themeColor: "#eef1f8", light: true, goals: "ring", quick: "tiles", art: "gold", place: "banner", legacy: true },
 ];
-/** The designs offered in the picker (the twenty and «الحرم»). */
+/** The designs offered in the picker (the new default, the twenty and «الحرم»). Every one is light (the owner: no dark screens). */
 export const PICKED_THEMES = MAHDI_THEMES.filter((x) => !x.legacy);
 /** Light looks (the browser chrome, the status bar). */
 export const LIGHT_THEMES: MahdiTheme[] = MAHDI_THEMES.filter((x) => x.light).map((x) => x.key);
-export const designOf = (k: string | null | undefined) => MAHDI_THEMES.find((x) => x.key === k) ?? MAHDI_THEMES.find((x) => x.key === "aurora")!;
-export const DEFAULT_THEME: MahdiTheme = "aurora";
+export const designOf = (k: string | null | undefined) => MAHDI_THEMES.find((x) => x.key === k) ?? MAHDI_THEMES.find((x) => x.key === "sun")!;
+export const DEFAULT_THEME: MahdiTheme = "sun";
 export const DEFAULT_SHRINE = "imam-ali";
 
 /** Project accent colours (keys stored in the database). */

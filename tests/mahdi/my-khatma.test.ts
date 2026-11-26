@@ -162,7 +162,7 @@ describe("it is a main branch, tied to the habits", () => {
     // the standard home is unchanged; the card is added by the person («رتّب»)
     expect(homeWidgets(null)).not.toContain("khatma");
     expect(read("src/components/mahdi/HomeBoard.tsx")).toContain("<KhatmaCard />");
-    expect(read("src/app/mahdi/(app)/more/page.tsx")).toContain("<KhatmaCard />");
+    expect(read("src/components/mahdi/nav.ts")).toContain('"/mahdi/khatma"');
   });
   it("the database and the knowledge", () => {
     const sql = read("supabase/migrations/0081_mahdi_my_khatma.sql");

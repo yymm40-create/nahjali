@@ -42,11 +42,14 @@ describe("every design draws it, and the person chooses where", () => {
       expect(["backdrop", "banner", "horizon", "photo"], d.key).toContain(d.place);
     }
     expect(new Set(PICKED_THEMES.map((d) => d.art)).size).toBe(9);
-    expect(new Set(PICKED_THEMES.map((d) => d.place)).size).toBe(4);
+    expect(new Set(PICKED_THEMES.map((d) => d.place)).size).toBe(3);
+    // nothing behind the words any more (the plan of 26 November 2026): no design shows the shrine's photo
+    expect(PICKED_THEMES.some((d) => d.place === "photo")).toBe(false);
   });
 
   it("the places are offered, read safely, saved with the account (0064)", () => {
-    expect(SHRINE_PLACES.map((p) => p.id)).toEqual(["auto", "backdrop", "banner", "horizon", "photo", "off"]);
+    expect(SHRINE_PLACES.map((p) => p.id)).toEqual(["auto", "backdrop", "banner", "horizon", "off"]);
+    expect(readPlace("photo")).toBe("auto");
     expect(readPlace("banner")).toBe("banner");
     expect(readPlace("x")).toBe("auto");
     expect(read("supabase/migrations/0064_mahdi_shrine_place.sql")).toContain("shrine_place");
@@ -54,7 +57,7 @@ describe("every design draws it, and the person chooses where", () => {
     expect(read("src/app/mahdi/(app)/more/page.tsx")).toContain("SHRINE_PLACES");
   });
 
-  it("drawn in code, not a generated picture (the photo is only the «photo» place)", () => {
+  it("drawn in code, not a generated picture", () => {
     const art = read("src/components/mahdi/ShrineArt.tsx");
     expect(art).toContain("<svg");
     expect(art).not.toMatch(/openai|gpt-image/i);

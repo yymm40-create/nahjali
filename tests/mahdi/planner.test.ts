@@ -71,6 +71,6 @@ describe("the wiring", () => {
     for (const r of ["grow", "planner"]) expect(read(`src/app/api/mahdi/${r}/route.ts`)).not.toMatch(/createAdminClient/);
     expect(read("src/app/mahdi/(app)/progress/calendar/CalendarView.tsx")).toMatch(/<SquareText items=\{plans\} \/>/);
     expect(read("src/components/mahdi/DayView.tsx")).toMatch(/<GrowCard \/>/);
-    expect(read("src/app/mahdi/(app)/more/page.tsx")).toMatch(/<GrowCard \/>/);
+    expect(read("src/components/mahdi/nav.ts")).toContain('"/mahdi/grow"');
   });
 });

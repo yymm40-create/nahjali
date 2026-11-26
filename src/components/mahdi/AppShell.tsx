@@ -3,18 +3,17 @@
 import Link from "next/link";
 import BrandLogo from "./BrandLogo";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import { bySort } from "@/lib/mahdi/client/derive";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import AndroidNews from "./AndroidNews";
 import ReadChallengeInvite from "./ReadChallengeInvite";
 import AssistantFloat from "./AssistantFloat";
-import { FeedbackPrompt, FeedbackSheet } from "./Feedback";
+import { FeedbackPrompt } from "./Feedback";
 import HabitForm from "./HabitForm";
 import Icon from "./Icon";
-import TasbihButton from "./Tasbih";
-import { BOTTOM, navGroups } from "./nav";
+import { COMMUNITY, ME, READING, TABS, isTabRoot, parentOf, tabOf, titleOf } from "./nav";
 import ProjectForm from "./ProjectForm";
 import { useMahdi } from "./Provider";
 import Sheet from "./Sheet";
@@ -58,17 +57,52 @@ function useAddContext() {
   return m?.[1];
 }
 
+/**
+ * The way back: the screens visited in this tab of the browser, in order. «رجوع» goes back when the previous screen is
+ * ours, else (opened from a link or a notification) one step up (nav.parentOf).
+ */
+const TRAIL = "mahdi:trail";
+function useTrail(pathname: string) {
+  useEffect(() => {
+    try {
+      const trail: string[] = JSON.parse(sessionStorage.getItem(TRAIL) ?? "[]");
+      if (trail.length > 1 && trail[trail.length - 2] === pathname) trail.pop();
+      else if (trail[trail.length - 1] !== pathname) trail.push(pathname);
+      sessionStorage.setItem(TRAIL, JSON.stringify(trail.slice(-40)));
+    } catch {}
+  }, [pathname]);
+}
+/** True once the page is scrolled: the bar's small title and hairline show then (large titles). */
+function useScrolled() {
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const on = () => setScrolled(window.scrollY > 28);
+    on();
+    window.addEventListener("scroll", on, { passive: true });
+    return () => window.removeEventListener("scroll", on);
+  }, []);
+  return scrolled;
+}
+function canGoBack() {
+  try {
+    return JSON.parse(sessionStorage.getItem(TRAIL) ?? "[]").length > 1;
+  } catch {
+    return false;
+  }
+}
+
 export default function AppShell({ children, familyMember = false }: { children: React.ReactNode; familyMember?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const { state } = useMahdi();
   const contextProject = useAddContext();
-  const [menu, setMenu] = useState(false);
+  const [menu, setMenu] = useState<null | "habits" | "reading" | "community">(null);
   const [newHabit, setNewHabit] = useState(false);
   const [newProject, setNewProject] = useState(false);
-  const [feedback, setFeedback] = useState(false);
   const { unread, refresh } = useUnread();
-  // A reply notification opens «المساعد» with ?assistant=1 on any screen
+  useTrail(pathname);
+  const scrolled = useScrolled();
+  // A reply notification opens the team's chat («المساعد») with ?assistant=1 on any screen
   const searchParams = useSearchParams();
   const assistantFromLink = searchParams.get("assistant") === "1";
   const linkClosed = () => router.replace(pathname, { scroll: false });
@@ -76,85 +110,82 @@ export default function AppShell({ children, familyMember = false }: { children:
   const projects = state.snap.projects.filter((p) => !p.archivedAt).sort(bySort);
   const inProject = projects.find((p) => p.id === contextProject);
   const { profile } = state.snap;
+  const tab = tabOf(pathname);
+  const root = isTabRoot(pathname);
+  const title = titleOf(pathname);
 
+  // «+» understands where you are: a habit on the day and the habits, a book or a khatma in the reading, a post or a
+  // story in the community; nothing in «أنا»
+  const addKind: "habits" | "reading" | "community" | null =
+    tab === COMMUNITY ? "community" : tab === READING ? "reading" : tab === ME ? null : "habits";
+  const addLabel = addKind === "community" ? "منشور جديد" : addKind === "reading" ? "أضف للقراءة" : inProject ? t.add.habitIn(inProject.name) : t.nav.add;
   const onAdd = () => {
-    if (projects.length === 0) setNewProject(true);
-    else if (inProject) setNewHabit(true);
-    else setMenu(true);
+    if (addKind === "habits") {
+      if (projects.length === 0) setNewProject(true);
+      else if (inProject) setNewHabit(true);
+      else setMenu("habits");
+    } else if (addKind) setMenu(addKind);
+  };
+  const back = () => {
+    if (canGoBack()) router.back();
+    else router.push(parentOf(pathname));
   };
 
-  const groups = navGroups(state.snap.username ?? null);
-  const [drawer, setDrawer] = useState(false);
-  const menuList = (onPick?: () => void) => (
-    <nav aria-label={t.nav.main}>
-      {groups.map((g) => (
-        <div key={g.title} className="m-drawer-group">
-          <p>{g.title}</p>
-          {g.items.map((n) => (
-            <Link key={n.href} href={n.href} className="m-drawer-item" aria-current={n.match(pathname) ? "page" : undefined} onClick={onPick}>
-              <span className="m-drawer-ic" style={{ "--ic": n.color } as React.CSSProperties}>
-                <Icon name={n.icon} size={19} />
-              </span>
-              <span className="min-w-0 flex-1 truncate">{n.label}</span>
-              {n.href === "/mahdi/inbox" && unread > 0 && <span className="m-badge m-num static" aria-hidden="true">{unread > 99 ? "99+" : unread}</span>}
-            </Link>
-          ))}
-        </div>
-      ))}
-      <div className="m-drawer-group">
-        <p>أخرى</p>
-        <button type="button" className="m-drawer-item w-full" onClick={() => { onPick?.(); setFeedback(true); }}>
-          <span className="m-drawer-ic" style={{ "--ic": "#0ea5e9" } as React.CSSProperties}><Icon name="chat" size={19} /></span>
-          <span className="flex-1 text-start">{t.feedback.cta}</span>
-        </button>
-        <Link href="/" className="m-drawer-item" onClick={onPick}>
-          <span className="m-drawer-ic" style={{ "--ic": "#475569" } as React.CSSProperties}><Icon name="chevronRight" size={19} /></span>
-          <span className="flex-1">{t.bar.siteLong}</span>
-        </Link>
-      </div>
-    </nav>
+  const bell = (
+    <Link
+      href="/mahdi/inbox"
+      className="m-menu-btn relative"
+      aria-label={unread ? t.bar.inboxUnread(unread) : t.bar.inbox}
+      aria-current={pathname.startsWith("/mahdi/inbox") ? "page" : undefined}
+    >
+      <Icon name="bell" size={22} />
+      {unread > 0 && <span className="m-badge m-num" aria-hidden="true" />}
+    </Link>
   );
 
   return (
-    <div className="lg:grid lg:min-h-dvh lg:grid-cols-[288px_1fr]">
-      {/* Computer: the same full menu, always open */}
-      <aside className="sticky top-0 hidden h-dvh flex-col overflow-y-auto border-e lg:flex" style={{ borderColor: "var(--m-line)", background: "color-mix(in srgb, var(--m-surface-solid) 78%, transparent)" }}>
-        <div className="flex items-center gap-3 px-5 pt-6 pb-2">
-          <Link href="/mahdi" className="m-brand flex flex-1 items-center gap-2 text-2xl"><BrandLogo />{t.brand}</Link>
-        </div>
-        <div className="px-4 py-2">
-          <button type="button" className="m-btn m-btn-primary w-full" onClick={onAdd}>
-            <Icon name="plus" /> {inProject ? t.add.habitIn(inProject.name) : t.nav.add}
+    <div className="lg:grid lg:min-h-dvh lg:grid-cols-[256px_1fr]">
+      {/* Computer: the same five destinations, always open */}
+      <aside className="m-side sticky top-0 hidden h-dvh flex-col gap-1 overflow-y-auto px-4 lg:flex">
+        <Link href="/mahdi" className="m-brand flex items-center gap-2 px-2 pt-6 pb-4 text-2xl"><BrandLogo />{t.brand}</Link>
+        {addKind && (
+          <button type="button" className="m-btn m-btn-primary mb-3 w-full" onClick={onAdd}>
+            <Icon name="plus" /> {addLabel}
           </button>
-        </div>
-        {menuList()}
-        <Link href="/mahdi/more" className="m-soft m-4 mt-auto flex items-center gap-3 p-3" aria-label={t.nav.account}>
+        )}
+        <nav aria-label={t.nav.main} className="grid gap-1">
+          {TABS.map((n) => (
+            <Link key={n.href} href={n.href} className="m-side-item" aria-current={tab === n ? "page" : undefined}>
+              <Icon name={n.icon} /> {n.label}
+            </Link>
+          ))}
+        </nav>
+        <Link href="/mahdi/more" className="m-soft mt-auto mb-4 flex items-center gap-3 p-3" aria-label={t.nav.account}>
           <Avatar profile={profile} size={40} />
           <span className="min-w-0 truncate text-sm font-semibold">{t.mawla(profile.displayName)}</span>
         </Link>
       </aside>
 
       <div className="min-w-0">
-        {/* Every screen: the menu (☰) on the right, the name, then the notifications and the account */}
-        <header className="m-topbar" aria-label={t.bar.label}>
-          <button type="button" className="m-menu-btn lg:hidden" onClick={() => setDrawer(true)} aria-label="القائمة" aria-haspopup="dialog" aria-expanded={drawer}>
-            <Icon name="menu" size={22} strokeWidth={2.2} />
-          </button>
-          <Link href="/mahdi" className="m-brand flex min-w-0 flex-1 items-center gap-2 lg:hidden"><BrandLogo size={48} /><span className="truncate">{t.brand}</span></Link>
-          <span className="hidden flex-1 lg:block" />
-          <TasbihButton />
-          <Link
-            href="/mahdi/inbox"
-            className="m-menu-btn relative"
-            aria-label={unread ? t.bar.inboxUnread(unread) : t.bar.inbox}
-            aria-current={pathname.startsWith("/mahdi/inbox") ? "page" : undefined}
-          >
-            <Icon name="bell" size={22} />
-            {unread > 0 && <span className="m-badge m-num" aria-hidden="true">{unread > 99 ? "99+" : unread}</span>}
-          </Link>
-          <Link href="/mahdi/more" className="shrink-0 rounded-full" aria-label={t.nav.account} aria-current={pathname.startsWith("/mahdi/more") ? "page" : undefined}>
-            <Avatar profile={profile} size={40} />
-          </Link>
+        {/* The top bar, the same everywhere: a destination's name, or «رجوع» and the screen's name inside it */}
+        <header className="m-topbar" aria-label={t.bar.label} data-scrolled={scrolled ? "" : undefined}>
+          {root ? (
+            <h2 className="m-bar-title">{title}</h2>
+          ) : (
+            <>
+              <button type="button" className="m-menu-btn" onClick={back} aria-label={t.common.back}>
+                <Icon name="chevronRight" size={26} strokeWidth={2.2} />
+              </button>
+              <h2 className="m-bar-title m-bar-title-inner">{title}</h2>
+            </>
+          )}
+          <span className="flex-1" />
+          {root && addKind && (
+            <button type="button" className="m-menu-btn m-bar-add lg:hidden" onClick={onAdd} aria-label={addLabel}>
+              <Icon name="plus" size={24} strokeWidth={2.2} />
+            </button>
+          )}
+          {bell}
         </header>
         {familyMember && (
           <Link href="/mahdi/more/family" className="m-note mx-4 mt-3 flex items-center gap-2 text-sm font-semibold sm:mx-6 lg:mx-10">
@@ -166,83 +197,74 @@ export default function AppShell({ children, familyMember = false }: { children:
         <SyncBanner />
         <AndroidNews />
         <ReadChallengeInvite />
-        <main id="m-main" className="m-content-pad mx-auto w-full max-w-[1120px] px-4 pt-4 sm:px-6 lg:px-10 lg:pt-8">
+        <main id="m-main" key={tab?.href ?? "x"} className="m-content-pad m-page-in mx-auto w-full max-w-[1120px] px-4 pt-4 sm:px-6 lg:px-10 lg:pt-8">
           {children}
         </main>
       </div>
 
-      {/* Phones: a floating bar — four places around the «+»; everything else is in the menu (☰) */}
+      {/* Phones: the five destinations, a floating glass bar */}
       <nav aria-label={t.nav.main} className="m-bottom-nav lg:hidden">
-        <div className="mx-auto grid h-full max-w-xl grid-cols-5 items-center px-1">
-          {BOTTOM.slice(0, 2).map((n) => (
-            <Link key={n.href} href={n.href} className="m-nav-item" aria-current={n.match(pathname) ? "page" : undefined}>
-              <Icon name={n.icon} /> {n === BOTTOM[1] ? t.nav.projects : n === BOTTOM[0] ? t.nav.home : n.label}
-            </Link>
-          ))}
-          <div className="grid place-items-center">
-            <button type="button" className="m-fab" onClick={onAdd} aria-label={inProject ? t.add.habitIn(inProject.name) : t.nav.add}>
-              <Icon name="plus" size={28} strokeWidth={2.2} />
-            </button>
-          </div>
-          {BOTTOM.slice(2, 4).map((n) => (
-            <Link key={n.href} href={n.href} className="m-nav-item" aria-current={n.match(pathname) ? "page" : undefined}>
-              <Icon name={n.icon} /> {n === BOTTOM[2] ? t.nav.reading : t.nav.community}
+        <div className="m-tabbar">
+          {TABS.map((n) => (
+            <Link
+              key={n.href}
+              href={n.href}
+              className="m-nav-item"
+              aria-current={tab === n ? "page" : undefined}
+              onClick={() => {
+                // a second tap on the open destination takes you to its top
+                if (tab === n && pathname === n.href) window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            >
+              <span className="m-nav-ic">
+                <Icon name={n.icon} />
+                {n === ME && unread > 0 && <span className="m-dot-badge" aria-hidden="true" />}
+              </span>
+              {n.label}
             </Link>
           ))}
         </div>
       </nav>
 
-      <Drawer open={drawer} onClose={() => setDrawer(false)} head={
-        <Link href="/mahdi/more" className="flex items-center gap-3" onClick={() => setDrawer(false)}>
-          <Avatar profile={profile} size={52} />
-          <span className="min-w-0">
-            <span className="m-brand flex items-center gap-2 text-xl"><BrandLogo />{t.brand}</span>
-            <span className="block truncate text-sm font-semibold m-muted">{t.mawla(profile.displayName)}</span>
-          </span>
-        </Link>
-      }>
-        {menuList(() => setDrawer(false))}
-      </Drawer>
-
-      <Sheet open={menu} onClose={() => setMenu(false)} title={t.add.title}>
+      <Sheet open={menu !== null} onClose={() => setMenu(null)} title={menu === "community" ? "شارك" : menu === "reading" ? "أضف للقراءة" : t.add.title}>
         <div className="grid gap-3">
-          <button
-            type="button"
-            className="m-option flex items-center gap-4 p-4 text-start"
-            onClick={() => {
-              setMenu(false);
-              setNewHabit(true);
-            }}
-          >
-            <span className="m-soft grid size-12 place-items-center">
-              <Icon name="target" />
-            </span>
-            <span>
-              <span className="block font-semibold">{t.add.habit}</span>
-              <span className="m-hint">{t.add.habitHint}</span>
-            </span>
-          </button>
-          <button
-            type="button"
-            className="m-option flex items-center gap-4 p-4 text-start"
-            onClick={() => {
-              setMenu(false);
-              setNewProject(true);
-            }}
-          >
-            <span className="m-soft grid size-12 place-items-center">
-              <Icon name="projects" />
-            </span>
-            <span>
-              <span className="block font-semibold">{t.add.project}</span>
-              <span className="m-hint">{t.add.projectHint}</span>
-            </span>
-          </button>
+          {(menu === "habits"
+            ? [
+                { icon: "target" as const, label: t.add.habit, hint: t.add.habitHint, go: () => setNewHabit(true) },
+                { icon: "projects" as const, label: t.add.project, hint: t.add.projectHint, go: () => setNewProject(true) },
+              ]
+            : menu === "reading"
+              ? [
+                  { icon: "book" as const, label: "كتاب جديد", hint: "أضف كتاب لمكتبتك وابدأ تقراه", go: () => router.push("/mahdi/reading/add") },
+                  { icon: "book" as const, label: "ختمة قرآن", hint: "ختمتك أنت، أو ختمة مع مجموعتك", go: () => router.push("/mahdi/khatma") },
+                ]
+              : [
+                  { icon: "edit" as const, label: "منشور جديد", hint: "صورة أو اقتباس لأصحابك", go: () => router.push("/mahdi/post/new") },
+                  { icon: "camera" as const, label: "قصة", hint: "تختفي بعد يوم", go: () => router.push("/mahdi/stories") },
+                ]
+          ).map((o) => (
+            <button
+              key={o.label}
+              type="button"
+              className="m-option flex items-center gap-4 p-4 text-start"
+              onClick={() => {
+                setMenu(null);
+                o.go();
+              }}
+            >
+              <span className="m-soft grid size-12 place-items-center">
+                <Icon name={o.icon} />
+              </span>
+              <span>
+                <span className="block font-semibold">{o.label}</span>
+                <span className="m-hint">{o.hint}</span>
+              </span>
+            </button>
+          ))}
         </div>
       </Sheet>
       <HabitForm open={newHabit} onClose={() => setNewHabit(false)} projectId={inProject?.id} />
       <ProjectForm open={newProject} onClose={() => setNewProject(false)} onSaved={(id) => router.push(`/mahdi/projects/${id}`)} />
-      <FeedbackSheet open={feedback} onClose={() => setFeedback(false)} place="sidebar" />
       <AssistantFloat openFromLink={assistantFromLink} onLinkClosed={linkClosed} onRead={refresh} />
       <FeedbackPrompt />
       <RewardReveal />
@@ -261,37 +283,5 @@ function SyncBanner() {
       <span>{!state.online ? t.common.offline : state.syncError}</span>
       {state.pending.length > 0 && <span className="m-muted ms-auto">{t.common.syncing(state.pending.length)}</span>}
     </div>
-  );
-}
-
-/** The side menu (☰): a dialog that slides in from the right, closed by a tap outside, Escape, or picking a place. */
-function Drawer({ open, onClose, head, children }: { open: boolean; onClose: () => void; head: React.ReactNode; children: React.ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const d = ref.current;
-    if (!d) return;
-    if (open && !d.open) d.showModal();
-    else if (!open && d.open) d.close();
-  }, [open]);
-  return (
-    <dialog
-      ref={ref}
-      className="m-drawer"
-      aria-label="القائمة"
-      onClose={onClose}
-      onClick={(e) => {
-        // a tap on the dark outside (the dialog itself, not its content) closes it
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="m-drawer-head flex items-start gap-2">
-        <div className="min-w-0 flex-1">{head}</div>
-        <button type="button" className="m-icon-btn" onClick={onClose} aria-label={t.common.close}>
-          <Icon name="close" size={22} />
-        </button>
-      </div>
-      {children}
-      <div className="h-6" />
-    </dialog>
   );
 }

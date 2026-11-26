@@ -63,7 +63,7 @@ function GoalsMark({ style }: { style: GoalsStyle }) {
   );
   switch (style) {
     case "rings3":
-      return box(<>{arc(17, 0.5, "#fa114f", 4)}{arc(11, 0.67, "#a6ff00", 4)}{arc(5, 0.8, "#00e5ff", 4)}</>);
+      return box(<>{arc(17, 0.5, "#fa114f", 4)}{arc(11, 0.67, "#4cc800", 4)}{arc(5, 0.8, "#00b7d4", 4)}</>);
     case "bar":
     case "segments":
       return box(<>{[8, 18, 28].map((y, k) => <g key={y}><rect x="2" y={y} width="36" height="6" rx="3" fill={tr} /><rect x="2" y={y} width={[18, 26, 12][k]} height="6" rx="3" fill={c} /></g>)}</>);
@@ -89,6 +89,8 @@ function GoalsMark({ style }: { style: GoalsStyle }) {
       return <b className="text-3xl leading-none" style={{ fontFamily: "var(--m-display)" }}>٣</b>;
     case "chip":
       return box(<>{[[20, 12], [10, 28], [30, 28]].map(([x, y], k) => <circle key={k} cx={x} cy={y} r="8" fill="none" stroke={c} strokeWidth="3" />)}</>);
+    case "pebbles":
+      return box(<>{[[8, 14], [20, 14], [32, 14], [8, 27], [20, 27], [32, 27]].map(([x, y], k) => <circle key={k} cx={x} cy={y} r="5" fill={k < 4 ? "#ffc61a" : tr} stroke={k < 4 ? "#e0a800" : "none"} />)}</>);
     case "bento":
       return box(<><rect x="2" y="2" width="20" height="36" rx="6" fill={c} /><rect x="24" y="2" width="14" height="17" rx="5" fill="var(--m-gold-2)" /><rect x="24" y="21" width="14" height="17" rx="5" fill={tr} /></>);
     default:
