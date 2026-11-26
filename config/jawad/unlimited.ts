@@ -9,7 +9,7 @@
 export const UNLIMITED = {
   path: "/jawad-ai/unlimited",
   /** the 72 hours the passes can be bought in (Riyadh time) */
-  startsAt: "2026-11-26T14:00:00+03:00",
+  startsAt: "2026-11-26T12:30:00+03:00",
   hours: 72,
   /** one fast/slow cycle */
   cycleHours: 12,
