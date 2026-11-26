@@ -13,6 +13,10 @@ export const metadata = { title: "غرفة متابعة اللامحدود" };
 export const dynamic = "force-dynamic";
 
 const when = (iso: string) => new Date(iso).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { timeZone: "Asia/Riyadh", weekday: "short", hour: "numeric", minute: "2-digit" });
+/** What a person paid on their pass's own generator and has not had back yet (the refunds and gifts since the purchase taken off). */
+const owed = (p: RoomPerson) =>
+  Math.max(0, p.paid.filter((j) => j.onPassGenerator && !["failed", "cancelled"].includes(j.status)).reduce((m, j) => m + j.coins, 0) - p.grants.reduce((m, g) => m + Math.max(0, g.coins), 0));
+
 /** The server's clock for this render. */
 const nowMs = () => Date.now();
 const mins = (iso: string, now: number) => Math.max(1, Math.ceil((Date.parse(iso) - now) / 60_000));
@@ -36,7 +40,7 @@ export default async function UnlimitedRoom() {
   const waiting = people.filter((p) => p.now.state === "held").length;
   const working = people.filter((p) => p.now.state === "working").length;
   // the thing to watch: wallet money taken from subscribers on their pass's generator (meant to be free?)
-  const leaked = people.reduce((n, p) => n + p.paid.filter((j) => j.onPassGenerator && !["failed", "cancelled"].includes(j.status)).reduce((m, j) => m + j.coins, 0), 0);
+  const leaked = people.reduce((n, p) => n + owed(p), 0);
   const phase = unlimitedPhase(now);
 
   return (
@@ -60,7 +64,7 @@ export default async function UnlimitedRoom() {
             ["توليدات", made],
             ["يولّدون الحين", working],
             ["ينتظرون (بطيء)", waiting],
-            ["⚠️ انخصم على مولّد اشتراكهم", `${(leaked / 100).toLocaleString("en", { maximumFractionDigits: 2 })} ر`],
+            ["⚠️ انخصم على مولّد اشتراكهم وما رجع", `${(leaked / 100).toLocaleString("en", { maximumFractionDigits: 2 })} ر`],
           ].map(([l, v]) => (
             <div key={String(l)} className="rounded-lg bg-jw-surface-2 p-3">
               <p className="text-2xl font-bold tabular-nums">{v === null ? <Riyal halalas={sar * 100} size={18} /> : v}</p>
@@ -81,7 +85,7 @@ export default async function UnlimitedRoom() {
               <span className="text-xs text-jw-muted">
                 {p.passes.map((x) => `${x.name}${x.quality ? ` ${x.quality}` : ""} · ${x.hours}س${x.active ? "" : " (انتهى)"}`).join(" ، ")}
               </span>
-              {p.paid.some((j) => j.onPassGenerator && !["failed", "cancelled"].includes(j.status)) && <span className="jw-chip text-jw-danger">⚠️ انخصم منه على مولّد اشتراكه</span>}
+              {owed(p) > 0 ? <span className="jw-chip text-jw-danger">⚠️ انخصم منه على مولّد اشتراكه وما رجع له</span> : p.paid.some((j) => j.onPassGenerator) ? <span className="jw-chip text-jw-ok">✓ انخصم منه ورجعناه</span> : null}
               <span className="ms-auto flex items-center gap-3 text-xs tabular-nums">
                 <span className="text-jw-muted">الرصيد {p.balance == null ? "—" : <Riyal halalas={p.balance} size={11} />}</span>
                 <span>{p.passes.reduce((n, x) => n + x.made, 0)} توليد</span>
@@ -147,7 +151,7 @@ export default async function UnlimitedRoom() {
                   </div>
                 )}
                 <div className="mt-2 border-t border-jw-line pt-2">
-                  <Refund userId={p.userId} suggest={Math.max(0, Math.round((p.paid.filter((j) => j.onPassGenerator && !["failed", "cancelled"].includes(j.status)).reduce((n, j) => n + j.coins, 0) - p.grants.reduce((n, g) => n + Math.max(0, g.coins), 0)) / 100 * 100) / 100)} />
+                  <Refund userId={p.userId} suggest={owed(p) / 100} />
                 </div>
               </div>
             </div>
