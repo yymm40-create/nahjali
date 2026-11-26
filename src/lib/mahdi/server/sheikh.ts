@@ -1,14 +1,14 @@
-// SERVER ONLY. «الشيخ الذكي»: the chat of the floating robot. It works like the Claude agent «الشيخ الذكي» did — it
+// SERVER ONLY. «الشيخ الذكي»: the chat on /mahdi/sheikh (the only one). It works like the Claude agent «الشيخ الذكي» did — it
 // searches the hadith books of مكتبة الثقلين again and again, reads the hadiths and their chapters, and answers with the
 // texts, their places, their links and the gradings of their chains — but on OUR copy of the books (mahdi_hadiths, SQL
 // 0124, from the open GitHub copy of thaqalayn) and with the lightest Claude model, its search tools run here for free.
 // Two kinds of question, as before: «سؤال سريع» and «بحث شامل» (more searching, and a Word file of the answer).
 // The conversation is kept (mahdi_sheikh_messages, closed to clients).
 import { createAdminClient } from "@/lib/supabase/admin";
-import { claudeCost, claudeFetch, type ClaudeUsage } from "@/lib/film/anthropic";
+import { claudeCost, claudeStream, CLAUDE_TRIES, type ClaudeUsage } from "@/lib/film/anthropic";
 import { claudeModelOf } from "@config/claude-models";
 import { bookName, gradingLine, HADITH_BOOKS, hadithUrl, type HadithRow } from "../hadiths";
-import { answeredHistory, pendingQuestion, SHEIKH_MEMORY, sheikhWording, type SheikhMode, type SheikhMsg, type SheikhSource } from "../sheikh";
+import { answeredHistory, pendingQuestion, SHEIKH_MEMORY, sheikhWording, type SheikhEvent, type SheikhMode, type SheikhMsg, type SheikhSource } from "../sheikh";
 import { chapterHadiths, readHadiths, searchHadiths, type HadithHit } from "./hadiths";
 import { check, UserError } from "./api";
 import type { SheikhLogRow } from "../sheikh-log";
@@ -209,8 +209,29 @@ async function runTool(b: Block, read: Map<string, HadithRow | HadithHit>): Prom
   }
 }
 
-/** The sheikh at work on one question: searches and reads the library in rounds, then answers. */
-async function answer(mode: SheikhMode, question: string, history: SheikhRow[]): Promise<{ body: string; sources: SheikhSource[]; usd: number }> {
+/** Where the answer is followed while it is written (the chat page), and the person's «وقّف». */
+export interface SheikhWatch {
+  onEvent?: (e: SheikhEvent) => void;
+  signal?: AbortSignal;
+}
+
+/** Thrown when the person stopped the answer: nothing is saved and the question doesn't count. */
+export class SheikhStopped extends Error {
+  constructor() {
+    super("stopped");
+  }
+}
+
+/** The sheikh at work on one question: searches and reads the library in rounds, then answers. Each round is streamed:
+ *  its text reaches the page while it is written (a round that ends in a search was only his note before searching). */
+async function answer(mode: SheikhMode, question: string, history: SheikhRow[], watch: SheikhWatch = {}): Promise<{ body: string; sources: SheikhSource[]; usd: number }> {
+  const emit = (e: SheikhEvent) => {
+    try {
+      watch.onEvent?.(e);
+    } catch {
+      /* a page that went away never stops the answer */
+    }
+  };
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new UserError("الشيخ الذكي غير مفعّل على الخادم.", 503);
   const model = claudeModelOf(MODEL);
@@ -222,17 +243,20 @@ async function answer(mode: SheikhMode, question: string, history: SheikhRow[]):
   let usd = 0;
   let text = "";
   for (let round = 0; round < ROUNDS[mode]; round++) {
+    if (watch.signal?.aborted) throw new SheikhStopped();
     const last = round === ROUNDS[mode] - 1;
+    emit({ t: "search" });
     // the conversation so far is read from the cache on the next round
     const withMark = messages.map((m, i) =>
       i === messages.length - 1 && Array.isArray(m.content) && m.content.length
         ? { ...m, content: m.content.map((c, k) => (k === (m.content as unknown[]).length - 1 ? { ...c, cache_control: { type: "ephemeral" } } : c)) }
         : m,
     );
-    const { body } = await claudeFetch(
+    const body = await claudeStream(
       `${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`,
       {
         method: "POST",
+        ...(watch.signal ? { signal: watch.signal } : {}),
         headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
         body: JSON.stringify({
           model: MODEL,
@@ -243,9 +267,14 @@ async function answer(mode: SheikhMode, question: string, history: SheikhRow[]):
           messages: withMark,
         }),
       },
-      undefined,
+      CLAUDE_TRIES,
       100_000,
-    );
+      undefined,
+      (piece) => emit({ t: "text", v: piece }),
+    ).catch((e) => {
+      if (watch.signal?.aborted) throw new SheikhStopped();
+      throw e;
+    });
     usd += claudeCost({ ...(body.usage as ClaudeUsage), model: MODEL }, model);
     const content = (body.content ?? []) as Block[];
     const said = content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("").trim();
@@ -254,7 +283,8 @@ async function answer(mode: SheikhMode, question: string, history: SheikhRow[]):
       text = said;
       break;
     }
-    messages.push({ role: "assistant", content: content as unknown as Record<string, unknown>[] });
+    // the turn as the API wrote it (an empty text piece of a stream is left out: the API refuses one)
+    messages.push({ role: "assistant", content: content.filter((c) => c.type !== "text" || c.text) as unknown as Record<string, unknown>[] });
     const results = await Promise.all(uses.map(async (u) => ({ type: "tool_result", tool_use_id: u.id, content: await runTool(u, read) })));
     messages.push({ role: "user", content: [...results, ...(round === ROUNDS[mode] - 2 ? [{ type: "text", text: "انتهى وقت البحث: اكتب الجواب الآن مما قرأت." }] : [])] });
   }
@@ -272,7 +302,7 @@ async function answer(mode: SheikhMode, question: string, history: SheikhRow[]):
 /** How long a new question waits for the person's question before it (asked from another tab or device) to be answered. */
 const WAIT_MS = 150_000;
 
-export async function askSheikh(userId: string, mode: SheikhMode, question: string): Promise<SheikhRow[]> {
+export async function askSheikh(userId: string, mode: SheikhMode, question: string, watch: SheikhWatch = {}): Promise<SheikhRow[]> {
   // one question at a time: a question sent while the one before it is still being answered waits its turn, so each
   // gets its own answer (the owner, 24 November 2026 — two questions at once got the first one's answer twice)
   let history = await myChat(userId, SHEIKH_MEMORY * 2);
@@ -285,11 +315,13 @@ export async function askSheikh(userId: string, mode: SheikhMode, question: stri
   const q = check(await db().insert({ user_id: userId, role: "user", mode, body: question }).select("*").single()) as SheikhRow;
   let a: { body: string; sources: SheikhSource[]; usd: number };
   try {
-    a = await answer(mode, question, history);
+    a = await answer(mode, question, history, watch);
+    if (watch.signal?.aborted) throw new SheikhStopped();
   } catch (e) {
-    console.error("[sheikh] answer", e);
-    // a question that got no answer doesn't count against the day's allowance
+    // a question that got no answer (or that the person stopped) doesn't count against the day's allowance
     await db().delete().eq("id", q.id);
+    if (e instanceof SheikhStopped) throw e;
+    console.error("[sheikh] answer", e);
     if (e instanceof UserError) throw e;
     const m = String((e as Error)?.message ?? "");
     throw new UserError(/credit|balance|billing/i.test(m) ? "رصيد الذكاء الاصطناعي خلص؛ صاحب التطبيق يشحنه." : "ما قدر الشيخ يجاوب الحين، جرّب بعد شوي.", 503);

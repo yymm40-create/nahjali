@@ -2,11 +2,13 @@
 
 // «اجعله تنبيهًا»: the small bell beside every habit, priority, task and planner event. A tap opens a sheet with the
 // time; «فعّل التنبيه» saves it, and a notification arrives on the phone at that time (the dispatcher, every 15
-// minutes). When this device can't receive notifications yet, the sheet turns them on in the same place.
+// minutes). The bell never asks for notifications itself: when this phone doesn't get them yet, the sheet says so and
+// links to «التذكير» (the one switch), so the app asks in one place only.
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
-import { deviceState, enablePush, type Device } from "@/lib/mahdi/client/push";
+import { deviceState, type Device } from "@/lib/mahdi/client/push";
 import Icon from "./Icon";
 import Sheet from "./Sheet";
 import { useMahdi } from "./Provider";
@@ -72,9 +74,6 @@ function AlertSheet({ name, time, hint, onSave, onClose }: { name: string; time:
   const save = async (value: string | null) => {
     setBusy(true);
     try {
-      // turning one on: this device is asked for notifications (from the tap itself), but the time is saved without
-      // waiting for it — a browser that never answers must not hang «احفظ»
-      if (value && device === "off") void enablePush().then(setDevice, () => setDevice("off"));
       await onSave(value);
       toast(value ? t.alert.saved(name, value) : t.alert.removed);
       onClose();
@@ -95,13 +94,24 @@ function AlertSheet({ name, time, hint, onSave, onClose }: { name: string; time:
   return (
     <Sheet open onClose={onClose} title={t.alert.make}>
       <div className="space-y-4">
-        <p className="font-semibold">🔔 {name}</p>
+        <p className="flex items-center gap-2 font-semibold">
+          <Icon name="bell" size={18} className="m-gold" /> {name}
+        </p>
         <label className="block space-y-1">
           <span className="text-sm m-muted">{t.alert.at}</span>
           <input type="time" className="m-field m-num" dir="ltr" value={at} onChange={(e) => setAt(e.target.value)} />
         </label>
         {hint && <p className="m-hint">{hint}</p>}
-        {note[device] && <p className="m-note text-sm">{note[device]}</p>}
+        {note[device] && (
+          <p className="m-note text-sm">
+            {note[device]}{" "}
+            {device === "off" && (
+              <Link href="/mahdi/more/notifications" className="m-gold font-semibold underline" onClick={onClose}>
+                {t.alert.openReminders}
+              </Link>
+            )}
+          </p>
+        )}
         <div className="flex gap-2">
           <button type="button" className="m-btn m-btn-primary flex-1" disabled={busy || !at} onClick={() => void save(at)}>
             <Icon name="bell" size={18} /> {time ? t.alert.update : t.alert.turnOn}

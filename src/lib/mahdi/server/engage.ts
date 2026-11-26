@@ -1,5 +1,5 @@
 // SERVER ONLY. «تنبيهات تجيبك للتطبيق»: the dispatcher of the notifications that bring people back (آية ورواية الصباح، ملاحظة اليوم والأسبوع،
-// سلسلتك في خطر، اشتقنالك). It runs inside the 15-minute tick that already sends the habit reminders. For each person with a device:
+// يومك قرّب يخلص، اشتقنالك). It runs inside the 15-minute tick that already sends the habit reminders. For each person with a device:
 // which kinds are due now (their own day's hour, outside quiet hours, switched on, allowed today)? Each kind at most once a day and at
 // most ENGAGE_DAILY_MAX of them in a day, the most important first; nothing is sent twice because every send is first CLAIMED in
 // `mahdi_push_log` (migration 0102; before it, nothing here runs).

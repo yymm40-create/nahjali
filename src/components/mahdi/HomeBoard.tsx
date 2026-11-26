@@ -16,7 +16,6 @@ import { WIDGETS, homeWidgets, moveWidget, widgetDef, type WidgetId } from "@/li
 import type { Profile, Project } from "@/lib/mahdi/types";
 import BookletCard from "./BookletCard";
 import DailyCard from "./DailyCard";
-import PushPrompt from "./PushPrompt";
 import ReviewHints from "./ReviewHints";
 import { DayMarkSheet, QadaCard, TodayExcuseCard } from "./DayMarks";
 import DayBars from "./DayBars";
@@ -157,7 +156,6 @@ export default function HomeBoard() {
         {/* «ملاحظاتي على أسبوعي»: once a week, on the day the person picked */}
         <WeekNoteHome />
         <QadaCard />
-        <PushPrompt />
         {!list.includes("daily") && <DailyCard />}
       </div>
 

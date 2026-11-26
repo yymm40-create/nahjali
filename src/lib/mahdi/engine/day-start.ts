@@ -185,6 +185,43 @@ export function fajrMinute(timeZone: string, date: ISODate, dayStart?: DayStart 
   return local.minute;
 }
 
+/** The angle of the sun below the horizon at Maghrib in the Ja'fari method (the eastern redness gone). */
+export const MAGHRIB_ANGLE = 4;
+
+/** Midday (Dhuhr: the sun at its highest) on a calendar date at a place, ms since 1970 (UTC). */
+export function dhuhrAt(date: ISODate, lng: number): number {
+  const [y, m, d] = date.split("-").map(Number);
+  const jd = julian(y, m, d) - lng / (15 * 24);
+  const { eqt } = sun(jd + 12 / 24);
+  return Date.UTC(y, m - 1, d) + Math.round((12 - eqt - lng / 15) * 3_600_000);
+}
+
+/** The moment the sun is `angle`° below the horizon after sunset (Maghrib), ms; null when it never goes that low. */
+export function maghribAt(date: ISODate, lat: number, lng: number, angle = MAGHRIB_ANGLE): number | null {
+  const [y, m, d] = date.split("-").map(Number);
+  const jd = julian(y, m, d) - lng / (15 * 24);
+  let t = 18;
+  for (let k = 0; k < 2; k++) {
+    const { decl, eqt } = sun(jd + t / 24);
+    const cos = (-Math.sin(rad(angle)) - Math.sin(rad(decl)) * Math.sin(rad(lat))) / (Math.cos(rad(decl)) * Math.cos(rad(lat)));
+    if (!(cos >= -1 && cos <= 1)) return null;
+    t = 12 - eqt + deg(Math.acos(cos)) / 15;
+  }
+  return Date.UTC(y, m - 1, d) + Math.round((t - lng / 15) * 3_600_000);
+}
+
+/** Fajr, Dhuhr and Maghrib on a date as local minutes of the day in the person's time zone, at their «بداية يومي»
+ *  area (null when one can't be worked out). For «أذكّرك بكرة؟»: reminder times tied to the prayers. */
+export function prayerMinutes(timeZone: string, date: ISODate, dayStart?: DayStart | null): { fajr: number | null; dhuhr: number | null; maghrib: number | null } {
+  const p = dayPlace(timeZone, dayStart, toUTC(date) + 12 * 3_600_000);
+  const local = (ms: number | null) => {
+    if (ms === null) return null;
+    const c = localClock(timeZone, ms);
+    return c.date === date ? c.minute : null;
+  };
+  return { fajr: fajrMinute(timeZone, date, dayStart), dhuhr: local(dhuhrAt(date, p.lng)), maghrib: local(maghribAt(date, p.lat, p.lng)) };
+}
+
 /** 'HH:MM' → minutes since midnight, or null. */
 const hhmm = (s: string | null | undefined) => {
   const m = /^([01]\d|2[0-3]):([0-5]\d)(?::\d\d)?$/.exec(s ?? "");

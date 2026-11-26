@@ -22,7 +22,7 @@ export interface EngageDef {
 }
 
 export const ENGAGE: readonly EngageDef[] = [
-  { id: "streak", ar: "سلسلتك في خطر", hint: "إذا سلسلة أيامك المتواصلة باقي لها شي بسيط اليوم", at: "19:30", priority: 1 },
+  { id: "streak", ar: "عادة قريبة تفوت", hint: "مرة وحدة آخر اليوم، إذا أيامك المتواصلة باقي لها شي بسيط اليوم", at: "19:30", priority: 1 },
   { id: "review_day", ar: "ملاحظة يومك", hint: "آخر اليوم: «اكتب ملاحظتك على يومك»", at: "21:00", priority: 2 },
   { id: "morning", ar: "آية ورواية الصباح", hint: "كل صباح آية اليوم ورواية اليوم", at: "08:00", priority: 3 },
   { id: "review_week", ar: "ملاحظة أسبوعك", hint: "آخر يوم من أسبوعك: قيّمه واكتب ملاحظتك", at: "20:00", priority: 4 },
@@ -34,7 +34,7 @@ export const ENGAGE_DAILY_MAX = 2;
 /** «اشتقنالك» after this many days with nothing logged, and not more often than every this many days. */
 export const COMEBACK_AFTER_DAYS = 3;
 export const COMEBACK_EVERY_DAYS = 7;
-/** «سلسلتك في خطر» only for a streak of at least this many days. */
+/** «عادة قريبة تفوت» only for a streak of at least this many days. Never a message after a streak is lost: only before, once. */
 export const STREAK_MIN_DAYS = 3;
 
 export const engageDef = (id: EngageKind) => ENGAGE.find((e) => e.id === id)!;
@@ -101,7 +101,7 @@ export function engageText(kind: EngageKind, today: ISODate, o: { n?: number; le
       return { title: "حاسب نفسك · أسبوعك", body: "خلّص أسبوعك. شوف نتيجتك واكتب ملاحظتك عليه.", url: "/mahdi/progress/week", tag: "mahdi-review-week" };
     case "streak": {
       const n = o.n ?? 0, left = o.left ?? 1;
-      return { title: "سلسلتك في خطر", body: `عندك ${n} يوم متواصلة، وباقي ${left === 1 ? "عادة وحدة" : `${left} عادات`} اليوم تحفظها.`, url: "/mahdi", tag: "mahdi-streak" };
+      return { title: "يومك قرّب يخلص", body: `عندك ${n} يوم متواصلة ما شاء الله، وباقي ${left === 1 ? "عادة وحدة" : `${left} عادات`} اليوم تلحق عليها.`, url: "/mahdi", tag: "mahdi-streak" };
     }
     case "comeback":
       return { title: "اشتقنالك", body: `من ${o.n ?? COMEBACK_AFTER_DAYS} أيام ما سجّلت شي. دقيقة وحدة اليوم ترجّعك على الطريق.`, url: "/mahdi", tag: "mahdi-comeback" };
