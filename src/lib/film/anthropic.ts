@@ -212,7 +212,9 @@ export interface ResumeOpts {
 export type OnText = (piece: string) => void;
 
 export async function readStream(stream: ReadableStream<Uint8Array>, alive: () => void = () => {}, resume?: ResumeOpts, onText?: OnText): Promise<StreamBody> {
-  const blocks: { type: string; text?: string }[] = [];
+  // a tool call («الشيخ الذكي» searching the library) comes back whole too: its id, name and input (sent in JSON pieces)
+  const blocks: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[] = [];
+  const toolJson = new Map<number, string>();
   const msg: StreamBody = { content: blocks };
   let usage: Record<string, unknown> = {};
   const reader = stream.getReader();
@@ -235,13 +237,26 @@ export async function readStream(stream: ReadableStream<Uint8Array>, alive: () =
         break;
       }
       case "content_block_start": {
-        const b = (ev.content_block ?? {}) as { type: string; text?: string };
-        blocks[Number(ev.index)] = { type: b.type, ...(b.type === "text" ? { text: b.text ?? "" } : {}) };
+        const b = (ev.content_block ?? {}) as { type: string; text?: string; id?: string; name?: string };
+        blocks[Number(ev.index)] = { type: b.type, ...(b.type === "text" ? { text: b.text ?? "" } : {}), ...(b.type === "tool_use" ? { id: b.id, name: b.name, input: {} } : {}) };
+        break;
+      }
+      case "content_block_stop": {
+        const b = blocks[Number(ev.index)];
+        const json = toolJson.get(Number(ev.index));
+        if (b?.type === "tool_use" && json) {
+          try {
+            b.input = JSON.parse(json) as Record<string, unknown>;
+          } catch {
+            /* a cut input stays empty: the tool answers that it found nothing */
+          }
+        }
         break;
       }
       case "content_block_delta": {
-        const d = (ev.delta ?? {}) as { type?: string; text?: string };
+        const d = (ev.delta ?? {}) as { type?: string; text?: string; partial_json?: string };
         const b = blocks[Number(ev.index)];
+        if (d.type === "input_json_delta" && b?.type === "tool_use") toolJson.set(Number(ev.index), (toolJson.get(Number(ev.index)) ?? "") + (d.partial_json ?? ""));
         if (d.type === "text_delta" && b) {
           b.text = (b.text ?? "") + (d.text ?? "");
           if (onText && d.text) {

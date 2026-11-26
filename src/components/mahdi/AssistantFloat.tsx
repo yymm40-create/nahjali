@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import AssistantChat from "./AssistantChat";
-import SheikhChat from "./SheikhChat";
 import Icon from "./Icon";
 import Robot from "./Robot";
 
@@ -20,8 +19,8 @@ function navSpace() {
 
 /**
  * The team's chat («المساعد»), opened by a reply notification with ?assistant=1 on any screen. The floating robot that
- * used to sit over every screen is gone (the plan approved on 26 November 2026): «الشيخ الذكي» has its own page, opened
- * from «أنا» and from the reading.
+ * used to sit over every screen is gone (the plan approved on 26 November 2026): «الشيخ الذكي» has ONE conversation, on
+ * its own page /mahdi/sheikh (opened from «أنا» and from the reading) — this panel never holds a copy of it.
  */
 export default function AssistantFloat({ openFromLink, onLinkClosed, onRead }: { openFromLink: boolean; onLinkClosed: () => void; onRead: () => void }) {
   const [full, setFull] = useState(false);
@@ -29,9 +28,7 @@ export default function AssistantFloat({ openFromLink, onLinkClosed, onRead }: {
   return (
     <ChatPanel
       side="left"
-      kind="team"
       full={full}
-      onFull={setFull}
       canHide={false}
       onFold={() => {
         setFull(false);
@@ -60,40 +57,31 @@ function placeChat(side: "left" | "right"): React.CSSProperties {
 }
 
 /**
- * The chat: the robot and the name, «كبّر» / «صغّر», fold, hide, and the conversation — the sheikh's, or the team's
- * when a reply notification opened it. Not modal while small (the screen stays usable); at full size it covers it.
+ * The chat: the robot and the name, «كبّر» / «صغّر», fold, hide, and the team's conversation. Not modal while small (the
+ * screen stays usable); at full size it covers it.
  */
 function ChatPanel({
   side,
-  kind,
   full,
-  onFull,
   canHide,
   onFold,
   onHide,
   onRead,
 }: {
   side: "left" | "right";
-  kind: "sheikh" | "team";
   full: boolean;
-  onFull: (v: boolean) => void;
   canHide: boolean;
   onFold: () => void;
   onHide: () => void;
   onRead: () => void;
 }) {
   const [place] = useState(() => placeChat(side));
-  const title = kind === "sheikh" ? S.title : A.title;
+  const title = A.title;
   return (
     <div role="dialog" aria-modal={full ? "true" : "false"} aria-label={title} className="m-assist-panel" style={full ? undefined : place} data-full={full ? "" : undefined}>
       <div className="flex items-center gap-2">
         <Robot size={34} />
         <p className="flex-1 font-semibold">{title}</p>
-        {kind === "sheikh" && (
-          <button type="button" className="m-icon-btn size-9" onClick={() => onFull(!full)} aria-label={full ? S.shrink : S.expand} title={full ? S.shrink : S.expand}>
-            <Icon name={full ? "shrink" : "expand"} size={18} />
-          </button>
-        )}
         <button type="button" className="m-icon-btn size-9" onClick={onFold} aria-label={S.fold} title={S.fold}>
           <Icon name={full ? "close" : "chevronDown"} size={20} />
         </button>
@@ -103,7 +91,7 @@ function ChatPanel({
           </button>
         )}
       </div>
-      {kind === "sheikh" ? <SheikhChat autoFocus={full} /> : <AssistantChat onRead={onRead} />}
+      <AssistantChat onRead={onRead} />
     </div>
   );
 }

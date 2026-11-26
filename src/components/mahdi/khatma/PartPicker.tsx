@@ -10,7 +10,7 @@ export interface Part {
   range: PortionRange;
 }
 
-const UNIT_NAME: Record<Division, string> = { page: "صفحات", juz: "أجزاء", hizb: "أحزاب", half: "أنصاف الأحزاب", quarter: "أرباع الأحزاب" };
+export const UNIT_NAME: Record<Division, string> = { page: "صفحات", juz: "أجزاء", hizb: "أحزاب", half: "أنصاف الأحزاب", quarter: "أرباع الأحزاب" };
 
 /** «من الفاتحة ١ إلى البقرة ٧٤» for a stretch. */
 export function partVerses({ unit, range }: Part) {
@@ -22,9 +22,6 @@ export const partText = ({ unit, range }: Part) => `${rangeTitle(unit, range)} �
 export default function PartPicker({ value, onChange, lockUnit = false }: { value: Part; onChange: (p: Part) => void; lockUnit?: boolean }) {
   const { unit, range } = value;
   const whole = isFull(unit, range);
-  const count = portionCount(unit);
-  const set = (from: number, to: number) => onChange({ unit, range: { from: Math.max(1, Math.min(from, count)), to: Math.max(Math.max(1, Math.min(from, count)), Math.min(to, count)) } });
-  const options = (min: number) => Array.from({ length: count - min + 1 }, (_, i) => min + i);
   return (
     <div className="space-y-3">
       <fieldset className="space-y-2">
@@ -51,39 +48,51 @@ export default function PartPicker({ value, onChange, lockUnit = false }: { valu
           <button type="button" role="radio" aria-checked={whole} className="m-option min-h-11 px-2 text-sm font-semibold" onClick={() => onChange({ unit, range: fullRange(unit) })}>
             القرآن كاملًا
           </button>
-          <button type="button" role="radio" aria-checked={!whole} className="m-option min-h-11 px-2 text-sm font-semibold" onClick={() => whole && set(1, Math.min(count, unit === "page" ? 20 : unit === "juz" ? 1 : 4))}>
+          <button type="button" role="radio" aria-checked={!whole} className="m-option min-h-11 px-2 text-sm font-semibold" onClick={() => whole && onChange(firstPart(unit))}>
             جزء معيّن منه
           </button>
         </div>
-        {!whole && (
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block">
-              <span className="m-label">من</span>
-              {unit === "page" ? (
-                <input type="number" className="m-field m-num" min={1} max={count} value={range.from} onChange={(e) => set(Number(e.target.value) || 1, Math.max(range.to, Number(e.target.value) || 1))} />
-              ) : (
-                <select className="m-field m-num" value={range.from} onChange={(e) => set(Number(e.target.value), Math.max(range.to, Number(e.target.value)))}>
-                  {options(1).map((n) => <option key={n} value={n}>{portionTitle(unit, n)}</option>)}
-                </select>
-              )}
-            </label>
-            <label className="block">
-              <span className="m-label">إلى</span>
-              {unit === "page" ? (
-                <input type="number" className="m-field m-num" min={range.from} max={count} value={range.to} onChange={(e) => set(range.from, Number(e.target.value) || range.from)} />
-              ) : (
-                <select className="m-field m-num" value={range.to} onChange={(e) => set(range.from, Number(e.target.value))}>
-                  {options(range.from).map((n) => <option key={n} value={n}>{portionTitle(unit, n)}</option>)}
-                </select>
-              )}
-            </label>
-          </div>
-        )}
+        {!whole && <RangeFields value={value} onChange={onChange} />}
         <p className="m-num text-sm">
           <strong>{partText(value)}</strong>
           <span className="block text-xs m-muted">{partVerses(value)}</span>
         </p>
       </fieldset>
+    </div>
+  );
+}
+
+/** A first stretch to start from when «جزء منه» is picked: 20 pages, one juz, or 4 of the smaller cuts. */
+export const firstPart = (unit: Division): Part => ({ unit, range: { from: 1, to: Math.min(portionCount(unit), unit === "page" ? 20 : unit === "juz" ? 1 : 4) } });
+
+/** «من … إلى …» inside the chosen cut. */
+export function RangeFields({ value, onChange }: { value: Part; onChange: (p: Part) => void }) {
+  const { unit, range } = value;
+  const count = portionCount(unit);
+  const set = (from: number, to: number) => onChange({ unit, range: { from: Math.max(1, Math.min(from, count)), to: Math.max(Math.max(1, Math.min(from, count)), Math.min(to, count)) } });
+  const options = (min: number) => Array.from({ length: count - min + 1 }, (_, i) => min + i);
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <label className="block">
+        <span className="m-label">من</span>
+        {unit === "page" ? (
+          <input type="number" className="m-field m-num" min={1} max={count} value={range.from} onChange={(e) => set(Number(e.target.value) || 1, Math.max(range.to, Number(e.target.value) || 1))} />
+        ) : (
+          <select className="m-field m-num" value={range.from} onChange={(e) => set(Number(e.target.value), Math.max(range.to, Number(e.target.value)))}>
+            {options(1).map((n) => <option key={n} value={n}>{portionTitle(unit, n)}</option>)}
+          </select>
+        )}
+      </label>
+      <label className="block">
+        <span className="m-label">إلى</span>
+        {unit === "page" ? (
+          <input type="number" className="m-field m-num" min={range.from} max={count} value={range.to} onChange={(e) => set(range.from, Number(e.target.value) || range.from)} />
+        ) : (
+          <select className="m-field m-num" value={range.to} onChange={(e) => set(range.from, Number(e.target.value))}>
+            {options(range.from).map((n) => <option key={n} value={n}>{portionTitle(unit, n)}</option>)}
+          </select>
+        )}
+      </label>
     </div>
   );
 }

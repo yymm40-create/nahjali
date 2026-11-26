@@ -1,12 +1,15 @@
 "use client";
 
-// «خطتي» and «أدخلها في عاداتي»: the plan's pages of «الصحة العلوية», on the shared state (HealthProvider).
+// «خطتي» and «أدخلها في عاداتي»: the plan's pages of «الصحة العلوية», on the shared state (HealthProvider). Their
+// views are in the link: /mahdi/health/plan?edit=1 (the table being edited), /mahdi/health/habits?done=<project>.
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMahdi } from "@/components/mahdi/Provider";
+import { setupHref } from "@/lib/mahdi/health/route";
 import { Barbell, PlanSummary, PlanView, ToHabits } from "./HealthApp";
 import { useHealth } from "./HealthProvider";
+import { useView } from "./useView";
 
 function NoPlan() {
   return (
@@ -14,14 +17,15 @@ function NoPlan() {
       <Barbell />
       <h1 className="gym-title">ما عندك <em>خطة</em> للحين</h1>
       <p className="gym-small">جاوب على كم سؤال وأسوي لك جدولك ونظامك الغذائي.</p>
-      <Link href="/mahdi/health/setup" className="gym-btn">يلا نبدأ 💪</Link>
+      <Link href={setupHref()} className="gym-btn primary">يلا نبدأ 💪</Link>
     </section>
   );
 }
 
 export function PlanPage() {
   const router = useRouter();
-  const { plan, save, setStep } = useHealth();
+  const view = useView();
+  const { plan, save } = useHealth();
   if (!plan) return <NoPlan />;
   return (
     <div className="space-y-4">
@@ -29,13 +33,17 @@ export function PlanPage() {
         plan={plan}
         onOpen={() => document.getElementById("plan-view")?.scrollIntoView({ behavior: "smooth" })}
         onHabits={() => router.push("/mahdi/health/habits")}
-        onEdit={() => {
-          setStep("track");
-          router.push("/mahdi/health/setup");
-        }}
+        onEdit={() => router.push(setupHref("track"))}
       />
       <div id="plan-view">
-        <PlanView plan={plan} save={save} onHabits={() => router.push("/mahdi/health/habits")} onHome={() => router.push("/mahdi/health")} />
+        <PlanView
+          plan={plan}
+          save={save}
+          edit={view.get("edit") === "1"}
+          setEdit={(on) => view.set({ edit: on })}
+          onHabits={() => router.push("/mahdi/health/habits")}
+          onHome={() => router.push("/mahdi/health")}
+        />
       </div>
     </div>
   );
@@ -43,14 +51,18 @@ export function PlanPage() {
 
 export function HabitsPage() {
   const router = useRouter();
+  const view = useView();
   const { state, store, toast } = useMahdi();
   const { plan, save } = useHealth();
   if (!plan) return <NoPlan />;
+  const done = view.get("done");
   return (
     <ToHabits
       plan={plan}
       projects={state.snap.projects.filter((x) => !x.archivedAt)}
       back={() => router.push("/mahdi/health/plan")}
+      done={done && /^[0-9a-f-]{36}$/i.test(done) ? done : null}
+      setDone={(id) => view.set({ done: id })}
       apply={async (body) => {
         try {
           const r = await store.mutate<{ made: number; projectId: string; links: Record<string, string> }>("/api/mahdi/health/apply", "POST", { plan, ...body });

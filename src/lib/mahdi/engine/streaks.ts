@@ -12,19 +12,22 @@ export interface Streak {
 /**
  * A habit's streak: consecutive goals fully reached, in the habit's own unit (days for daily or chosen-weekday
  * habits, weeks or months for "X per week/month" habits). Days without a goal (not a chosen weekday, paused)
- * never break it, and an unfinished goal of today / this week is still pending, so it does not break it either.
+ * never break it, and an unfinished goal of today / this week is still pending, so it does not break it either; nor does
+ * an excused day («أيام العذر»).
  */
 export function itemStreak(tl: Timeline, itemId: string): Streak & { unit: SlotKind } {
   const list = (tl.byItem.get(itemId) ?? []).filter((i) => i.status !== "future");
   if (!list.length) return { current: 0, best: 0, unit: "day" };
   const unit = list[list.length - 1].kind;
+  // a day goal on an excused day («أيام العذر») is pending, never a break
+  const excused = (i: (typeof list)[number]) => i.kind === "day" && Boolean(tl.ctx.excused?.has(i.start));
 
   let current = 0;
   for (let k = list.length - 1; k >= 0; k--) {
     const i = list[k];
     if (i.kind !== unit) break;
     if (i.progress >= 1) current++;
-    else if (i.status === "current") continue;
+    else if (i.status === "current" || excused(i)) continue;
     else break;
   }
 
@@ -37,7 +40,7 @@ export function itemStreak(tl: Timeline, itemId: string): Streak & { unit: SlotK
       kind = i.kind;
     }
     if (i.progress >= 1) best = Math.max(best, ++run);
-    else if (i.status !== "current") run = 0;
+    else if (i.status !== "current" && !excused(i)) run = 0;
   }
   return { current, best: Math.max(best, current), unit };
 }
@@ -45,15 +48,17 @@ export function itemStreak(tl: Timeline, itemId: string): Streak & { unit: SlotK
 /**
  * Overall consistency in days: consecutive days on which at least `threshold` of the day's goals were reached.
  * Days with nothing due are skipped; today counts once it reaches the threshold and never breaks the streak.
+ * «أيام العذر» (`tl.ctx.excused`: travel, illness, the shar'i excuse, a pause) are skipped the same way when not reached.
  */
 export function dayStreak(tl: Timeline, threshold: number): Streak {
   const asOf = tl.ctx.asOf;
+  const excused = tl.ctx.excused;
   let current = 0;
   for (let d = asOf; d >= tl.from; d = addDays(d, -1)) {
     const s = dayScore(tl, d).score;
     if (s === null) continue;
     if (s >= threshold) current++;
-    else if (d === asOf) continue;
+    else if (d === asOf || excused?.has(d)) continue;
     else break;
   }
   let best = 0;
@@ -62,7 +67,7 @@ export function dayStreak(tl: Timeline, threshold: number): Streak {
     const s = dayScore(tl, d).score;
     if (s === null) continue;
     if (s >= threshold) best = Math.max(best, ++run);
-    else if (d !== asOf) run = 0;
+    else if (d !== asOf && !excused?.has(d)) run = 0;
   }
   return { current, best: Math.max(best, current) };
 }

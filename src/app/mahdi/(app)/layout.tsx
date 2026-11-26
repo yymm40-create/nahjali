@@ -4,6 +4,7 @@ import AppShell from "@/components/mahdi/AppShell";
 import MahdiProvider from "@/components/mahdi/Provider";
 import UsePing from "@/components/mahdi/UsePing";
 import NativeAlerts from "@/components/mahdi/NativeAlerts";
+import ReminderOffer from "@/components/mahdi/ReminderOffer";
 import { getMahdiSession } from "@/lib/mahdi/server/session";
 import { loadSnapshot } from "@/lib/mahdi/server/snapshot";
 import { ensureUsername } from "@/lib/username";
@@ -37,6 +38,8 @@ export default async function MahdiAppLayout({ children }: { children: React.Rea
       <UsePing />
       {/* inside the «لأجل المهدي» phone app: reminders booked on the phone itself */}
       <NativeAlerts />
+      {/* «أذكّرك بكرة؟»: the one ask for notifications, after the first thing finished (never on entry) */}
+      <ReminderOffer />
       <AppShell familyMember={Boolean(family)}>{children}</AppShell>
     </MahdiProvider>
   );

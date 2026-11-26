@@ -6,6 +6,7 @@ import { clockOfRow, profilesWithClock } from "./clock";
 import { occursOn, type PlanRepeat } from "../planner";
 import { PRIORITY_TITLE_PREFIX } from "./snapshot";
 import { t } from "../i18n";
+import { alertUrl } from "../remind-offer";
 import { toItems } from "../client/derive";
 import { addChallenges, chunks, loadHabitData } from "./bulk";
 
@@ -240,9 +241,10 @@ export async function dispatchTaskReminders(db: SupabaseClient, now: Date = new 
   if (stale.length) await db.from("mahdi_day_tasks").update({ notified: 2 }).in("id", stale);
 
   for (const [userId, u] of byUser) {
+    // a tap opens the day those tasks are on (not the home)
     const payload: PushPayload = u.at.length
-      ? { title: t.tasks.title, body: t.tasks.notifyAt(u.at.map((x) => plainTitle(x.title))), url: "/mahdi", tag: "mahdi-task" }
-      : { title: t.tasks.title, body: t.tasks.notifyLate(u.late.map((x) => plainTitle(x.title))), url: "/mahdi", tag: "mahdi-task-late" };
+      ? { title: t.tasks.title, body: t.tasks.notifyAt(u.at.map((x) => plainTitle(x.title))), url: alertUrl("task", { date: u.at[0].task_date }), tag: "mahdi-task" }
+      : { title: t.tasks.title, body: t.tasks.notifyLate(u.late.map((x) => plainTitle(x.title))), url: alertUrl("task", { date: u.late[0].task_date }), tag: "mahdi-task-late" };
     const n = await pushToUser(db, subsOf.get(userId)!, payload);
     if (n > 0) result.sent++;
     // marked even when no device took it, so a broken device doesn't get the same reminder every 15 minutes
@@ -339,8 +341,10 @@ export async function dispatchHabitAlerts(db: SupabaseClient, now: Date = new Da
         const mine = due.filter((h) => open.has(h.id));
         if (sentCol) await db.from("mahdi_habits").update({ reminder_sent_at: now.toISOString() }).in("id", due.map((h) => h.id));
         if (!mine.length) return;
-        const n = await pushToUser(db, subsOf.get(userId)!, { title: t.notify.title2, body: t.notify.habitBody(mine.map((h) => h.name)), url: "/mahdi", tag: "mahdi-habit" });
-        if (n > 0) result.sent++;
+        // one reminder per habit, each opening that habit itself (its own tag, so one never replaces another)
+        let sent = 0;
+        for (const h of mine) sent += await pushToUser(db, subsOf.get(userId)!, { title: t.notify.title2, body: t.notify.habitBody([h.name]), url: alertUrl("habit", { id: h.id }), tag: `mahdi-habit-${h.id}` });
+        if (sent > 0) result.sent++;
       }),
     );
   }

@@ -5,6 +5,7 @@ import { todayFor, type ISODate } from "../engine";
 import { t } from "../i18n";
 import type { LogOp, Profile, Snapshot } from "../types";
 import { ApiError, mahdiFetch } from "./fetch";
+import { noteAction } from "./popups";
 
 export interface StoreState {
   snap: Snapshot;
@@ -139,6 +140,8 @@ export function createStore(initial: Snapshot) {
       saveQueue(pending);
       set({ pending, logs: withOps(state.logs, [op]), syncError: null });
       schedule(350);
+      // something completed: a layer that waits its turn may open now («نافذة وحدة بس في كل زيارة»)
+      if (op.value > prev) noteAction();
       return prev;
     },
 
@@ -165,6 +168,7 @@ export function createStore(initial: Snapshot) {
       if (!navigator.onLine) throw new ApiError(t.common.needsConnection, 0);
       const res = await mahdiFetch<T & { snapshot?: Snapshot }>(url, { method, json });
       if (res.snapshot) replaceSnapshot(res.snapshot);
+      if (method !== "DELETE") noteAction();
       return res;
     },
 

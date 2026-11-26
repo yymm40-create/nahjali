@@ -7,14 +7,15 @@ import { useEffect, useRef, useState } from "react";
 import { FIGURES } from "@config/mahdi/exercise-figures";
 import { figureShapes, VIEW, type Shape, type Tone } from "@/lib/mahdi/health/figure";
 
+/** the person's design: navy ink for the body, the yellow's darker rim for the movement (readable on a light card) */
 const COLORS: Record<Tone, string> = {
-  body: "#f3f4f1",
-  far: "#7d8794",
-  gear: "#9aa3ad",
-  gearSoft: "#3a424b",
-  accent: "#c6ff1a",
-  ghost: "#f3f4f1",
-  floor: "#2a3038",
+  body: "var(--m-ink)",
+  far: "color-mix(in srgb, var(--m-ink) 45%, var(--m-surface-solid))",
+  gear: "var(--m-muted)",
+  gearSoft: "var(--m-line)",
+  accent: "var(--m-pebble-rim)",
+  ghost: "var(--m-ink)",
+  floor: "var(--m-line)",
 };
 const HOLD = 650;
 const MOVE = 1150;
@@ -31,22 +32,21 @@ function draw(s: Shape, i: number) {
   const o = s.o;
   switch (s.k) {
     case "line":
-      return <line key={i} x1={s.a[0]} y1={s.a[1]} x2={s.b[0]} y2={s.b[1]} stroke={COLORS[s.c]} strokeWidth={s.w} strokeLinecap="round" opacity={o} />;
+      return <line key={i} x1={s.a[0]} y1={s.a[1]} x2={s.b[0]} y2={s.b[1]} style={{ stroke: COLORS[s.c] }} strokeWidth={s.w} strokeLinecap="round" opacity={o} />;
     case "circle":
       return s.fill ? (
-        <circle key={i} cx={s.at[0]} cy={s.at[1]} r={s.r} fill={COLORS[s.c]} opacity={o} />
+        <circle key={i} cx={s.at[0]} cy={s.at[1]} r={s.r} style={{ fill: COLORS[s.c] }} opacity={o} />
       ) : (
-        <circle key={i} cx={s.at[0]} cy={s.at[1]} r={s.r} fill="none" stroke={COLORS[s.c]} strokeWidth={s.w ?? 2} opacity={o} />
+        <circle key={i} cx={s.at[0]} cy={s.at[1]} r={s.r} fill="none" style={{ stroke: COLORS[s.c] }} strokeWidth={s.w ?? 2} opacity={o} />
       );
     case "rect":
-      return <rect key={i} x={s.x} y={s.y} width={s.w} height={s.h} rx={s.rx ?? 0} fill={COLORS[s.c]} opacity={o} />;
+      return <rect key={i} x={s.x} y={s.y} width={s.w} height={s.h} rx={s.rx ?? 0} style={{ fill: COLORS[s.c] }} opacity={o} />;
     case "path":
       return (
         <path
           key={i}
           d={s.d}
-          fill={s.fill ? COLORS[s.c] : "none"}
-          stroke={COLORS[s.c]}
+          style={{ fill: s.fill ? COLORS[s.c] : "none", stroke: COLORS[s.c] }}
           strokeWidth={s.w}
           strokeLinecap="round"
           strokeLinejoin="round"

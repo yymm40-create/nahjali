@@ -4,7 +4,10 @@ import { useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import Sheet from "./Sheet";
 
-/** Asks before something that can't be undone (deleting). */
+/**
+ * Asks before something big (the plan of 26 November 2026: a confirm sheet for the big things, like deleting a group;
+ * an undo for the small ones). `tone="primary"` for a big step that is not a deletion (announcing a winner).
+ */
 export default function ConfirmSheet({
   open,
   onClose,
@@ -12,6 +15,7 @@ export default function ConfirmSheet({
   body,
   confirmLabel = t.common.confirmDelete,
   onConfirm,
+  tone = "danger",
 }: {
   open: boolean;
   onClose: () => void;
@@ -19,18 +23,19 @@ export default function ConfirmSheet({
   body: string;
   confirmLabel?: string;
   onConfirm: () => Promise<void>;
+  tone?: "danger" | "primary";
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   return (
     <Sheet open={open} onClose={onClose} title={title}>
       <div className="space-y-5">
-        <p>{body}</p>
+        {body && <p>{body}</p>}
         {error && <p className="m-error" role="alert">{error}</p>}
         <div className="flex gap-3">
           <button
             type="button"
-            className="m-btn m-btn-danger flex-1"
+            className={`m-btn flex-1 ${tone === "primary" ? "m-btn-primary" : "m-btn-danger"}`}
             disabled={busy}
             onClick={async () => {
               setBusy(true);

@@ -1,199 +1,247 @@
-/* «الصحة العلوية»: a gym look inside «لأجل المهدي» — dark iron, chalk and a neon-lime plate, whatever the app's theme. */
+/*
+ * «الصحة العلوية» in the person's own design (the plan «واجهة لأجل المهدي الجديدة», phase 7): the app's light tokens
+ * (--m-*), solid cards, the yellow (--m-gold) for progress and every achievement, the orange (--m-primary-bg) only for
+ * the one action of a screen (.gym-btn.primary), navy ink. No dark surface anywhere; the class names stay «gym-».
+ */
 
 .gym {
-  --g-bg: #0c0e11;
-  --g-card: #15181d;
-  --g-line: #2a3038;
-  --g-ink: #f3f4f1;
-  --g-dim: #9aa3ad;
-  --g-lime: #c6ff1a;
-  --g-orange: #ff7a1a;
-  --g-red: #ff4d4d;
+  --g-card: var(--m-surface-solid);
+  --g-soft: var(--m-surface-2);
+  --g-line: var(--m-line);
+  --g-ink: var(--m-ink);
+  --g-dim: var(--m-muted);
+  --g-yellow: var(--m-gold);
+  /* the yellow drawn as a line or a dot on white: its darker rim, readable on a light card */
+  --g-yellow-line: var(--m-pebble-rim);
+  --g-yellow-soft: color-mix(in srgb, var(--m-gold) 16%, var(--m-surface-solid));
+  --g-yellow-half: color-mix(in srgb, var(--m-gold) 45%, var(--m-track));
   color: var(--g-ink);
-  background:
-    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0 2px, transparent 2px 14px),
-    radial-gradient(120% 60% at 100% 0%, rgba(198, 255, 26, 0.12), transparent 60%),
-    radial-gradient(90% 50% at 0% 100%, rgba(255, 122, 26, 0.12), transparent 60%),
-    var(--g-bg);
-  border-radius: 1.5rem;
-  padding: 1.1rem;
-  min-height: 70vh;
-  box-shadow: 0 20px 60px -30px rgba(0, 0, 0, 0.6);
 }
 .gym * { box-sizing: border-box; }
 .gym a { color: inherit; }
 
 .gym-title {
-  font-weight: 900;
-  font-size: 1.9rem;
-  line-height: 1.15;
-  letter-spacing: -0.01em;
+  font-family: var(--m-display);
+  font-weight: var(--m-display-weight);
+  font-size: 1.7rem;
+  line-height: 1.25;
 }
-.gym-title em { font-style: normal; color: var(--g-lime); }
+/* the word that matters: a stroke of the yellow under it (a highlighter), the letters stay navy */
+.gym-title em {
+  font-style: normal;
+  background: linear-gradient(transparent 58%, color-mix(in srgb, var(--m-gold) 60%, transparent) 58% 92%, transparent 92%);
+  padding-inline: 0.08em;
+}
 .gym-eyebrow {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--g-lime);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--g-dim);
 }
+.gym-ink { color: var(--g-ink); font-weight: 800; }
 .gym-dim { color: var(--g-dim); }
-.gym-small { font-size: 0.8rem; color: var(--g-dim); line-height: 1.7; }
+.gym-small { font-size: 0.82rem; color: var(--g-dim); line-height: 1.7; }
 
-.gym-card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent), var(--g-card);
+/* ── the four views, one row on top of their pages (no second bar) ── */
+.gym-views {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border-radius: 16px;
+  background: var(--g-soft);
   border: 1px solid var(--g-line);
-  border-radius: 1.1rem;
+}
+.gym-views a {
+  display: grid;
+  place-items: center;
+  min-height: 40px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--g-dim);
+  text-decoration: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.gym-views a[aria-current="page"] { background: var(--g-card); color: var(--g-ink); box-shadow: var(--m-shadow); }
+
+.gym-skeleton {
+  border-radius: var(--m-radius);
+  background: linear-gradient(90deg, var(--g-soft), var(--m-track), var(--g-soft));
+  background-size: 200% 100%;
+  animation: gym-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes gym-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .gym-skeleton { animation: none; } }
+
+/* ── surfaces: solid cards ── */
+.gym-card {
+  background: var(--g-card);
+  border: var(--m-border-w) solid var(--g-line);
+  border-radius: var(--m-radius);
+  box-shadow: var(--m-shadow);
   padding: 1rem;
 }
-.gym-card.hot { border-color: var(--g-lime); box-shadow: 0 0 0 1px var(--g-lime) inset, 0 10px 40px -20px var(--g-lime); }
-.gym-card.warn { border-color: var(--g-orange); background: rgba(255, 122, 26, 0.08); }
-.gym-card.stop { border-color: var(--g-red); background: rgba(255, 77, 77, 0.08); }
+.gym-card.hot { border-color: var(--g-yellow); box-shadow: 0 0 0 1px var(--g-yellow) inset, var(--m-shadow); }
+.gym-card.warn { border-color: color-mix(in srgb, var(--m-warning) 45%, var(--g-line)); background: color-mix(in srgb, var(--m-warning) 8%, var(--g-card)); }
+.gym-card.stop { border-color: color-mix(in srgb, var(--m-error) 45%, var(--g-line)); background: color-mix(in srgb, var(--m-error) 7%, var(--g-card)); }
+.gym-inset { border-radius: 14px; border: 1px solid var(--g-line); background: var(--g-soft); }
 
+/* ── buttons: secondary by default; the one action of the screen is .primary (orange) ── */
 .gym-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
   min-height: 46px;
-  padding: 0 1.2rem;
-  border-radius: 0.8rem;
-  font-weight: 900;
-  background: var(--g-lime);
-  color: #0c0e11;
-  border: 0;
+  padding: 0 1.15rem;
+  border-radius: 14px;
+  font-weight: 700;
+  background: var(--g-soft);
+  color: var(--g-ink);
+  border: 1px solid var(--g-line);
   cursor: pointer;
-  transition: transform 0.12s, filter 0.12s;
+  transition: transform 0.12s ease, background-color 0.2s ease, box-shadow 0.2s ease;
   text-decoration: none;
 }
-.gym-btn:hover { filter: brightness(1.08); }
 .gym-btn:active { transform: scale(0.97); }
-.gym-btn:disabled { opacity: 0.45; cursor: default; }
-.gym-btn.ghost { background: transparent; color: var(--g-ink); border: 1px solid var(--g-line); }
-.gym-btn.orange { background: var(--g-orange); color: #160800; }
-.gym-btn.sm { min-height: 36px; padding: 0 0.8rem; font-size: 0.85rem; border-radius: 0.65rem; }
+.gym-btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+.gym-btn.primary {
+  background: var(--m-primary-bg);
+  color: var(--m-gold-ink);
+  border: var(--m-primary-border);
+  box-shadow: var(--m-primary-shadow);
+}
+.gym-btn.ghost { background: transparent; }
+/* a switch that is on (editing the table): the yellow, like every chosen option */
+.gym-btn.on { background: var(--g-yellow-soft); border-color: var(--g-yellow); }
+.gym-btn.sm { min-height: 38px; padding: 0 0.85rem; font-size: 0.88rem; border-radius: 12px; }
 .gym-icon-btn {
-  width: 34px;
+  min-width: 34px;
   height: 34px;
+  padding: 0 0.35rem;
   display: grid;
   place-items: center;
-  border-radius: 0.6rem;
+  border-radius: 10px;
   border: 1px solid var(--g-line);
-  background: #1c2027;
+  background: var(--g-soft);
   color: var(--g-ink);
   cursor: pointer;
-  font-weight: 900;
+  font-weight: 800;
 }
+.gym-icon-btn:disabled { opacity: 0.4; cursor: default; }
 
+/* ── choices and chips: chosen = the yellow ── */
 .gym-choices { display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); }
 .gym-choice {
   text-align: start;
   padding: 0.85rem;
-  border-radius: 0.9rem;
+  border-radius: 16px;
   border: 1px solid var(--g-line);
-  background: #171a20;
+  background: var(--g-card);
   color: var(--g-ink);
   cursor: pointer;
-  transition: border-color 0.15s, transform 0.12s;
+  transition: border-color 0.15s ease, transform 0.12s ease, background-color 0.15s ease;
 }
-.gym-choice b { display: block; font-weight: 900; }
-.gym-choice span { display: block; font-size: 0.75rem; color: var(--g-dim); margin-top: 0.2rem; line-height: 1.6; }
+.gym-choice b { display: block; font-weight: 800; }
+.gym-choice span { display: block; font-size: 0.78rem; color: var(--g-dim); margin-top: 0.2rem; line-height: 1.6; }
 .gym-choice .big { font-size: 1.6rem; display: block; margin-bottom: 0.3rem; }
-.gym-choice[aria-pressed="true"] { border-color: var(--g-lime); background: rgba(198, 255, 26, 0.09); }
-.gym-choice[aria-pressed="true"] b { color: var(--g-lime); }
-.gym-choice:disabled { opacity: 0.42; cursor: not-allowed; filter: grayscale(0.7); }
+.gym-choice:hover { border-color: color-mix(in srgb, var(--g-yellow) 60%, var(--g-line)); }
+.gym-choice[aria-pressed="true"] { border-color: var(--g-yellow); box-shadow: 0 0 0 2px var(--g-yellow) inset; background: var(--g-yellow-soft); }
+.gym-choice:disabled { opacity: 0.45; cursor: not-allowed; }
 .gym-choice:active { transform: scale(0.98); }
 
 .gym-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .gym-chip {
+  display: inline-flex;
+  align-items: center;
   padding: 0.45rem 0.8rem;
   border-radius: 999px;
   border: 1px solid var(--g-line);
-  background: #171a20;
+  background: var(--g-soft);
   color: var(--g-ink);
   font-weight: 700;
   font-size: 0.85rem;
   cursor: pointer;
+  text-decoration: none;
 }
-.gym-chip[aria-pressed="true"] { background: var(--g-lime); color: #0c0e11; border-color: var(--g-lime); }
+.gym-chip[aria-pressed="true"],
+.gym-chip[aria-selected="true"] { background: var(--g-yellow); color: var(--m-gold-ink); border-color: transparent; }
 
+/* ── fields ── */
 .gym-field { display: grid; gap: 0.35rem; }
-.gym-field > span { font-size: 0.8rem; font-weight: 800; color: var(--g-dim); }
+.gym-field > span { font-size: 0.82rem; font-weight: 700; color: var(--g-dim); }
 .gym-split-preview { display: grid; gap: 0.35rem; }
-.gym-split-preview div { display: grid; gap: 0.12rem; padding: 0.55rem 0.7rem; border: 1px solid var(--g-line); border-radius: 0.8rem; background: #13161b; }
-.gym-split-preview b { font-size: 0.8rem; }
-.gym-split-preview small { color: var(--g-dim); font-size: 0.68rem; line-height: 1.5; }
+.gym-split-preview div { display: grid; gap: 0.12rem; padding: 0.55rem 0.7rem; border: 1px solid var(--g-line); border-radius: 12px; background: var(--g-soft); }
+.gym-split-preview b { font-size: 0.82rem; }
+.gym-split-preview small { color: var(--g-dim); font-size: 0.7rem; line-height: 1.5; }
 .gym-input,
 .gym-select {
   width: 100%;
   min-height: 44px;
-  border-radius: 0.7rem;
+  border-radius: 12px;
   border: 1px solid var(--g-line);
-  background: #0f1216;
+  background: var(--g-soft);
   color: var(--g-ink);
   padding: 0 0.75rem;
   font-weight: 700;
 }
+.gym-input::placeholder { color: color-mix(in srgb, var(--g-dim) 70%, transparent); }
 .gym-input:focus,
-.gym-select:focus { outline: 2px solid var(--g-lime); outline-offset: 1px; }
+.gym-select:focus { outline: none; border-color: var(--g-yellow); box-shadow: 0 0 0 3px color-mix(in srgb, var(--g-yellow) 30%, transparent); }
 
 .gym-stepper { display: flex; align-items: center; gap: 0.4rem; }
 .gym-stepper .gym-input { text-align: center; max-width: 110px; font-size: 1.1rem; }
 
-/* the barbell progress of the wizard */
+/* the barbell progress of the setup: the yellow fills as the questions are answered */
 .gym-bar { display: flex; align-items: center; gap: 0.35rem; margin-bottom: 1rem; }
-.gym-bar i {
-  flex: 1;
-  height: 8px;
-  border-radius: 4px;
-  background: #232830;
-}
-.gym-bar i.on { background: linear-gradient(90deg, var(--g-lime), #8fd400); }
-.gym-bar b {
-  width: 14px;
-  height: 26px;
-  border-radius: 3px;
-  background: #3a414b;
-}
-.gym-bar b.on { background: var(--g-lime); }
+.gym-bar i { flex: 1; height: 8px; border-radius: 4px; background: var(--m-track); }
+.gym-bar i.on { background: var(--g-yellow); }
+.gym-bar b { width: 14px; height: 26px; border-radius: 4px; background: var(--m-track); }
+.gym-bar b.on { background: var(--g-yellow); }
 
-/* big numbers (plates) */
+/* ── big numbers ── */
 .gym-stats { display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); }
 .gym-stat {
-  border-radius: 1rem;
+  border-radius: 16px;
   border: 1px solid var(--g-line);
-  background: radial-gradient(circle at 50% 0%, rgba(198, 255, 26, 0.1), transparent 70%), #13161b;
+  background: var(--g-soft);
   padding: 0.8rem;
   text-align: center;
 }
-.gym-stat b { display: block; font-size: 1.45rem; font-weight: 900; color: var(--g-lime); font-variant-numeric: tabular-nums; }
-.gym-stat span { font-size: 0.75rem; color: var(--g-dim); }
-.gym-stat.orange b { color: var(--g-orange); }
+.gym-stat b { display: block; font-size: 1.45rem; font-weight: 800; color: var(--g-ink); font-variant-numeric: tabular-nums; }
+.gym-stat span { font-size: 0.76rem; color: var(--g-dim); }
 
-/* the training day card */
-.gym-day { border-radius: 1.1rem; border: 1px solid var(--g-line); background: #13161b; overflow: hidden; }
+/* ── the training day card ── */
+.gym-day {
+  border-radius: var(--m-radius);
+  border: var(--m-border-w) solid var(--g-line);
+  background: var(--g-card);
+  box-shadow: var(--m-shadow);
+  overflow: hidden;
+}
 .gym-day > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.7rem 0.9rem;
-  background: linear-gradient(90deg, rgba(198, 255, 26, 0.16), transparent);
+  background: var(--g-soft);
   border-bottom: 1px solid var(--g-line);
 }
-.gym-day > header h3 { font-weight: 900; font-size: 1.05rem; }
-.gym-day > header .tag {
-  font-size: 0.7rem;
-  font-weight: 900;
-  background: var(--g-lime);
-  color: #0c0e11;
-  padding: 0.15rem 0.5rem;
+.gym-day > header h3 { font-weight: 800; font-size: 1.05rem; }
+.gym-day > header .tag,
+.gym-list-ex .tag {
+  font-size: 0.72rem;
+  font-weight: 800;
+  background: var(--g-yellow);
+  color: var(--m-gold-ink);
+  padding: 0.15rem 0.55rem;
   border-radius: 999px;
 }
-.gym-ex { display: flex; align-items: center; gap: 0.6rem; padding: 0.65rem 0.9rem; border-top: 1px solid #1d2229; }
+.gym-ex { display: flex; align-items: center; gap: 0.6rem; padding: 0.65rem 0.9rem; border-top: 1px solid var(--g-line); }
 .gym-ex:first-of-type { border-top: 0; }
 .gym-ex .n {
   width: 28px;
@@ -202,181 +250,131 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  border: 2px solid var(--g-lime);
-  font-weight: 900;
+  border: 2px solid var(--g-yellow);
+  font-weight: 800;
   font-size: 0.8rem;
-  color: var(--g-lime);
+  color: var(--g-ink);
 }
 .gym-ex .what { flex: 1; min-width: 0; }
 .gym-ex .what b { display: block; font-weight: 800; }
-.gym-ex .what small { display: block; color: var(--g-dim); font-size: 0.72rem; }
-.gym-ex .dose { font-weight: 900; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.gym-ex .dose em { font-style: normal; color: var(--g-lime); }
+.gym-ex .what small { display: block; color: var(--g-dim); font-size: 0.74rem; }
+.gym-ex .dose { font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.gym-ex .dose em { font-style: normal; color: var(--g-ink); background: var(--g-yellow-soft); padding: 0 0.25rem; border-radius: 6px; }
 .gym-ex .tools { display: flex; gap: 0.25rem; }
-.gym-ex-alts { flex-basis: 100%; display: grid; gap: 0.45rem; padding: 0.6rem; border-radius: 0.8rem; background: #0c0f12; border: 1px solid #2a3038; }
-.gym-ex-alts > small { color: var(--g-dim); font-size: 0.72rem; }
+.gym-ex-alts { flex-basis: 100%; display: grid; gap: 0.45rem; padding: 0.6rem; border-radius: 14px; background: var(--g-soft); border: 1px solid var(--g-line); }
+.gym-ex-alts > small { color: var(--g-dim); font-size: 0.74rem; }
 .gym-ex-alts > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.35rem; }
-.gym-ex-alts button { text-align: start; padding: 0.5rem; border-radius: 0.7rem; border: 1px solid #303740; background: #171b20; color: var(--g-ink); }
-.gym-ex-alts button b, .gym-ex-alts button span { display: block; }
-.gym-ex-alts button b { font-size: 0.76rem; }
-.gym-ex-alts button span { margin-top: 0.15rem; color: var(--g-dim); font-size: 0.65rem; line-height: 1.45; }
-.gym-ex-alts button[aria-pressed="true"] { border-color: var(--g-lime); background: rgba(198, 255, 26, 0.08); }
-
-.gym-hero {
-  position: relative;
-  overflow: hidden;
-  border-radius: 1.3rem;
-  padding: 1.4rem 1.1rem;
-  border: 1px solid var(--g-line);
-  background:
-    linear-gradient(120deg, rgba(198, 255, 26, 0.16), transparent 55%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 22px),
-    #101317;
-}
-.gym-hero svg.barbell { position: absolute; inset-inline-start: -20px; bottom: -14px; width: 220px; opacity: 0.18; }
-
-.gym-list { display: grid; gap: 0.5rem; }
-.gym-list li { display: flex; gap: 0.5rem; line-height: 1.8; }
-.gym-list li::before { content: "▸"; color: var(--g-lime); font-weight: 900; }
-.gym-ref { font-size: 0.7rem; color: var(--g-dim); }
-.gym-ref a { color: var(--g-lime); text-decoration: underline; }
-.gym-check { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.55rem 0; cursor: pointer; line-height: 1.7; }
-.gym-check input { width: 20px; height: 20px; accent-color: var(--g-lime); margin-top: 0.25rem; flex-shrink: 0; }
+.gym-ex-alts button { text-align: start; padding: 0.5rem; border-radius: 12px; border: 1px solid var(--g-line); background: var(--g-card); color: var(--g-ink); }
+.gym-ex-alts button b,
+.gym-ex-alts button span { display: block; }
+.gym-ex-alts button b { font-size: 0.78rem; }
+.gym-ex-alts button span { margin-top: 0.15rem; color: var(--g-dim); font-size: 0.68rem; line-height: 1.45; }
+.gym-ex-alts button[aria-pressed="true"] { border-color: var(--g-yellow); background: var(--g-yellow-soft); }
 
 /* editing on a phone: the buttons go under the exercise, the name keeps its width */
 .gym-ex.edit { flex-wrap: wrap; }
 .gym-ex.edit .what { flex-basis: calc(100% - 120px); }
 .gym-ex.edit .tools { width: 100%; justify-content: flex-end; }
 
+/* the first card of a view: solid, with a quiet barbell in the yellow */
+.gym-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--m-radius);
+  padding: 1.4rem 1.1rem;
+  border: var(--m-border-w) solid var(--g-line);
+  background: var(--g-card);
+  box-shadow: var(--m-shadow);
+}
+.gym-hero > * { position: relative; }
+.gym-hero svg.barbell { position: absolute; inset-inline-start: -20px; bottom: -14px; width: 220px; opacity: 0.35; }
+.barbell rect { fill: var(--g-yellow); }
+
+.gym-list { display: grid; gap: 0.5rem; }
+.gym-list li { display: flex; gap: 0.5rem; line-height: 1.8; }
+.gym-list li::before { content: "•"; color: var(--g-yellow-line); font-weight: 900; }
+.gym-ref { font-size: 0.72rem; color: var(--g-dim); }
+.gym-ref a { color: var(--g-ink); text-decoration: underline; text-decoration-color: var(--g-yellow); text-underline-offset: 3px; }
+.gym-check { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.55rem 0; cursor: pointer; line-height: 1.7; }
+.gym-check input { width: 20px; height: 20px; accent-color: var(--g-yellow-line); margin-top: 0.25rem; flex-shrink: 0; }
+
 /* «عباس سبع القنطرة» talking: his face and a speech bubble */
 .gym-coach { display: flex; align-items: flex-end; gap: 0.5rem; }
-.gym-coach > svg { filter: drop-shadow(0 0 10px rgba(198, 255, 26, 0.35)); }
 .gym-coach p {
   position: relative;
   flex: 1;
-  background: #1a1f26;
+  background: var(--g-card);
   border: 1px solid var(--g-line);
   border-radius: 1rem 1rem 1rem 0.3rem;
   padding: 0.55rem 0.8rem;
-  font-size: 0.85rem;
+  font-size: 0.88rem;
   line-height: 1.7;
+  box-shadow: var(--m-shadow);
 }
-.gym-coach p b { display: block; font-size: 0.7rem; font-weight: 900; color: var(--g-lime); }
+.gym-coach p b { display: block; font-size: 0.72rem; font-weight: 800; color: var(--g-dim); }
 
-/* always on top of the branch: see your doctor, and the AI can be wrong */
+/* above every page: see your doctor, and the AI can be wrong */
 .gym-doctor {
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   line-height: 1.7;
   padding: 0.5rem 0.75rem;
-  border-radius: 0.8rem;
-  border: 1px solid rgba(255, 122, 26, 0.55);
-  background: rgba(255, 122, 26, 0.1);
-  color: #ffd9bd;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--m-warning) 35%, var(--g-line));
+  background: color-mix(in srgb, var(--m-warning) 7%, var(--g-card));
+  color: var(--g-ink);
 }
-.gym-doctor b { color: #fff; }
+.gym-doctor b { color: var(--m-warning); }
 
-/* «عباس سبع القنطرة»'s side chat */
+/* «عباس سبع القنطرة»'s chat: a solid sheet above the bar of the five destinations */
 .gym-chat {
   position: fixed;
   z-index: 80;
   inset-inline-start: 12px;
-  bottom: calc(12px + env(safe-area-inset-bottom));
+  bottom: calc(var(--m-nav-h) + 20px + var(--m-safe-b));
   width: min(400px, calc(100vw - 24px));
-  height: min(600px, calc(100dvh - 90px));
+  height: min(600px, calc(100dvh - var(--m-nav-h) - 120px));
   display: flex;
   flex-direction: column;
-  border-radius: 1.2rem;
-  border: 1px solid #c6ff1a66;
-  background: #0f1216;
-  color: #f3f4f1;
-  box-shadow: 0 24px 70px -20px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(198, 255, 26, 0.15);
+  border-radius: 20px;
+  border: 1px solid var(--g-line);
+  background: var(--g-card);
+  color: var(--g-ink);
+  box-shadow: 0 24px 60px -24px rgba(20, 33, 61, 0.35);
   overflow: hidden;
 }
-.gym-chat > header { display: flex; align-items: center; gap: 0.6rem; padding: 0.7rem 0.8rem; background: linear-gradient(90deg, rgba(198, 255, 26, 0.18), transparent); border-bottom: 1px solid #2a3038; }
+@media (min-width: 1024px) { .gym-chat { bottom: 16px; height: min(640px, calc(100dvh - 100px)); } }
+.gym-chat > header { display: flex; align-items: center; gap: 0.6rem; padding: 0.7rem 0.8rem; background: var(--g-soft); border-bottom: 1px solid var(--g-line); }
 .gym-chat > header div { flex: 1; min-width: 0; }
-.gym-chat > header b { display: block; font-weight: 900; }
-.gym-chat > header small { color: #9aa3ad; font-size: 0.72rem; }
+.gym-chat > header b { display: block; font-weight: 800; }
+.gym-chat > header small { color: var(--g-dim); font-size: 0.74rem; }
 .gym-chat-list { flex: 1; overflow-y: auto; padding: 0.8rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.gym-msg { max-width: 88%; white-space: pre-wrap; font-size: 0.88rem; line-height: 1.75; padding: 0.5rem 0.75rem; border-radius: 1rem; }
-.gym-msg.assistant { align-self: flex-end; background: #1a1f26; border: 1px solid #2a3038; border-end-end-radius: 0.3rem; }
-.gym-msg.user { align-self: flex-start; background: #c6ff1a; color: #0c0e11; font-weight: 700; border-end-start-radius: 0.3rem; }
-.gym-msg.err { border-color: #ff4d4d; color: #ffb3b3; }
-.gym-msg-tag { display: block; margin-top: 0.3rem; font-size: 0.7rem; font-weight: 900; color: #c6ff1a; }
-.gym-chat-send { display: flex; align-items: flex-end; gap: 0.4rem; padding: 0.6rem; border-top: 1px solid #2a3038; }
+.gym-msg { max-width: 88%; white-space: pre-wrap; font-size: 0.9rem; line-height: 1.75; padding: 0.5rem 0.75rem; border-radius: 1rem; }
+.gym-msg.assistant { align-self: flex-end; background: var(--g-soft); border: 1px solid var(--g-line); border-end-end-radius: 0.3rem; }
+.gym-msg.user { align-self: flex-start; background: var(--g-yellow-soft); border: 1px solid color-mix(in srgb, var(--g-yellow) 50%, transparent); font-weight: 600; border-end-start-radius: 0.3rem; }
+.gym-msg.err { border-color: color-mix(in srgb, var(--m-error) 45%, transparent); color: var(--m-error); }
+.gym-msg-tag { display: block; margin-top: 0.3rem; font-size: 0.72rem; font-weight: 800; color: var(--g-ink); }
+.gym-chat-send { display: flex; align-items: flex-end; gap: 0.4rem; padding: 0.6rem; border-top: 1px solid var(--g-line); }
 .gym-chat-send .gym-input { min-height: 44px; padding: 0.5rem 0.7rem; resize: none; font-weight: 600; }
-.gym-chat-note { font-size: 0.68rem; color: #9aa3ad; text-align: center; padding: 0 0.6rem 0.5rem; }
-
-/* ── the app frame ── */
-.gym-app {
-  min-height: 100dvh;
-  background: #07090b;
-  color: #f3f4f1;
-  padding-bottom: calc(76px + env(safe-area-inset-bottom));
-}
-.gym-top {
-  position: sticky;
-  top: 0;
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: calc(0.55rem + env(safe-area-inset-top)) 1rem 0.55rem;
-  background: rgba(7, 9, 11, 0.92);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid #1d2229;
-}
-.gym-brand { display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 900; font-size: 1.1rem; text-decoration: none; color: #f3f4f1; }
-.gym-brand em { font-style: normal; color: #c6ff1a; }
-.gym-back { font-size: 0.78rem; font-weight: 800; color: #9aa3ad; text-decoration: none; padding: 0.35rem 0.6rem; border: 1px solid #2a3038; border-radius: 999px; }
-.gym-main { max-width: 760px; margin: 0.8rem auto 0; border-radius: 1.4rem; }
-@media (max-width: 640px) { .gym-main { margin: 0; border-radius: 0; } }
-.gym-tabs {
-  position: fixed;
-  z-index: 45;
-  inset-inline: 0;
-  bottom: 0;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  padding: 0.35rem 0.5rem calc(0.35rem + env(safe-area-inset-bottom));
-  background: rgba(10, 12, 15, 0.96);
-  backdrop-filter: blur(10px);
-  border-top: 1px solid #1d2229;
-}
-.gym-tabs a {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.1rem;
-  font-size: 0.72rem;
-  font-weight: 800;
-  color: #9aa3ad;
-  text-decoration: none;
-  padding: 0.35rem 0;
-  border-radius: 0.8rem;
-}
-.gym-tabs a span { font-size: 1.25rem; filter: grayscale(0.6); }
-.gym-tabs a[aria-current="page"] { color: #c6ff1a; background: rgba(198, 255, 26, 0.08); }
-.gym-tabs a[aria-current="page"] span { filter: none; }
-.gym-app .gym-chat { bottom: calc(80px + env(safe-area-inset-bottom)); height: min(600px, calc(100dvh - 160px)); }
+.gym-chat-note { font-size: 0.7rem; color: var(--g-dim); text-align: center; padding: 0 0.6rem 0.5rem; }
 
 /* ── the tracker ── */
 .gym-rest {
   position: sticky;
-  top: 60px;
-  z-index: 30;
+  top: calc(64px + env(safe-area-inset-top, 0px));
+  z-index: 15;
   display: flex;
   align-items: center;
   gap: 0.6rem;
   padding: 0.55rem 0.8rem;
-  border-radius: 0.9rem;
-  background: #c6ff1a;
-  color: #0c0e11;
-  font-weight: 800;
+  border-radius: 14px;
+  background: var(--g-yellow);
+  color: var(--m-gold-ink);
+  font-weight: 700;
+  box-shadow: var(--m-shadow);
 }
 .gym-rest b { font-size: 1.3rem; font-variant-numeric: tabular-nums; }
 .gym-rest span { flex: 1; }
-.gym-rest .gym-btn { margin-inline-start: auto; color: #0c0e11; border-color: #0c0e1155; }
+.gym-rest .gym-btn { margin-inline-start: auto; color: var(--m-gold-ink); border-color: color-mix(in srgb, var(--m-gold-ink) 30%, transparent); }
 
 .gym-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.3rem; }
 .gym-week button {
@@ -385,77 +383,88 @@
   align-items: center;
   gap: 0.1rem;
   padding: 0.4rem 0;
-  border-radius: 0.8rem;
-  border: 1px solid #2a3038;
-  background: #13161b;
-  color: #f3f4f1;
+  border-radius: 14px;
+  border: 1px solid var(--g-line);
+  background: var(--g-card);
+  color: var(--g-ink);
   cursor: pointer;
 }
-.gym-week button small { font-size: 0.62rem; color: #9aa3ad; }
-.gym-week button b { font-weight: 900; }
+.gym-week button small { font-size: 0.64rem; color: var(--g-dim); }
+.gym-week button b { font-weight: 800; }
 .gym-week button i { width: 7px; height: 7px; border-radius: 50%; background: transparent; }
-.gym-week button i.plan { border: 1.5px solid #c6ff1a88; }
-.gym-week button i.on { background: #c6ff1a; }
-.gym-week button[aria-pressed="true"] { border-color: #c6ff1a; background: rgba(198, 255, 26, 0.1); }
+.gym-week button i.plan { border: 1.5px solid var(--g-yellow); }
+.gym-week button i.on { background: var(--g-yellow-line); }
+.gym-week button[aria-pressed="true"] { border-color: var(--g-yellow); box-shadow: 0 0 0 2px var(--g-yellow) inset; background: var(--g-yellow-soft); }
 
 .gym-sets { display: grid; grid-template-columns: 28px 1fr 1fr 40px; gap: 0.35rem; align-items: center; }
-.gym-sets .h { font-size: 0.68rem; color: #9aa3ad; font-weight: 800; text-align: center; }
+.gym-sets .h { font-size: 0.7rem; color: var(--g-dim); font-weight: 700; text-align: center; }
 .gym-sets .row { display: contents; }
-.gym-sets .n { text-align: center; font-weight: 900; color: #9aa3ad; }
+.gym-sets .n { text-align: center; font-weight: 800; color: var(--g-dim); }
 .gym-sets .gym-input { min-height: 40px; text-align: center; font-size: 1rem; }
-.gym-sets .row.done .n { color: #c6ff1a; }
-.gym-sets .row.done .gym-input { border-color: #c6ff1a66; }
-.gym-sets .row.done .gym-icon-btn { background: #c6ff1a; color: #0c0e11; border-color: #c6ff1a; }
+.gym-sets .row.done .n { color: var(--g-ink); }
+.gym-sets .row.done .gym-input { border-color: var(--g-yellow); }
+.gym-sets .row.done .gym-icon-btn { background: var(--g-yellow); color: var(--m-gold-ink); border-color: transparent; }
 
-.gym-food { border: 1px solid #2a3038; background: #13161b; border-radius: 1rem; padding: 0.7rem 0.8rem; display: grid; gap: 0.45rem; }
+.gym-food { border: 1px solid var(--g-line); background: var(--g-card); border-radius: 16px; padding: 0.7rem 0.8rem; display: grid; gap: 0.45rem; }
 .gym-food .top { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
-.gym-food .top span { font-size: 0.82rem; color: #9aa3ad; font-variant-numeric: tabular-nums; }
-.gym-food .top em { font-style: normal; font-weight: 900; color: #f3f4f1; font-size: 1.05rem; }
-.gym-food .bar { height: 10px; border-radius: 5px; background: #232830; overflow: hidden; }
-.gym-food .bar i { display: block; height: 100%; background: linear-gradient(90deg, #ff7a1a, #c6ff1a); border-radius: 5px; transition: width 0.3s; }
-.gym-food .bar i.full { background: #c6ff1a; }
-.gym-food .gym-chip { padding: 0.3rem 0.65rem; font-size: 0.8rem; }
+.gym-food .top span { font-size: 0.84rem; color: var(--g-dim); font-variant-numeric: tabular-nums; }
+.gym-food .top em { font-style: normal; font-weight: 800; color: var(--g-ink); font-size: 1.05rem; }
+.gym-food .bar { height: 10px; border-radius: 5px; background: var(--m-track); overflow: hidden; }
+.gym-food .bar i { display: block; height: 100%; background: var(--g-yellow-half); border-radius: 5px; transition: width 0.3s ease; }
+.gym-food .bar i.full { background: var(--g-yellow); }
+.gym-food .gym-chip { padding: 0.3rem 0.65rem; font-size: 0.82rem; }
 .gym-food .gym-input { min-height: 34px; }
 
 /* ── learn ── */
-.gym-bodymap { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; align-items: start; border: 1px solid #2a3038; border-radius: 1.1rem; background: radial-gradient(circle at 50% 30%, #1a2016, #101317); padding: 0.6rem; }
+.gym-bodymap { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; align-items: start; border: 1px solid var(--g-line); border-radius: var(--m-radius); background: var(--g-card); box-shadow: var(--m-shadow); padding: 0.6rem; }
 .gym-bodymap figure { margin: 0; text-align: center; }
-.gym-bodymap figcaption { font-size: 0.7rem; color: #9aa3ad; }
+.gym-bodymap figcaption { font-size: 0.72rem; color: var(--g-dim); }
 .gym-body { width: 100%; max-height: 300px; }
-.gym-bodymap .legend { grid-column: 1 / -1; display: flex; justify-content: center; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: #9aa3ad; margin: 0; }
+.gym-body-shape { fill: var(--m-track); }
+.gym-muscle { fill: color-mix(in srgb, var(--g-line) 70%, var(--m-track)); }
+.gym-muscle-main { fill: var(--g-yellow); }
+.gym-muscle-help { fill: color-mix(in srgb, var(--g-yellow) 40%, var(--m-track)); }
+.gym-dot-main { color: var(--g-yellow-line); }
+.gym-dot-help { color: color-mix(in srgb, var(--g-yellow) 45%, var(--m-track)); }
+.gym-bodymap .legend { grid-column: 1 / -1; display: flex; justify-content: center; align-items: center; gap: 0.4rem; font-size: 0.74rem; color: var(--g-dim); margin: 0; }
 .gym-bodymap .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-.gym-bodymap .legend i.main { background: #c6ff1a; }
-.gym-bodymap .legend i.help { background: #ff7a1a; margin-inline-start: 0.6rem; }
+.gym-bodymap .legend i.main { background: var(--g-yellow); }
+.gym-bodymap .legend i.help { background: color-mix(in srgb, var(--g-yellow) 40%, var(--m-track)); margin-inline-start: 0.6rem; }
 .gym-list-ex { display: grid; gap: 0.4rem; }
-.gym-list-ex a { position: relative; display: grid; grid-template-columns: 4.6rem 1fr; column-gap: 0.7rem; align-items: center; padding: 0.5rem 0.8rem 0.5rem 0.5rem; border: 1px solid #2a3038; border-radius: 0.9rem; background: #13161b; text-decoration: none; }
+.gym-list-ex a { position: relative; display: grid; grid-template-columns: 4.6rem 1fr; column-gap: 0.7rem; align-items: center; padding: 0.5rem 0.8rem 0.5rem 0.5rem; border: 1px solid var(--g-line); border-radius: 16px; background: var(--g-card); text-decoration: none; }
 .gym-list-ex a b { display: block; font-weight: 800; }
-.gym-list-ex a small { font-size: 0.72rem; color: #9aa3ad; }
-.gym-list-ex .tag { position: absolute; inset-inline-end: 0.6rem; top: 0.6rem; font-size: 0.65rem; font-weight: 900; background: #c6ff1a; color: #0c0e11; padding: 0.1rem 0.45rem; border-radius: 999px; }
+.gym-list-ex a small { font-size: 0.74rem; color: var(--g-dim); }
+.gym-list-ex .tag { position: absolute; inset-inline-end: 0.6rem; top: 0.6rem; }
 .gym-steps { display: grid; gap: 0.5rem; list-style: none; padding: 0; margin: 0; }
-.gym-steps li { display: flex; gap: 0.6rem; align-items: flex-start; line-height: 1.8; font-size: 0.92rem; }
-.gym-steps b { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: #c6ff1a; color: #0c0e11; font-weight: 900; font-size: 0.8rem; margin-top: 0.2rem; }
+.gym-steps li { display: flex; gap: 0.6rem; align-items: flex-start; line-height: 1.8; font-size: 0.94rem; }
+.gym-steps b { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--g-yellow); color: var(--m-gold-ink); font-weight: 800; font-size: 0.8rem; margin-top: 0.2rem; }
 
-/* ── progress ── */
-.gym-mbar { display: grid; grid-template-columns: 9.5rem 1fr 2.2rem; align-items: center; gap: 0.5rem; font-size: 0.78rem; }
-.gym-mbar span { color: #c9cfd6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gym-mbar div { height: 8px; border-radius: 4px; background: #232830; overflow: hidden; }
-.gym-mbar i { display: block; height: 100%; background: #ff7a1a; border-radius: 4px; }
-.gym-mbar i.full { background: #c6ff1a; }
+/* ── progress: the yellow grows, full yellow when the target is reached ── */
+.gym-mbar { display: grid; grid-template-columns: 9.5rem 1fr 2.2rem; align-items: center; gap: 0.5rem; font-size: 0.8rem; }
+.gym-mbar span { color: var(--g-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gym-mbar div { height: 8px; border-radius: 4px; background: var(--m-track); overflow: hidden; }
+.gym-mbar i { display: block; height: 100%; background: var(--g-yellow-half); border-radius: 4px; }
+.gym-mbar i.full { background: var(--g-yellow); }
 .gym-mbar b { text-align: end; font-variant-numeric: tabular-nums; }
 .gym-hist { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 0.4rem; }
-.gym-hist div { border: 1px solid #2a3038; border-radius: 0.7rem; padding: 0.4rem; text-align: center; background: #13161b; }
-.gym-hist span { display: block; font-size: 0.68rem; color: #9aa3ad; }
-.gym-hist b { display: block; font-weight: 900; }
-.gym-hist small { font-size: 0.65rem; color: #9aa3ad; }
+.gym-hist div { border: 1px solid var(--g-line); border-radius: 12px; padding: 0.4rem; text-align: center; background: var(--g-soft); }
+.gym-hist span { display: block; font-size: 0.7rem; color: var(--g-dim); }
+.gym-hist b { display: block; font-weight: 800; }
+.gym-hist small { font-size: 0.68rem; color: var(--g-dim); }
 .gym-days7 { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.3rem; height: 44px; align-items: end; }
-.gym-days7 i { display: block; border-radius: 4px 4px 2px 2px; background: #ff7a1a; }
-.gym-days7 i.full { background: #c6ff1a; }
+.gym-days7 i { display: block; border-radius: 4px 4px 2px 2px; background: var(--g-yellow-half); }
+.gym-days7 i.full { background: var(--g-yellow); }
+.gym-line-stroke { fill: none; stroke: var(--g-yellow-line); }
+.gym-line-area { fill: color-mix(in srgb, var(--m-gold) 14%, transparent); }
+.gym-line-dot { fill: var(--g-card); stroke: var(--g-yellow-line); }
+.gym-line-ink { fill: var(--g-ink); }
+.gym-line-dim { fill: var(--g-dim); }
 
 /* the technique drawings */
-.gym-thumb { grid-row: span 2; width: 4.6rem; height: auto; border-radius: 0.6rem; background: #0e1115; }
-.gym-figure { border: 1px solid var(--g-line); border-radius: 1.1rem; background: radial-gradient(80% 70% at 50% 40%, rgba(198, 255, 26, 0.06), transparent 70%), #0e1115; padding: 0.6rem; }
+.gym-thumb { grid-row: span 2; width: 4.6rem; height: auto; border-radius: 12px; background: var(--g-soft); }
+.gym-figure { border: 1px solid var(--g-line); border-radius: var(--m-radius); background: var(--g-soft); padding: 0.6rem; }
 .gym-figure svg { display: block; width: 100%; margin: 0 auto; }
 .gym-ex-how { border-top: 1px solid var(--g-line); }
-.gym-ex-how > summary { cursor: pointer; list-style: none; padding: 0.55rem 0.75rem; font-size: 0.82rem; font-weight: 800; color: var(--g-lime); }
+.gym-ex-how > summary { cursor: pointer; list-style: none; padding: 0.55rem 0.75rem; font-size: 0.85rem; font-weight: 700; color: var(--g-ink); }
 .gym-ex-how > summary::-webkit-details-marker { display: none; }
 .gym-ex-how[open] > summary { padding-bottom: 0.3rem; }

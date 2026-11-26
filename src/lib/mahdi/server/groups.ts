@@ -11,6 +11,7 @@ import { avatarUrl } from "./rows";
 import { cleanPerms, type Seat } from "../groups/program";
 import { cleanVisibility, visibilityMissing, workFor, type GroupVisibility, type WorkView } from "../groups/privacy";
 import { programMissing } from "./group-program";
+import { nudgesMissing, presentDays, STEADY_WINDOW, type SteadyRow } from "../groups/kind";
 
 /** The cookie that carries a group's join token while the visitor signs up or in (a week at most). */
 export const GROUP_JOIN_COOKIE = "mahdi_gjoin";
@@ -197,4 +198,40 @@ export async function groupRanking(db: SupabaseClient, members: Awaited<ReturnTy
     unranked: scored.filter((x) => !x.s).map(({ m }) => ({ displayName: m.displayName, username: m.username, avatarUrl: m.avatarUrl, mine: m.userId === me })),
     min: MIN_GOALS[period],
   };
+}
+
+/**
+ * «أهل الثبات» this week: for each active member, on how many of the last seven days (their own days) they did anything
+ * — a habit, a challenge, or one of the group's shared works. Consistency, not volume. Trimmed by `steadyFor` before it
+ * is sent (only who earned it; in a private group only the viewer).
+ */
+export async function groupSteady(db: SupabaseClient, groupId: string, members: Awaited<ReturnType<typeof groupMembers>>, me: string): Promise<SteadyRow[]> {
+  const active = members.filter((m) => m.status === "active");
+  if (!active.length) return [];
+  const now = new Date();
+  const ids = active.map((m) => m.userId);
+  const clocks = await clocksOf(db, ids);
+  const earliest = addDays(todayIn("Etc/GMT+12", now), -(STEADY_WINDOW + 1));
+  const [data, works] = await Promise.all([
+    loadHabitData(db, ids, earliest).then(async (d) => (await addChallenges(db, d, earliest), d)),
+    db.from("mahdi_group_work_logs").select("user_id, work_date").eq("group_id", groupId).gte("work_date", earliest).in("user_id", ids),
+  ]);
+  // before the shared works existed (or on any error reading them) the habits alone count
+  const workDays = new Map<string, string[]>();
+  for (const r of works.error ? [] : (works.data ?? [])) workDays.set(r.user_id as string, [...(workDays.get(r.user_id as string) ?? []), r.work_date as string]);
+  return active.map((m) => ({
+    displayName: m.displayName,
+    username: m.username,
+    avatarUrl: m.avatarUrl,
+    days: presentDays(data.get(m.userId)?.logs ?? {}, todayFor(clocks.get(m.userId) ?? { timeZone: m.tz }, now), workDays.get(m.userId) ?? []),
+    mine: m.userId === me,
+  }));
+}
+
+/** «ذكّرته بلطف»: the people I already reminded today (my day). `ready` false until SQL 0135 runs. */
+export async function nudgedToday(db: SupabaseClient, me: string, today: string): Promise<{ ready: boolean; ids: Set<string> }> {
+  const { data, error } = await db.from("mahdi_group_nudges").select("to_id").eq("from_id", me).eq("nudge_date", today);
+  if (nudgesMissing(error)) return { ready: false, ids: new Set() };
+  if (error) throw error;
+  return { ready: true, ids: new Set((data ?? []).map((r) => r.to_id as string)) };
 }

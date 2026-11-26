@@ -1,13 +1,13 @@
 "use client";
 
 // «الختمة العلوية»: the words of one portion in the mushaf's script (Amiri Quran, loaded by the khatma's layout), with
-// the surah headings, «بسم الله» where a surah begins, the verse numbers, the letter size kept on the device, and the
-// source named with its link (Tanzil's terms). Used by «ختمتي» and by the group khatma.
+// the surah headings, «بسم الله» where a surah begins, the verse numbers, and the source named with its link (Tanzil's
+// terms). Drawn by the one Quran reader (QuranReader).
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
-import Icon from "@/components/mahdi/Icon";
 import { arabicDigits, portionCount, type Division } from "@/lib/mahdi/khatma/portions";
+import { pinchSize } from "@/lib/mahdi/khatma/reader";
 
 export interface PortionWords {
   title: string;
@@ -35,68 +35,62 @@ export function usePortionWords(division: Division | undefined, n: number) {
   return { words: words?.key === key ? words.data : null, error };
 }
 
-const SIZE_KEY = "mahdi-quran-size";
-const SIZES = [1.25, 1.45, 1.65, 1.9, 2.2];
+type CSSVars = React.CSSProperties & Record<`--${string}`, string>;
+const dist = (t: React.TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
 
-export default function QuranText({ words, eyebrow }: { words: PortionWords; eyebrow?: string }) {
-  // the reader's letter size, kept on the device (the words only show after loading, so the first paint matches)
-  const [size, setSize] = useState(() => {
-    try {
-      const kept = typeof window === "undefined" ? null : localStorage.getItem(SIZE_KEY);
-      const s = kept === null ? NaN : Number(kept);
-      return Number.isInteger(s) && s >= 0 && s < SIZES.length ? s : 2;
-    } catch {
-      return 2;
-    }
-  });
-  function resize(d: number) {
-    const s = Math.max(0, Math.min(SIZES.length - 1, size + d));
-    setSize(s);
-    try {
-      localStorage.setItem(SIZE_KEY, String(s));
-    } catch {}
-  }
-  const font = { fontFamily: "var(--font-quran), var(--font-amiri), serif", fontSize: `${SIZES[size]}rem` };
+/**
+ * The page of the Quran itself, on the reader's solid surface: the surah headings, «بسم الله» where a surah begins, and
+ * the verses with their numbers. Two fingers resize the letters (drawn live through a CSS variable, kept when they let
+ * go). Drawn again only when the words or the size change — never for the time pill.
+ */
+export const QuranPage = memo(function QuranPage({ words, size, onSize }: { words: PortionWords; size: number; onSize: (rem: number) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  const pinch = useRef<{ d: number; size: number; now: number } | null>(null);
+  const font: CSSVars = { "--q-size": `${size}rem` };
+  const quran = { fontFamily: "var(--font-quran), var(--font-amiri), serif", fontSize: "var(--q-size)" };
   return (
-    <>
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="m-eyebrow">{eyebrow ?? t.khatma.title}</p>
-          <h1 className="m-display text-2xl">{words.title}</h1>
-          <p className="m-num text-sm m-muted">{words.range}</p>
-        </div>
-        <div className="flex items-center gap-1" aria-label="حجم الخط">
-          <button type="button" className="m-icon-btn m-btn-ghost" aria-label="تصغير الخط" disabled={size === 0} onClick={() => resize(-1)}>
-            <Icon name="minus" size={16} />
-          </button>
-          <button type="button" className="m-icon-btn m-btn-ghost" aria-label="تكبير الخط" disabled={size === SIZES.length - 1} onClick={() => resize(1)}>
-            <Icon name="plus" size={16} />
-          </button>
-        </div>
-      </header>
-
-      <article className="m-card space-y-6 px-4 py-6 sm:px-8" lang="ar" dir="rtl">
-        {words.suras.map((s) => (
-          <section key={s.sura} className="space-y-3">
-            {s.ayat[0]?.n === 1 && (
-              <h2 className="rounded-xl border-2 py-2 text-center" style={{ borderColor: "var(--m-gold)", fontFamily: "var(--font-quran), var(--font-amiri), serif", fontSize: "1.4rem" }}>
-                سُورَةُ {s.name}
-              </h2>
-            )}
-            {s.bismillah && s.sura !== 1 && <p className="text-center" style={{ ...font, lineHeight: 2.4 }}>{s.bismillah}</p>}
-            <p className="text-justify" style={{ ...font, lineHeight: 2.5 }}>
-              {s.ayat.map((a) => (
-                <span key={a.n}>
-                  {a.text} <span style={{ color: "var(--m-gold)", whiteSpace: "nowrap" }}>﴿{arabicDigits(a.n)}﴾</span>{" "}
-                </span>
-              ))}
-            </p>
-          </section>
-        ))}
-      </article>
-    </>
+    <article
+      ref={ref}
+      className="m-reader-page space-y-6 px-4 py-6 sm:px-8"
+      lang="ar"
+      dir="rtl"
+      style={font}
+      onTouchStart={(e) => {
+        if (e.touches.length === 2) pinch.current = { d: dist(e.touches), size, now: size };
+      }}
+      onTouchMove={(e) => {
+        const p = pinch.current;
+        if (!p || e.touches.length !== 2 || !p.d) return;
+        p.now = pinchSize(p.size, dist(e.touches) / p.d);
+        ref.current?.style.setProperty("--q-size", `${p.now}rem`);
+      }}
+      onTouchEnd={(e) => {
+        const p = pinch.current;
+        if (!p || e.touches.length >= 2) return;
+        pinch.current = null;
+        if (p.now !== p.size) onSize(p.now);
+      }}
+    >
+      {words.suras.map((s) => (
+        <section key={s.sura} className="space-y-3">
+          {s.ayat[0]?.n === 1 && (
+            <h2 className="m-reader-sura py-2 text-center" style={{ fontFamily: "var(--font-quran), var(--font-amiri), serif", fontSize: "1.4rem" }}>
+              سُورَةُ {s.name}
+            </h2>
+          )}
+          {s.bismillah && s.sura !== 1 && <p className="text-center" style={{ ...quran, lineHeight: 2.4 }}>{s.bismillah}</p>}
+          <p className="text-justify" style={{ ...quran, lineHeight: 2.5 }}>
+            {s.ayat.map((a) => (
+              <span key={a.n}>
+                {a.text} <span className="m-reader-mark">﴿{arabicDigits(a.n)}﴾</span>{" "}
+              </span>
+            ))}
+          </p>
+        </section>
+      ))}
+    </article>
   );
-}
+});
 
 export function QuranSource({ words }: { words: PortionWords }) {
   return (

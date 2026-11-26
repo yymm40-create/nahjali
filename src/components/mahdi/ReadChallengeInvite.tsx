@@ -6,6 +6,7 @@ import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import type { ReadChallenge, ReadPhase } from "@/lib/mahdi/read-challenge";
 import Sheet from "./Sheet";
+import { usePopupTurn } from "./usePopupTurn";
 
 const R = t.readChallenge;
 export const READ_CHALLENGE_PATH = "/mahdi/read-challenge";
@@ -22,12 +23,15 @@ interface Status {
   length?: number;
 }
 
-/** The invitation to «تحدي القراءة»: every time someone opens the app while it runs and they have not joined yet. */
+/**
+ * The invitation to «تحدي القراءة», while it runs and the person has not joined yet. It never opens as the app opens: it waits its turn
+ * («نافذة وحدة بس في كل زيارة»), after the person completes something, and only if nothing else opened during this visit.
+ */
 export default function ReadChallengeInvite() {
   const pathname = usePathname();
   const router = useRouter();
   const [status, setStatus] = useState<Status | null>(null);
-  const [open, setOpen] = useState(false);
+  const [want, setWant] = useState(false);
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -42,7 +46,7 @@ export default function ReadChallengeInvite() {
           later = sessionStorage.getItem(LATER(s.challenge.id)) === "1" || localStorage.getItem(NEVER(s.challenge.id)) === "1";
         } catch {}
         setStatus(s);
-        if (!later) setOpen(true);
+        if (!later) setWant(true);
       })
       .catch(() => {});
     return () => {
@@ -50,7 +54,15 @@ export default function ReadChallengeInvite() {
     };
   }, []);
 
-  if (!status?.challenge || pathname.startsWith(READ_CHALLENGE_PATH)) return null;
+  const here = pathname.startsWith(READ_CHALLENGE_PATH);
+  const { show: open, done } = usePopupTurn("readChallenge", want && !here && Boolean(status?.challenge));
+  const setOpen = (v: boolean) => {
+    if (!v) {
+      setWant(false);
+      done();
+    }
+  };
+  if (!status?.challenge || here) return null;
   const id = status.challenge.id;
 
   const later = () => {

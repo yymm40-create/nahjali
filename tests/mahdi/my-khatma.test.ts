@@ -2,7 +2,7 @@
 // rules on the in-memory database.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { dailyCount, dailyQuarters, habitValueAfter, juzOf, khatmaStats, nextPortion, nextQuarter, quartersText, unitText } from "@/lib/mahdi/khatma/mine";
+import { dailyCount, dailyQuarters, habitValueAfter, juzOf, khatmaStats, needsMore, nextPortion, nextQuarter, quartersText, START, unitText } from "@/lib/mahdi/khatma/mine";
 import { linkHabit, loadMyKhatma, readQuarters, startMyKhatma, stopMyKhatma, unreadQuarter, updateMyKhatma } from "@/lib/mahdi/server/my-khatma";
 import { homeWidgets, parseWidgets, WIDGETS } from "@/lib/mahdi/home-widgets";
 import { MAHDI_FEATURES } from "@config/mahdi/app-knowledge";
@@ -54,6 +54,39 @@ describe("where to go on", () => {
     expect(khatmaStats(reads.slice(0, 16), "2026-10-17", 30, "2026-10-19").streak).toBe(2);
     expect(khatmaStats(reads.slice(0, 16), "2026-10-17", 30, "2026-10-20").streak).toBe(0);
     expect(khatmaStats(reads, "2026-10-17", 60, "2026-10-19")).toMatchObject({ perDay: 4, expected: 12, ahead: 7, behind: 0 });
+  });
+  it("a missed day is spread over the days left by itself, never «متأخر»", () => {
+    const range = { from: 1, to: 30 };
+    // 30 portions in 10 days: 3 a day; nothing read for five days, so the 30 are spread over the 5 days left
+    const late = khatmaStats([], "2026-10-01", 10, "2026-10-06", range);
+    expect(late).toMatchObject({ planPerDay: 3, perDay: 6, daysLeft: 5, respread: true, todayLeft: 6, finishBy: "2026-10-10" });
+    // reading today does not move today's portion (it is what was left at the start of the day)
+    const reads = [1, 2, 3, 4].map((q) => ({ quarter: q, readOn: "2026-10-06" }));
+    expect(khatmaStats(reads, "2026-10-01", 10, "2026-10-06", range)).toMatchObject({ perDay: 6, todayCount: 4, todayLeft: 2 });
+    // ahead of the plan: the days left get lighter
+    const ahead = Array.from({ length: 12 }, (_, i) => ({ quarter: i + 1, readOn: "2026-10-01" }));
+    expect(khatmaStats(ahead, "2026-10-01", 10, "2026-10-02", range)).toMatchObject({ perDay: 2, respread: true });
+    // on time: the plan's own pace
+    const onTime = Array.from({ length: 3 }, (_, i) => ({ quarter: i + 1, readOn: "2026-10-01" }));
+    expect(khatmaStats(onTime, "2026-10-01", 10, "2026-10-02", range)).toMatchObject({ perDay: 3, respread: false });
+    // the last day takes all that is left
+    expect(khatmaStats([], "2026-10-01", 10, "2026-10-10", range)).toMatchObject({ perDay: 30, daysLeft: 1 });
+    // after the planned days: the plan's pace goes on and the finish moves with it
+    const over = Array.from({ length: 20 }, (_, i) => ({ quarter: i + 1, readOn: "2026-10-05" }));
+    expect(khatmaStats(over, "2026-10-01", 10, "2026-10-12", range)).toMatchObject({ daysLeft: 0, perDay: 3, finishBy: "2026-10-15" });
+  });
+  it("starting: three steps with ready choices, the rest folded under «خيارات أكثر»", () => {
+    expect(START.unit).toBe("juz");
+    expect(START.days).toBe(30);
+    expect(START.units).toEqual(["juz", "page"]);
+    expect(START.paces.map((p) => p.days)).toContain(30);
+    expect(needsMore("juz", 30)).toBe(false);
+    expect(needsMore("page", 7)).toBe(false);
+    expect(needsMore("quarter", 30)).toBe(true);
+    expect(needsMore("juz", 10)).toBe(true);
+    const page = readFileSync("src/app/mahdi/(app)/khatma/page.tsx", "utf8");
+    expect(page).toContain("خيارات أكثر");
+    expect(page).not.toContain("متأخر");
   });
   it("the linked habit: done/not-done becomes done, a counted one moves by the quarters", () => {
     expect(habitValueAfter("check", 0, 2)).toBe(1);

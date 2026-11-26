@@ -4,24 +4,33 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { fmtPct, fmtPoints, t } from "@/lib/mahdi/i18n";
 
-const TABS = [
-  { href: "/mahdi/progress", label: t.reports.overview },
-  { href: "/mahdi/progress/week", label: t.reports.week },
-  { href: "/mahdi/progress/month", label: t.reports.month },
-  { href: "/mahdi/progress/calendar", label: t.reports.calendar },
-  { href: "/mahdi/progress/compare", label: t.reports.compare },
-];
+/**
+ * «تقدّمي» has three tabs (the plan of 26 November 2026: five became three): الأسبوع (the overview of this week, and any week's
+ * report), الشهر (the month's report, with «قارن» inside it) and التقويم. `match` lists the pages each tab covers.
+ */
+export const PROGRESS_TABS = [
+  { href: "/mahdi/progress", label: "الأسبوع", match: ["/mahdi/progress", "/mahdi/progress/week"] },
+  { href: "/mahdi/progress/month", label: "الشهر", match: ["/mahdi/progress/month", "/mahdi/progress/compare"] },
+  { href: "/mahdi/progress/calendar", label: "التقويم", match: ["/mahdi/progress/calendar"] },
+] as const;
 
-/** Sub-navigation of the progress section. */
+/** The tab a progress page belongs to (0 · 1 · 2). */
+export const progressTab = (pathname: string) => Math.max(0, PROGRESS_TABS.findIndex((x) => (x.match as readonly string[]).includes(pathname)));
+
+/** The three tabs of «تقدّمي», on the segmented control. */
 export function ProgressTabs() {
   const pathname = usePathname();
+  const k = progressTab(pathname);
   return (
-    <nav aria-label={t.progress.title} className="m-scroll-x -mx-4 flex gap-2 px-4 pb-1">
-      {TABS.map((tab) => (
-        <Link key={tab.href} href={tab.href} aria-current={pathname === tab.href ? "page" : undefined} className="m-option shrink-0 px-4 py-2 text-sm font-semibold aria-[current=page]:border-[var(--m-gold)]" aria-pressed={pathname === tab.href}>
-          {tab.label}
-        </Link>
-      ))}
+    <nav aria-label={t.progress.title} className="flex justify-center">
+      <div className="m-slider" data-n="3" style={{ "--k": k } as React.CSSProperties}>
+        <span className="m-slider-knob" aria-hidden="true" />
+        {PROGRESS_TABS.map((tab, i) => (
+          <Link key={tab.href} href={tab.href} aria-current={i === k ? "page" : undefined}>
+            {tab.label}
+          </Link>
+        ))}
+      </div>
     </nav>
   );
 }

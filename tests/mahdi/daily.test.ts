@@ -87,9 +87,11 @@ describe("how it is printed", () => {
 });
 
 describe("on the home", () => {
-  it("is a card of its own, on by default after «اضغط وأنجز»", () => {
+  it("is a card of its own; on the lean home it is the one card under the habits when nothing else is due", () => {
     expect(WIDGETS.some((w) => w.id === "daily")).toBe(true);
-    expect(DEFAULT_WIDGETS.slice(0, 4)).toEqual(["habits", "reading", "quick", "daily"]);
+    expect(DEFAULT_WIDGETS).not.toContain("daily");
+    const board = readFileSync(new URL("../../src/components/mahdi/HomeBoard.tsx", import.meta.url), "utf8");
+    expect(board).toContain('{!list.includes("daily") && <DailyCard />}');
   });
 
   it("writes no explanation beside the text (the card prints only the fields above)", () => {

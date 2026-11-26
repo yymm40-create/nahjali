@@ -6,7 +6,7 @@ import SheikhChat from "@/components/mahdi/SheikhChat";
 
 const S = t.sheikh;
 
-/** «الشيخ الذكي» on its own page: the same kept conversation as the floating robot's, at the page's full height. */
+/** «الشيخ الذكي» on its own page: the ONE kept conversation with him (no other screen holds a copy), at full height. */
 export default function SheikhPage() {
   return (
     <div className="flex h-[calc(100dvh-11rem)] min-h-[28rem] flex-col gap-3">
