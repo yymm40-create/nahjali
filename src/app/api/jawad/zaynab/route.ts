@@ -1,4 +1,5 @@
 import { NextResponse, after } from "next/server";
+import { unlimitedTicket } from "@/lib/jawad/server/unlimited";
 import { ZAYNAB_IMAGE, ZAYNAB_KEY_PREFIX, ZAYNAB_MAX_PHOTOS, zaynabInput } from "@config/jawad/zaynab";
 import { generatorById } from "@config/jawad/generators";
 import { can, permForGenerator } from "@/lib/access";
@@ -57,7 +58,9 @@ export const POST = handle(async (req: Request) => {
   const coins = firstFree ? 0 : quote.coins;
   if (body.expectedCoins !== coins) throw new UserError("تغيّر السعر؛ اعرض السعر الحالي قبل التنفيذ.", 409);
   const balance = owner ? null : ((await coinBalance(user.id)) ?? 0);
-  if (balance !== null && balance < coins) throw shortBalance(coins - balance, balance, "هالعملية");
+  // «لامحدود» GPT Image 2: a running pass makes the pictures free (createJob decides), so no balance is needed for them
+  const pass = owner || firstFree ? null : await unlimitedTicket(user.id, ZAYNAB_IMAGE, { aspect: input.aspect, resolution: "std", quality: "medium", count: input.count }).catch(() => null);
+  if (balance !== null && !pass && balance < coins) throw shortBalance(coins - balance, balance, "هالعملية");
   // the owner's environment sheet goes first, then every photo — all of them references of GPT Image 2
   const sheet = await uploadFromBuffer(user.id, await sheetBytes(), "zaynab-env-sheet.jpg");
   const result = requireCreated(await createJob(user, owner, {

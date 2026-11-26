@@ -196,6 +196,12 @@ export async function deskImage(who: DeskWho, req: DeskRequest): Promise<{ out: 
   // the job also starts itself after the response; the claim makes this call the one that does (a picture answers in the same request)
   await runJob(job.id);
   const done = (await loadJob(job.id)) ?? job;
+  // «لامحدود»: the fast balance is used up, so this picture waits its turn before it is sent (it will be in «أعمالي»); said plainly, never retried
+  const hold = done.status === "queued" ? done.inputs.unlimited?.holdUntil : undefined;
+  if (hold && Date.parse(hold) > Date.now()) {
+    const mins = Math.max(1, Math.ceil((Date.parse(hold) - Date.now()) / 60_000));
+    throw new DeskError(`خلص توليدك السريع في «لامحدود»، والصورة الحين بالتوليد البطيء: تنرسل بعد ${mins} دقيقة تقريبًا وتلقاها في «أعمالي». أو كمل من الاستوديو.`, `unlimited held ${hold}`);
+  }
   if (done.status === "failed" || done.status === "cancelled") throw failure(done);
   if (done.status !== "succeeded") throw new DeskError("لم يكتمل التوليد في الوقت المتوقع.", `status ${done.status}`, true);
   const out = await outputOf(job.id);

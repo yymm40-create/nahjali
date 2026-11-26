@@ -2,6 +2,7 @@
 // picture (GPT Image 2, its background taken out), music (ElevenLabs), and a clip's sound split into its talking,
 // music and sound effects. Every result is a new file in the project's library. Server only.
 
+import { giveBackUnlimitedFast, takeUnlimitedFast } from "@/lib/jawad/server/unlimited";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
 import { UserError } from "@/lib/api";
@@ -131,9 +132,16 @@ export async function makeHook(p: EditorProject, who: Who, b: { text?: unknown; 
     `Style: ${style}. Big, punchy, eye-catching, centred, fills most of the width.`,
     "Background: one flat solid pure green colour (#00FF00) filling the whole image, perfectly even, no gradient, no texture, no shadow or glow on the background, and no green anywhere in the lettering.",
   ].join("\n");
-  const img = await charged(who, "editor_price_hook", 1, "هوك بالصورة في حيدرة كت", () =>
-    openaiImage({ model: "gpt-image-2-2026-04-21", prompt, aspect: "3:2", resolution: "std", quality: "medium", count: 1, references: [], user: providerUserId(p.user_id) }).catch(providerError),
-  );
+  const draw = () => openaiImage({ model: "gpt-image-2-2026-04-21", prompt, aspect: "3:2", resolution: "std", quality: "medium", count: 1, references: [], user: providerUserId(p.user_id) }).catch(providerError);
+  // «لامحدود» GPT Image 2: while the person's fast balance lasts this picture is free (given back if it fails)
+  const passRef = `editor-hook:${crypto.randomUUID()}`;
+  const passFree = !who.team && (await takeUnlimitedFast(who.id, "openai-gpt-image-2", { quality: "medium", resolution: "std", count: 1 }, passRef));
+  const img = passFree
+    ? await draw().catch(async (e) => {
+        await giveBackUnlimitedFast(who.id, passRef);
+        throw e;
+      })
+    : await charged(who, "editor_price_hook", 1, "هوك بالصورة في حيدرة كت", draw);
   const cut = await keyOutGreen(img.images[0]);
   return addFile(p, { bytes: cut.bytes, mime: "image/png", ext: "png", kind: "image", name: `هوك: ${text}`, width: cut.width, height: cut.height, meta: { made: "hook", text } });
 }

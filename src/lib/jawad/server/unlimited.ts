@@ -43,8 +43,25 @@ async function readBought(userId: string): Promise<Bought[]> {
     : [];
 }
 
-async function writeBought(userId: string, bought: Bought[]) {
-  const { error } = await db().from("jawad_settings").upsert({ key: keyOf(userId), value: { bought: bought.slice(-50) }, updated_at: new Date().toISOString(), updated_by: userId });
+/** A use made outside the studio's jobs (the film maker, the student, the editor's hook): kept next to the purchases. */
+interface ExtraUse {
+  paid: string;
+  cycle: number;
+  units: number;
+  fast: boolean;
+  at: string;
+  ref: string;
+}
+
+async function readExtras(userId: string): Promise<ExtraUse[]> {
+  const { data } = await db().from("jawad_settings").select("value").eq("key", keyOf(userId)).maybeSingle();
+  const list = (data?.value as { extra?: unknown } | null)?.extra;
+  return Array.isArray(list) ? (list as ExtraUse[]).filter((x) => x && typeof x.paid === "string") : [];
+}
+
+async function writeBought(userId: string, bought: Bought[], extra?: ExtraUse[]) {
+  const keep = extra ?? (await readExtras(userId));
+  const { error } = await db().from("jawad_settings").upsert({ key: keyOf(userId), value: { bought: bought.slice(-50), extra: keep.slice(-500) }, updated_at: new Date().toISOString(), updated_by: userId });
   if (error) throw error;
 }
 
@@ -83,15 +100,43 @@ interface PassJob {
   inputs: { unlimited?: { pass?: string; fast?: boolean; units?: number; cycle?: number }; settings?: Record<string, unknown> };
 }
 
-/** The jobs made under this purchase (not failed or cancelled). */
+/** The jobs made under this purchase (not failed or cancelled), with its uses outside the studio's jobs. */
 async function jobsOf(userId: string, b: Bought): Promise<PassJob[]> {
-  const { data } = await db()
-    .from("jawad_jobs")
-    .select("inputs")
-    .eq("user_id", userId)
-    .eq("inputs->unlimited->>paid", b.paidAt)
-    .not("status", "in", "(failed,cancelled)");
-  return (data ?? []) as PassJob[];
+  const [{ data }, extras] = await Promise.all([
+    db().from("jawad_jobs").select("inputs").eq("user_id", userId).eq("inputs->unlimited->>paid", b.paidAt).not("status", "in", "(failed,cancelled)"),
+    readExtras(userId).catch(() => [] as ExtraUse[]),
+  ]);
+  return [...((data ?? []) as PassJob[]), ...extras.filter((x) => x.paid === b.paidAt).map((x) => ({ inputs: { unlimited: { pass: "", fast: x.fast, units: x.units, cycle: x.cycle } } }))];
+}
+
+/**
+ * «لامحدود» outside the studio's jobs (the film maker's videos and pictures, the student's illustrations, «حيدرة كت»'s hook): these
+ * run at once and cannot wait, so a pass makes them free only while its FAST balance covers them; the use is counted at once.
+ * True = free (and counted); false = charged as usual (no pass, or the fast balance is used up — the studio still takes it slowly).
+ */
+export async function takeUnlimitedFast(userId: string, generatorId: string, settings: Record<string, unknown>, ref: string, now = Date.now()): Promise<boolean> {
+  try {
+    const t = await unlimitedTicket(userId, generatorId, settings, now);
+    if (!t || !t.inputs.fast) return false;
+    const [bought, extras] = await Promise.all([readBought(userId), readExtras(userId)]);
+    if (extras.some((x) => x.ref === ref)) return true;
+    await writeBought(userId, bought, [...extras, { paid: t.inputs.paid, cycle: t.inputs.cycle, units: t.inputs.units, fast: true, at: new Date(now).toISOString(), ref: ref.slice(0, 120) }]);
+    return true;
+  } catch (e) {
+    console.error("unlimited fast take", userId, e);
+    return false;
+  }
+}
+
+/** A free use that did not happen after all (the generation failed): its fast balance comes back. */
+export async function giveBackUnlimitedFast(userId: string, ref: string) {
+  try {
+    const extras = await readExtras(userId);
+    if (!extras.some((x) => x.ref === ref)) return;
+    await writeBought(userId, await readBought(userId), extras.filter((x) => x.ref !== ref));
+  } catch (e) {
+    console.error("unlimited give back", userId, e);
+  }
 }
 
 const cycleOf = (b: Bought, now: number) => Math.floor((now - Date.parse(b.paidAt)) / (UNLIMITED.cycleHours * H));
@@ -220,6 +265,7 @@ export async function unlimitedRoom(emails: Map<string, string>, now = Date.now(
   for (const r of rows ?? []) {
     const userId = String(r.key).slice("unlimited:".length);
     const list = (r.value as { bought?: Bought[] } | null)?.bought ?? [];
+    const extras = ((r.value as { extra?: ExtraUse[] } | null)?.extra ?? []).filter((x) => x && typeof x.paid === "string");
     if (!list.length) continue;
     const { data: jobRows } = await db()
       .from("jawad_jobs")
@@ -237,7 +283,7 @@ export async function unlimitedRoom(emails: Map<string, string>, now = Date.now(
       const cycle = cycleOf(b, now);
       const inCycle = ok.filter((j) => j.inputs.unlimited?.cycle === cycle);
       const cap = UNLIMITED.fast[pass.kind];
-      const fastUsed = inCycle.filter((j) => j.inputs.unlimited?.fast).reduce((n, j) => n + (j.inputs.unlimited?.units ?? 0), 0);
+      const fastUsed = inCycle.filter((j) => j.inputs.unlimited?.fast).reduce((n, j) => n + (j.inputs.unlimited?.units ?? 0), 0) + extras.filter((x) => x.paid === b.paidAt && x.cycle === cycle && x.fast).reduce((n, x) => n + x.units, 0);
       return [
         {
           pass: pass.key,
@@ -250,9 +296,10 @@ export async function unlimitedRoom(emails: Map<string, string>, now = Date.now(
           until: new Date(endOf(b)).toISOString(),
           active: running(b, now),
           jobs: mine.map((j) => ({ id: j.id, status: j.status, generatorId: j.generator_id, fast: !!j.inputs.unlimited?.fast, units: j.inputs.unlimited?.units ?? 0, createdAt: j.created_at, holdUntil: j.inputs.unlimited?.holdUntil ?? null, prompt: (j.prompt ?? "").slice(0, 160) })),
-          made: ok.length,
+          // with the uses outside the studio (the film maker, the student, the editor's hook)
+          made: ok.length + extras.filter((x) => x.paid === b.paidAt).length,
           failed: mine.length - ok.length,
-          units: ok.reduce((n, j) => n + (j.inputs.unlimited?.units ?? 0), 0),
+          units: ok.reduce((n, j) => n + (j.inputs.unlimited?.units ?? 0), 0) + extras.filter((x) => x.paid === b.paidAt).reduce((n, x) => n + x.units, 0),
           fastLeft: running(b, now) ? Math.max(0, cap - fastUsed) : 0,
           fastCap: cap,
           slowInCycle: inCycle.filter((j) => !j.inputs.unlimited?.fast).length,

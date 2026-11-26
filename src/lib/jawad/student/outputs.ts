@@ -2,6 +2,7 @@
 // Each handler does one step per call (a chapter, a few questions, one audio part, one image, one render) and keeps
 // what it made, so a stopped run continues where it was and a failed part is made again alone.
 
+import { takeUnlimitedFast } from "@/lib/jawad/server/unlimited";
 import { readSermonLength, SERMON_PARTS } from "@config/jawad/khateeb";
 import { poemsCeilingUsd, sermonBrief, sermonPlanStep, tafsirCeilingUsd } from "./sermon";
 import { defaultDesign, foldOf, isPaged, outputName, pagesOf, readBrief, STUDENT, wantsDocx, type Design } from "@config/jawad/student";
@@ -589,7 +590,9 @@ async function makeImage(o: Output, c: Ctx, prompt: string, n: number) {
   });
   const path = `${o.user_id}/${o.project_id}/img/${o.id}-${n}-${Date.now()}.png`;
   await putFile(path, res.images[0], "image/png");
-  return { path, usd: res.costUsd ?? IMAGE_USD };
+  // «لامحدود» GPT Image 2: while the person's fast balance lasts, a made illustration is free (counted once per picture)
+  const free = await takeUnlimitedFast(o.user_id, "openai-gpt-image-2", { quality: "medium", resolution: "std", count: 1 }, `student:${o.id}:${n}`);
+  return { path, usd: free ? 0 : res.costUsd ?? IMAGE_USD };
 }
 
 /** The next picture still to make or pick, or null. Returns what changed. */

@@ -332,14 +332,16 @@ export async function createJob(user: { id: string; email?: string | null }, own
   // «عرض الـ٢٥ ريال»: a paid offer still running for this generator (config/jawad/offer10.ts) makes the job free
   const offer10 = !freeFirst && !signupFreeImage && !owner && !server.team && !server.cartoon && e.price.coins > 0 && (await offer10Covers(user.id, def.id, e.settings).catch(() => false));
   // «لامحدود»: a running pass for this generator (and its quality) makes the job free: fast, or held before it is sent
-  const unlim = !freeFirst && !signupFreeImage && !offer10 && !owner && !server.team && !server.cartoon && e.price.coins > 0 ? await unlimitedTicket(user.id, def.id, e.settings).catch(() => null) : null;
+  // (from every place that makes a job here: the studio, Claude/ChatGPT's MCP, the content maker, «حيدرة كت», the cartoon, the library…)
+  const unlim = !freeFirst && !signupFreeImage && !offer10 && !owner && e.price.coins > 0 ? await unlimitedTicket(user.id, def.id, e.settings).catch(() => null) : null;
   const freeLine = signupFreeImage ? { label: "صورة ترحيبية مجانية", centi: 0 } : freeFirst ? { label: "أول تجربة مجانية", centi: 0 } : offer10 ? { label: "مجاني من عرض الـ٢٥ ريال", centi: 0 } : unlim ? { label: unlim.inputs.fast ? "لامحدود · توليد سريع" : "لامحدود · توليد بطيء", centi: 0 } : null;
   // a code's «بسعر التكلفة»: the tool's own cost (the price table's lines, in hundredths of a halala), no profit
   const atCost = !owner && !server.team && !freeLine && e.price.coins > 0 && (await perksOf(user.email)).atCost;
   const payCoins = atCost ? costOfLines(e.price.lines) : e.price.coins;
   const payLines = atCost ? [{ label: "بسعر التكلفة (بدون ربح)", centi: payCoins * 100 }] : e.price.lines;
   const chargeCoins = freeLine ? 0 : payCoins;
-  if (Number(b.expectedCoins) !== chargeCoins) return { kind: "price_changed", coins: chargeCoins, lines: freeLine ? [freeLine] : payLines, prices: table };
+  // «لامحدود»: a job its pass makes free goes without asking again, whatever price the caller quoted (the studio, the editor, the cartoon…)
+  if (Number(b.expectedCoins) !== chargeCoins && !(unlim && chargeCoins === 0)) return { kind: "price_changed", coins: chargeCoins, lines: freeLine ? [freeLine] : payLines, prices: table };
 
   // «الفصل الذكي»: the frames the studio took of the video are kept with the job (Claude watches them for the music
   // and the effects; the dialogue needs only the video)
