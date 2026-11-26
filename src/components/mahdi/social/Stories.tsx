@@ -10,6 +10,7 @@ import Avatar from "../Avatar";
 import Icon from "../Icon";
 import { useMahdi } from "../Provider";
 import Sheet from "../Sheet";
+import { useBackClose } from "../useBackClose";
 import { QuoteCard, UserChip } from "./PostCard";
 import ReportSheet from "./ReportSheet";
 import StoryCamera from "./StoryCamera";
@@ -133,6 +134,8 @@ function StoryViewer({ groups, start, onClose, onHide, onUnhide }: { groups: Sto
   const [reporting, setReporting] = useState(false);
   const [viewers, setViewers] = useState<SocialUser[] | null>(null);
   const ref = useRef<HTMLDialogElement>(null);
+  // the phone's back closes the story, not the screen under it
+  useBackClose(true, onClose);
   const video = useRef<HTMLVideoElement>(null);
   const counted = useRef(new Set<string>());
   const g = groups[gi];

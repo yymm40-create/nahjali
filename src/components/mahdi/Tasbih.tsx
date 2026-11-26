@@ -159,7 +159,7 @@ function Tasbih() {
           <div className="space-y-2">
             <p className="text-sm">{t.tasbih.linked(linked.name)}</p>
             <p className="m-num text-sm m-muted">
-              {linked.inst.measure === "check" ? (linked.inst.progress >= 1 ? "✓" : "—") : t.tasbih.progress(fmtNum(linked.inst.value), fmtNum(linked.inst.target))}
+              {linked.inst.measure === "check" ? (linked.inst.progress >= 1 ? <Icon name="check" size={16} className="m-ico" strokeWidth={2.4} /> : "—") : t.tasbih.progress(fmtNum(linked.inst.value), fmtNum(linked.inst.target))}
             </p>
             <span className="block h-2 overflow-hidden rounded-full" style={{ background: "var(--m-track)" }}>
               <span className="block h-full rounded-full transition-[width]" style={{ width: `${Math.round(linked.inst.progress * 100)}%`, background: "var(--m-gold)" }} />

@@ -187,7 +187,11 @@ describe("it is a main branch, tied to the habits", () => {
   it("its own page, reader, home card and menu entry; the habit link goes through the app's own log queue", () => {
     expect(read("src/components/mahdi/khatma/KhatmaTabs.tsx")).toContain("ختمتي");
     expect(read("src/app/mahdi/(app)/khatma/layout.tsx")).toContain("<KhatmaTabs />");
-    expect(read("src/app/mahdi/(app)/khatma/read/[q]/page.tsx")).toContain("قرأته ✓ والتالي");
+    // «قرأته ✓ والتالي»: the tick is a drawn icon now (no emoji or glyph as an icon, 26 November 2026)
+    const reader = read("src/app/mahdi/(app)/khatma/read/[q]/page.tsx");
+    expect(reader).toContain("قرأته");
+    expect(reader).toContain("والتالي");
+    expect(reader).toContain('<Icon name="check"');
     expect(read("src/components/mahdi/khatma/useMyKhatma.ts")).toContain("store.setLog(");
     expect(read("src/app/api/mahdi/khatma/mine/route.ts")).toContain('p_name: "ورد الختمة العلوية"');
     expect(WIDGETS.some((w) => w.id === "khatma")).toBe(true);

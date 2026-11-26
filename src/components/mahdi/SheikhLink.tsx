@@ -29,7 +29,9 @@ export default function SheikhLink({ home = false }: { home?: boolean }) {
   }
   return (
     <Link href={SHEIKH_PATH} className="m-card flex items-center gap-3 p-4 font-semibold">
-      <span className="text-2xl" aria-hidden="true">📜</span>
+      <span className="shrink-0" style={{ color: "var(--m-gold-text)" }} aria-hidden="true">
+        <Icon name="scroll" size={26} />
+      </span>
       <span className="flex-1">{S.card}</span>
       <Icon name="chevronLeft" size={18} />
     </Link>

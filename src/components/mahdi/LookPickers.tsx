@@ -76,17 +76,17 @@ function GoalsMark({ style }: { style: GoalsStyle }) {
     case "path":
       return box(<>{[[20, 6], [30, 18], [14, 30]].map(([x, y], k) => <circle key={k} cx={x} cy={y} r="5.5" fill={k < 2 ? "#58cc02" : "#ffc800"} />)}</>);
     case "flame":
-      return <span className="text-3xl leading-none" aria-hidden="true">🔥</span>;
+      return <span style={{ color: "var(--m-accent)" }} aria-hidden="true"><Icon name="streak" size={34} /></span>;
     case "gauge":
       return box(<><path d="M5 30 A15 15 0 0 1 35 30" fill="none" stroke={tr} strokeWidth="6" strokeLinecap="round" /><path d="M5 30 A15 15 0 0 1 28 17" fill="none" stroke={c} strokeWidth="6" strokeLinecap="round" /></>);
     case "rpg":
-      return <span className="text-3xl leading-none" aria-hidden="true">🧕</span>;
+      return <span style={{ color: c }} aria-hidden="true"><Icon name="user" size={34} /></span>;
     case "stickers":
       return box(<><rect x="4" y="6" width="20" height="14" fill="#ffe08a" transform="rotate(-6 14 13)" /><rect x="16" y="20" width="20" height="14" fill="#bde0fe" transform="rotate(5 26 27)" /></>);
     case "star":
       return box(<polygon points="20,2 25,10 35,7 32,17 38,22 30,27 31,37 21,33 13,38 11,28 2,25 8,17 4,8 14,10" fill={c} stroke="var(--m-gold-2)" strokeWidth="1.5" />);
     case "number":
-      return <b className="text-3xl leading-none" style={{ fontFamily: "var(--m-display)" }}>٣</b>;
+      return <b className="text-3xl leading-none" style={{ fontFamily: "var(--m-display)" }}>3</b>;
     case "chip":
       return box(<>{[[20, 12], [10, 28], [30, 28]].map(([x, y], k) => <circle key={k} cx={x} cy={y} r="8" fill="none" stroke={c} strokeWidth="3" />)}</>);
     case "pebbles":
@@ -122,7 +122,7 @@ export function ThemePicker({ value, onChange }: { value: MahdiTheme; onChange: 
             </span>
             <ShrineArt shrineId="imam-ali" style={th.art} className="m-sample-shrine" />
             <span className="mt-1 block py-1 text-center text-[11px] font-bold" style={{ background: "var(--m-primary-bg)", color: "var(--m-gold-ink)", border: "var(--m-primary-border)", boxShadow: "var(--m-primary-shadow)", borderRadius: "calc(var(--m-radius) * 0.5)" }}>
-              ٣ من ٦ ✓
+              3 من 6 <Icon name="check" size={11} className="m-ico" strokeWidth={2.6} />
             </span>
           </span>
           <span className="block px-1 pt-2 font-semibold leading-snug">

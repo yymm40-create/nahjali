@@ -57,7 +57,10 @@ export default function CalendarView({ month }: { month?: string }) {
       <ProgressTabs />
 
       <div className="flex items-center gap-2" role="group" aria-label={t.planner.title}>
-        <span className="text-sm m-muted">📅 {t.planner.title}</span>
+        <span className="text-sm m-muted">
+          <Icon name="calendar" size={15} className="m-ico" />
+          {t.planner.title}
+        </span>
         {(["month", "week"] as const).map((v) => (
           <button key={v} type="button" className="m-option px-3 py-1.5 text-sm" aria-pressed={view === v} onClick={() => setView(v)}>
             {t.planner[v]}

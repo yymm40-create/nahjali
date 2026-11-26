@@ -127,9 +127,9 @@ export default function DayPriorities() {
                   <span className={`block truncate ${done ? "line-through m-muted" : "font-semibold"}`}>{x.title}</span>
                   {(x.at || h) && (
                     <span className="m-num block text-xs m-muted">
-                      {x.at && <>🔔 {x.at}</>}
+                      {x.at && <><Icon name="bell" size={13} className="m-ico" />{x.at}</>}
                       {x.at && h && " · "}
-                      {h && <>↺ {h.name}</>}
+                      {h && <><Icon name="repeat" size={13} className="m-ico" />{h.name}</>}
                     </span>
                   )}
                 </span>
@@ -158,7 +158,8 @@ export default function DayPriorities() {
         </div>
         {free.length > 0 && (
           <button type="button" className={`m-option min-h-9 px-3 text-sm ${picking ? "font-semibold" : ""}`} aria-expanded={picking} onClick={() => setPicking((v) => !v)}>
-            ↺ {t.priorities.fromHabits}
+            <Icon name="repeat" size={14} className="m-ico" />
+            {t.priorities.fromHabits}
           </button>
         )}
         {picking && (

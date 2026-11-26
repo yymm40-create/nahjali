@@ -14,6 +14,8 @@ import { WIZARD_STEPS, coachScreen, setupHref } from "@/lib/mahdi/health/route";
 import type { DayLog } from "@/lib/mahdi/health/tracker";
 import { COACH } from "./HealthApp";
 import { useHealth } from "./HealthProvider";
+import Icon from "../Icon";
+import { useBackClose } from "../useBackClose";
 
 /** The tracker of the last 14 days, for عباس to see how it is going. */
 function recentDays(days: Record<string, DayLog>, today: string): DayLog[] {
@@ -55,8 +57,8 @@ export default function CoachChat() {
   const hello: CoachMsg = {
     role: "assistant",
     text: female
-      ? "هلا يا بطلة 🦁 أنا عباس سبع القنطرة. أي شي ما فهمتيه أو تبين تغيرينه في خطتك قولي لي، وأنا أعدله لك على طول."
-      : "هلا يا بطل 🦁 أنا عباس سبع القنطرة. أي شي ما فهمته أو تبي تغيره في خطتك قول لي، وأنا أعدله لك على طول.",
+      ? "هلا يا بطلة، أنا عباس سبع القنطرة. أي شي ما فهمتيه أو تبين تغيرينه في خطتك قولي لي، وأنا أعدله لك على طول."
+      : "هلا يا بطل، أنا عباس سبع القنطرة. أي شي ما فهمته أو تبي تغيره في خطتك قول لي، وأنا أعدله لك على طول.",
   };
   const [open, setOpen] = useState(false);
   const [list, setList] = useState<CoachMsg[]>(() => {
@@ -105,6 +107,8 @@ export default function CoachChat() {
 
   // «أرتبها مع عباس» on the setup (or any page) opens the chat with a first message; it is sent once the plan is there
   const [pending, setPending] = useState("");
+  // the phone's back closes the chat first
+  useBackClose(open, () => setOpen(false));
   useEffect(() => {
     const on = (e: Event) => {
       const text = String((e as CustomEvent<{ text?: string }>).detail?.text ?? "").trim();
@@ -135,16 +139,21 @@ export default function CoachChat() {
               <b>{COACH}</b>
               <small>مدربك · يعدّل خطتك مباشرة</small>
             </div>
-            <button type="button" className="gym-icon-btn" onClick={() => setOpen(false)} aria-label="إغلاق">✕</button>
+            <button type="button" className="gym-icon-btn" onClick={() => setOpen(false)} aria-label="إغلاق"><Icon name="close" size={18} /></button>
           </header>
           <div className="gym-chat-list" aria-live="polite">
             {list.map((m, i) => (
               <div key={i} className={`gym-msg ${m.role}${m.error ? " err" : ""}`}>
                 {m.text}
-                {m.changed && <span className="gym-msg-tag">✓ عدّلت خطتك</span>}
+                {m.changed && (
+                  <span className="gym-msg-tag">
+                    <Icon name="check" size={13} className="m-ico" strokeWidth={2.4} />
+                    عدّلت خطتك
+                  </span>
+                )}
               </div>
             ))}
-            {busy && <div className="gym-msg assistant">عباس يكتب… 🏋️</div>}
+            {busy && <div className="gym-msg assistant">عباس يكتب…</div>}
             <div ref={end} />
           </div>
           {!!choices.length && !busy && (

@@ -248,7 +248,7 @@ function Open({ k }: { k: K }) {
           <span className="block h-full rounded-full" style={{ width: `${Math.min(100, (s.todayCount / s.perDay) * 100)}%`, background: DONE }} />
         </span>
         <p className="text-sm m-muted">
-          {s.todayLeft === 0 ? "✅ خلّصت وردك اليوم. تقبّل الله." : `باقي لك اليوم ${unitText(u, s.todayLeft)}.`}
+          {s.todayLeft === 0 ? <><Icon name="check" size={16} className="m-ico" strokeWidth={2.4} />خلّصت وردك اليوم. تقبّل الله.</> : `باقي لك اليوم ${unitText(u, s.todayLeft)}.`}
           {/* never «you are behind»: a missed day is spread over the days left by itself */}
           {s.respread && s.daysLeft > 0 ? ` الباقي متوزّع على ${s.daysLeft === 1 ? "آخر يوم" : `الأيام الباقية (${s.daysLeft})`}.` : ""}
           {s.daysLeft === 0 && s.left > 0 ? ` كمّل على راحتك، تخلّصها ${dayText(s.finishBy)} بإذن الله.` : ""}
@@ -275,7 +275,8 @@ function Open({ k }: { k: K }) {
           <>
             {next && s.next && (
               <Link href={`/mahdi/khatma/read/${s.next}`} className="m-btn m-btn-primary w-full">
-                📖 كمّل القراءة: {portionTitle(u, s.next)}
+                <Icon name="book" size={18} className="m-ico" />
+                كمّل القراءة: {portionTitle(u, s.next)}
               </Link>
             )}
             {next && <p className="m-num text-center text-xs m-muted">{next.opening ? `يبدأ بـ «${next.opening}» · ` : ""}{next.range}</p>}
@@ -287,7 +288,10 @@ function Open({ k }: { k: K }) {
 
       <section className="m-card space-y-3 p-4" aria-labelledby="reached">
         <div>
-          <h2 id="reached" className="font-semibold">📍 وين وصلت؟</h2>
+          <h2 id="reached" className="font-semibold">
+            <Icon name="pin" size={18} className="m-ico m-gold" />
+            وين وصلت؟
+          </h2>
           <p className="text-sm m-muted">إذا كنت خلّصت جزء من القرآن قبل، حدّد وين وصلت أو اللي خلّصته، فينحسب مقروء من غير ما يدخل في ورد اليوم ولا عادتك.{s.carried > 0 ? ` (حاليًا ${s.carried} ${DIVISION_LABEL[u].one} مسجّلة خلّصتها قبل)` : ""}</p>
         </div>
         <ReachedPicker unit={u} range={cur.range} value={reached} onChange={setReached} />
@@ -303,7 +307,7 @@ function Open({ k }: { k: K }) {
           خلّصت كل اللي قبله
         </button>
         <button type="button" className="m-btn m-btn-ghost w-full" aria-pressed={edit} onClick={() => (setEdit((v) => !v), setPicked(new Set()))}>
-          {edit ? "إغلاق التحديد" : `✋ أو حدّد ${DIVISION_LABEL[u].many} اللي خلّصتها على الخريطة`}
+          {edit ? "إغلاق التحديد" : <><Icon name="edit" size={16} className="m-ico" />{`أو حدّد ${DIVISION_LABEL[u].many} اللي خلّصتها على الخريطة`}</>}
         </button>
       </section>
 
@@ -381,7 +385,7 @@ function KhatmaMap({ unit, range, read, carried, next, edit, picked, onPick }: {
                 const label = `${portionTitle(unit, n)}${read.has(n) ? (carried.has(n) ? " · خلّصتها قبل" : " · قرأته") : ""}`;
                 return edit ? (
                   <button key={n} type="button" aria-pressed={picked.has(n)} aria-label={label} title={label} className={cls} style={style} onClick={() => onPick(n)}>
-                    {labelled ? n : picked.has(n) ? "✓" : ""}
+                    {labelled ? n : picked.has(n) ? <Icon name="check" size={14} strokeWidth={2.6} /> : ""}
                   </button>
                 ) : (
                   <Link key={n} href={`/mahdi/khatma/read/${n}`} aria-label={label} title={label} className={cls} style={style}>
@@ -466,7 +470,10 @@ function Settings({ k, onStop }: { k: K; onStop: () => void }) {
   const lockUnit = cur.reads.length > 0;
   return (
     <details className="m-card p-4">
-      <summary className="cursor-pointer font-semibold">⚙️ إعدادات ختمتي</summary>
+      <summary className="cursor-pointer font-semibold">
+        <Icon name="settings" size={18} className="m-ico" />
+        إعدادات ختمتي
+      </summary>
       <p className="mt-1 text-xs m-muted">وش تقرأ، متى تخلّصه، والإهداء.</p>
       <form
         className="mt-3 space-y-4"
@@ -495,7 +502,10 @@ function ReachedPicker({ unit, range, value, onChange }: { unit: Division; range
   };
   return (
     <label className="block space-y-1">
-      <span className="m-label">📍 وين وصلت في القرآن؟</span>
+      <span className="m-label">
+        <Icon name="pin" size={15} className="m-ico" />
+        وين وصلت في القرآن؟
+      </span>
       <select className="m-field" value={value} onChange={(e) => onChange(Number(e.target.value))} aria-label="وين وصلت">
         <option value={0}>من البداية (ما خلّصت شي)</option>
         {options.map((n) => <option key={n} value={n}>وصلت إلى {label(n)}</option>)}
@@ -528,7 +538,7 @@ function History({ items }: { items: MyKhatma[] }) {
           <li key={h.id} className="m-num flex flex-wrap items-center gap-2 px-4 py-3">
             <span className="font-semibold">الختمة رقم {h.number}</span>
             <span className="m-muted">· {partText({ unit: h.unit, range: h.range })}</span>
-            <span className="m-muted">· {h.status === "done" ? `✅ خلّصتها ${h.finishedOn ? dayText(h.finishedOn) : ""}` : h.status === "stopped" ? "انتهت قبل ما تكتمل" : "مفتوحة"}</span>
+            <span className="m-muted">· {h.status === "done" ? <><Icon name="check" size={14} className="m-ico" strokeWidth={2.4} />{`خلّصتها ${h.finishedOn ? dayText(h.finishedOn) : ""}`}</> : h.status === "stopped" ? "انتهت قبل ما تكتمل" : "مفتوحة"}</span>
             <span className="m-muted">· بدأتها {dayText(h.startedOn)}</span>
             {(h.dedicatedTo || h.forSoulOf) && <span className="w-full m-muted">{[h.dedicatedTo && `${t.khatma.dedicatedTo}: ${h.dedicatedTo}`, h.forSoulOf && `${t.khatma.forSoulOf}: ${h.forSoulOf}`].filter(Boolean).join(" · ")}</span>}
           </li>

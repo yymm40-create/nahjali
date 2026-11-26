@@ -5,8 +5,8 @@ import Icon from "../Icon";
 export default function KhatmaCard() {
   return (
     <Link href="/mahdi/khatma" className="m-card flex items-center gap-4 p-4">
-      <span className="grid size-12 shrink-0 place-items-center rounded-2xl text-2xl" style={{ background: "color-mix(in srgb, #16a34a 18%, transparent)", boxShadow: "inset 0 0 0 2px #16a34a" }} aria-hidden="true">
-        📖
+      <span className="grid size-12 shrink-0 place-items-center rounded-2xl" style={{ background: "color-mix(in srgb, var(--m-gold) 22%, var(--m-surface-solid))", boxShadow: "inset 0 0 0 2px var(--m-gold)", color: "var(--m-ink)" }} aria-hidden="true">
+        <Icon name="book" size={24} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="m-eyebrow block">الختمة العلوية</span>

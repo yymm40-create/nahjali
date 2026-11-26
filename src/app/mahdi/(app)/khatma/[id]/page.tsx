@@ -59,11 +59,11 @@ interface View {
   history?: { number: number; status: string; division: Division; range: PortionRange; done: number; total: number; dedicatedTo: string; forSoulOf: string; endsAt: string }[];
 }
 
-/** The colours of a portion: green read, yellow being read, grey read before (locked), the gold line free. */
+/** The colours of a portion: sun yellow read (achievement), orange being read, grey read before (locked), the line free. */
 const STATE_STYLE: Record<Exclude<PortionState, "taken">, React.CSSProperties> = {
   free: { borderColor: "var(--m-line)", background: "var(--m-surface-2)" },
-  reading: { borderColor: "#eab308", background: "color-mix(in srgb, #eab308 22%, var(--m-surface-2))" },
-  done: { borderColor: "#22c55e", background: "color-mix(in srgb, #22c55e 24%, var(--m-surface-2))" },
+  reading: { borderColor: "var(--m-accent)", background: "color-mix(in srgb, var(--m-accent) 22%, var(--m-surface-2))" },
+  done: { borderColor: "var(--m-gold)", background: "color-mix(in srgb, var(--m-gold) 30%, var(--m-surface-2))" },
   blocked: { borderColor: "var(--m-line)", background: "var(--m-track)", opacity: 0.5, filter: "grayscale(1)", cursor: "not-allowed" },
   out: { display: "none" },
 };
@@ -148,7 +148,10 @@ export default function KhatmaPage() {
         <>
           {group.isLeader && (
             <details className="m-card p-4" open={!khatma}>
-              <summary className="cursor-pointer font-semibold">⚙️ {t.khatma.settings}</summary>
+              <summary className="cursor-pointer font-semibold">
+                <Icon name="settings" size={18} className="m-ico" />
+                {t.khatma.settings}
+              </summary>
               <p className="mt-1 text-xs m-muted">التقسيم، الجزء اللي تختمونه، ليلة الختم، والإهداء.</p>
               <div className="mt-3 space-y-4">
                 <SettingsForm busy={busy} act={act} current={settings} lockedDivision={Boolean(khatma && khatma.status === "open" && (khatma.done || khatma.reading))} />
@@ -172,7 +175,10 @@ export default function KhatmaPage() {
 
           {khatma?.status === "done" && (
             <section className="m-card space-y-3 p-4 text-center">
-              <p className="text-lg font-semibold">✅ {t.khatma.doneTitle}</p>
+              <p className="text-lg font-semibold">
+                <Icon name="check" size={20} className="m-ico m-gold" strokeWidth={2.4} />
+                {t.khatma.doneTitle}
+              </p>
               {settings.active && <p className="text-sm m-muted">{t.khatma.doneNext(nightText(khatma.endsAt, tz))}</p>}
               {group.isLeader && settings.active && (
                 <button type="button" className="m-btn m-btn-primary" disabled={busy} onClick={() => act({ action: "next" }, t.khatma.started)}>{t.khatma.startNext}</button>
@@ -182,7 +188,10 @@ export default function KhatmaPage() {
 
           {khatma?.overdue && (
             <section className="m-card space-y-3 p-4">
-              <p className="font-semibold">⏳ {t.khatma.overdueTitle}</p>
+              <p className="font-semibold">
+                <Icon name="hourglass" size={18} className="m-ico" />
+                {t.khatma.overdueTitle}
+              </p>
               <p className="text-sm m-muted">{group.isLeader ? t.khatma.overdueLeader : t.khatma.overdueMember}</p>
               {group.isLeader && (
                 <div className="flex flex-wrap gap-2">
@@ -232,7 +241,7 @@ export default function KhatmaPage() {
               <ul className="divide-y text-sm" style={{ borderColor: "var(--m-line)" }}>
                 {data.readers.map((r) => (
                   <li key={r.portion} className="flex items-center gap-2 py-2">
-                    <span className="inline-block size-3 shrink-0 rounded-full" style={{ background: r.status === "done" ? "#22c55e" : "#eab308" }} />
+                    <span className="inline-block size-3 shrink-0 rounded-full" style={{ background: r.status === "done" ? "var(--m-gold)" : "var(--m-accent)" }} />
                     <span className="min-w-0 flex-1">{portionTitle(khatma.division, r.portion)} · <strong>{t.mawla(r.name)}</strong></span>
                     {khatma.status === "open" && (
                       <button type="button" className="m-btn m-btn-quiet m-btn-sm" disabled={busy} onClick={() => setConfirm({ kind: "remove", n: r.portion, name: r.name })}>{t.khatma.removeReader}</button>
@@ -250,7 +259,7 @@ export default function KhatmaPage() {
                 {data.history!.map((h) => (
                   <li key={h.number} className="m-num flex flex-wrap items-center gap-2 px-4 py-3">
                     <span className="font-semibold">{t.khatma.number(h.number)}</span>
-                    <span className="m-muted">· {h.status === "done" ? `✅ ${t.khatma.historyDone}` : t.khatma.historyClosed(h.done, h.total)}</span>
+                    <span className="m-muted">· {h.status === "done" ? <><Icon name="check" size={14} className="m-ico" strokeWidth={2.4} />{t.khatma.historyDone}</> : t.khatma.historyClosed(h.done, h.total)}</span>
                     {h.range && !isFull(h.division, h.range) && <span className="m-muted">· {partText({ unit: h.division, range: h.range })}</span>}
                     {(h.dedicatedTo || h.forSoulOf) && <span className="w-full m-muted">{[h.dedicatedTo && `${t.khatma.dedicatedTo}: ${h.dedicatedTo}`, h.forSoulOf && `${t.khatma.forSoulOf}: ${h.forSoulOf}`].filter(Boolean).join(" · ")}</span>}
                   </li>
@@ -313,8 +322,8 @@ function Progress({ k }: { k: Khatma }) {
         <span className="m-muted">{t.khatma.legendReading}: {fmtNum(k.reading)}</span>
       </p>
       <span className="flex h-2.5 overflow-hidden rounded-full" style={{ background: "var(--m-track)" }} role="img" aria-label={t.khatma.progress(k.done, k.total)}>
-        <span style={{ width: pct(k.done), background: "#22c55e" }} />
-        <span style={{ width: pct(k.reading), background: "#eab308" }} />
+        <span style={{ width: pct(k.done), background: "var(--m-gold)" }} />
+        <span style={{ width: pct(k.reading), background: "var(--m-accent)" }} />
       </span>
     </section>
   );

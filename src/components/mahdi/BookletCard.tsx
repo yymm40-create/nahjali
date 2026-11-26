@@ -5,8 +5,8 @@ import { TB } from "@config/tables-booklet";
 export default function BookletCard() {
   return (
     <a href={TB.base} className="m-card flex items-center gap-4 p-4">
-      <span className="grid size-12 shrink-0 place-items-center rounded-2xl text-2xl" style={{ background: "linear-gradient(135deg,#bfe6ff,#7cc4f5)" }} aria-hidden="true">
-        📘
+      <span className="grid size-12 shrink-0 place-items-center rounded-2xl" style={{ background: "color-mix(in srgb, var(--m-gold) 22%, var(--m-surface-solid))", boxShadow: "inset 0 0 0 2px var(--m-gold)", color: "var(--m-ink)" }} aria-hidden="true">
+        <Icon name="book" size={24} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="m-eyebrow block">{TB.name}</span>

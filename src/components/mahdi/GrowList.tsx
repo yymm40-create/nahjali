@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { fmtNum, t } from "@/lib/mahdi/i18n";
 import { GROW_HORIZONS, GROW_LIMITS, sortGrow, type GrowHorizon, type GrowItem } from "@/lib/mahdi/planner";
+import ConfirmSheet from "./ConfirmSheet";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
 
@@ -18,6 +19,8 @@ export default function GrowList() {
   const [note, setNote] = useState("");
   const [horizon, setHorizon] = useState<GrowHorizon>("month");
   const [busy, setBusy] = useState(false);
+  // asked in a sheet, not the browser's own dialog (the plan of 26 November 2026)
+  const [removing, setRemoving] = useState<GrowItem | null>(null);
 
   const load = useCallback(() => {
     mahdiFetch<{ ready: boolean; items: GrowItem[] }>("/api/mahdi/grow")
@@ -54,13 +57,9 @@ export default function GrowList() {
     }
   }
   async function remove(id: string) {
-    if (!window.confirm(t.grow.confirmRemove)) return;
-    try {
-      await mahdiFetch(`/api/mahdi/grow?id=${id}`, { method: "DELETE" });
-      setItems((all) => (all ?? []).filter((x) => x.id !== id));
-    } catch (e) {
-      toast((e as Error).message);
-    }
+    // a failure stays in the sheet (ConfirmSheet shows it), so the person can try again
+    await mahdiFetch(`/api/mahdi/grow?id=${id}`, { method: "DELETE" });
+    setItems((all) => (all ?? []).filter((x) => x.id !== id));
   }
 
   const list = sortGrow(items ?? []);
@@ -71,7 +70,10 @@ export default function GrowList() {
         <Link href="/mahdi/more" className="m-btn m-btn-quiet m-btn-sm -ms-3">
           <Icon name="chevronRight" size={18} /> {t.nav.more}
         </Link>
-        <h1 className="m-display text-3xl">🌱 {t.grow.title}</h1>
+        <h1 className="m-display text-3xl">
+          <Icon name="sprout" size={28} className="m-ico m-gold" />
+          {t.grow.title}
+        </h1>
         <p className="m-muted">{t.grow.intro}</p>
       </header>
 
@@ -117,7 +119,7 @@ export default function GrowList() {
                     {i.doneAt ? `${t.grow.done} · ${new Date(i.doneAt).toLocaleDateString("ar-SA", { day: "numeric", month: "long", year: "numeric" })}` : t.grow.horizon[i.horizon]}
                   </p>
                 </div>
-                <button type="button" className="m-icon-btn shrink-0" aria-label={t.grow.remove} title={t.grow.remove} onClick={() => void remove(i.id)}>
+                <button type="button" className="m-icon-btn shrink-0" aria-label={t.grow.remove} title={t.grow.remove} onClick={() => setRemoving(i)}>
                   <Icon name="trash" size={18} />
                 </button>
               </li>
@@ -126,6 +128,15 @@ export default function GrowList() {
           <p className="sr-only">{fmtNum(list.length)}</p>
         </section>
       )}
+      <ConfirmSheet
+        open={removing !== null}
+        onClose={() => setRemoving(null)}
+        title={t.grow.confirmRemove}
+        body={removing?.title ?? ""}
+        onConfirm={async () => {
+          if (removing) await remove(removing.id);
+        }}
+      />
     </div>
   );
 }

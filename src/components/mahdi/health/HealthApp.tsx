@@ -48,6 +48,7 @@ import {
   type SplitPreference,
 } from "@/lib/mahdi/health/plan";
 import RobotFace from "@/components/RobotFace";
+import Icon, { type IconName } from "../Icon";
 import "./health.css";
 import FoodGuide from "./FoodGuide";
 
@@ -57,7 +58,7 @@ export function coachLine(screen: Screen, f: boolean, preg: boolean): string {
   const g = (m: string, w: string) => (f ? w : m);
   switch (screen) {
     case "track":
-      return g("وش ناوي عليه يا بطل؟ اختر وأنا معك للآخر 💪", "وش ناوية عليه يا بطلة؟ اختاري وأنا معك للآخر 💪");
+      return g("وش ناوي عليه يا بطل؟ اختر وأنا معك للآخر", "وش ناوية عليه يا بطلة؟ اختاري وأنا معك للآخر");
     case "about":
       return g("عطني أرقامك بصدق، الخطة تنحسب عليها بالضبط.", "عطيني أرقامك بصدق، الخطة تنحسب عليها بالضبط.");
     case "goal":
@@ -73,7 +74,7 @@ export function coachLine(screen: Screen, f: boolean, preg: boolean): string {
     case "plan":
       return g("خطتك جاهزة! الحين لا تكتفي بالقراءة، خلها عادات وابدأ اليوم.", "خطتك جاهزة! الحين لا تكتفين بالقراءة، خليها عادات وابدئي اليوم.");
     case "habits":
-      return g("اختر كيف تتابعها كل يوم، وأنا أشوف نسبتك ترتفع 🔥", "اختاري كيف تتابعينها كل يوم، وأنا أشوف نسبتك ترتفع 🔥");
+      return g("اختر كيف تتابعها كل يوم، وأنا أشوف نسبتك ترتفع", "اختاري كيف تتابعينها كل يوم، وأنا أشوف نسبتك ترتفع");
     default:
       return "";
   }
@@ -107,10 +108,17 @@ export function Barbell() {
   );
 }
 
-export function Choice({ on, onClick, big, title, hint, disabled = false }: { on: boolean; onClick: () => void; big?: string; title: string; hint?: string; disabled?: boolean }) {
+/** `big`: the line icon (or two) above the title — drawn, never an emoji (26 November 2026). */
+export function Choice({ on, onClick, big, title, hint, disabled = false }: { on: boolean; onClick: () => void; big?: IconName | IconName[]; title: string; hint?: string; disabled?: boolean }) {
   return (
     <button type="button" className="gym-choice" aria-pressed={on} onClick={onClick} disabled={disabled}>
-      {big && <span className="big">{big}</span>}
+      {big && (
+        <span className="big" aria-hidden="true">
+          {(Array.isArray(big) ? big : [big]).map((n) => (
+            <Icon key={n} name={n} size={28} />
+          ))}
+        </span>
+      )}
       <b>{title}</b>
       {hint && <span>{hint}</span>}
     </button>
@@ -180,9 +188,9 @@ export default function HealthApp() {
         <section className="space-y-4">
           <h2 className="gym-title">وش تبي؟</h2>
           <div className="gym-choices">
-            <Choice on={p.track === "gym"} onClick={() => set("track", "gym")} big="🏋️" title="الجيم بس" hint="جدول تمارين حسب أيامك ومكانك" />
-            <Choice on={p.track === "food"} onClick={() => set("track", "food")} big="🥗" title="التغذية بس" hint="سعراتك وبروتينك ومايك وعاداتك الغذائية" />
-            <Choice on={p.track === "both"} onClick={() => set("track", "both")} big="⚡" title="الاثنين" hint="الجدول والتغذية مع بعض (الأفضل)" />
+            <Choice on={p.track === "gym"} onClick={() => set("track", "gym")} big="dumbbell" title="الجيم بس" hint="جدول تمارين حسب أيامك ومكانك" />
+            <Choice on={p.track === "food"} onClick={() => set("track", "food")} big="food" title="التغذية بس" hint="سعراتك وبروتينك ومايك وعاداتك الغذائية" />
+            <Choice on={p.track === "both"} onClick={() => set("track", "both")} big="bolt" title="الاثنين" hint="الجدول والتغذية مع بعض (الأفضل)" />
           </div>
           <Nav back={() => go("home")} next={() => go("about")} />
         </section>
@@ -192,8 +200,8 @@ export default function HealthApp() {
         <section className="space-y-4">
           <h2 className="gym-title">عرّفنا عليك</h2>
           <div className="gym-choices">
-            <Choice on={p.sex === "male"} onClick={() => setP((o) => ({ ...o, sex: "male", stage: "none" }))} big="🧔" title="رجل" />
-            <Choice on={female} onClick={() => set("sex", "female")} big="🧕" title="امرأة" />
+            <Choice on={p.sex === "male"} onClick={() => setP((o) => ({ ...o, sex: "male", stage: "none" }))} big="user" title="رجل" />
+            <Choice on={female} onClick={() => set("sex", "female")} big="veil" title="امرأة" />
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
             <Stepper label="العمر" value={p.age} set={(v) => set("age", v)} min={13} max={90} unit="سنة" />
@@ -236,11 +244,11 @@ export default function HealthApp() {
           <div className="gym-choices">
             {(
               [
-                ["lose", "🔥", preg ? "زيادة صحية بس (بدون رجيم)" : "نزول وزن وحرق دهون"],
-                ["muscle", "💪", "عضل أكثر وشكل أقوى"],
-                ["strength", "🏋️", "أرفع أثقل (قوة)"],
-                ["fit", "⚡", "لياقة وشكل متناسق"],
-                ["health", "❤️", "صحة عامة ونشاط"],
+                ["lose", "streak", preg ? "زيادة صحية بس (بدون رجيم)" : "نزول وزن وحرق دهون"],
+                ["muscle", "muscle", "عضل أكثر وشكل أقوى"],
+                ["strength", "dumbbell", "أرفع أثقل (قوة)"],
+                ["fit", "bolt", "لياقة وشكل متناسق"],
+                ["health", "heart", "صحة عامة ونشاط"],
               ] as const
             ).map(([g, icon, hint]) => (
               <Choice
@@ -291,9 +299,9 @@ export default function HealthApp() {
             </div>
           </div>
           <div className="gym-choices">
-            <Choice on={p.place === "gym"} onClick={() => set("place", "gym")} big="🏟️" title="جيم (نادي)" hint="أجهزة وكيبلات وبار وأوزان حرة" />
-            <Choice on={p.place === "home"} onClick={() => set("place", "home")} big="🏠" title="جيم بيتي" hint="عندي دمبلز أو مقعد أو مطاط أو بار عقلة" />
-            <Choice on={p.place === "body"} onClick={() => set("place", "body")} big="🤸" title="بدون أدوات" hint="وزن جسمي بس: كرسي، منشفة، جدار، درج" />
+            <Choice on={p.place === "gym"} onClick={() => set("place", "gym")} big="building" title="جيم (نادي)" hint="أجهزة وكيبلات وبار وأوزان حرة" />
+            <Choice on={p.place === "home"} onClick={() => set("place", "home")} big="home" title="جيم بيتي" hint="عندي دمبلز أو مقعد أو مطاط أو بار عقلة" />
+            <Choice on={p.place === "body"} onClick={() => set("place", "body")} big="stretch" title="بدون أدوات" hint="وزن جسمي بس: كرسي، منشفة، جدار، درج" />
           </div>
           <div className="gym-field">
             <span>كم يوم تتمرن بالأسبوع؟</span>
@@ -355,7 +363,10 @@ export default function HealthApp() {
 
           {female && p.stage !== "none" && (
             <div className="gym-card warn space-y-2">
-              <b>🩺 سلامتك وسلامة {preg ? "الجنين" : "جسمك بعد الولادة"}</b>
+              <b>
+                <Icon name="pulse" size={16} className="m-ico" />
+                سلامتك وسلامة {preg ? "الجنين" : "جسمك بعد الولادة"}
+              </b>
               {preg && (
                 <>
                   <p className="gym-small">أشّري لو عندك أي وحدة من هذي (الكلية الأمريكية لأطباء النساء والولادة):</p>
@@ -391,8 +402,8 @@ export default function HealthApp() {
             </div>
           )}
           <div className="gym-choices">
-            <Choice on={false} onClick={() => start("ready")} big="🚀" title="اقترح لي جدولًا" hint="نختار أقل عدد مفيد من أشهر التمارين، وتعدّلها بعدين" />
-            <Choice on={false} onClick={() => start("steps")} big="🧱" title="أختار بنفسي" hint="نمر على كل يوم، ونعرض بدائل معروفة لكل عضلة" />
+            <Choice on={false} onClick={() => start("ready")} big="sparkle" title="اقترح لي جدولًا" hint="نختار أقل عدد مفيد من أشهر التمارين، وتعدّلها بعدين" />
+            <Choice on={false} onClick={() => start("steps")} big="blocks" title="أختار بنفسي" hint="نمر على كل يوم، ونعرض بدائل معروفة لكل عضلة" />
             <Choice
               on={false}
               onClick={() => {
@@ -400,7 +411,7 @@ export default function HealthApp() {
                 // عباس opens with a first plan already made, and they shape it together in the chat
                 window.dispatchEvent(new CustomEvent("gym-coach", { detail: { text: "سويت خطة مبدئية، أبي نرتب أيامي وتماريني مع بعض" } }));
               }}
-              big="🦁"
+              big="chat"
               title="أرتبها مع عباس"
               hint="محادثة مع عباس سبع القنطرة: تقول له وش تبي، وهو يرتب أيامك وتمارينك بنفسه"
             />
@@ -427,7 +438,7 @@ export default function HealthApp() {
         <section className="space-y-4">
           <span className="gym-eyebrow">يوم {dayIdx + 1} من {plan.workout.days.length}</span>
           <h2 className="gym-title">{dayLabel(dayIdx)}: {focusName(plan.workout.days[dayIdx])}</h2>
-          <p className="gym-small">هذي التمارين المقترحة. بدّل أي تمرين (🔄)، احذفه، غيّر المجموعات، أو أضف تمرين من تحت.</p>
+          <p className="gym-small">هذي التمارين المقترحة. بدّل أي تمرين («بدائل»)، احذفه، غيّر المجموعات، أو أضف تمرين من تحت.</p>
           <DayCard plan={plan} day={plan.workout.days[dayIdx]} save={save} editable />
           <Nav
             back={() => (dayIdx ? go("build-day", dayIdx - 1) : plan.food ? go("build-food", FOOD_STEPS.length - 1) : go("mode"))}
@@ -480,9 +491,18 @@ export function PlanSummary({ plan, onOpen, onHabits, onEdit }: { plan: HealthPl
         {w && !w.blocked && <div className="gym-stat"><b>{w.days.length}</b><span>أيام تمرين</span></div>}
       </div>
       <div className="flex flex-wrap gap-2">
-        <button type="button" className="gym-btn primary sm" onClick={onHabits}>➕ أدخلها في عاداتي</button>
-        <button type="button" className="gym-btn sm" onClick={onOpen}>📋 افتح الخطة</button>
-        <button type="button" className="gym-btn ghost sm" onClick={onEdit}>✏️ عدّل معلوماتي</button>
+        <button type="button" className="gym-btn primary sm" onClick={onHabits}>
+          <Icon name="plus" size={16} className="m-ico" />
+          أدخلها في عاداتي
+        </button>
+        <button type="button" className="gym-btn sm" onClick={onOpen}>
+          <Icon name="clipboard" size={16} className="m-ico" />
+          افتح الخطة
+        </button>
+        <button type="button" className="gym-btn ghost sm" onClick={onEdit}>
+          <Icon name="edit" size={16} className="m-ico" />
+          عدّل معلوماتي
+        </button>
       </div>
     </section>
   );
@@ -491,18 +511,21 @@ export function PlanSummary({ plan, onOpen, onHabits, onEdit }: { plan: HealthPl
 function BuildFood({ idx, plan, n, save, back, next }: { idx: number; plan: HealthPlan; n: ReturnType<typeof nutrition>; save: (p: HealthPlan) => void; back: () => void; next: () => void }) {
   const k = FOOD_STEPS[idx];
   const f = plan.food!;
-  const info: Record<(typeof FOOD_STEPS)[number], { title: string; icon: string; unit: string; step: number; min: number; max: number; why: string }> = {
-    kcal: { title: "سعراتك اليومية", icon: "🔥", unit: "سعرة", step: 50, min: 1000, max: 6000, why: `حرقك وقت الراحة ${n.bmr} سعرة، ومع حركتك ${n.tdee}. ${n.notes[0] ?? ""}` },
-    proteinG: { title: "البروتين", icon: "🥩", unit: "غرام", step: 5, min: 20, max: 400, why: `وزّعه ${n.proteinMealG} غ تقريبًا في كل وجبة كل 3–4 ساعات (الجمعية الدولية للتغذية الرياضية). الإرشادات الجديدة 1.2–1.6 غ لكل كيلو، وأكثر مع المقاومة أو التنشيف.` },
-    waterCups: { title: "الماء", icon: "💧", unit: "كوب (250 مل)", step: 1, min: 2, max: 20, why: `حوالي ${n.waterL} لتر شرب باليوم (الهيئة الأوروبية لسلامة الأغذية)، وزِد في الحر ومع التمرين.` },
-    produce: { title: "الخضار والفواكه", icon: "🥗", unit: "حصص", step: 1, min: 1, max: 15, why: "منظمة الصحة العالمية: 400 غرام على الأقل (5 حصص) باليوم. الحصة = حبة فاكهة أو كوب خضار ورقية." },
-    steps: { title: "خطواتك", icon: "👟", unit: "خطوة", step: 500, min: 1000, max: 40000, why: "فائدة الخطوات على العمر تستقر تقريبًا عند 8,000–10,000 لمن هو أصغر من 60، و6,000–8,000 فوقها (ذا لانسيت 2022)." },
+  const info: Record<(typeof FOOD_STEPS)[number], { title: string; icon: IconName; unit: string; step: number; min: number; max: number; why: string }> = {
+    kcal: { title: "سعراتك اليومية", icon: "streak", unit: "سعرة", step: 50, min: 1000, max: 6000, why: `حرقك وقت الراحة ${n.bmr} سعرة، ومع حركتك ${n.tdee}. ${n.notes[0] ?? ""}` },
+    proteinG: { title: "البروتين", icon: "protein", unit: "غرام", step: 5, min: 20, max: 400, why: `وزّعه ${n.proteinMealG} غ تقريبًا في كل وجبة كل 3–4 ساعات (الجمعية الدولية للتغذية الرياضية). الإرشادات الجديدة 1.2–1.6 غ لكل كيلو، وأكثر مع المقاومة أو التنشيف.` },
+    waterCups: { title: "الماء", icon: "drop", unit: "كوب (250 مل)", step: 1, min: 2, max: 20, why: `حوالي ${n.waterL} لتر شرب باليوم (الهيئة الأوروبية لسلامة الأغذية)، وزِد في الحر ومع التمرين.` },
+    produce: { title: "الخضار والفواكه", icon: "food", unit: "حصص", step: 1, min: 1, max: 15, why: "منظمة الصحة العالمية: 400 غرام على الأقل (5 حصص) باليوم. الحصة = حبة فاكهة أو كوب خضار ورقية." },
+    steps: { title: "خطواتك", icon: "walk", unit: "خطوة", step: 500, min: 1000, max: 40000, why: "فائدة الخطوات على العمر تستقر تقريبًا عند 8,000–10,000 لمن هو أصغر من 60، و6,000–8,000 فوقها (ذا لانسيت 2022)." },
   };
   const it = info[k];
   return (
     <section className="space-y-4">
       <span className="gym-eyebrow">التغذية · {idx + 1} من {FOOD_STEPS.length}</span>
-      <h2 className="gym-title">{it.icon} {it.title}</h2>
+      <h2 className="gym-title">
+        <Icon name={it.icon} size={24} className="m-ico" />
+        {it.title}
+      </h2>
       <div className="gym-card space-y-3">
         <Stepper label={`المقترح لك: ${n[k].toLocaleString("en")}`} value={f[k]} set={(v) => save({ ...plan, food: { ...f, [k]: v } })} step={it.step} min={it.min} max={it.max} unit={it.unit} />
         <p className="gym-small">{it.why}</p>
@@ -559,7 +582,9 @@ export function DayCard({ plan, day, save, editable, onRemove }: { plan: HealthP
         <h3>{dayLabel(idx)}</h3>
         <span className="tag">{focusName(day)}</span>
         {editable && onRemove && w.days.length > 1 && (
-          <button type="button" className="gym-icon-btn" aria-label={`احذف ${dayLabel(idx)}`} title="احذف اليوم من الجدول" onClick={onRemove}>🗑</button>
+          <button type="button" className="gym-icon-btn" aria-label={`احذف ${dayLabel(idx)}`} title="احذف اليوم من الجدول" onClick={onRemove}>
+            <Icon name="trash" size={16} />
+          </button>
         )}
       </header>
       {editable && !soft && (
@@ -572,7 +597,7 @@ export function DayCard({ plan, day, save, editable, onRemove }: { plan: HealthP
               </button>
             ))}
           </div>
-          {rebuilt && <small className="gym-small">✓ رتّبنا تمارين اليوم على الأنواع اللي اخترتها. عدّل اللي تبيه تحت.</small>}
+          {rebuilt && <small className="gym-small"><Icon name="check" size={14} className="m-ico" strokeWidth={2.4} />رتّبنا تمارين اليوم على الأنواع اللي اخترتها. عدّل اللي تبيه تحت.</small>}
         </div>
       )}
       {day.items.map((it, i) => {
@@ -590,7 +615,9 @@ export function DayCard({ plan, day, save, editable, onRemove }: { plan: HealthP
             </span>
             {editable && (
               <span className="tools">
-                <button type="button" className="gym-icon-btn" aria-label="فوق" disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
+                <button type="button" className="gym-icon-btn" aria-label="فوق" disabled={i === 0} onClick={() => move(i, -1)}>
+                  <Icon name="arrowUp" size={16} />
+                </button>
                 <button type="button" className="gym-icon-btn" aria-label="مجموعات أقل" onClick={() => setDay({ ...day, items: day.items.map((x) => (x.exId === it.exId ? { ...x, sets: Math.max(1, x.sets - 1) } : x)) })}>−</button>
                 <button type="button" className="gym-icon-btn" aria-label="مجموعات أكثر" onClick={() => setDay({ ...day, items: day.items.map((x) => (x.exId === it.exId ? { ...x, sets: Math.min(10, x.sets + 1) } : x)) })}>+</button>
                 <button
@@ -603,7 +630,9 @@ export function DayCard({ plan, day, save, editable, onRemove }: { plan: HealthP
                 >
                   بدائل
                 </button>
-                <button type="button" className="gym-icon-btn" aria-label="احذف" onClick={() => setDay({ ...day, items: day.items.filter((x) => x.exId !== it.exId) })}>✕</button>
+                <button type="button" className="gym-icon-btn" aria-label="احذف" onClick={() => setDay({ ...day, items: day.items.filter((x) => x.exId !== it.exId) })}>
+                  <Icon name="close" size={16} />
+                </button>
               </span>
             )}
             {editable && replacing === it.exId && (
@@ -632,7 +661,9 @@ export function DayCard({ plan, day, save, editable, onRemove }: { plan: HealthP
       })}
       {day.cardioMin > 0 && (
         <div className="gym-ex">
-          <span className="n">🚶</span>
+          <span className="n" aria-hidden="true">
+            <Icon name="walk" size={20} />
+          </span>
           <span className="what"><b>كارديو بعد الحصة</b><small>مشي سريع، دراجة، أو جهاز الدرج — تقدر تتكلم بس بصعوبة</small></span>
           <span className="dose"><em>{day.cardioMin}</em> د</span>
         </div>
@@ -648,7 +679,7 @@ export function DayCard({ plan, day, save, editable, onRemove }: { plan: HealthP
               if (ex) setDay({ ...day, items: [...day.items, { exId: ex.id, ...dose(ex, p) }] });
             }}
           >
-            <option value="">➕ أضف تمرين لهذا اليوم…</option>
+            <option value="">أضف تمرين لهذا اليوم…</option>
             {Object.entries(MUSCLE_NAMES).map(([m, name]) => {
               const list = pool.filter((e) => e.muscle === m);
               return list.length ? (
@@ -674,13 +705,18 @@ export function PlanView({ plan, save, onHabits, onHome, edit, setEdit }: { plan
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="gym-title">خطتك <em>جاهزة</em> 🔥</h2>
+        <h2 className="gym-title">
+          خطتك <em>جاهزة</em>
+        </h2>
         <button type="button" className="gym-btn ghost sm" onClick={onHome}>الرئيسية</button>
       </div>
 
       {plan.food && n && (
         <div className="gym-card space-y-3">
-          <span className="gym-eyebrow">🥗 التغذية</span>
+          <span className="gym-eyebrow">
+            <Icon name="food" size={15} className="m-ico" />
+            التغذية
+          </span>
           <div className="gym-stats">
             <div className="gym-stat"><b>{plan.food.kcal}</b><span>سعرة باليوم</span></div>
             <div className="gym-stat"><b>{plan.food.proteinG}</b><span>غ بروتين ({n.proteinMealG} غ للوجبة)</span></div>
@@ -692,7 +728,9 @@ export function PlanView({ plan, save, onHabits, onHome, edit, setEdit }: { plan
             <div className="gym-stat"><b>{plan.food.steps.toLocaleString("en")}</b><span>خطوة</span></div>
           </div>
           {n.gwg && (
-            <p className="gym-card warn gym-small">🤰 الزيادة المناسبة في وزنك طول الحمل ({n.gwg.label}): <b className="gym-ink">{n.gwg.min}–{n.gwg.max} كغ</b> (معهد الطب الأمريكي 2009).</p>
+            <p className="gym-card warn gym-small">
+              <Icon name="info" size={15} className="m-ico" />
+              الزيادة المناسبة في وزنك طول الحمل ({n.gwg.label}): <b className="gym-ink">{n.gwg.min}–{n.gwg.max} كغ</b> (معهد الطب الأمريكي 2009).</p>
           )}
           {!!n.notes.length && (
             <ul className="gym-list gym-small">
@@ -721,7 +759,10 @@ export function PlanView({ plan, save, onHabits, onHome, edit, setEdit }: { plan
 
       {w && w.blocked && (
         <div className="gym-card stop space-y-2">
-          <b>🩺 جدول التمارين متوقف</b>
+          <b>
+            <Icon name="pulse" size={16} className="m-ico" />
+            جدول التمارين متوقف
+          </b>
           <p className="gym-small">{w.blocked}</p>
           <p className="gym-small">المشي الخفيف وتمارين قاع الحوض غالبًا مسموحة، بس خذي رأي طبيبتك أول.</p>
         </div>
@@ -730,9 +771,12 @@ export function PlanView({ plan, save, onHabits, onHome, edit, setEdit }: { plan
       {w && !w.blocked && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="gym-eyebrow">🏋️ جدول التمارين · {SPLIT_NAMES[w.split]}</span>
+            <span className="gym-eyebrow">
+              <Icon name="dumbbell" size={15} className="m-ico" />
+              جدول التمارين · {SPLIT_NAMES[w.split]}
+            </span>
             <button type="button" className={`gym-btn sm ${edit ? "on" : "ghost"}`} onClick={() => setEdit(!edit)}>
-              {edit ? "✓ خلصت التعديل" : "✏️ عدّل الجدول"}
+              {edit ? <><Icon name="check" size={15} className="m-ico" />خلصت التعديل</> : <><Icon name="edit" size={15} className="m-ico" />عدّل الجدول</>}
             </button>
           </div>
           {w.days.map((d) => (
@@ -747,11 +791,15 @@ export function PlanView({ plan, save, onHabits, onHome, edit, setEdit }: { plan
                 saveDays(plan, save, [...w.days, buildDayFrom(plan.profile, id, [gentle(plan.profile) ? "gentle" : "full"], 0, w.days[0]?.cardioMin ?? 0)]);
               }}
             >
-              ➕ أضف يوم تمرين ({dayLabel(w.days.length)})
+              <Icon name="plus" size={16} className="m-ico" />
+              أضف يوم تمرين ({dayLabel(w.days.length)})
             </button>
           )}
           <div className="gym-card space-y-2">
-            <b>📊 مجموعاتك الأسبوعية لكل عضلة</b>
+            <b>
+              <Icon name="progress" size={16} className="m-ico" />
+              مجموعاتك الأسبوعية لكل عضلة
+            </b>
             <div className="gym-chips">
               {(Object.entries(vol) as [keyof typeof MUSCLE_NAMES, number][]).map(([m, s]) => (
                 <span key={m} className="gym-chip" aria-pressed={s >= 10}>{MUSCLE_NAMES[m]}: {s}</span>
@@ -770,7 +818,10 @@ export function PlanView({ plan, save, onHabits, onHome, edit, setEdit }: { plan
       <div className="gym-card hot space-y-2 text-center">
         <b className="text-lg">جاهز تبدأ؟</b>
         <p className="gym-small">خلّ الخطة تصير عادات يومية في «لأجل المهدي» وتتابعها وتشوف نسبتك كل يوم.</p>
-        <button type="button" className="gym-btn" onClick={onHabits}>➕ أدخلها في عاداتي</button>
+        <button type="button" className="gym-btn" onClick={onHabits}>
+          <Icon name="plus" size={16} className="m-ico" />
+          أدخلها في عاداتي
+        </button>
       </div>
       <Disclaimer />
     </section>
@@ -790,7 +841,9 @@ export function ToHabits({ plan, projects, back, apply, done, setDone }: { plan:
   if (done)
     return (
       <section className="gym-card hot space-y-3 text-center">
-        <p className="text-5xl">🏆</p>
+        <p className="flex justify-center" style={{ color: "var(--m-gold-text)" }} aria-hidden="true">
+          <Icon name="trophy" size={52} strokeWidth={1.5} />
+        </p>
         <h2 className="gym-title">صارت <em>عاداتك</em>!</h2>
         <p className="gym-small">كل يوم افتح «لأجل المهدي» وأشّر على اللي سويته. الاستمرار أهم من الكمال.</p>
         <div className="flex flex-wrap justify-center gap-2">
@@ -805,7 +858,10 @@ export function ToHabits({ plan, projects, back, apply, done, setDone }: { plan:
       <h2 className="gym-title">كيف تدخل الخطة في عاداتك؟</h2>
       {hasGym && (
         <div className="space-y-2">
-          <span className="gym-eyebrow">🏋️ التمارين</span>
+          <span className="gym-eyebrow">
+            <Icon name="dumbbell" size={15} className="m-ico" />
+            التمارين
+          </span>
           <div className="gym-choices">
             {GYM_WAYS.map((g) => (
               <Choice key={g.id} on={gym === g.id} onClick={() => setGym(g.id)} title={g.title} hint={g.hint} />
@@ -815,7 +871,10 @@ export function ToHabits({ plan, projects, back, apply, done, setDone }: { plan:
         </div>
       )}
       <div className="gym-card space-y-1">
-        <span className="gym-eyebrow">🥗 التغذية والحركة</span>
+        <span className="gym-eyebrow">
+          <Icon name="food" size={15} className="m-ico" />
+          التغذية والحركة
+        </span>
         {foodList.map((f) => (
           <label key={f.id} className="gym-check">
             <input type="checkbox" checked={food.includes(f.id)} onChange={(e) => setFood(e.target.checked ? [...food, f.id] : food.filter((x) => x !== f.id))} />
@@ -824,11 +883,14 @@ export function ToHabits({ plan, projects, back, apply, done, setDone }: { plan:
         ))}
       </div>
       <div className="space-y-2">
-        <span className="gym-eyebrow">📁 وين تنحط؟</span>
+        <span className="gym-eyebrow">
+          <Icon name="folder" size={15} className="m-ico" />
+          وين تنحط؟
+        </span>
         <div className="gym-choices">
-          <Choice on={where === "one"} onClick={() => setWhere("one")} big="💪" title="مشروع «الصحة العلوية»" hint="مشروع جديد خاص فيها كلها" />
-          <Choice on={where === "two"} onClick={() => setWhere("two")} big="🏋️🥗" title="مشروعين" hint="«الجيم» و«التغذية» كل واحد لحاله" />
-          {projects.length > 0 && <Choice on={where === "existing"} onClick={() => setWhere("existing")} big="📂" title="مشروع عندي" hint="داخل مشروع موجود" />}
+          <Choice on={where === "one"} onClick={() => setWhere("one")} big="muscle" title="مشروع «الصحة العلوية»" hint="مشروع جديد خاص فيها كلها" />
+          <Choice on={where === "two"} onClick={() => setWhere("two")} big={["dumbbell", "food"]} title="مشروعين" hint="«الجيم» و«التغذية» كل واحد لحاله" />
+          {projects.length > 0 && <Choice on={where === "existing"} onClick={() => setWhere("existing")} big="folder" title="مشروع عندي" hint="داخل مشروع موجود" />}
         </div>
         {where === "existing" && (
           <select className="gym-select" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
@@ -861,7 +923,7 @@ export function ToHabits({ plan, projects, back, apply, done, setDone }: { plan:
                 if (id) setDone(id);
               }
         }
-        nextLabel={busy ? "لحظة…" : "✓ أضف العادات"}
+        nextLabel={busy ? "لحظة…" : "أضف العادات"}
       />
     </section>
   );

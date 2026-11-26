@@ -49,7 +49,7 @@ export default async function Join({ params }: { params: Promise<{ username: str
           // eslint-disable-next-line @next/next/no-img-element
           <img src={person.avatarUrl} alt="" className="mx-auto size-24 rounded-full object-cover ring-4 ring-[var(--m-gold)]" />
         ) : (
-          <span className="mx-auto grid size-24 place-items-center rounded-full bg-[var(--m-gold)] text-4xl font-bold text-[#2b2110]">{[...(person?.displayName ?? handle ?? "؟")][0]}</span>
+          <span className="mx-auto grid size-24 place-items-center rounded-full bg-[var(--m-gold)] text-4xl font-bold text-[var(--m-gold-ink)]">{[...(person?.displayName ?? handle ?? "؟")][0]}</span>
         )}
         <div className="space-y-1">
           <h1 className="m-display text-2xl">{person ? I.title(person.displayName) : I.anonymous}</h1>

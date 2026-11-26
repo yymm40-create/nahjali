@@ -5,6 +5,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Icon from "../Icon";
 
 const UUID = /^\/mahdi\/khatma\/[0-9a-f-]{36}/;
 
@@ -18,10 +19,14 @@ export default function KhatmaTabs() {
       <p className="m-display text-3xl">الختمة العلوية</p>
       <nav className="grid grid-cols-2 gap-2" aria-label="الختمة العلوية">
         <Link href="/mahdi/khatma" className="m-option grid min-h-11 place-items-center px-3 text-sm font-semibold" aria-current={!groups ? "page" : undefined} aria-pressed={!groups}>
-          📖 ختمتي
+          <span className="inline-flex items-center gap-1.5">
+            <Icon name="book" size={16} /> ختمتي
+          </span>
         </Link>
         <Link href="/mahdi/khatma/groups" className="m-option grid min-h-11 place-items-center px-3 text-sm font-semibold" aria-current={groups ? "page" : undefined} aria-pressed={groups}>
-          👥 ختمات المجموعات
+          <span className="inline-flex items-center gap-1.5">
+            <Icon name="users" size={16} /> ختمات المجموعات
+          </span>
         </Link>
       </nav>
     </div>

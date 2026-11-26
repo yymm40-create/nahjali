@@ -8,6 +8,7 @@ import { DAY_CITIES, DEFAULT_DAY_START, dayCity, dayStartMinute, fajrMinute, tim
 import { t } from "@/lib/mahdi/i18n";
 import type { Profile } from "@/lib/mahdi/types";
 import { useMahdi } from "./Provider";
+import Icon from "./Icon";
 
 const HERE = "__here";
 const groups = [...new Set(DAY_CITIES.map((c) => c.group))];
@@ -108,7 +109,8 @@ export default function DayStartSetting({ profile, save }: { profile: Profile; s
             </select>
           </label>
           <button type="button" className="m-btn m-btn-ghost m-btn-sm" disabled={locating} onClick={locate}>
-            📍 {locating ? t.dayStart.locating : t.dayStart.locate}
+            <Icon name="pin" size={14} className="m-ico" />
+            {locating ? t.dayStart.locating : t.dayStart.locate}
           </button>
           {fajr !== null && <p className="text-sm m-muted">{t.dayStart.fajrToday(clock(fajr))}</p>}
         </div>

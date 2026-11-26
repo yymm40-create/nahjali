@@ -271,7 +271,8 @@ function HabitsGoal() {
       <p className="m-num text-sm font-semibold">{score.required ? `${done} من ${score.required}` : t.home.noGoalsToday}</p>
       {streak.current > 0 && (
         <span className="m-flame m-num" title={t.home.streak}>
-          🔥 {streak.current}
+          <Icon name="streak" size={15} />
+          {streak.current}
         </span>
       )}
     </section>
@@ -291,7 +292,10 @@ function ReadingGoal() {
         <span className="m-goal-big m-num">{goal ? fmtPct(goal.share) : "—"}</span>
       </ProgressRing>
       <p className="m-num text-sm font-semibold">{goal ? `${unit(goal.metric, goal.done)} من ${unit(goal.metric, goal.target)}` : "حدّد هدفك اليومي"}</p>
-      {summary.streak > 0 && <span className="m-flame m-num">📖 {summary.streak}</span>}
+      {summary.streak > 0 && <span className="m-flame m-num">
+          <Icon name="book" size={15} />
+          {summary.streak}
+        </span>}
     </Link>
   );
 }

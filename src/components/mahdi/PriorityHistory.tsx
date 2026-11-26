@@ -135,7 +135,7 @@ export default function PriorityHistory({ from, to, title, hint }: { from: ISODa
                       <div className="pb-2 ps-1">
                         <Items items={d.items} onTick={tick} />
                         <Link href={`/mahdi/day/${d.date}`} className="mt-1 inline-block text-xs font-semibold m-gold">
-                          {t.priorityHistory.openDay} ←
+                          {t.priorityHistory.openDay} <Icon name="chevronLeft" size={13} className="m-ico" />
                         </Link>
                       </div>
                     )}
@@ -160,9 +160,9 @@ function Items({ items, onTick }: { items: { id: string; title: string; done: bo
           style={i.done ? { borderColor: "var(--m-gold)", background: "var(--m-gold)", color: "var(--m-bg, #fff)" } : { borderColor: "var(--m-error)", color: "var(--m-error)" }}
           aria-hidden="true"
         >
-          {i.done ? "✓" : "✗"}
+          <Icon name={i.done ? "check" : "close"} size={14} strokeWidth={2.6} />
         </span>
-        <span className={`min-w-0 flex-1 ${i.done ? "" : "m-muted"}`}>{i.title}{i.habitId && <span className="m-muted"> ↺</span>}</span>
+        <span className={`min-w-0 flex-1 ${i.done ? "" : "m-muted"}`}>{i.title}{i.habitId && <Icon name="repeat" size={13} className="m-ico ms-1 m-muted" />}</span>
       </button>
     </li>
   );
@@ -199,7 +199,9 @@ export function YesterdayPriorities() {
       <span className="flex-1">
         {t.priorityHistory.yesterday(fmtRelativeDay(y, state.today), sum.done, sum.total)}
       </span>
-      <span className="m-gold font-semibold">{t.priorityHistory.seeDays} ←</span>
+      <span className="m-gold inline-flex items-center gap-1 font-semibold">
+        {t.priorityHistory.seeDays} <Icon name="chevronLeft" size={14} />
+      </span>
     </Link>
   );
 }
