@@ -208,6 +208,24 @@ export async function unlimitedTicket(userId: string, generatorId: string, setti
   return null;
 }
 
+/**
+ * «لامحدود» everywhere: a request for a generator the person has a running pass for, at another quality (the content maker's
+ * or the editor's 720p, Claude asking through the MCP, the film maker…), is put on the pass's own quality so it is free —
+ * what they subscribed to works wherever they make it. Returns the settings to change, or null (no pass, already covered,
+ * or it would still not fit, e.g. a video longer than the pass allows).
+ */
+export async function passFit(userId: string, generatorId: string, settings: Record<string, unknown>, now = Date.now()): Promise<Record<string, string> | null> {
+  const bought = (await readBought(userId).catch(() => [] as Bought[])).filter((b) => running(b, now));
+  for (const b of bought) {
+    const pass = unlimitedPass(b.pass);
+    if (!pass || pass.generatorId !== generatorId) continue;
+    if (passCovers(pass, generatorId, settings)) return null;
+    const patch = Object.fromEntries(Object.entries(pass.match).map(([k, v]) => [k, v[0]]));
+    if (passCovers(pass, generatorId, { ...settings, ...patch })) return patch;
+  }
+  return null;
+}
+
 /** Still waiting before it may be sent? */
 export const heldNow = (inputs: { unlimited?: { holdUntil?: string } } | null | undefined, now = Date.now()) => {
   const t = inputs?.unlimited?.holdUntil ? Date.parse(inputs.unlimited.holdUntil) : NaN;

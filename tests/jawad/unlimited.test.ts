@@ -55,3 +55,13 @@ describe("«لامحدود» passes", () => {
     expect(unlimitedPhase(unlimitedEnd())).toBe("over");
   });
 });
+
+describe("«لامحدود» puts a request on the pass's quality", () => {
+  it("the pass's first values make an off-quality request fit, a too-long video does not", () => {
+    const p = UNLIMITED_PASSES.find((x) => x.key === "wan30-480")!;
+    const patch = Object.fromEntries(Object.entries(p.match).map(([k, v]) => [k, v[0]]));
+    expect(passCovers(p, "wan-3-0", { resolution: "720p", duration: 5 })).toBe(false);
+    expect(passCovers(p, "wan-3-0", { resolution: "720p", duration: 5, ...patch })).toBe(true);
+    expect(passCovers(p, "wan-3-0", { resolution: "720p", duration: 20, ...patch })).toBe(false);
+  });
+});

@@ -11,7 +11,8 @@ import { adPlanOf, adReferenceVideo, projectBrand } from "./ad-brand";
 import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { approvedImages, latestJob, sheetAssets } from "./sheets";
-import { failJob, logReplyTokens, replyTokens, startJob, succeedJob } from "./usage";
+import { failJob, logReplyTokens, payerOf, replyTokens, startJob, succeedJob } from "./usage";
+import { passFit } from "@/lib/jawad/server/unlimited";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
 import { filmVideoToStudio, studioVideoToFilm } from "./studio-link";
 import { generatorOfFilmModel } from "./studio-models";
@@ -658,6 +659,12 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
   // «📣 إعلان» on Wan 3.0: the reference ad's own video goes with the generation, to be recreated shot for shot; its
   // seconds are charged like the video's own (fal's price), so they are in the reservation and the final cost
   const refVideo = model === "wan-3.0" && projectKind(project) === "ad" ? await adReferenceVideo(project.id) : null;
+  // «لامحدود» everywhere: the payer's pass for this video model puts the video on its quality, so it is free
+  if (!refVideo) {
+    const passPayer = await payerOf(project.id, user).catch(() => user);
+    const fit = await passFit(passPayer.id, generatorOfFilmModel(model), { resolution, duration: durationSec, ...(model === "seedance-real-face" ? { version: "2.5" } : {}) }).catch(() => null);
+    if (fit?.resolution) resolution = fit.resolution as VideoResolution;
+  }
   // a code that allows only some Seedance 2.0 generations (the owner's «الأكواد»): checked before anything is made
   if (model === "seedance-2.0" && !isAdmin(user.email)) await requireSeedanceRoom(user);
   const { count } = await db().from("film_jobs").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("operation", VIDEO_OP).eq("status", "running");

@@ -272,6 +272,8 @@ const generate: ToolDef = {
       refStyle: refs.length ? (a.use === "frames" ? "frames" : "references") : "none",
       refs,
       expectedCoins: confirm ?? -1,
+      // «لامحدود»: a pass's generator is put on its quality so it is free
+      fitPass: true,
       // the same request repeated within ten minutes (a client's retry) is the same job, never a second charge
       idempotencyKey: `mcp-${createHash("sha256").update(JSON.stringify([c.user.id, id, a.prompt, a.instructions, settings, a.style_id, refs, a.use, confirm, Math.floor(Date.now() / 600_000)])).digest("base64url").slice(0, 40)}`,
     };

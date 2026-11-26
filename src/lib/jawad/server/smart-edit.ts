@@ -8,7 +8,7 @@
 //            the whole shot (previous prompt, frames, references, continuity, the film's brief) and decides — then the
 //            job is sent like any other. If he fails, the job fails and every coin comes back.
 
-import { unlimitedTicket } from "./unlimited";
+import { passFit, unlimitedTicket } from "./unlimited";
 import { sajjadBrief, tellSajjad } from "@/lib/film/sajjad";
 import { after } from "next/server";
 import { randomUUID } from "crypto";
@@ -232,6 +232,8 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   // the original's settings, then what the person chose for this edit (resolution, sound, the whole clip's seconds…): the
   // same options the generation had, so the price is counted the same way; they go to جواد with the rest of the request
   const settings: Settings = { ...(source.inputs.settings ?? {}), ...readEditSettings(def, b.settings, mode) };
+  // «لامحدود» everywhere: the person's pass for this generator puts the edit on its quality, so the new picture/video is free
+  if (!owner) Object.assign(settings, (await passFit(user.id, def.id, settings).catch(() => null)) ?? {});
   let refStyle: RefStyle = source.inputs.refStyle ?? "none";
   let meta: (RefMeta & { name: string })[] = [];
   const named = (m: RefMeta[], names: (string | undefined)[]) => {
