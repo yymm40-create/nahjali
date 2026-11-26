@@ -10,6 +10,7 @@ import { OFFER10 } from "@config/jawad/offer10";
 import { CHECKOUT_KINDS, landing, type CheckoutKind } from "./checkout";
 import { getPayment, moyasarEnabled } from "./moyasar";
 import { settleCreditFormPayment } from "./orders";
+import { notifyPaid } from "./paid-telegram";
 
 const kindOf = (v: unknown): CheckoutKind | "" => (CHECKOUT_KINDS.includes(v as CheckoutKind) ? (v as CheckoutKind) : "");
 
@@ -30,22 +31,27 @@ export async function settleFormPayment(paymentId: string, hint = ""): Promise<{
   switch (kind) {
     case "credits": {
       const r = await settleCreditFormPayment(ref, p);
+      if (r?.paid) await notifyPaid(kind, p, { email: r.order.email, name: r.order.name });
       return { kind, paid: !!r?.paid, to: landing(kind, !!r?.paid, { ...paths, ref: r?.order.id }) };
     }
     case "course": {
       const r = await settleCourseFormPayment(ref, p);
+      if (r?.paid) await notifyPaid(kind, p, { email: r.order.email, name: r.order.name });
       return { kind, paid: !!r?.paid, to: landing(kind, !!r?.paid, { ...paths, courseId: r?.order.courseId ?? undefined }) };
     }
     case "offer10": {
       const paid = await settleOffer10Payment(ref, p);
+      if (paid) await notifyPaid(kind, p);
       return { kind, paid, to: landing(kind, paid, paths) };
     }
     case "unlim": {
       const r = await settleUnlimitedPayment(ref, p);
+      if (r.paid) await notifyPaid(kind, p);
       return { kind, paid: r.paid, to: landing(kind, r.paid, { ...paths, unlimitedPath: `${UNLIMITED.path}${r.kind ? `/${r.kind === "video" ? "video" : "images"}` : ""}` }) };
     }
     case "pay":
       // a plain payment to JAWAD AI: nothing to add; the done page reads the payment again and shows it
+      if (p.status === "paid") await notifyPaid(kind, p);
       return { kind, paid: p.status === "paid", to: landing(kind, p.status === "paid", { paymentId: id }) };
     default:
       return unpaid;
