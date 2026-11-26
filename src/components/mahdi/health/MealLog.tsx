@@ -99,7 +99,7 @@ export default function MealLog({ meals, onChange }: { meals: MealItem[]; onChan
       </button>
 
       {found && (
-        <div className="space-y-2 rounded-xl border border-[#2a3038] p-2.5">
+        <div className="space-y-2 gym-inset p-2.5">
           <p className="gym-small">هذا اللي فهمته — عدّل الكمية لو تبي، بعدين أضفه:</p>
           {found.map((m, i) => (
             <div key={m.id} className="flex flex-wrap items-center gap-1.5 text-sm">
@@ -138,7 +138,7 @@ export default function MealLog({ meals, onChange }: { meals: MealItem[]; onChan
         <summary className="cursor-pointer text-sm font-bold">أو اختر من القائمة (كل أنواع الرز والبيض وغيرها)</summary>
         <div className="flex flex-wrap gap-1.5 pt-2" role="tablist" aria-label="نوع الأكل">
           {(Object.entries(MEAL_CATS) as [MealCat, (typeof MEAL_CATS)[MealCat]][]).map(([id, c]) => (
-            <button key={id} type="button" role="tab" aria-selected={cat === id} className="gym-chip" style={cat === id ? { borderColor: "#c6ff1a", color: "#c6ff1a" } : undefined} onClick={() => pickCat(id)}>
+            <button key={id} type="button" role="tab" aria-selected={cat === id} className="gym-chip" onClick={() => pickCat(id)}>
               {c.icon} {c.label}
             </button>
           ))}

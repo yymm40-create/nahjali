@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { GUIDE, muscleInfo } from "@config/mahdi/exercise-guide";
 import { REF } from "@config/mahdi/health-research";
+import { parseDay, parseSession, setupHref } from "@/lib/mahdi/health/route";
 import RobotFace from "@/components/RobotFace";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { WEEKDAYS, arNum, dayLabel, exerciseById, focusName, type PlanDay, type PlanItem, type Workout } from "@/lib/mahdi/health/plan";
@@ -17,6 +18,7 @@ import { Barbell, COACH, DayCard } from "./HealthApp";
 import { useHealth } from "./HealthProvider";
 import ExerciseFigure from "./ExerciseFigure";
 import MealLog from "./MealLog";
+import { useView } from "./useView";
 
 const weekdayOf = (date: string) => new Date(`${date}T12:00:00Z`).getUTCDay();
 /**
@@ -93,7 +95,7 @@ function Welcome() {
         </h1>
         <p className="gym-small max-w-md">جدول جيم (في النادي، أو جيم بيتي، أو بدون أدوات) ونظام تغذية مبني على توصيات المنظمات الطبية العالمية، للرجل والمرأة والحامل والمرضعة. تسجّل أوزانك وأكلك كل يوم، وتشوف تقدمك، وكل شي مربوط بعاداتك في «لأجل المهدي».</p>
         <div className="flex flex-wrap gap-2">
-          <Link href="/mahdi/health/setup" className="gym-btn">يلا نبدأ 💪</Link>
+          <Link href={setupHref()} className="gym-btn primary">يلا نبدأ 💪</Link>
           <Link href="/mahdi/health/learn" className="gym-btn ghost">🧠 تعلّم عضلاتك</Link>
         </div>
       </section>
@@ -159,7 +161,7 @@ function ExerciseLog({ item, log, days, date, onSets, onRest }: { item: PlanItem
           <Link href={`/mahdi/health/learn/${ex.id}`} className="font-black underline-offset-4 hover:underline">
             {ex.name}
           </Link>
-          <small className="block text-xs text-[#9aa3ad]">
+          <small className="gym-dim block text-xs">
             {(g?.primary ?? []).map((m) => muscleInfo(m)?.name).join("، ")} · {item.sets} × {item.reps} · راحة {item.restSec % 60 === 0 ? `${item.restSec / 60} د` : `${item.restSec} ث`}
           </small>
         </div>
@@ -175,7 +177,7 @@ function ExerciseLog({ item, log, days, date, onSets, onRest }: { item: PlanItem
         <p className="gym-small">
           {last ? (
             <>
-              آخر مرة ({shortDate(last.date)}): <b className="text-white" dir="ltr">{last.sets.map((s) => (s.kg ? `${s.kg}×${s.reps}` : `${s.reps}`)).join("  ")}</b>
+              آخر مرة ({shortDate(last.date)}): <b className="gym-ink" dir="ltr">{last.sets.map((s) => (s.kg ? `${s.kg}×${s.reps}` : `${s.reps}`)).join("  ")}</b>
               <br />
             </>
           ) : null}
@@ -245,9 +247,11 @@ function ExerciseLog({ item, log, days, date, onSets, onRest }: { item: PlanItem
 export default function TodayView() {
   const { toast } = useMahdi();
   const { plan, save, today, day, days, saveDay, habitValue, logHabit, habitFor } = useHealth();
-  const [date, setDate] = useState(today);
-  const [pick, setPick] = useState<number | null>(null);
-  const [editing, setEditing] = useState(false);
+  // the day shown, the session picked and the editing are the link's (a refresh keeps them)
+  const view = useView();
+  const date = parseDay(view.get("date"), today);
+  const pick = parseSession(view.get("session"), plan?.workout?.days.map((d) => d.weekday) ?? []);
+  const editing = view.get("edit") === "1";
   const [rest, setRest] = useState<number | null>(null);
   const all = useMemo(() => Object.values(days), [days]);
   if (!plan) return <Welcome />;
@@ -311,7 +315,7 @@ export default function TodayView() {
           const l = days[d];
           const trained = l?.done || Object.keys(l?.sets ?? {}).length > 0;
           return (
-            <button key={d} type="button" aria-pressed={d === date} onClick={() => (setDate(d), setPick(null))}>
+            <button key={d} type="button" aria-pressed={d === date} onClick={() => view.set({ date: d === today ? null : d, session: null, edit: null })}>
               <small>{WEEKDAYS[weekdayOf(d)].replace("ال", "")}</small>
               <b>{Number(d.slice(8))}</b>
               <i className={trained ? "on" : ""} />
@@ -329,7 +333,7 @@ export default function TodayView() {
         </div>
 
         {w?.blocked && <p className="gym-card stop gym-small">{w.blocked}</p>}
-        {!w && <p className="gym-card gym-small">خطتك تغذية بس. تبي جدول تمارين؟ <Link href="/mahdi/health/setup" className="underline">عدّل خطتك</Link>.</p>}
+        {!w && <p className="gym-card gym-small">خطتك تغذية بس. تبي جدول تمارين؟ <Link href={setupHref()} className="underline">عدّل خطتك</Link>.</p>}
 
         {w && !w.blocked && planned && (
           <div className="gym-card space-y-3">
@@ -349,14 +353,14 @@ export default function TodayView() {
                 <small className="gym-small">تبي حصة ثانية اليوم؟ اختر أي يوم من جدولك:</small>
                 <div className="gym-chips">
                   {w.days.map((d, i) => (
-                    <button key={d.weekday} type="button" className="gym-chip" aria-pressed={d.weekday === planned.weekday} onClick={() => (setPick(d.weekday), setEditing(false))}>
+                    <button key={d.weekday} type="button" className="gym-chip" aria-pressed={d.weekday === planned.weekday} onClick={() => view.set({ session: d.weekday, edit: null })}>
                       {dayLabel(i)} · {focusName(d)}
                     </button>
                   ))}
                 </div>
               </div>
             )}
-            <button type="button" className={`gym-btn sm ${editing ? "" : "ghost"}`} onClick={() => setEditing(!editing)}>
+            <button type="button" className={`gym-btn sm ${editing ? "on" : "ghost"}`} onClick={() => view.set({ edit: !editing })}>
               {editing ? "✓ خلصت التعديل" : "✏️ عدّل تمارين هالحصة"}
             </button>
             {editing && <DayCard plan={plan} day={planned} save={save} editable />}
@@ -395,7 +399,7 @@ export default function TodayView() {
                 }}
               />
             </label>
-            <button type="button" className={`gym-btn ${finished ? "ghost" : ""}`} onClick={finish}>
+            <button type="button" className={`gym-btn ${finished ? "ghost" : "primary"}`} onClick={finish}>
               {log.done ? "↩︎ تراجع" : "✓ خلصت تمرين اليوم"}
             </button>
           </div>

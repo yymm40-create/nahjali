@@ -53,6 +53,11 @@ const TITLES: [string, string][] = [
   ["/mahdi/projects", "المشروع"],
   ["/mahdi/habits", "العادة"],
   ["/mahdi/health", "الصحة العلوية"],
+  // its inner screens (its four views keep the section's name; an exercise steps back to «تعلّم»)
+  ["/mahdi/health/learn", "الصحة العلوية"],
+  ["/mahdi/health/setup", "خطة جديدة"],
+  ["/mahdi/health/habits", "أدخلها في عاداتي"],
+  ["/mahdi/health/research", "البحث والمصادر"],
   ["/mahdi/grow", "أهدافي"],
   ["/mahdi/reading/add", "كتاب جديد"],
   ["/mahdi/reading/goals", "هدف القراءة"],
