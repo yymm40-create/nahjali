@@ -3,7 +3,7 @@
 // (the owner's prices); the job is then made by JAWAD AI's job system (its checks, its coins, its refunds), the result
 // lands in «أعمالي» and the page brings it into the project and places it. Server only.
 
-import { unlimitedTicket } from "@/lib/jawad/server/unlimited";
+import { passFit, unlimitedTicket } from "@/lib/jawad/server/unlimited";
 import { coinStr } from "@config/coins";
 import type { Fit } from "./motion-build";
 import { giveAttempt, takeAttempt } from "@/lib/film/team";
@@ -198,8 +198,14 @@ export async function planMake(who: Who & { email?: string | null }, s: MakeSpec
     break;
   }
   if (!picked) return { error: why };
-  const { def, section, e, prompt } = picked;
-  // «لامحدود»: a running pass for this generator makes it free (createJob decides it again when it starts)
+  const { def, section, prompt } = picked;
+  let { e } = picked;
+  // «لامحدود»: a running pass for this generator puts the plan on its quality and makes it free (createJob decides it again)
+  const fit = who.owner ? null : await passFit(who.id, def.id, e.settings).catch(() => null);
+  if (fit) {
+    const again = evaluate(def, { settings: { ...e.settings, ...fit }, prompt, instructions: "", refStyle: "none", refs: [], strict: false }, rt.prices[def.id]);
+    if (!again.issues.length && again.price.ok) e = again as typeof e;
+  }
   const pass = who.owner ? null : await unlimitedTicket(who.id, def.id, e.settings).catch(() => null);
   const kindName = { image: "صورة", video: "فيديو", speech: "صوت", sfx: "مؤثر", music: "موسيقى" }[s.makeKind];
   return {
@@ -254,7 +260,10 @@ export async function planSeedanceExtend(
     const def = rg ? generatorById(rg.id) : undefined;
     const section = rg ? rt.sections.find((item) => item.id === rg.sectionId && (item.enabled || who.owner)) : undefined;
     if (!rg || !def || !section || !(rg.live || (who.owner && rg.keyConfigured))) continue;
-    const e = evaluate(def, { settings: { ratio: "16:9", resolution: quality, duration: seconds, audio: b.withSound !== false }, prompt, instructions: "", refStyle: "frames", refs: meta, strict: false }, rt.prices[def.id]);
+    // «لامحدود»: a pass for this Seedance puts the extension on its quality, so it is free
+    const base = { ratio: "16:9", resolution: quality, duration: seconds, audio: b.withSound !== false };
+    const fitX = who.owner ? null : await passFit(who.id, def.id, base).catch(() => null);
+    const e = evaluate(def, { settings: { ...base, ...(fitX ?? {}) }, prompt, instructions: "", refStyle: "frames", refs: meta, strict: false }, rt.prices[def.id]);
     if (e.issues.length) {
       reason = e.issues[0].message;
       continue;

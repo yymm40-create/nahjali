@@ -62,7 +62,7 @@ import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, stemsOf, type Stem } fro
 import { storage } from "@/lib/storage";
 import type { CartoonPlan } from "./cartoon";
 import { offer10Covers } from "./offer10";
-import { heldNow, unlimitedTicket, type UnlimitedTicket } from "./unlimited";
+import { heldNow, passFit, unlimitedTicket, type UnlimitedTicket } from "./unlimited";
 const db = () => createAdminClient();
 
 export type JobStatus = "queued" | "submitting" | "running" | "saving" | "succeeded" | "failed" | "cancelled";
@@ -235,7 +235,7 @@ const ROLES: RefRole[] = ["first_frame", "last_frame", "reference"];
  * `server.library`: set only by the server (never from the request), for a character or place of «المكتبة» made from a
  * description; its picture is kept in the library when the job succeeds.
  */
-export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string }; team?: string | null; via?: "editor" | "content"; signupFreeImageEligible?: boolean; cartoon?: CartoonPlan; free?: boolean } = {}): Promise<CreateResult> {
+export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string }; team?: string | null; via?: "editor" | "content"; signupFreeImageEligible?: boolean; cartoon?: CartoonPlan; free?: boolean; /** «لامحدود»: put a request on the person's pass quality (everywhere but the studio, where the person picks and is warned) */ fitPass?: boolean } = {}): Promise<CreateResult> {
   const key = String(b.idempotencyKey ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
   const def = generatorById(String(b.generatorId ?? ""));
@@ -287,7 +287,12 @@ export async function createJob(user: { id: string; email?: string | null }, own
     if (!wanted[i].name) given.push(name);
     return { ...m, name };
   });
-  const settings = (b.settings && typeof b.settings === "object" ? b.settings : {}) as Settings;
+  let settings = (b.settings && typeof b.settings === "object" ? b.settings : {}) as Settings;
+  // «لامحدود» everywhere: what the person subscribed to is free wherever they make it — a request at another quality goes on the pass's
+  if ((server.fitPass ?? true) && !owner) {
+    const fit = await passFit(user.id, def.id, settings).catch(() => null);
+    if (fit) settings = { ...settings, ...fit };
+  }
   // the logo, then the taste's pictures, as STYLE references: only on picture generators that take them, as far as there is room
   const extra = look ? await lookRefs(user.id, def, refStyle, settings, meta, look) : null;
   const extraMeta = extra ? [...(extra.logo ? [extra.logo] : []), ...extra.taste] : [];

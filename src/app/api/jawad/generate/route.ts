@@ -19,6 +19,8 @@ export const POST = handle(async (req: Request) => {
   const body = (await req.json().catch(() => ({}))) as GenerateBody;
   const r = await createJob(user, owner, body, new URL(req.url).origin, {
     signupFreeImageEligible: body.signupFreeImage === true ? await signupFreeImageEligible(user.created_at) : false,
+    // the studio's own pick stays (it is put on the pass when opened, and warned when changed); Claude's MCP requests are fitted
+    fitPass: (body as { fitPass?: unknown }).fitPass === true,
   });
   if (r.kind === "issues") return NextResponse.json({ error: r.issues[0]?.message ?? "الطلب غير صالح.", issues: r.issues }, { status: 422 });
   if (r.kind === "price_changed") {
