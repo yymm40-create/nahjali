@@ -30,6 +30,8 @@ export interface Bought {
   hours: UnlimitedHours;
   paidAt: string;
   paymentId: string;
+  /** minutes the owner added on top (a goodwill extension); they never start a new fast balance */
+  bonusMin?: number;
 }
 
 async function readBought(userId: string): Promise<Bought[]> {
@@ -65,7 +67,7 @@ async function writeBought(userId: string, bought: Bought[], extra?: ExtraUse[])
   if (error) throw error;
 }
 
-const endOf = (b: Bought) => Date.parse(b.paidAt) + b.hours * H;
+const endOf = (b: Bought) => Date.parse(b.paidAt) + b.hours * H + Math.max(0, Number(b.bonusMin) || 0) * 60_000;
 const running = (b: Bought, now = Date.now()) => now < endOf(b);
 
 /** The ref on the payment: account, pass and hours (checked again when it is settled). */
@@ -139,7 +141,8 @@ export async function giveBackUnlimitedFast(userId: string, ref: string) {
   }
 }
 
-const cycleOf = (b: Bought, now: number) => Math.floor((now - Date.parse(b.paidAt)) / (UNLIMITED.cycleHours * H));
+// the last cycle of the pass runs on through any added minutes (they are not a new fast balance)
+const cycleOf = (b: Bought, now: number) => Math.min(Math.floor((now - Date.parse(b.paidAt)) / (UNLIMITED.cycleHours * H)), b.hours / UNLIMITED.cycleHours - 1);
 
 export interface UnlimitedUse {
   pass: string;
@@ -169,7 +172,7 @@ export async function unlimitedStatus(userId: string, now = Date.now()): Promise
           const used = (await jobsOf(userId, b).catch(() => [])).filter((j) => j.inputs.unlimited?.fast && j.inputs.unlimited.cycle === cycle).reduce((n, j) => n + (j.inputs.unlimited?.units ?? 0), 0);
           const cap = UNLIMITED.fast[pass.kind];
           const next = Date.parse(b.paidAt) + (cycle + 1) * UNLIMITED.cycleHours * H;
-          return { pass: pass.key, name: pass.name, quality: pass.quality, kind: pass.kind, generatorId: pass.generatorId, hours: b.hours, until: new Date(endOf(b)).toISOString(), fastLeft: Math.max(0, cap - used), fastCap: cap, refill: next < endOf(b) ? new Date(next).toISOString() : null };
+          return { pass: pass.key, name: pass.name, quality: pass.quality, kind: pass.kind, generatorId: pass.generatorId, hours: b.hours, until: new Date(endOf(b)).toISOString(), fastLeft: Math.max(0, cap - used), fastCap: cap, refill: cycle + 1 < b.hours / UNLIMITED.cycleHours ? new Date(next).toISOString() : null };
         })(),
       ];
     }),
