@@ -42,16 +42,16 @@ export default function ThemeToggle() {
       type="button"
       onClick={toggle}
       aria-pressed={dark}
-      className="jw-btn jw-btn-quiet h-9 min-h-9 gap-1.5 px-2.5 text-xs"
+      className="grid size-7 shrink-0 place-items-center rounded-full text-jw-muted transition hover:bg-jw-accent-soft hover:text-jw-ink md:flex md:h-9 md:w-auto md:gap-1.5 md:px-2.5 md:text-xs"
       title={dark ? "الخلفية سوداء: اضغط للفاتحة" : "الخلفية فاتحة: اضغط للسوداء"}
       aria-label={dark ? "الخلفية: سوداء" : "الخلفية: فاتحة"}
     >
       {dark ? (
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
         </svg>
       ) : (
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden>
           <circle cx="12" cy="12" r="4" />
           <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />
         </svg>
