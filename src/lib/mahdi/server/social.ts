@@ -106,6 +106,17 @@ export async function followingIds(me: string): Promise<string[] | null> {
   return (data ?? []).map((r) => r.followee_id as string);
 }
 
+/** My friends: the people I follow who follow me back (both accepted). Empty before the follows exist. */
+export async function friendIds(me: string): Promise<string[]> {
+  const [mine, theirs] = await Promise.all([
+    followingIds(me),
+    db().from("mahdi_follows").select("follower_id").eq("followee_id", me).eq("status", "accepted").limit(5000),
+  ]);
+  if (!mine || theirs.error) return [];
+  const back = new Set((theirs.data ?? []).map((r) => r.follower_id as string));
+  return mine.filter((id) => back.has(id));
+}
+
 export async function profileView(supabase: SupabaseClient, me: string, user: SocialUser): Promise<ProfileView> {
   const self = me === user.id;
   const [mine, theirs, priv, canSee] = await Promise.all([

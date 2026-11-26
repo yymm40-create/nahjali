@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
 import { addDays, daySeries, dayStreak, monthSeries, scoreBy, startOfWeek, summarize, weekGoals, weekSeries, weekStreak } from "@/lib/mahdi/engine";
 import { fmtDate, fmtMonth, fmtNum, fmtPct, fmtPoints, t } from "@/lib/mahdi/i18n";
 import { bySort, groupProjects, projectHref } from "@/lib/mahdi/client/derive";
 import { weekInsights } from "@/lib/mahdi/client/insights";
 import DayBars from "@/components/mahdi/DayBars";
+import Icon from "@/components/mahdi/Icon";
 import TrendLine from "@/components/mahdi/TrendLine";
 import { BarRow, Insights, ProgressTabs, Tile } from "@/components/mahdi/Stats";
 import { FeedbackCard } from "@/components/mahdi/Feedback";
@@ -14,7 +16,7 @@ import ReviewNote from "@/components/mahdi/ReviewNote";
 import PriorityHistory from "@/components/mahdi/PriorityHistory";
 import { WeekNoteWhen } from "@/components/mahdi/WeekNote";
 
-/** Overview of all projects: this week, streaks, trends, projects and habits. */
+/** «تقدّمي» › الأسبوع: the numbers first (this week, streaks, trends, projects and habits), then the notes. */
 export default function ProgressPage() {
   const { state, timeline } = useMahdi();
   const { snap, today } = state;
@@ -38,20 +40,6 @@ export default function ProgressPage() {
       <h1 className="m-display text-3xl">{t.progress.title}</h1>
       <ProgressTabs />
 
-      {/* «حاسبوا أنفسكم»: the notes first — today's and this week's, written here or from the home */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ReviewNote kind="day" start={today} />
-        <div className="space-y-2">
-          <ReviewNote kind="week" start={ws} />
-          <WeekNoteWhen />
-        </div>
-      </div>
-
-      {/* «أولوياتي»: the last 7 days' priorities, what was done and what was not */}
-      <div id="priorities" className="scroll-mt-24">
-        <PriorityHistory from={addDays(today, -7)} to={addDays(today, -1)} hint={t.priorityHistory.last7Hint} />
-      </div>
-
       {!hasData ? (
         <p className="m-card p-6 text-center m-muted">{t.progress.notEnough}</p>
       ) : (
@@ -62,6 +50,10 @@ export default function ProgressPage() {
             <Tile label={t.progress.weekStreak} value={t.units.weeks(weeks.current)} sub={`${t.progress.best}: ${t.units.weeks(weeks.best)}`} />
             <Tile label={t.progress.goalsReached} value={`${fmtNum(week.achieved)} / ${fmtNum(week.required)}`} sub={week.overCount ? `${t.progress.extra}: ${fmtNum(week.overCount)}` : undefined} />
           </section>
+
+          <Link href="/mahdi/progress/week" className="m-btn m-btn-ghost m-btn-sm">
+            أسبوعك يوم بيوم، والأسابيع اللي قبل <Icon name="chevronLeft" size={16} />
+          </Link>
 
           <Insights lines={weekInsights(timeline, projects, snap.habits)} />
 
@@ -102,6 +94,20 @@ export default function ProgressPage() {
           </section>
         </>
       )}
+      {/* «حاسبوا أنفسكم»: the notes after the numbers — today's and this week's, written here or from the home */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ReviewNote kind="day" start={today} />
+        <div className="space-y-2">
+          <ReviewNote kind="week" start={ws} />
+          <WeekNoteWhen />
+        </div>
+      </div>
+
+      {/* «أولوياتي»: the last 7 days' priorities, what was done and what was not */}
+      <div id="priorities" className="scroll-mt-24">
+        <PriorityHistory from={addDays(today, -7)} to={addDays(today, -1)} hint={t.priorityHistory.last7Hint} />
+      </div>
+
       <FeedbackCard place="progress" />
     </div>
   );

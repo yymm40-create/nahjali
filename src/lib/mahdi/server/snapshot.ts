@@ -1,7 +1,7 @@
 // SERVER ONLY. Loads everything the app needs for one user (through RLS: only their own rows).
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { HISTORY_DAYS } from "@config/mahdi";
-import { addDays, todayFor } from "../engine";
+import { addDays, cleanMarks, todayFor, type DayMark } from "../engine";
 import { parseEngage } from "../engage";
 import type { Challenge, DayTask, Milestone, NotificationSettings, Phrase, Profile, Shrine, Snapshot } from "../types";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -51,7 +51,7 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
   const today = todayFor(profile);
   const logsFrom = addDays(today, -HISTORY_DAYS);
 
-  const [shrines, phrases, extra, reading, username, tasks, projects, habits, versions, logs, groups, plan, emergencyDays] = await Promise.all([
+  const [shrines, phrases, extra, reading, username, tasks, projects, habits, versions, logs, groups, plan, emergencyDays, dayMarks] = await Promise.all([
     getShrines(),
     supabase
       .from("mahdi_phrases")
@@ -78,6 +78,8 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
     loadMilestones(supabase).catch(() => ({ milestones: [], logs: {} })),
     // «خانة الطوارئ» arrives with migration 0098; until it runs, none
     loadEmergencyDays(supabase, logsFrom).catch(() => ({})),
+    // «أيام العذر والقضاء» arrive with migration 0131; until it runs, null (the device keeps them)
+    loadDayMarks(supabase, logsFrom).catch(() => null),
   ]);
 
   const byHabit: Snapshot["logs"] = {};
@@ -98,6 +100,7 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
     habits: habitsFromRows(habits, versions),
     logs: byHabit,
     emergencyDays,
+    dayMarks,
     logsFrom,
     today,
     tasks: tasks ?? [],
@@ -116,6 +119,13 @@ export async function loadEmergencyDays(supabase: SupabaseClient, from: string):
   const out: Record<string, string[]> = {};
   for (const r of rows) (out[r.habit_id] ??= []).push(r.day);
   return out;
+}
+
+/** «أيام العذر والقضاء»: the person's marked days (through RLS: their own). Throws before migration 0131. */
+export async function loadDayMarks(supabase: SupabaseClient, from: string): Promise<DayMark[]> {
+  const { data, error } = await supabase.from("mahdi_day_marks").select("day,kind").gte("day", from).order("day");
+  if (error) throw error;
+  return cleanMarks(data);
 }
 
 /** Strategic goals' milestones and everything logged towards them (through RLS: the user's own). */

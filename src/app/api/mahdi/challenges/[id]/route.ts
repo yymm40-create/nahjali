@@ -4,12 +4,16 @@ import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { getChallengeRanking } from "@/lib/mahdi/server/leaderboard";
 import { parseBool } from "@/lib/mahdi/server/validate";
+import { kindBoard } from "@/lib/mahdi/groups/kind";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 const MAX_ACTIVE = 30;
 
-/** The ranking of one challenge (people who chose to appear in it). */
+/**
+ * The ranking of one challenge (people who chose to appear in it), small for everyone: the first places and my own,
+ * never the people at the bottom (the plan of 26 November 2026).
+ */
 export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const { supabase, user } = await requireProfile(req);
   const id = requireId((await params).id);
@@ -17,11 +21,10 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const { data: def } = await supabase.from("mahdi_challenges").select("id").eq("id", id).maybeSingle();
   if (!def) throw new UserError(t.errors.notFound, 404);
   const ranking = await getChallengeRanking(id);
+  const view = (e: (typeof ranking)[number]) => ({ rank: e.rank, displayName: e.displayName, avatarUrl: e.avatarUrl, frame: e.frame, score: e.score, goals: e.goals, overCount: e.overCount, mine: e.userId === user.id });
+  const small = kindBoard(ranking.map(view));
   return NextResponse.json(
-    {
-      entries: ranking.slice(0, 50).map((e) => ({ rank: e.rank, displayName: e.displayName, avatarUrl: e.avatarUrl, frame: e.frame, score: e.score, goals: e.goals, overCount: e.overCount, mine: e.userId === user.id })),
-      total: ranking.length,
-    },
+    { entries: small.entries, me: small.me, total: small.total },
     { headers: { "Cache-Control": "private, no-store" } },
   );
 });

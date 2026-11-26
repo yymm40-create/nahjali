@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import Icon from "./Icon";
 import { ANDROID_APK } from "./InstallCard";
+import { usePopupTurn } from "./usePopupTurn";
 
 // -2: the first copy was only inside the app, so people who closed it there see it again (now on the visitors' pages too)
 const SEEN = "mahdi-android-news-2";
@@ -12,6 +13,7 @@ const A = t.androidNews;
 /**
  * The announcement «التطبيق صار على الأندرويد»: shown on every page to everyone until they close it (or download),
  * never inside the installed app. `floating` (visitors' pages: start, sign-in, sign-up) pins it to the top of the screen instead of the page flow. Android phones get the download button; others see where to send it.
+ * Inside the app it waits its turn like the other layers that open by themselves («نافذة وحدة بس في كل زيارة»).
  */
 export default function AndroidNews({ floating = false }: { floating?: boolean }) {
   const [show, setShow] = useState(false);
@@ -28,12 +30,30 @@ export default function AndroidNews({ floating = false }: { floating?: boolean }
     }, 0);
     return () => clearTimeout(id);
   }, []);
+  return floating ? <News show={show} floating android={android} onClose={() => setShow(false)} /> : <InApp show={show} android={android} onClose={() => setShow(false)} />;
+}
+
+function InApp({ show, android, onClose }: { show: boolean; android: boolean; onClose: () => void }) {
+  const turn = usePopupTurn("androidNews", show);
+  return (
+    <News
+      show={turn.show}
+      android={android}
+      onClose={() => {
+        turn.done();
+        onClose();
+      }}
+    />
+  );
+}
+
+function News({ show, floating = false, android, onClose }: { show: boolean; floating?: boolean; android: boolean; onClose: () => void }) {
   if (!show) return null;
   const close = () => {
     try {
       localStorage.setItem(SEEN, "1");
     } catch {}
-    setShow(false);
+    onClose();
   };
   return (
     <section className={`m-card flex flex-wrap items-center gap-3 p-4 ${floating ? "fixed inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-40 mx-auto max-w-lg shadow-lg" : "mx-4 mt-3 sm:mx-6 lg:mx-10"}`} role="status" aria-labelledby="android-news">

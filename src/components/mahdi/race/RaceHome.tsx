@@ -5,6 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { useMahdi } from "@/components/mahdi/Provider";
+import Icon from "@/components/mahdi/Icon";
+import { ErrorState, Skeleton } from "@/components/mahdi/social/States";
+import { t } from "@/lib/mahdi/i18n";
 
 interface Item {
   id: string;
@@ -12,6 +15,10 @@ interface Item {
   code: string;
 }
 
+/**
+ * «المسابقة»: one primary action — «ادخل» with the code; the races I lead or joined; and (the site's owners) starting a
+ * new one, as a quiet second step.
+ */
 export default function RaceHome() {
   const { toast, state } = useMahdi();
   const router = useRouter();
@@ -20,10 +27,18 @@ export default function RaceHome() {
   const [name, setName] = useState(state.snap.profile.displayName ?? "");
   const [title, setTitle] = useState("سباق الاستراحة");
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    mahdiFetch<{ canLead: boolean; led: Item[]; joined: Item[] }>("/api/mahdi/race").then(setData).catch((e: Error) => toast(e.message));
-  }, [toast]);
+    let live = true;
+    mahdiFetch<{ canLead: boolean; led: Item[]; joined: Item[] }>("/api/mahdi/race")
+      .then((d) => live && (setData(d), setFailed(false)))
+      .catch(() => live && setFailed(true));
+    return () => {
+      live = false;
+    };
+  }, [reload]);
 
   async function go(url: string, json: unknown) {
     setBusy(true);
@@ -47,12 +62,15 @@ export default function RaceHome() {
           ادخل
         </button>
       </div>
+      {failed && !data && <ErrorState message={t.groups.kind.raceError} onRetry={() => setReload((n) => n + 1)} />}
+      {!data && !failed && <Skeleton count={2} />}
       {list.length > 0 && (
         <div className="grid gap-2">
           {list.map((r) => (
-            <Link key={r.id} href={`/mahdi/race/${r.id}`} className="m-card flex items-center justify-between gap-3 p-4 font-semibold">
-              <span>{r.title}</span>
+            <Link key={r.id} href={`/mahdi/race/${r.id}`} className="m-card flex items-center gap-3 p-4 font-semibold">
+              <span className="flex-1">{r.title}</span>
               {data?.led.some((l) => l.id === r.id) && <span className="m-chip m-chip-gold">أنت القائد</span>}
+              <Icon name="chevronLeft" size={18} />
             </Link>
           ))}
         </div>

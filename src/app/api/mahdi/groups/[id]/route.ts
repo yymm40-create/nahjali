@@ -4,7 +4,9 @@ import { cleanUsername, USERNAME_RE } from "@/lib/username-rules";
 import { t } from "@/lib/mahdi/i18n";
 import { todayFor } from "@/lib/mahdi/engine";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
-import { groupCount, groupMembers, groupRanking, groupWorks, MAX_GROUPS, MAX_GROUP_WORKS, MAX_MEMBERS, requireGroup } from "@/lib/mahdi/server/groups";
+import { groupCount, groupMembers, groupRanking, groupSteady, groupWorks, MAX_GROUPS, MAX_GROUP_WORKS, MAX_MEMBERS, nudgedToday, requireGroup } from "@/lib/mahdi/server/groups";
+import { kindBoard, nudgeBlock, nudgesMissing, steadyFor } from "@/lib/mahdi/groups/kind";
+import { notify } from "@/lib/mahdi/server/inbox";
 import { archiveProject, deleteHabit, deleteProject, loadProgram, saveHabit, saveProject, seatsOf } from "@/lib/mahdi/server/group-program";
 import { can, cleanPerms, grantable, isAbove, type GroupPerm, type Seat } from "@/lib/mahdi/groups/program";
 import { GROUP_VISIBILITIES, rankingFor, seesEveryone, visibilityMissing } from "@/lib/mahdi/groups/privacy";
@@ -19,6 +21,8 @@ type Ctx = { params: Promise<{ id: string }> };
  * `?period=week|month&metric=score|reading`. In a group set to «إنجاز كل عضو يشوفه هو والمشرف بس» (SQL 0129) a member
  * gets only their own row of the ranking and their own tick of each shared work; the leader and the admins holding
  * «الإحصائيات» get everyone's. Trimmed here, so nothing of the others ever reaches a member's device.
+ * The ranking is small for everyone (the plan of 26 November 2026): the first places and my own, never who is at the
+ * bottom (`kindBoard`); «أهل الثبات» lists only who earned it; «ذكّرته بلطف» says whom I already reminded today.
  */
 export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const { user, profile } = await requireProfile(req);
@@ -32,13 +36,19 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const members = await groupMembers(db, id, group.leader_id);
   const activeIds = members.filter((member) => member.status === "active").map((member) => member.userId);
   const nameOf = new Map(members.map((m) => [m.userId, m.displayName]));
-  const [ranking, works, { seats, ready: seatsReady }, program] = await Promise.all([
+  const today = todayFor(profile);
+  const [ranking, works, { seats, ready: seatsReady }, program, steady, nudged] = await Promise.all([
     groupRanking(db, members, period, metric, user.id),
     // who did each work: for those who see everyone's numbers (the leader, admins with «الإحصائيات»)
     groupWorks(db, id, activeIds, todayFor(profile), user.id, { full, names: can(seat, "stats"), nameOf: (uid) => nameOf.get(uid) ?? "" }),
     seatsOf(db, id, group.leader_id),
     loadProgram(db, id),
+    // a bonus: never blocks the page
+    groupSteady(db, id, members, user.id).catch(() => []),
+    nudgedToday(db, user.id, today).catch(() => ({ ready: false, ids: new Set<string>() })),
   ]);
+  const seen = rankingFor(ranking, full);
+  const small = kindBoard<(typeof seen.ranked)[number]>(seen.ranked);
   const seatOf = new Map(seats.map((x) => [x.userId, x]));
   return NextResponse.json(
     {
@@ -67,13 +77,18 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
             // what I may do to them: remove them (members), set their permissions (admins)
             canRemove: under && can(seat, "members"),
             canAdmin: under && can(seat, "admins") && m.status === "active" && seatsReady,
+            // «ذكّرته بلطف»: anyone active but me; already reminded today (my day) = done for today
+            nudged: m.status === "active" && m.userId !== user.id ? nudged.ids.has(m.userId) : undefined,
           };
         }),
       program: { ready: program.ready, projects: program.projects, habits: program.habits },
-      ranking: rankingFor(ranking, full),
+      // the first places and my own; the others below are never sent, and those without enough goals only see themselves
+      ranking: { ...seen, ranked: small.entries, me: small.me, total: small.total, unranked: seen.unranked.filter((u) => u.mine) },
+      steady: steadyFor(steady, full),
+      nudgesReady: nudged.ready,
       works: works ?? [],
       worksReady: works !== null,
-      today: todayFor(profile),
+      today,
     },
     { headers: { "Cache-Control": "private, no-store" } },
   );
@@ -129,6 +144,23 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
       await db.from("mahdi_group_members").delete().eq("group_id", id).eq("user_id", user.id);
       // what they were reading in «الختمة العلوية» goes back to the others (what they read stays read)
       await releaseReader(db, id, user.id);
+      return ok();
+    }
+    // «ذكّرته بلطف»: one gentle reminder a day to another active member (SQL 0135); says nothing about their progress
+    case "nudge": {
+      if (status !== "active") throw new UserError(t.groups.notMember, 403);
+      const uid = await target();
+      const today = todayFor(profile);
+      const sent = await nudgedToday(db, user.id, today);
+      if (!sent.ready) throw new UserError(t.groups.kind.nudgeNotReady, 503);
+      const block = nudgeBlock({ me: user.id, target: uid, targetActive: (await membership(uid))?.status === "active", sentToday: sent.ids });
+      if (block === "already") throw new UserError(t.groups.kind.nudgeAlready, 429);
+      if (block) throw new UserError(t.groups.notFoundUser, 404);
+      const { error } = await db.from("mahdi_group_nudges").insert({ group_id: id, from_id: user.id, to_id: uid, nudge_date: today });
+      if (error?.code === "23505") throw new UserError(t.groups.kind.nudgeAlready, 429);
+      if (nudgesMissing(error)) throw new UserError(t.groups.kind.nudgeNotReady, 503);
+      if (error) throw error;
+      await notify([uid], { kind: "group_nudge", title: t.groups.kind.nudgeTitle(profile.displayName || t.groups.kind.someone), body: t.groups.kind.nudgeBody(group.name), url: `/mahdi/groups/${id}` });
       return ok();
     }
     case "work_toggle": {

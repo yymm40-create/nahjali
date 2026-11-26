@@ -75,6 +75,8 @@ export interface EngineContext {
   asOf: ISODate;
   /** 0 = Sunday … 6 = Saturday. */
   weekStart: number;
+  /** «أيام العذر»: days excused (travel, illness, the shar'i excuse, a pause). They never break the day streak (see ./excuse). */
+  excused?: ReadonlySet<ISODate>;
 }
 
 export interface Score {

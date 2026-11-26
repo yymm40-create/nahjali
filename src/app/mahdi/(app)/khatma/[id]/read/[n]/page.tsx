@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
@@ -8,7 +7,7 @@ import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
-import QuranText, { QuranSource, usePortionWords } from "@/components/mahdi/khatma/QuranText";
+import QuranReader from "@/components/mahdi/khatma/QuranReader";
 import { portionTitle, type Division, type PortionState } from "@/lib/mahdi/khatma/portions";
 
 interface View {
@@ -18,7 +17,7 @@ interface View {
   portions?: PortionState[];
 }
 
-/** One portion of the group's khatma: its whole text in the mushaf's script, and «قرأته ✓» for the one reading it. */
+/** One portion of the group's khatma in the one Quran reader, and «قرأته ✓» for the one reading it. */
 export default function KhatmaReader() {
   const { id, n: nParam } = useParams<{ id: string; n: string }>();
   const n = Number(nParam);
@@ -39,8 +38,6 @@ export default function KhatmaReader() {
     };
   }, [id, reload]);
 
-  const { words, error: wordsError } = usePortionWords(view?.khatma?.division, n);
-
   async function act(action: "claim" | "done" | "undone" | "release", done: string) {
     setBusy(true);
     try {
@@ -55,40 +52,29 @@ export default function KhatmaReader() {
 
   const state = view?.portions?.[n - 1];
   const open = view?.khatma?.status === "open";
-  const failed = error || wordsError;
 
+  if (error && !view) return <p className="m-card p-5 text-center">{error}</p>;
   return (
-    <div className="space-y-5">
-      <Link href={`/mahdi/khatma/${id}`} className="m-btn m-btn-quiet m-btn-sm -ms-3">
-        <Icon name="chevronRight" size={18} /> {t.khatma.back}
-      </Link>
-      {failed && !words ? (
-        <p className="m-card p-5 text-center">{failed}</p>
-      ) : !words ? (
-        <p className="m-muted">{t.khatma.loadingText}</p>
-      ) : (
-        <>
-          <QuranText words={words} />
-          <div className="m-card space-y-2 p-4">
-            {state === "reading" && open && (
-              <>
-                <button type="button" className="m-btn m-btn-primary w-full" disabled={busy} onClick={() => act("done", t.khatma.markedDone)}>{t.khatma.markDone}</button>
-                <button type="button" className="m-btn m-btn-quiet w-full" disabled={busy} onClick={() => setAsk(true)}>{t.khatma.release}</button>
-              </>
-            )}
-            {state === "done" && (
-              <>
-                <p className="text-center font-semibold" style={{ color: "#22c55e" }}>✅ {t.khatma.legendDone}</p>
-                {open && <button type="button" className="m-btn m-btn-quiet w-full" disabled={busy} onClick={() => act("undone", t.khatma.legendReading)}>{t.khatma.undo}</button>}
-                {open && <button type="button" className="m-btn m-btn-quiet w-full" disabled={busy} onClick={() => setAsk(true)}>{t.khatma.release}</button>}
-              </>
-            )}
-            {state === "free" && open && <button type="button" className="m-btn m-btn-primary w-full" disabled={busy} onClick={() => act("claim", t.khatma.claimed)}>{t.khatma.claim}</button>}
-            {state === "blocked" && <p className="text-center text-sm m-muted">{t.khatma.blockedNote(view?.settings?.noRepeat ?? 0)}</p>}
-          </div>
-          <QuranSource words={words} />
-        </>
-      )}
+    <>
+      <QuranReader division={view?.khatma?.division} n={n} eyebrow="ختمة المجموعة">
+        {state === "reading" && open && (
+          <>
+            <button type="button" className="m-btn m-btn-primary w-full" disabled={busy} onClick={() => act("done", t.khatma.markedDone)}>{t.khatma.markDone}</button>
+            <button type="button" className="m-btn m-btn-quiet w-full" disabled={busy} onClick={() => setAsk(true)}>{t.khatma.release}</button>
+          </>
+        )}
+        {state === "done" && (
+          <>
+            <p className="flex items-center justify-center gap-2 font-semibold" style={{ color: "var(--m-success)" }}>
+              <Icon name="check" size={18} /> {t.khatma.legendDone}
+            </p>
+            {open && <button type="button" className="m-btn m-btn-quiet w-full" disabled={busy} onClick={() => act("undone", t.khatma.legendReading)}>{t.khatma.undo}</button>}
+            {open && <button type="button" className="m-btn m-btn-quiet w-full" disabled={busy} onClick={() => setAsk(true)}>{t.khatma.release}</button>}
+          </>
+        )}
+        {state === "free" && open && <button type="button" className="m-btn m-btn-primary w-full" disabled={busy} onClick={() => act("claim", t.khatma.claimed)}>{t.khatma.claim}</button>}
+        {state === "blocked" && <p className="text-center text-sm m-muted">{t.khatma.blockedNote(view?.settings?.noRepeat ?? 0)}</p>}
+      </QuranReader>
       {view?.khatma && (
         <ConfirmSheet
           open={ask}
@@ -99,6 +85,6 @@ export default function KhatmaReader() {
           onConfirm={async () => void (await act("release", t.khatma.released))}
         />
       )}
-    </div>
+    </>
   );
 }

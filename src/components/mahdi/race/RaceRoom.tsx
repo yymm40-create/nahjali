@@ -9,6 +9,11 @@ import { shrinkImage } from "@/lib/mahdi/client/reading";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { inkOn, leaderOf, type RaceTeam, type RaceTeamInfo } from "@/lib/mahdi/race";
 import RaceTools, { RaceLog, type ToolRound } from "./RaceTools";
+import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
+import Icon from "@/components/mahdi/Icon";
+import Sheet from "@/components/mahdi/Sheet";
+import PageHead from "@/components/mahdi/social/PageHead";
+import { ErrorState, Skeleton } from "@/components/mahdi/social/States";
 
 interface Player {
   id: string;
@@ -524,23 +529,27 @@ function AddRound({ act }: { act: (b: Record<string, unknown>) => void }) {
   );
 }
 
-/** A destructive button that asks by a second tap. */
+/**
+ * A big step (deleting, dealing, announcing): the button opens a confirm sheet instead of asking by a second tap (the
+ * plan of 26 November 2026). `again` is the question in the sheet; `cls` m-btn-primary for a step that is not a deletion.
+ */
 function Twice({ label, again, onGo, cls = "m-btn-danger" }: { label: string; again: string; onGo: () => void; cls?: string }) {
-  const [armed, setArmed] = useState(false);
+  const [asking, setAsking] = useState(false);
   return (
-    <button
-      type="button"
-      className={`m-btn m-btn-sm ${cls}`}
-      onClick={() => {
-        if (armed) onGo();
-        else {
-          setArmed(true);
-          setTimeout(() => setArmed(false), 3500);
-        }
-      }}
-    >
-      {armed ? again : label}
-    </button>
+    <>
+      <button type="button" className={`m-btn m-btn-sm ${cls}`} onClick={() => setAsking(true)}>
+        {label}
+      </button>
+      <ConfirmSheet
+        open={asking}
+        onClose={() => setAsking(false)}
+        title={label}
+        body={again}
+        confirmLabel={label}
+        tone={cls === "m-btn-primary" ? "primary" : "danger"}
+        onConfirm={async () => onGo()}
+      />
+    </>
   );
 }
 
@@ -564,7 +573,7 @@ function TeamEditor({ t, canRemove, act }: { t: RaceTeamInfo; canRemove: boolean
         <button type="button" className="m-btn m-btn-primary m-btn-sm flex-1" disabled={!changed || !d.name.trim() || !d.emoji.trim()} onClick={() => act({ action: "teamSave", team: t.id, ...d })}>
           احفظ
         </button>
-        {canRemove && <Twice label="احذف الفريق" again="يروح مع نقاطه؟" onGo={() => act({ action: "teamRemove", team: t.id })} />}
+        {canRemove && <Twice label="احذف الفريق" again="الفريق يروح مع نقاطه." onGo={() => act({ action: "teamRemove", team: t.id })} />}
       </div>
     </div>
   );
@@ -652,7 +661,7 @@ function TeamsTab({ v, act, reload }: { v: View; act: (b: Record<string, unknown
       <div className="m-card space-y-3 p-4">
         <div className="flex items-center justify-between gap-2">
           <h3 className="font-black">التوزيع ({v.players.length})</h3>
-          <Twice label="وزّع عشوائي" again="تأكيد التوزيع" cls="m-btn-primary" onGo={() => act({ action: "deal" })} />
+          <Twice label="وزّع عشوائي" again="يتوزع الشباب على الفريقين عشوائي من جديد." cls="m-btn-primary" onGo={() => act({ action: "deal" })} />
         </div>
         <p className="m-muted text-sm">علّم الصغار عشان يتوزعون بالتساوي وما يطلعون جواسيس. واللي بدون جوال ما يطلع جاسوس.</p>
         <JoinMyself v={v} reload={reload} />
@@ -793,7 +802,7 @@ function SpiesTab({ v, act }: { v: View; act: (b: Record<string, unknown>) => vo
     <div className="m-card space-y-3 p-4">
       <h3 className="font-black">🕵️ الجواسيس</h3>
       <p className="m-muted text-sm">جاسوس واحد لكل فريق، يشوف دوره ومهامه على جواله بس. وزّع الفريقين قبل السحب.</p>
-      <Twice label={v.race.spiesOn ? "اسحب جواسيس من جديد" : "اسحب الجواسيس"} again="تأكيد السحب" cls="m-btn-primary" onGo={() => act({ action: "spies" })} />
+      <Twice label={v.race.spiesOn ? "اسحب جواسيس من جديد" : "اسحب الجواسيس"} again="ينسحب جواسيس جدد ويتغير اللي قبلهم." cls="m-btn-primary" onGo={() => act({ action: "spies" })} />
       {v.race.spiesOn && (
         <>
           {/* A leader who plays must not see the spies: the list stays hidden until the reveal. */}
@@ -853,13 +862,13 @@ function FinishTab({ v, act, onDelete }: { v: View; act: (b: Record<string, unkn
             </button>
           </div>
         ) : (
-          <Twice label={`🏆 أعلن الفايز: ${lead.name}`} again="تأكيد: يطلع عند الكل" cls="m-btn-primary" onGo={() => act({ action: "finish" })} />
+          <Twice label={`🏆 أعلن الفايز: ${lead.name}`} again="يطلع الإعلان عند الكل على طول." cls="m-btn-primary" onGo={() => act({ action: "finish" })} />
         )}
       </div>
       <div className="m-card space-y-2 p-4">
         <h3 className="font-black">إنهاء المسابقة</h3>
         <p className="m-muted text-sm">يمسح المسابقة ونقاطها وسجلها وسلفيات الشباب نهائيًا. استخرج السجل قبلها من تبويب «السجل».</p>
-        <Twice label="امسح كل شي" again="اضغط مرة ثانية: يمسح نهائيًا" onGo={onDelete} />
+        <Twice label="امسح كل شي" again="يمسح المسابقة ونقاطها وسجلها وسلفيات الشباب نهائيًا، وما يرجع." onGo={onDelete} />
       </div>
     </div>
   );
@@ -881,6 +890,7 @@ export default function RaceRoom({ id }: { id: string }) {
   const [v, setV] = useState<View | null>(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<(typeof TABS)[number][0] | "view">("score");
+  const [menu, setMenu] = useState(false);
   const url = `/api/mahdi/race/${id}`;
 
   const reload = useCallback(() => {
@@ -918,33 +928,55 @@ export default function RaceRoom({ id }: { id: string }) {
 
   if (error && !v)
     return (
-      <div className="m-card space-y-3 p-6 text-center">
-        <p>{error}</p>
-        <Link href="/mahdi/race" className="m-btn m-btn-ghost">
+      <ErrorState message={error} onRetry={() => (setError(""), reload())}>
+        <Link href="/mahdi/race" className="m-btn m-btn-quiet m-btn-sm">
           ادخل بالكود
         </Link>
+      </ErrorState>
+    );
+  if (!v)
+    return (
+      <div className="space-y-4" role="status" aria-label="لحظة، نجهّز المسابقة">
+        <div className="m-skel h-9 w-1/2" />
+        <div className="m-skel h-32" />
+        <Skeleton kind="cards" count={2} />
       </div>
     );
-  if (!v) return <p className="m-muted">يحمّل…</p>;
 
   return (
     <RaceLog.Provider value={log}>
     <div className="space-y-4">
-      <h1 className="m-display text-2xl">{v.race.title}</h1>
+      <PageHead eyebrow="المسابقة" title={v.race.title} />
       <Board v={v} />
       <Winner v={v} />
       {v.isOwner ? (
         <>
-          <nav className="flex flex-wrap gap-2" aria-label="لوحة القيادة">
-            {TABS.map(([k, label]) => (
-              <button key={k} type="button" className={`m-btn m-btn-sm flex-1 ${tab === k ? "m-btn-primary" : "m-btn-ghost"}`} onClick={() => setTab(k)}>
-                {label}
-              </button>
-            ))}
-            <button type="button" className={`m-btn m-btn-sm flex-1 ${tab === "view" ? "m-btn-primary" : "m-btn-ghost"}`} onClick={() => setTab("view")}>
-              شاشة الشباب
-            </button>
-          </nav>
+          {/* the leader's eight places, in one menu (the plan of 26 November 2026) */}
+          <button type="button" className="m-option flex min-h-12 w-full items-center gap-3 px-4 text-start font-semibold" aria-haspopup="dialog" onClick={() => setMenu(true)}>
+            <span className="m-muted text-sm font-normal">لوحة القيادة</span>
+            <span className="flex-1">{tab === "view" ? "شاشة الشباب" : TABS.find(([k]) => k === tab)?.[1]}</span>
+            <Icon name="chevronDown" size={18} />
+          </button>
+          <Sheet open={menu} onClose={() => setMenu(false)} title="لوحة القيادة">
+            <div className="m-card m-rows" role="menu">
+              {[...TABS, ["view", "شاشة الشباب"] as const].map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={tab === k}
+                  className="m-row w-full text-start"
+                  onClick={() => {
+                    setTab(k);
+                    setMenu(false);
+                  }}
+                >
+                  <span className="flex-1">{label}</span>
+                  {tab === k && <Icon name="check" size={18} />}
+                </button>
+              ))}
+            </div>
+          </Sheet>
           {tab === "score" && <ScoreTab v={v} act={act} />}
           {tab === "teams" && <TeamsTab v={v} act={act} reload={reload} />}
           {tab === "games" && <GamesTab v={v} act={act} reload={reload} />}

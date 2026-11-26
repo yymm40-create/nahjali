@@ -1,8 +1,9 @@
 "use client";
 
-// «الصحة العلوية» as its own app: everything its pages share — the profile being filled, the plan, the step of the
-// setup, the tracker's days — and the link with «لأجل المهدي»'s habits: a value tracked here (a workout done, the
-// protein, the water…) is logged on the habit made from the plan, and a habit ticked in «لأجل المهدي» shows here.
+// «الصحة العلوية»: everything its pages share — the profile being filled (kept for the tab, so a refresh on a step of
+// the setup keeps the answers; the step itself is in the link, lib/mahdi/health/route.ts), the plan, the tracker's
+// days — and the link with «لأجل المهدي»'s habits: a value tracked here (a workout done, the protein, the water…) is
+// logged on the habit made from the plan, and a habit ticked in «لأجل المهدي» shows here.
 // Saved to the account (SQL 0059/0060), and kept on the device too so the pages work before those run or offline.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -12,7 +13,7 @@ import { todayFor } from "@/lib/mahdi/engine";
 import { DEFAULT_PROFILE, type HealthPlan, type HealthProfile } from "@/lib/mahdi/health/plan";
 import { emptyDay, type DayLog } from "@/lib/mahdi/health/tracker";
 
-export type SetupStep = "track" | "about" | "goal" | "train" | "mode" | "build-food" | "build-day";
+export type { SetupStep } from "@/lib/mahdi/health/route";
 
 interface Health {
   uid: string;
@@ -22,8 +23,6 @@ interface Health {
   save: (p: HealthPlan) => void;
   profile: HealthProfile;
   setProfile: React.Dispatch<React.SetStateAction<HealthProfile>>;
-  step: SetupStep;
-  setStep: (s: SetupStep) => void;
   days: Record<string, DayLog>;
   day: (date: string) => DayLog;
   saveDay: (d: DayLog) => void;
@@ -63,13 +62,13 @@ export default function HealthProvider({ children }: { children: React.ReactNode
   const today = todayFor(state.snap.profile);
   const [plan, setPlan] = useState<HealthPlan | null>(null);
   const [profile, setProfile] = useState<HealthProfile>(DEFAULT_PROFILE);
-  const [step, setStep] = useState<SetupStep>("track");
   const [days, setDays] = useState<Record<string, DayLog>>({});
   const [loaded, setLoaded] = useState(false);
   const planTimer = useRef<number | null>(null);
   const dayTimers = useRef<Record<string, number>>({});
   const planKey = `mahdi-health:${uid}`;
   const daysKey = `mahdi-health-days:${uid}`;
+  const draftKey = `mahdi-health-draft:${uid}`;
 
   useEffect(() => {
     let live = true;
@@ -83,7 +82,15 @@ export default function HealthProvider({ children }: { children: React.ReactNode
       const server = p.status === "fulfilled" ? p.value.plan : null;
       const best = server && (!localPlan || server.savedAt >= localPlan.savedAt) ? server : localPlan;
       setPlan(best);
-      if (best) setProfile(best.profile);
+      // the answers being given in this tab win (a refresh in the middle of the setup), else the plan's
+      let draft: HealthProfile | null = null;
+      try {
+        draft = JSON.parse(sessionStorage.getItem(draftKey) ?? "null") as HealthProfile | null;
+      } catch {
+        draft = null;
+      }
+      if (draft && typeof draft === "object") setProfile({ ...DEFAULT_PROFILE, ...draft });
+      else if (best) setProfile(best.profile);
       const merged = { ...localDays };
       if (d.status === "fulfilled") for (const x of d.value.days) merged[x.date] = x;
       setDays(merged);
@@ -92,7 +99,16 @@ export default function HealthProvider({ children }: { children: React.ReactNode
     return () => {
       live = false;
     };
-  }, [planKey, daysKey]);
+  }, [planKey, daysKey, draftKey]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    try {
+      sessionStorage.setItem(draftKey, JSON.stringify(profile));
+    } catch {
+      /* private window */
+    }
+  }, [loaded, profile, draftKey]);
 
   const save = useCallback(
     (next: HealthPlan) => {
@@ -139,8 +155,6 @@ export default function HealthProvider({ children }: { children: React.ReactNode
       save,
       profile,
       setProfile,
-      step,
-      setStep,
       days,
       day: (date) => days[date] ?? emptyDay(date),
       saveDay,
@@ -154,7 +168,7 @@ export default function HealthProvider({ children }: { children: React.ReactNode
         if (id) store.setLog(id, date, Math.max(0, Math.round(v * 100) / 100));
       },
     }),
-    [uid, loaded, today, plan, save, profile, step, days, saveDay, habitFor, state.snap.logs, store],
+    [uid, loaded, today, plan, save, profile, days, saveDay, habitFor, state.snap.logs, store],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

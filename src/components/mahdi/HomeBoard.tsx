@@ -1,9 +1,9 @@
 "use client";
 
-// «لأجل المهدي» — the home screen of the redesign: a bento of cards («الويدجت») the person arranges. The standard
-// one answers at a glance how far today's habits are, how far today's reading goal is, and what is left to tap (each
-// habit a big button: one tap and it is done). Everything else — the priorities, the tasks, the week, the book, the
-// health, the stories, the full list by project — can be added, removed and moved («رتّب رئيسيتك»).
+// «لأجل المهدي» — «اليوم» (phase 3 of the redesign, 26 November 2026): ONE screen — the day card (the design's own goals), the
+// habits to tap (the design's own quick-tap style), and at most ONE card under them (an excuse day, a note to write, a day to make
+// up, the notifications, or the day's verse and narration). Everything else — the priorities, the tasks, the week, the book, the
+// health, the stories, the full list by project — can still be added, removed and moved («رتّب رئيسيتك», inside ⋯).
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -17,6 +17,7 @@ import type { Profile, Project } from "@/lib/mahdi/types";
 import BookletCard from "./BookletCard";
 import DailyCard from "./DailyCard";
 import ReviewHints from "./ReviewHints";
+import { DayMarkSheet, QadaCard, TodayExcuseCard } from "./DayMarks";
 import DayBars from "./DayBars";
 import DayPriorities from "./DayPriorities";
 import DayTasks from "./DayTasks";
@@ -38,15 +39,12 @@ import Tick, { TICK_SHAPES, useTickPref } from "./home/Tick";
 import { shownPlace, useLook } from "./ThemeRoot";
 import TasbihButton from "./Tasbih";
 import ShrineArt from "./ShrineArt";
-import SheikhLink from "./SheikhLink";
 import { designOf } from "@config/mahdi";
 import Sheet from "./Sheet";
 import { StoriesBar } from "./social/Stories";
 import { useReading } from "./useReading";
 
 const LOCAL = "mahdi:home-widgets";
-const DAILY_OFFERED = "mahdi:daily-offered";
-const NOTE_OFFERED = "mahdi:day-note-offered";
 
 function readLocal(): unknown {
   try {
@@ -66,6 +64,8 @@ export default function HomeBoard() {
   // (never during the first render, which must match the server's)
   const [local, setLocal] = useState(false);
   const [emergency, setEmergency] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [excuse, setExcuse] = useState(false);
   useEffect(() => {
     if (local || profile.homeWidgets) return;
     const saved = readLocal();
@@ -98,29 +98,6 @@ export default function HomeBoard() {
     }
   };
 
-  // A card added after the person arranged their home is offered ONCE: «آية اليوم ورواية اليوم» after «اضغط وأنجز»,
-  // then «ملاحظاتي على يومي» after it (or first, when neither is there). If they take it off afterwards it stays off.
-  useEffect(() => {
-    if (!profile.homeWidgets && !local) return;
-    const offer = (key: string, id: WidgetId, next: WidgetId[], after: WidgetId) => {
-      let offered = false;
-      try {
-        offered = localStorage.getItem(key) === "1";
-        if (!offered) localStorage.setItem(key, "1");
-      } catch {
-        offered = true;
-      }
-      if (offered || next.includes(id)) return next;
-      const at = next.includes(after) ? next.indexOf(after) : next.indexOf("quick");
-      return at >= 0 ? [...next.slice(0, at + 1), id, ...next.slice(at + 1)] : [id, ...next];
-    };
-    const next = offer(NOTE_OFFERED, "dayNote", offer(DAILY_OFFERED, "daily", list, "quick"), "daily");
-    if (next.length === list.length) return;
-    const t = setTimeout(() => void save(next), 0);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [local, profile.homeWidgets]);
-
   return (
     <div className="space-y-5">
       {where === "banner" && (
@@ -138,39 +115,28 @@ export default function HomeBoard() {
           <h1 className="m-display m-shadow-text text-2xl sm:text-3xl">أهلًا {profile.displayName.split(" ")[0]}</h1>
           <p className="m-shadow-text text-sm font-semibold m-gold">{t.greeting}</p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1">
           <TasbihButton />
-          {/* «خانة الطوارئ»: pick the projects, then which of their habits get a smaller goal for emergency days */}
-          {hasProjects && (
-            <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setEmergency(true)}>
-              <Icon name="shield" size={16} /> الطوارئ
-            </button>
-          )}
-          <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setArranging(true)}>
-            <Icon name="grip" size={18} /> رتّب
+          {/* ⋯: «رتّب رئيسيتك», «يوم عذر» and «خانة الطوارئ» live here, so the screen keeps one action */}
+          <button type="button" className="m-menu-btn" onClick={() => setMenu(true)} aria-label="خيارات اليوم" aria-haspopup="dialog">
+            <Icon name="more" size={24} strokeWidth={2.6} />
           </button>
         </div>
       </header>
       <FirstSteps />
       {where === "horizon" && <ShrineArt shrineId={look.shrine?.id ?? profile.shrineId} style={design.art} className="m-shrine-horizon" label={shrineName ? `رسمة ${shrineName}` : undefined} />}
 
-      {/* «ملاحظاتي على أسبوعي»: at the top, once a week, on the day the person picked */}
-      <WeekNoteHome />
-
       {!hasProjects ? (
-        <section className="m-card space-y-3 p-6 text-center">
-          <p className="text-4xl" aria-hidden="true">🌱</p>
+        <section className="m-card m-empty">
+          <span className="m-empty-ic" aria-hidden="true">
+            <Icon name="target" size={26} />
+          </span>
           <p className="m-muted">{t.home.emptyProjectsHint}</p>
           <button type="button" className="m-btn m-btn-primary" onClick={() => setNewProject(true)}>
             <Icon name="plus" /> {t.home.emptyProjects}
           </button>
         </section>
       ) : null}
-
-      <ReviewHints />
-
-      {/* «الشيخ الذكي»: on everyone's home, above the cards they arrange (not one of them, so never turned off) */}
-      <SheikhLink home />
 
       <div className="m-board">
         {list.map((id) => (
@@ -183,9 +149,51 @@ export default function HomeBoard() {
         </button>
       )}
 
+      {/* ONE card at most: the first of these that has something to say today (the rest stay out of sight, see .m-one) */}
+      <div className="m-one">
+        <TodayExcuseCard />
+        <ReviewHints />
+        {/* «ملاحظاتي على أسبوعي»: once a week, on the day the person picked */}
+        <WeekNoteHome />
+        <QadaCard />
+        {!list.includes("daily") && <DailyCard />}
+      </div>
+
       <Sheet open={arranging} onClose={() => setArranging(false)} title="رتّب رئيسيتك">
         <Arrange list={list} onChange={save} />
       </Sheet>
+      <Sheet open={menu} onClose={() => setMenu(false)} title="خيارات اليوم">
+        <div className="m-card m-rows">
+          {[
+            { icon: "pause" as const, label: "يوم عذر", hint: "سفر أو مرض أو عذر شرعي، أو أوقف عاداتك كم يوم", go: () => setExcuse(true), on: hasProjects },
+            // «خانة الطوارئ»: pick the projects, then which of their habits get a smaller goal for emergency days
+            { icon: "shield" as const, label: "خانة الطوارئ", hint: "هدف أصغر لعاداتك في الأيام الصعبة", go: () => setEmergency(true), on: hasProjects },
+            { icon: "grip" as const, label: "رتّب رئيسيتك", hint: "أضف بطاقات أو شيلها ورتّبها", go: () => setArranging(true), on: true },
+          ]
+            .filter((o) => o.on)
+            .map((o) => (
+              <button
+                key={o.label}
+                type="button"
+                className="m-row w-full text-start"
+                onClick={() => {
+                  setMenu(false);
+                  o.go();
+                }}
+              >
+                <span className="m-row-ic">
+                  <Icon name={o.icon} size={20} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block">{o.label}</span>
+                  <span className="m-hint block font-normal">{o.hint}</span>
+                </span>
+                <Icon name="chevronLeft" size={18} />
+              </button>
+            ))}
+        </div>
+      </Sheet>
+      <DayMarkSheet open={excuse} onClose={() => setExcuse(false)} day={state.today} />
       <ProjectForm open={newProject} onClose={() => setNewProject(false)} />
       {emergency && <EmergencySetup open onClose={() => setEmergency(false)} />}
     </div>

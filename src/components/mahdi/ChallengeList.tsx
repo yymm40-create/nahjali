@@ -6,6 +6,7 @@ import { challengeAsHabit, describeGoal } from "@/lib/mahdi/client/derive";
 import type { Challenge } from "@/lib/mahdi/types";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
+import { Empty } from "./social/States";
 
 /** Published challenges, grouped by section; ended ones go to the bottom. */
 export default function ChallengeList() {
@@ -36,7 +37,7 @@ export default function ChallengeList() {
 
   const live = challenges.list.filter((c) => !isEnded(c));
   const ended = challenges.list.filter(isEnded);
-  if (!challenges.list.length) return <p className="m-card p-6 text-center m-muted">{t.challenges.empty}</p>;
+  if (!challenges.list.length) return <Empty icon="flag" title={t.challenges.empty} />;
 
   return (
     <div className="space-y-6">

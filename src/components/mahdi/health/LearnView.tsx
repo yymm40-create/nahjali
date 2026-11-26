@@ -11,12 +11,16 @@ import { history, record } from "@/lib/mahdi/health/tracker";
 import BodyMap from "./BodyMap";
 import ExerciseFigure, { ExerciseThumb } from "./ExerciseFigure";
 import { useHealth } from "./HealthProvider";
+import { useView } from "./useView";
 
 const where = (e: (typeof EXERCISES)[number]) => [e.gym && !e.body && "🏟️ جيم", e.home && !e.body && "🏠 جيم بيتي", e.body && "🤸 بدون أدوات"].filter(Boolean).join(" · ");
 
 export function LearnView() {
   const { plan } = useHealth();
-  const [sel, setSel] = useState<string>("lats");
+  // the muscle being read is the link's (/mahdi/health/learn?muscle=…)
+  const view = useView();
+  const asked = view.get("muscle");
+  const sel = asked && muscleInfo(asked) ? asked : "lats";
   const [q, setQ] = useState("");
   const m = muscleInfo(sel);
   const inPlan = useMemo(() => new Set(plan?.workout?.days.flatMap((d) => d.items.map((i) => i.exId)) ?? []), [plan]);
@@ -64,7 +68,7 @@ export function LearnView() {
           <p className="gym-small">{GROUPS[g].intro}</p>
           <div className="gym-chips">
             {MUSCLES.filter((x) => x.group === g).map((x) => (
-              <button key={x.id} type="button" className="gym-chip" aria-pressed={sel === x.id} onClick={() => (setSel(x.id), window.scrollTo({ top: 0, behavior: "smooth" }))}>
+              <button key={x.id} type="button" className="gym-chip" aria-pressed={sel === x.id} onClick={() => (view.set({ muscle: x.id === "lats" ? null : x.id }), window.scrollTo({ top: 0, behavior: "smooth" }))}>
                 {x.name}
               </button>
             ))}
@@ -112,7 +116,7 @@ export function ExerciseView({ id }: { id: string }) {
   const alts = (plan ? candidates(ex.muscle as Muscle, plan.profile) : EXERCISES.filter((e) => e.muscle === ex.muscle)).filter((e) => e.id !== id);
   return (
     <div className="space-y-4">
-      <Link href="/mahdi/health/learn" className="gym-btn ghost sm">→ كل التمارين</Link>
+      <Link href="/mahdi/health/learn" className="gym-btn ghost sm">كل التمارين</Link>
       <section className="gym-card hot space-y-2">
         <span className="gym-eyebrow">{MUSCLE_NAMES[ex.muscle]}</span>
         <h1 className="gym-title">{ex.name}</h1>
@@ -135,7 +139,7 @@ export function ExerciseView({ id }: { id: string }) {
             const info = muscleInfo(x);
             return info ? (
               <p key={x} className="text-sm leading-7">
-                <span className={main ? "text-[#c6ff1a]" : "text-[#ff7a1a]"}>●</span> <b>{info.name}</b> {main ? "(أساسية)" : "(مساعدة)"} — {info.does}
+                <span className={main ? "gym-dot-main" : "gym-dot-help"} aria-hidden="true">●</span> <b>{info.name}</b> {main ? "(أساسية)" : "(مساعدة)"} — {info.does}
               </p>
             ) : null;
           })}
