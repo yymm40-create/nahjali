@@ -6,9 +6,9 @@ import { cleanPlanItem } from "@/lib/mahdi/planner";
 const read = (p: string) => readFileSync(p, "utf8");
 
 describe("«ملاحظاتي على يومي» on the home", () => {
-  it("is a card, on by default after «آية اليوم»", () => {
+  it("is a card the person can add («رتّب»); the lean home leaves it out by default", () => {
     expect(WIDGETS.some((w) => w.id === "dayNote")).toBe(true);
-    expect(DEFAULT_WIDGETS.indexOf("dayNote")).toBe(DEFAULT_WIDGETS.indexOf("daily") + 1);
+    expect(DEFAULT_WIDGETS).not.toContain("dayNote");
   });
 });
 

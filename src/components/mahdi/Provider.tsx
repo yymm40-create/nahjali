@@ -2,10 +2,11 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { UNDO_MS } from "@config/mahdi";
-import { buildTimeline, type Item, type Timeline } from "@/lib/mahdi/engine";
+import { buildTimeline, excusedDays, type DayMark, type Item, type Timeline } from "@/lib/mahdi/engine";
 import { createStore, type MahdiStore, type StoreState } from "@/lib/mahdi/client/store";
 import { challengeHabits, groupHabits, toItems } from "@/lib/mahdi/client/derive";
-import { mahdiFetch } from "@/lib/mahdi/client/fetch";
+import { ApiError, mahdiFetch } from "@/lib/mahdi/client/fetch";
+import { applyMark, readDeviceMarks, REFUSED, writeDeviceMarks, type MarkOp } from "@/lib/mahdi/client/day-marks";
 import type { Habit, Snapshot } from "@/lib/mahdi/types";
 
 export interface Toast {
@@ -29,6 +30,10 @@ interface Ctx {
   /** Milestones just reached, waiting for their reveal. */
   revealed: string[];
   closeReveal: () => void;
+  /** «أيام العذر والقضاء»: the marked days (the account's, or this device's before SQL 0131). */
+  dayMarks: DayMark[];
+  /** Changes a mark; throws the Arabic reason when it is refused. */
+  markDay: (op: MarkOp) => Promise<void>;
 }
 
 const MahdiContext = createContext<Ctx | null>(null);
@@ -77,9 +82,44 @@ export default function MahdiProvider({ initial, children }: { initial: Snapshot
   const { snap } = state;
   const allHabits = useMemo(() => [...snap.habits, ...challengeHabits(snap), ...groupHabits(snap)], [snap]);
   const items = useMemo(() => toItems(allHabits, state.logs, snap.emergencyDays), [allHabits, state.logs, snap.emergencyDays]);
+
+  // «أيام العذر والقضاء»: the account keeps them (SQL 0131); before that, this device does (read after the first paint)
+  const onServer = Array.isArray(snap.dayMarks);
+  const userId = snap.profile.userId;
+  const [deviceMarks, setDeviceMarks] = useState<DayMark[]>([]);
+  useEffect(() => {
+    if (onServer) return;
+    const id = setTimeout(() => setDeviceMarks(readDeviceMarks(userId)), 0);
+    return () => clearTimeout(id);
+  }, [onServer, userId]);
+  const dayMarks = useMemo(() => (onServer ? (snap.dayMarks as DayMark[]) : deviceMarks), [onServer, snap.dayMarks, deviceMarks]);
+  const excused = useMemo(() => excusedDays(dayMarks), [dayMarks]);
+  const markDay = useCallback(
+    async (op: MarkOp) => {
+      const onDevice = () => {
+        const r = applyMark(readDeviceMarks(userId), op, store.getState().today, store.getState().snap.profile.weekStart);
+        if ("refused" in r) throw new Error(REFUSED[r.refused]);
+        writeDeviceMarks(userId, r.marks);
+        setDeviceMarks(r.marks);
+      };
+      if (!onServer) return onDevice();
+      try {
+        const res = await mahdiFetch<{ marks: DayMark[] }>("/api/mahdi/day-marks", { method: "POST", json: op });
+        store.setSnapPart({ dayMarks: res.marks });
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 503) {
+          store.setSnapPart({ dayMarks: null });
+          return onDevice();
+        }
+        throw e;
+      }
+    },
+    [onServer, userId, store],
+  );
+
   const timeline = useMemo(
-    () => buildTimeline(items, state.snap.logsFrom, state.today, { asOf: state.today, weekStart: state.snap.profile.weekStart }),
-    [items, state.snap.logsFrom, state.today, state.snap.profile.weekStart],
+    () => buildTimeline(items, state.snap.logsFrom, state.today, { asOf: state.today, weekStart: state.snap.profile.weekStart, excused }),
+    [items, state.snap.logsFrom, state.today, state.snap.profile.weekStart, excused],
   );
 
   // Milestones: the server re-checks after logs are saved
@@ -125,8 +165,8 @@ export default function MahdiProvider({ initial, children }: { initial: Snapshot
   );
 
   const value = useMemo(
-    () => ({ store, state, items, allHabits, timeline, toasts, toast, dismiss, revealed, closeReveal }),
-    [store, state, items, allHabits, timeline, toasts, toast, dismiss, revealed, closeReveal],
+    () => ({ store, state, items, allHabits, timeline, toasts, toast, dismiss, revealed, closeReveal, dayMarks, markDay }),
+    [store, state, items, allHabits, timeline, toasts, toast, dismiss, revealed, closeReveal, dayMarks, markDay],
   );
   return <MahdiContext.Provider value={value}>{children}</MahdiContext.Provider>;
 }

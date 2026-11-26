@@ -3,6 +3,7 @@
 export * from "./dates";
 export * from "./day-start";
 export * from "./emergency";
+export * from "./excuse";
 export * from "./types";
 export * from "./schedule";
 export * from "./score";

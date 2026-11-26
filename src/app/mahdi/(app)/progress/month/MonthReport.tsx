@@ -66,6 +66,10 @@ export default function MonthReport({ month }: { month?: string }) {
         )}
       </nav>
 
+      <Link href="/mahdi/progress/compare" className="m-btn m-btn-ghost m-btn-sm">
+        <Icon name="progress" size={16} /> قارن بين فترتين
+      </Link>
+
       {/* the person's own note on the month: at the top, where it is seen */}
       <ReviewNote kind="month" start={ms} />
       <PriorityHistory from={ms} to={endOfMonth(ms)} title={t.priorityHistory.month} />
