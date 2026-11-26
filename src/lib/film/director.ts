@@ -14,6 +14,7 @@ import { approvedImages, latestJob, sheetAssets } from "./sheets";
 import { failJob, logReplyTokens, replyTokens, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
 import { filmVideoToStudio, studioVideoToFilm } from "./studio-link";
+import { generatorOfFilmModel } from "./studio-models";
 import { checkLipsyncs } from "./lipsync";
 import { buildVoiceTrack, OWN_TRACK, uploadedVoiceTrack, voiceTrackNote, wavSeconds } from "./voice-track";
 import { checkMp3 } from "@/lib/jawad/student/audio";
@@ -678,6 +679,8 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
     units: durationSec,
     unit: "seconds",
     assetId: asset.id,
+    // «لامحدود»: the same video in the studio's terms (a reference ad's extra video is not part of a pass)
+    ...(refVideo ? {} : { unlimited: { generatorId: generatorOfFilmModel(model), settings: { resolution, duration: durationSec, ...(model === "seedance-real-face" ? { version: "2.5" } : {}) } } }),
   }).catch(async (e) => {
     await db().from("film_assets").delete().eq("id", asset.id);
     throw e;

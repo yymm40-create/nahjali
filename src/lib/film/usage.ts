@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { refundCoins, reserveCoins, reserveTeamCoins, settleCoins } from "@/lib/coins";
+import { giveBackUnlimitedFast, takeUnlimitedFast } from "@/lib/jawad/server/unlimited";
 import { giveAttempt, teamPayment, teamSeriesOf } from "./team";
 import { serviceKind } from "./credits";
 import { hasAdminAccess } from "./admin-access";
@@ -55,6 +56,8 @@ export interface StartJobInput {
   units: number;
   unit: string;
   assetId?: string | null;
+  /** «لامحدود»: the studio generator and settings this job is, so a running pass's fast balance can make it free */
+  unlimited?: { generatorId: string; settings: Record<string, unknown> };
 }
 
 /**
@@ -133,7 +136,11 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
     // the profit follows what the job makes: Claude's own work (the screenwriter, the sheets maker, the director's
     // replies, سجاد) its real usage + 40٪, a GPT Image 2 picture 30٪, a video 40٪, the rest the general margin
     const claude = serviceKind(input.service);
-    if (team) await reserveTeamCoins(team.id, input.user, job.id, input.estimateUsd, label, claude);
+    // «لامحدود»: the payer's running pass, while its fast balance lasts, makes a video or picture free (nothing held; the cost is still logged)
+    const free = !team && input.unlimited ? await takeUnlimitedFast(payer.id, input.unlimited.generatorId, input.unlimited.settings, `film:${input.idempotencyKey}`) : false;
+    if (free) {
+      /* nothing to hold */
+    } else if (team) await reserveTeamCoins(team.id, input.user, job.id, input.estimateUsd, label, claude);
     else await reserveCoins(payer, job.id, input.estimateUsd, label, claude);
   } catch (e) {
     await failJob(job.id, e);
@@ -200,7 +207,12 @@ export async function failJob(jobId: string, error: unknown, providerCostUsd?: n
   await refundPromptOfFilmJob(jobId, failureText(error)).catch((e) => console.error("film prompt refund", e));
   const db = createAdminClient();
   // a team member's failed attempt is given back
-  const { data: j } = await db.from("film_jobs").select("project_id,user_id,status").eq("id", jobId).maybeSingle();
+  const { data: j } = await db.from("film_jobs").select("project_id,user_id,status,idempotency_key").eq("id", jobId).maybeSingle();
+  // «لامحدود»: a free use that failed gives its fast balance back (to whoever's pass it was: the usage row's payer)
+  if (j?.idempotency_key) {
+    const { data: u } = await db.from("film_usage").select("user_id").eq("job_id", jobId).limit(1).maybeSingle();
+    if (u?.user_id) await giveBackUnlimitedFast(String(u.user_id), `film:${j.idempotency_key}`);
+  }
   if (j && j.status !== "failed") {
     const { data: fp } = await db.from("film_projects").select("user_id,series_id").eq("id", j.project_id).maybeSingle();
     const series = fp ? await teamSeriesOf(fp).catch(() => null) : null;

@@ -8,6 +8,7 @@
 //            the whole shot (previous prompt, frames, references, continuity, the film's brief) and decides — then the
 //            job is sent like any other. If he fails, the job fails and every coin comes back.
 
+import { unlimitedTicket } from "./unlimited";
 import { sajjadBrief, tellSajjad } from "@/lib/film/sajjad";
 import { after } from "next/server";
 import { randomUUID } from "crypto";
@@ -272,19 +273,23 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
 
   // The price: the generation (an image prompt at its cap; a video's price does not depend on the prompt) + the edit
   const placeholder = def.output === "image" ? "x".repeat(EDIT_LIMITS.imagePromptBytes) : "x";
-  const price = (m: RefMeta[]) => {
+  // «لامحدود»: a running pass for this generator makes the new picture/video free (جواد's writing and the edit fee are still paid)
+  const price = (m: RefMeta[], free = false) => {
     // Another generator: the original's settings are carried over where they fit, the rest take that generator's defaults
     const e = evaluate(def, { settings, prompt: placeholder, instructions: "", refStyle, refs: m, strict: !switched }, table);
     if (e.issues.length) return { e, issues: e.issues };
     if (!e.price.ok) return { e, issues: [{ field: "price", message: e.price.reason }] };
-    const lines = [...e.price.lines, ...extra.map(({ label, centi }) => ({ label, centi }))];
+    const lines = [...(free ? [{ label: "لامحدود · التوليد مجاني", centi: 0 }] : e.price.lines), ...extra.map(({ label, centi }) => ({ label, centi }))];
     // each part at its own profit: the new picture/video at its kind's (e.price.coins), جواد's writing (Claude) at its
     // real cost + 40٪, the edit fee at the general margin
     const sum = (ls: { centi: number }[]) => ls.reduce((s, l) => s + l.centi, 0);
-    const coins = e.price.coins + coinsOf(sum(extra.filter((l) => l.claude)), "claude") + coinsOf(sum(extra.filter((l) => !l.claude)), "other");
+    const coins = (free ? 0 : e.price.coins) + coinsOf(sum(extra.filter((l) => l.claude)), "claude") + coinsOf(sum(extra.filter((l) => !l.claude)), "other");
     return { e, lines, coins, usd: (e.price.usdCeiling ?? 0) + (def.output === "video" ? EDIT_CLAUDE_USD : 0) };
   };
-  const first = price(meta);
+  const plain = price(meta);
+  if (plain.issues) return { kind: "issues", issues: plain.issues };
+  const ticket = owner ? null : await unlimitedTicket(user.id, def.id, plain.e.settings).catch(() => null);
+  const first = ticket ? price(meta, true) : plain;
   if (first.issues) return { kind: "issues", issues: first.issues };
   if (quote) return { kind: "quote", coins: first.coins!, lines: first.lines!, cut };
   // The price the person saw must be the price charged — checked here, FIRST, before any upload or Claude call, so a mismatch
@@ -347,7 +352,7 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
     const found = await refsFor(user.id, [{ uploadId: up.id, role: "reference" }]);
     meta = named(found.meta, ["result"]);
   }
-  const final = price(meta);
+  const final = price(meta, !!ticket);
   if (final.issues) return { kind: "issues", issues: final.issues };
   // (the same inputs priced the same way: this only differs if the price table changed during the request)
   if (!priceAgreed(owner, first.coins, final.coins!)) return { kind: "price_changed", coins: final.coins!, lines: final.lines! };
@@ -366,7 +371,7 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
       output_kind: def.output,
       prompt: "",
       // a film's clip stays tied to its film through every edit (so it can go back to it, and سجاد hears of it)
-      inputs: { settings: final.e.settings, instructions: "", refStyle, origin, edit, ...(source.inputs.film ? { film: source.inputs.film } : {}) },
+      inputs: { settings: final.e.settings, instructions: "", refStyle, origin, edit, ...(source.inputs.film ? { film: source.inputs.film } : {}), ...(ticket ? { unlimited: ticket.inputs } : {}) },
       refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
       price_coins: final.coins,
       price_breakdown: final.lines,
@@ -388,7 +393,8 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   }
   const row = (data as { job_id: string; created: boolean; balance: number | null }[])[0];
   const { data: job } = await db().from("jawad_jobs").select("*").eq("id", row.job_id).single();
-  if (row.created) after(() => runJob(row.job_id));
+  // a held «لامحدود» job waits for its turn (the studio's polling or the minute cron sends it)
+  if (row.created && !ticket?.holdMs) after(() => runJob(row.job_id));
   const film = source.inputs.film;
   if (row.created && film?.projectId) {
     const asked = [notes, ...ranges.map((r) => `${r.from}–${r.to} ث: ${r.note}`)].filter(Boolean).join(" · ");

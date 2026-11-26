@@ -1032,6 +1032,8 @@ async function prepareImage(project: FilmProject, user: { id: string; email?: st
     units: 1,
     unit: "images",
     assetId: asset.id,
+    // «لامحدود» GPT Image 2: the standard-size pictures (a style test, a real photo's single image); a 2K sheet is outside the pass
+    ...(o.kind !== "sheet" ? { unlimited: { generatorId: "openai-gpt-image-2", settings: { quality: o.quality ?? "medium", resolution: "std", count: 1 } } } : {}),
   }).catch(async (e) => {
     await db().from("film_assets").delete().eq("id", asset.id);
     throw e;
