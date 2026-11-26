@@ -19,6 +19,7 @@ import { loadRuntime } from "@/lib/jawad/server/runtime";
 import VideosWorkspace from "../[id]/videos/VideosWorkspace";
 import { projectKind } from "@config/film";
 import { adReferenceVideo } from "@/lib/film/ad-brand";
+import { unlimitedStatus } from "@/lib/jawad/server/unlimited";
 
 
 import { storage } from "@/lib/storage";
@@ -111,7 +112,10 @@ export default async function VideosView({ id, base }: { id: string; base: strin
           note: typeof v.meta?.montage_note === "string" ? (v.meta.montage_note as string) : "",
           edited: Boolean(v.meta?.edited),
           refVideoSec: Number(v.meta?.refVideoSec) || 0,
+          heldUntil: typeof (v.meta?.held as { until?: unknown } | undefined)?.until === "string" ? String((v.meta!.held as { until: string }).until) : undefined,
         }))}
+        // «لامحدود»: the person's running passes (the film's videos under one are free)
+        passes={(await unlimitedStatus(user.id).catch(() => [])).map((p) => ({ pass: p.pass, fastLeft: p.fastLeft }))}
         adRefVideoSec={refVideo?.seconds ?? 0}
         videosRunning={videosRunning}
         job={job ? { status: job.status, error: job.error } : null}

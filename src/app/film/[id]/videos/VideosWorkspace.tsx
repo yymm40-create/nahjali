@@ -33,6 +33,8 @@ import { useFilmBase } from "../../FilmBase";
 import EmotionPicker from "../../EmotionPicker";
 import RewindCard from "../RewindCard";
 import { smartEditInEditor } from "@/components/jawad/editor/smart-open";
+import { passCovers, unlimitedPass, UNLIMITED } from "@config/jawad/unlimited";
+import { generatorOfFilmModel } from "@/lib/film/studio-models";
 import { dialoguePace, paceWarning } from "@/lib/film/pace";
 
 interface Generation {
@@ -73,6 +75,8 @@ interface Video {
   download: string;
   /** «ملاحظة للمونتاج» on this take */
   note: string;
+  /** «لامحدود» slow: when it is sent (still waiting) */
+  heldUntil?: string;
   /** the person's own edited version, uploaded */
   edited: boolean;
   /** «📣 إعلان»: seconds of the reference ad's video sent with this take (written by the server only when it was) */
@@ -99,10 +103,12 @@ interface StudioVideo {
 }
 
 export default function VideosWorkspace({
-  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null, voicesOn = false, realFaceOn = false, wanOn = false, lastModel, dialogueStart, dialogueSource = null, rewind = true, adRefVideoSec = 0,
+  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null, voicesOn = false, realFaceOn = false, wanOn = false, lastModel, dialogueStart, dialogueSource = null, rewind = true, adRefVideoSec = 0, passes = [],
 }: {
   /** «📣 إعلان»: seconds of the reference ad's video that goes with every Wan 3.0 generation (0: none) */
   adRefVideoSec?: number;
+  /** «لامحدود»: the person's running passes (a covered video is free; the server decides it again) */
+  passes?: { pass: string; fastLeft: number }[];
   /** the old «ارجع بمشروعك لنقطة» card (a series' scene); a film edits any step directly instead */
   rewind?: boolean;
   /** ElevenLabs is configured on the server: the voices block is shown. */
@@ -132,6 +138,17 @@ export default function VideosWorkspace({
 }) {
   const router = useRouter();
   const filmBase = useFilmBase();
+  // «لامحدود»: the clock for a slow video's wait (read in a callback, never during render)
+  const [clock, setClock] = useState(0);
+  useEffect(() => {
+    const tick = () => setClock(Date.now());
+    const first = setTimeout(tick, 0);
+    const t = setInterval(tick, 30_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(t);
+    };
+  }, []);
   const [resolution, setResolution] = useState<VideoResolution>(DEFAULT_VIDEO_RESOLUTION);
   // «اكتب الكلام العربي في البرومبت»: on = the lines are written in the prompt too; off = from the voices only
   const [arabicInPrompt, setArabicInPrompt] = useState(true);
@@ -428,7 +445,9 @@ export default function VideosWorkspace({
   };
   const renderTake = (v: Video, g: Generation, small = false) => (
               <figure key={v.id} className={`space-y-2 rounded-2xl border p-2 ${small && v.status === "rejected" ? "opacity-60" : ""} ${v.status === "approved" ? "border-2 border-teal" : "border-line"}`}>
-                {v.status === "generating" ? (
+                {v.status === "generating" && v.heldUntil && Date.parse(v.heldUntil) > clock ? (
+                  <div className="grid aspect-video place-items-center rounded-xl bg-surface-2 p-3 text-center"><Spinner /><p className="text-sm font-bold">⚡ لامحدود: خلص توليدك السريع، فهذا الفيديو بالتوليد البطيء (مجاني). يبدأ بعد {clock ? Math.max(1, Math.ceil((Date.parse(v.heldUntil) - clock) / 60_000)) : "شوي"} دقيقة تقريبًا، وتقدر تسكّر الصفحة.</p></div>
+                ) : v.status === "generating" ? (
                   <div className="grid aspect-video place-items-center rounded-xl bg-surface-2"><Spinner /><p className="text-sm font-bold">نولّد الفيديو… (من دقيقتين إلى ١٠ دقائق، تقدر تسكّر الصفحة)</p></div>
                 ) : v.status === "failed" ? (
                   <p className="error-box">فشل التوليد: {v.error}. ما انحسبت تكلفة.</p>
@@ -626,6 +645,10 @@ export default function VideosWorkspace({
         const sec = secOf(g);
         // an ad's reference video goes with Wan 3.0 and its seconds are charged too
         const cost = videoCostUsd(model, resolution, sec, model === "wan-3.0" ? adRefVideoSec : 0);
+        // «لامحدود»: a pass for this video model makes it free at the pass's quality (the server puts it there by itself)
+        const passDef = model === "wan-3.0" && adRefVideoSec > 0 ? null : passes.map((p) => unlimitedPass(p.pass)).find((d) => d?.generatorId === generatorOfFilmModel(model)) ?? null;
+        const passRes = passDef?.match.resolution?.[0] ?? resolution;
+        const passFree = !!passDef && passCovers(passDef, generatorOfFilmModel(model), { resolution: passRes, duration: sec, ...(model === "seedance-real-face" ? { version: "2.5" } : {}) });
         return (
           <article key={g.id} className="card w-[90%] max-w-[560px] shrink-0 snap-center space-y-3 p-4">
             <header className="flex flex-wrap items-center justify-between gap-2">
@@ -825,8 +848,10 @@ export default function VideosWorkspace({
               <div className="space-y-1 rounded-2xl bg-surface-2 p-3">
                 <div className="flex items-center justify-between text-sm font-extrabold">
                   <label htmlFor={`sec-${g.id}`}>مدة الفيديو: <span dir="ltr">{sec}s</span></label>
-                  <span dir="ltr">≈ <Coined text={usd(cost)} /></span>
+                  {passFree ? <span className="rounded-full bg-[#1f3fe0] px-2 py-0.5 text-xs text-white">⚡ مجاني باللامحدود</span> : <span dir="ltr">≈ <Coined text={usd(cost)} /></span>}
                 </div>
+                {passFree && passRes !== resolution && <p className="text-xs font-bold text-muted">⚡ يتولد بدقة {passRes} لأن لامحدودك عليها، ويطلع مجاني.</p>}
+                {passDef && !passFree && sec > UNLIMITED.maxVideoSec && <p className="text-xs font-bold text-muted">⚡ عندك لامحدود {passDef.name}: خلّ المدة {UNLIMITED.maxVideoSec} ثانية أو أقل عشان يطلع مجاني.</p>}
                 <input
                   id={`sec-${g.id}`}
                   type="range"

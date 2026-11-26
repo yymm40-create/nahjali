@@ -676,7 +676,7 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
     .select()
     .single();
   if (error) throw error;
-  const { job } = await startJob({
+  const { job, holdMs } = await startJob({
     projectId: project.id,
     user,
     service: "seedance",
@@ -687,13 +687,49 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
     unit: "seconds",
     assetId: asset.id,
     // «لامحدود»: the same video in the studio's terms (a reference ad's extra video is not part of a pass)
-    ...(refVideo ? {} : { unlimited: { generatorId: generatorOfFilmModel(model), settings: { resolution, duration: durationSec, ...(model === "seedance-real-face" ? { version: "2.5" } : {}) } } }),
+    ...(refVideo ? {} : { unlimited: { generatorId: generatorOfFilmModel(model), settings: { resolution, duration: durationSec, ...(model === "seedance-real-face" ? { version: "2.5" } : {}) }, hold: true } }),
   }).catch(async (e) => {
     await db().from("film_assets").delete().eq("id", asset.id);
     throw e;
   });
+  // «لامحدود» after the fast balance: free, but it waits its turn (sendHeldFilmVideos sends it: the page's polling or the minute cron)
+  if (holdMs && holdMs > 0) {
+    const until = new Date(Date.now() + holdMs).toISOString();
+    await db().from("film_assets").update({ meta: { ...meta, held: { until, prompt, refIds: refs.map((r) => r.id) } } }).eq("id", asset.id);
+    return { warning: ready.warning, held: until };
+  }
   after(() => submitVideo(project, job.id, asset.id, { prompt, refs, ...meta, voiceTrack }));
   return { warning: ready.warning };
+}
+
+/**
+ * «لامحدود»: sends the film videos whose slow wait is over (one project's, or everyone's from the minute cron). Each is claimed by
+ * taking its «held» mark off first, so it is sent once.
+ */
+export async function sendHeldFilmVideos(projectId?: string, limit = 20) {
+  let q = db().from("film_assets").select("id, project_id, meta").eq("kind", "video").eq("status", "generating").not("meta->held", "is", null).lte("meta->held->>until", new Date().toISOString()).limit(limit);
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data } = await q;
+  for (const a of (data ?? []) as { id: string; project_id: string; meta: Record<string, unknown> & { held?: { until: string; prompt: string; refIds: string[] } } }[]) {
+    const held = a.meta.held;
+    if (!held) continue;
+    const { held: _drop, ...rest } = a.meta;
+    void _drop;
+    const { data: claimed } = await db().from("film_assets").update({ meta: rest }).eq("id", a.id).not("meta->held", "is", null).select("id");
+    if (!claimed?.length) continue;
+    const [{ data: project }, { data: job }, { data: refRows }] = await Promise.all([
+      db().from("film_projects").select("*").eq("id", a.project_id).maybeSingle(),
+      db().from("film_jobs").select("id").eq("asset_id", a.id).eq("operation", VIDEO_OP).eq("status", "running").maybeSingle(),
+      held.refIds.length ? db().from("film_assets").select("*").in("id", held.refIds) : Promise.resolve({ data: [] as FilmAsset[] }),
+    ]);
+    if (!project || !job) continue;
+    // its generation time starts now (the stale check counts from here, not from the wait)
+    await db().from("film_jobs").update({ started_at: new Date().toISOString() }).eq("id", job.id);
+    const byId = new Map(((refRows ?? []) as FilmAsset[]).map((r) => [r.id, r]));
+    const refs = held.refIds.map((id) => byId.get(id)).filter(Boolean) as FilmAsset[];
+    const m = rest as { model: VideoModel; durationSec: number; resolution: VideoResolution; ratio: string; generateAudio: boolean; voiceTrack?: string | null; refVideo?: string; refVideoSec?: number };
+    await submitVideo(project as FilmProject, String(job.id), a.id, { prompt: held.prompt, refs, ...m }).catch((e) => console.error("film held send", a.id, e));
+  }
 }
 
 /** Videos made at the same time in one project. */
@@ -795,6 +831,8 @@ export async function purgeOldVideos(project: FilmProject) {
 
 /** Running videos: finished ones are saved, stale ones given up. Called by the page and its polling. */
 export async function checkVideos(project: FilmProject) {
+  // «لامحدود»: a slow video whose wait is over goes now
+  await sendHeldFilmVideos(project.id).catch((e) => console.error("film held", e));
   const { data } = await db().from("film_jobs").select("*").eq("project_id", project.id).eq("operation", VIDEO_OP).eq("status", "running");
   const jobs = (data ?? []) as FilmJob[];
   let running = 0;

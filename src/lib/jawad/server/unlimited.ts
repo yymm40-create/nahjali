@@ -113,23 +113,28 @@ async function jobsOf(userId: string, b: Bought): Promise<PassJob[]> {
 }
 
 /**
- * «لامحدود» outside the studio's jobs (the film maker's videos and pictures, the student's illustrations, «حيدرة كت»'s hook): these
- * run at once and cannot wait, so a pass makes them free only while its FAST balance covers them; the use is counted at once.
- * True = free (and counted); false = charged as usual (no pass, or the fast balance is used up — the studio still takes it slowly).
+ * «لامحدود» outside the studio's jobs (the film maker's videos and pictures, the student's illustrations, «حيدرة كت»'s hook): a running
+ * pass makes them FREE, fast or slow, and the use is counted at once (next to the purchases). While the fast balance covers it, it
+ * goes at once; after it, `slow: "hold"` (the film maker's videos) gives the wait it must take before it is sent, and `slow: "free"`
+ * (cheap pictures that cannot wait) lets it go at once. { free: false } = no pass covers it (paid as usual).
  */
-export async function takeUnlimitedFast(userId: string, generatorId: string, settings: Record<string, unknown>, ref: string, now = Date.now()): Promise<boolean> {
+export async function takeUnlimited(userId: string, generatorId: string, settings: Record<string, unknown>, ref: string, slow: "hold" | "free" = "free", now = Date.now()): Promise<{ free: boolean; holdMs: number }> {
   try {
     const t = await unlimitedTicket(userId, generatorId, settings, now);
-    if (!t || !t.inputs.fast) return false;
+    if (!t) return { free: false, holdMs: 0 };
     const [bought, extras] = await Promise.all([readBought(userId), readExtras(userId)]);
-    if (extras.some((x) => x.ref === ref)) return true;
-    await writeBought(userId, bought, [...extras, { paid: t.inputs.paid, cycle: t.inputs.cycle, units: t.inputs.units, fast: true, at: new Date(now).toISOString(), ref: ref.slice(0, 120) }]);
-    return true;
+    if (extras.some((x) => x.ref === ref)) return { free: true, holdMs: 0 };
+    await writeBought(userId, bought, [...extras, { paid: t.inputs.paid, cycle: t.inputs.cycle, units: t.inputs.units, fast: t.inputs.fast, at: new Date(now).toISOString(), ref: ref.slice(0, 120) }]);
+    return { free: true, holdMs: t.inputs.fast || slow === "free" ? 0 : t.holdMs };
   } catch (e) {
-    console.error("unlimited fast take", userId, e);
-    return false;
+    console.error("unlimited take", userId, e);
+    return { free: false, holdMs: 0 };
   }
 }
+
+/** The same for what cannot wait at all (pictures): free under a running pass, fast or slow. */
+export const takeUnlimitedFast = async (userId: string, generatorId: string, settings: Record<string, unknown>, ref: string, now = Date.now()) =>
+  (await takeUnlimited(userId, generatorId, settings, ref, "free", now)).free;
 
 /** A free use that did not happen after all (the generation failed): its fast balance comes back. */
 export async function giveBackUnlimitedFast(userId: string, ref: string) {
