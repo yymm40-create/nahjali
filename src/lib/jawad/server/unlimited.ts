@@ -167,3 +167,111 @@ export const heldNow = (inputs: { unlimited?: { holdUntil?: string } } | null | 
 };
 
 export { UNLIMITED_PASSES };
+
+// ───────────────────────────── the owner's follow-up room ─────────────────────────────
+
+export interface RoomJob {
+  id: string;
+  status: string;
+  generatorId: string;
+  fast: boolean;
+  units: number;
+  createdAt: string;
+  holdUntil: string | null;
+  prompt: string;
+}
+
+export interface RoomPass {
+  pass: string;
+  name: string;
+  quality?: string;
+  kind: "video" | "image";
+  hours: UnlimitedHours;
+  priceSar: number;
+  paidAt: string;
+  until: string;
+  active: boolean;
+  /** jobs made under it (all states) */
+  jobs: RoomJob[];
+  made: number;
+  failed: number;
+  /** seconds of video or pictures, of the jobs that did not fail */
+  units: number;
+  fastLeft: number;
+  fastCap: number;
+  /** slow jobs in this cycle (the next one waits longer) */
+  slowInCycle: number;
+}
+
+export interface RoomPerson {
+  userId: string;
+  email: string;
+  passes: RoomPass[];
+  /** what is happening now: generating, waiting (held until), or idle */
+  now: { state: "idle" | "working" | "held"; until?: string; count: number };
+  lastAt: string | null;
+  spentSar: number;
+}
+
+/** Everyone who bought a pass: what they bought, what they made with it, how much, and what is happening for them now. */
+export async function unlimitedRoom(emails: Map<string, string>, now = Date.now()): Promise<RoomPerson[]> {
+  const { data: rows } = await db().from("jawad_settings").select("key, value").like("key", "unlimited:%");
+  const people: RoomPerson[] = [];
+  for (const r of rows ?? []) {
+    const userId = String(r.key).slice("unlimited:".length);
+    const list = (r.value as { bought?: Bought[] } | null)?.bought ?? [];
+    if (!list.length) continue;
+    const { data: jobRows } = await db()
+      .from("jawad_jobs")
+      .select("id, status, generator_id, inputs, created_at, prompt")
+      .eq("user_id", userId)
+      .not("inputs->unlimited", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(500);
+    const jobs = (jobRows ?? []) as { id: string; status: string; generator_id: string; inputs: PassJob["inputs"] & { unlimited?: { paid?: string; holdUntil?: string } }; created_at: string; prompt: string }[];
+    const passes: RoomPass[] = list.flatMap((b) => {
+      const pass = unlimitedPass(b.pass);
+      if (!pass) return [];
+      const mine = jobs.filter((j) => j.inputs.unlimited?.paid === b.paidAt);
+      const ok = mine.filter((j) => !["failed", "cancelled"].includes(j.status));
+      const cycle = cycleOf(b, now);
+      const inCycle = ok.filter((j) => j.inputs.unlimited?.cycle === cycle);
+      const cap = UNLIMITED.fast[pass.kind];
+      const fastUsed = inCycle.filter((j) => j.inputs.unlimited?.fast).reduce((n, j) => n + (j.inputs.unlimited?.units ?? 0), 0);
+      return [
+        {
+          pass: pass.key,
+          name: pass.name,
+          quality: pass.quality,
+          kind: pass.kind,
+          hours: b.hours,
+          priceSar: passPrice(pass, b.hours),
+          paidAt: b.paidAt,
+          until: new Date(endOf(b)).toISOString(),
+          active: running(b, now),
+          jobs: mine.map((j) => ({ id: j.id, status: j.status, generatorId: j.generator_id, fast: !!j.inputs.unlimited?.fast, units: j.inputs.unlimited?.units ?? 0, createdAt: j.created_at, holdUntil: j.inputs.unlimited?.holdUntil ?? null, prompt: (j.prompt ?? "").slice(0, 160) })),
+          made: ok.length,
+          failed: mine.length - ok.length,
+          units: ok.reduce((n, j) => n + (j.inputs.unlimited?.units ?? 0), 0),
+          fastLeft: running(b, now) ? Math.max(0, cap - fastUsed) : 0,
+          fastCap: cap,
+          slowInCycle: inCycle.filter((j) => !j.inputs.unlimited?.fast).length,
+        },
+      ];
+    });
+    const open = jobs.filter((j) => ["queued", "submitting", "running", "saving"].includes(j.status));
+    const held = open.filter((j) => heldNow(j.inputs, now));
+    const state: RoomPerson["now"]["state"] = held.length ? "held" : open.length ? "working" : "idle";
+    const until = held.map((j) => j.inputs.unlimited?.holdUntil ?? "").sort().at(-1);
+    people.push({
+      userId,
+      email: emails.get(userId) ?? userId,
+      passes,
+      now: { state, ...(state === "held" && until ? { until } : {}), count: open.length },
+      lastAt: jobs[0]?.created_at ?? null,
+      spentSar: passes.reduce((n, p) => n + p.priceSar, 0),
+    });
+  }
+  // the active ones first, then the most recent
+  return people.sort((a, b) => Number(b.passes.some((p) => p.active)) - Number(a.passes.some((p) => p.active)) || String(b.lastAt ?? b.passes[0]?.paidAt ?? "").localeCompare(String(a.lastAt ?? a.passes[0]?.paidAt ?? "")));
+}
