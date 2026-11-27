@@ -28,6 +28,8 @@ export function rulesFor(path: string, method: string): Rule[] {
   if ((path === "/api/checkout/return" && method === "GET") || (path === "/api/checkout/webhook" && method === "POST")) out.push({ key: "checkout", max: 30, windowMs: 10 * 60_000 });
   // the password of the hidden «الخطيب الذكي»: a few tries, then a pause
   if (path === "/api/khateeb/enter" && method === "POST") out.push({ key: "khateeb", max: 8, windowMs: 10 * 60_000 });
+  // «تصويت محبوبة الباري» is open without sign-in: a few votes from a home, never a flood (the server also counts per hour)
+  if (path === "/api/mahdi/vote" && method === "POST") out.push({ key: "vote", max: 20, windowMs: 10 * 60_000 });
   // «عباس سبع القنطرة» (the coach of «الصحة العلوية») is free for the person: a conversation, never a flood
   if (path === "/api/mahdi/health/coach" && method === "POST") out.push({ key: "coach", max: 30, windowMs: 10 * 60_000 });
   if (path === "/api/mahdi/health/meal" && method === "POST") out.push({ key: "meal", max: 40, windowMs: 10 * 60_000 });
