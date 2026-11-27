@@ -175,13 +175,13 @@ export default function VoteForm() {
               />
             </section>
 
-            {error && (
-              <p className="m-error" role="alert">
-                {error}
-              </p>
-            )}
-
+            {/* the send button stays at hand while the list scrolls, and so does what stopped the vote */}
             <div className="qv-bar">
+              {error && (
+                <p className="m-error qv-bar-error" role="alert">
+                  {error}
+                </p>
+              )}
               <button type="submit" className="m-btn m-btn-primary qv-submit" disabled={busy}>
                 {busy ? "يرسل…" : chosen ? `صوّت لـ ${chosen.name}` : "صوّت"}
               </button>

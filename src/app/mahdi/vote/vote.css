@@ -5,8 +5,8 @@
 
 .qv-page {
   background:
-    radial-gradient(90% 46% at 100% 0%, color-mix(in srgb, var(--m-gold) 30%, transparent), transparent 70%),
-    radial-gradient(70% 38% at 0% 6%, color-mix(in srgb, var(--m-accent) 16%, transparent), transparent 70%),
+    radial-gradient(80% 34% at 100% 0%, color-mix(in srgb, var(--m-gold) 20%, transparent), transparent 70%),
+    radial-gradient(60% 30% at 0% 4%, color-mix(in srgb, var(--m-accent) 7%, transparent), transparent 70%),
     var(--m-bg);
 }
 .qv-main {
@@ -178,6 +178,7 @@
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
   background: linear-gradient(180deg, transparent, var(--m-bg) 38%);
 }
+.qv-bar-error { margin-bottom: 8px; background: color-mix(in srgb, var(--m-error) 10%, var(--m-surface-solid)); }
 .qv-submit { width: 100%; min-height: 56px; font-size: 1.1rem; border-radius: 18px; }
 
 /* ── the thanks ── */
