@@ -270,10 +270,13 @@ export default function VideosWorkspace({
   const trackOf = (g: Generation) => voice?.tracks?.find((t) => t.genId === g.id) ?? null;
   const sendVoices = (g: Generation) => g.lines.length > 0 && modeOf(g) !== "none";
   const [trackBusy, setTrackBusy] = useState<string | null>(null);
-  async function uploadTrack(g: Generation, file: File) {
+  async function uploadTrack(g: Generation, original: File) {
     setVoiceError("");
     setTrackBusy(g.id);
     try {
+      // m4a / aac / ogg… (the owner, 28 November 2026): turned into WAV here in the browser, so the server and the video
+      // models keep receiving the MP3 or WAV they accept
+      const file = isMp3OrWav(original) ? original : await toWav(original);
       const mime = file.type || (file.name.toLowerCase().endsWith(".wav") ? "audio/wav" : "audio/mpeg");
       const { upload } = await postJson<{ upload: { path: string; token: string } }>(`/api/film/projects/${projectId}/director`, { action: "upload_voice_url", genId: g.id, mime });
       const put = await fetch(upload.token, { method: "PUT", headers: { "content-type": mime }, body: file }).catch(() => null);
@@ -764,7 +767,7 @@ export default function VideosWorkspace({
                 <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="مصدر الحوار">
                   {([
                     ["make", "🎙️ تتولّد هنا", voicesOn ? "بأصوات ElevenLabs" : "الأصوات غير مفعّلة على الخادم"],
-                    ["upload", "📁 من جهازي", "ملف MP3 أو WAV سويته بنفسك (مثلًا من حسابك في ElevenLabs)"],
+                    ["upload", "📁 من جهازي", "ملف صوت (MP3 أو WAV أو M4A) سويته بنفسك (مثلًا من حسابك في ElevenLabs)"],
                     ["none", "🔇 بدون", "الفيديو يتولد بلا حوار مرجعي"],
                   ] as const).map(([m, label, hint]) => (
                     <button key={m} type="button" role="radio" aria-checked={modeOf(g) === m} title={hint} disabled={m === "make" && !voicesOn} className={`btn min-h-10 px-2 text-xs ${modeOf(g) === m ? "btn-secondary" : "btn-ghost"}`} onClick={() => setDialog({ ...dialog, [g.id]: m })}>
@@ -788,7 +791,7 @@ export default function VideosWorkspace({
                     ) : null}
                     <label className={`btn min-h-10 w-full cursor-pointer text-sm ${trackOf(g) ? "btn-ghost" : "btn-primary"}`}>
                       {trackBusy === g.id ? "يرفع…" : trackOf(g) ? "📁 ارفع ملفًا غيره" : "📁 اختر ملف الحوار من جهازك"}
-                      <input type="file" accept="audio/mpeg,audio/mp3,audio/wav,.mp3,.wav" className="sr-only" disabled={trackBusy === g.id} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void uploadTrack(g, f); }} />
+                      <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac" className="sr-only" disabled={trackBusy === g.id} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void uploadTrack(g, f); }} />
                     </label>
                   </div>
                 )}
@@ -918,4 +921,32 @@ export default function VideosWorkspace({
     </div>
     </EditsLeftContext>
   );
+}
+
+/** An MP3 or WAV goes up as it is. */
+function isMp3OrWav(f: File) {
+  const n = f.name.toLowerCase();
+  return n.endsWith(".mp3") || n.endsWith(".wav") || ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave"].includes(f.type);
+}
+
+/** Any audio the browser can play (m4a, aac, ogg…) as a 16-bit PCM WAV file. */
+async function toWav(f: File): Promise<File> {
+  const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  const ctx = new Ctx();
+  try {
+    const buf = await ctx.decodeAudioData(await f.arrayBuffer()).catch(() => {
+      throw new Error("ما قدرنا نقرأ ملف الصوت؛ ارفعه MP3 أو WAV أو M4A.");
+    });
+    const ch = Math.min(2, buf.numberOfChannels), rate = buf.sampleRate, n = buf.length;
+    const out = new DataView(new ArrayBuffer(44 + n * ch * 2));
+    const str = (o: number, t: string) => [...t].forEach((c, i) => out.setUint8(o + i, c.charCodeAt(0)));
+    str(0, "RIFF"); out.setUint32(4, 36 + n * ch * 2, true); str(8, "WAVE"); str(12, "fmt ");
+    out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, ch, true); out.setUint32(24, rate, true);
+    out.setUint32(28, rate * ch * 2, true); out.setUint16(32, ch * 2, true); out.setUint16(34, 16, true); str(36, "data"); out.setUint32(40, n * ch * 2, true);
+    const data = Array.from({ length: ch }, (_, c) => buf.getChannelData(c));
+    for (let i = 0, o = 44; i < n; i++) for (let c = 0; c < ch; c++, o += 2) out.setInt16(o, Math.max(-1, Math.min(1, data[c][i])) * 0x7fff, true);
+    return new File([out.buffer], f.name.replace(/\.[^.]+$/, "") + ".wav", { type: "audio/wav" });
+  } finally {
+    void ctx.close();
+  }
 }
