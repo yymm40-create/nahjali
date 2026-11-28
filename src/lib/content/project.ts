@@ -154,7 +154,7 @@ export function addToStore(store: ProjectStore, adds: unknown): { store: Project
 }
 
 /** What the site fixed by itself from the choices (the look), shown in the store and handed on. */
-export function lookLines(b: Pick<SlidesBlock, "carouselId" | "paletteId" | "fontId" | "motion" | "maker" | "mix"> | null): string[] {
+export function lookLines(b: Pick<SlidesBlock, "carouselId" | "paletteId" | "fontId" | "motion" | "maker" | "mix" | "gpt26"> | null): string[] {
   if (!b) return [];
   const car = b.carouselId ? findCarouselStyle(b.carouselId) : null;
   const pal = b.paletteId ? findPalette(b.paletteId) : null;
@@ -166,7 +166,7 @@ export function lookLines(b: Pick<SlidesBlock, "carouselId" | "paletteId" | "fon
     car ? `الألوان: ${pal ? pal.name : "ألوان الستايل نفسه"}` : "",
     font ? `الخط: ${font.name}` : "",
     b.motion ? `موشن كاروسيل: ${ms ? ms.name : "حركة خاصة"}${route ? ` · ${route.label}` : ""}` : car ? "كاروسيل ثابت" : "",
-    b.maker === "code" ? (b.mix ? "التصميم: GPT Image 2 للصور + حيدرا ماكس للكتابة" : b.motion ? "" : "التصميم: حيدرا ماكس بالكود") : car ? "التصميم: GPT Image 2 يرسم الشريحة كاملة" : "",
+    b.maker === "code" ? (b.mix ? `التصميم: GPT Image ${b.gpt26 ? "2.6" : "2"} للصور + حيدرا ماكس للكتابة` : b.motion ? (b.motion.route !== "code" ? `الصور: GPT Image ${b.gpt26 ? "2.6" : "2"}` : "") : "التصميم: حيدرا ماكس بالكود") : car ? `التصميم: GPT Image ${b.gpt26 ? "2.6" : "2"} يرسم الشريحة كاملة` : "",
   ].filter(Boolean);
 }
 
@@ -228,7 +228,7 @@ export function handOff(chat: Pick<Chat, "title" | "record">, messages: Turn[], 
   // (a NEW carousel ordered in the first chat gets its own delivery message)
   const again = hasDesign(out) && p.mode === "fix";
   const ns = p.slides.map((s) => s.n).sort((a, b) => a - b);
-  const look = lookLines({ ...block, maker: p.maker, mix: p.mix, motion: p.motion, carouselId: p.carouselId, paletteId: p.paletteId, fontId: p.fontId });
+  const look = lookLines({ ...block, maker: p.maker, mix: p.mix, gpt26: p.gpt26, motion: p.motion, carouselId: p.carouselId, paletteId: p.paletteId, fontId: p.fontId });
   let text: string;
   let slides: SlidesBlock;
   if (again) {

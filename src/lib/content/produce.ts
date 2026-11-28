@@ -15,6 +15,7 @@
 //   - at the end a report says what the check found, and «محمد باقر» reads it in his next answer.
 // Server only.
 
+import { GPT_IMAGE_26_ID } from "@config/jawad/generators";
 import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";
 import { unlimitedFor } from "@/lib/access";
@@ -39,6 +40,11 @@ import { checkSlide, fixNote, showsRealWoman, WOMAN_PROBLEM, type SlideCheck } f
 /** GPT Image 2 for the slides: the standard sizes (a 1:1 slide is 1024×1024), high quality for readable Arabic. */
 export const IMAGE_MODEL = "gpt-image-2-2026-04-21";
 export const IMAGE_TIER = "std" as const;
+/**
+ * «نسخة GPT Image»: the carousel's pictures by GPT Image 2.6 (Sunburst, the finer and steadier of its two: Arabic
+ * lettering, the same look slide after slide) when the person picked it; GPT Image 2 (جواد's default) otherwise.
+ */
+export const gptOf = (p: { gpt26?: boolean }) => (p.gpt26 ? { generatorId: GPT_IMAGE_26_ID, variant: "sunburst" } : {});
 /** GPT Image 2 at its medium quality and standard size by default (the owner, 17 Nov 2026: «التلقائي الجودة المتوسطة والعادية») */
 export const IMAGE_QUALITY = "medium" as const;
 /** Slides asked of جواد at once in one call (after the first): his desk keeps three jobs going at most. */
@@ -229,6 +235,7 @@ async function makeSlide(c: { userId: string; chatId: string; owner: boolean; t0
         aspect: p.aspect,
         resolution: IMAGE_TIER,
         quality: IMAGE_QUALITY,
+        ...gptOf(p),
         refs: [...(ref ? [{ uploadId: ref, name: "slide1" }] : []), ...mine.map((uploadId, i) => ({ uploadId, name: `ref${i + 1}` }))],
       });
       png = r.bytes;
@@ -352,6 +359,7 @@ export async function planPictureRedo(userId: string, chat: Chat, asks: { n: num
     mode: "fix",
     maker: "code",
     ...(design.mix ? { mix: true } : {}),
+    ...(design.gpt26 ? { gpt26: true } : {}),
     split: true,
     ...(design.carouselId ? { carouselId: design.carouselId } : {}),
     ...(design.fontId ? { fontId: design.fontId } : {}),
@@ -448,6 +456,7 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed", ti
     mode: "fix",
     ...(block.maker === "code" ? { maker: "code" as const } : {}),
     ...(block.mix ? { mix: true } : {}),
+    ...(block.gpt26 ? { gpt26: true } : {}),
     ...(block.split ? { split: true } : {}),
     ...(block.carouselId ? { carouselId: block.carouselId } : {}),
     ...(block.fontId ? { fontId: block.fontId } : {}),
@@ -657,6 +666,7 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
     templateId: p.templateId,
     ...(p.maker === "code" ? { maker: "code" as const } : {}),
     ...(p.mix ? { mix: true } : {}),
+    ...(p.gpt26 ? { gpt26: true } : {}),
     ...(p.split ? { split: true } : {}),
     ...(old?.approved && messages[at]?.thread !== "design" ? { approved: true } : {}),
     ...(p.carouselId ? { carouselId: p.carouselId } : {}),
@@ -747,7 +757,7 @@ async function paintArt(userId: string, chatId: string, messages: Chat["messages
     // the project's store (a two-chat project): its fixed rules, what was removed, the person's recommendations
     const rules = p.split ? storeBrief(await getStore(chatId).catch(() => EMPTY_STORE)) : "";
     try {
-      const paint = (extra: string) => deskImage(who, { key: `c-${randomUUID().replace(/-/g, "")}`, kind: "image", prompt: [brief, rules, element ? ELEMENT_RULE : "", pal ? paletteBlock(pal) : "", car ? `LOOK OF THE CAROUSEL (for the picture only): ${pal ? `${withoutColours(car.look)} ${COLOURS_ARE_THE_CLIENTS}` : car.look}` : "", style ? `ILLUSTRATION STYLE (verbatim): ${style.text}` : "", car && (pal || refs.length) ? CLIENT_FIRST : "", NO_REALISTIC_WOMEN, extra, NO_TEXT_RULE].filter(Boolean).join("\n\n"), aspect: p.aspect, resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
+      const paint = (extra: string) => deskImage(who, { key: `c-${randomUUID().replace(/-/g, "")}`, kind: "image", prompt: [brief, rules, element ? ELEMENT_RULE : "", pal ? paletteBlock(pal) : "", car ? `LOOK OF THE CAROUSEL (for the picture only): ${pal ? `${withoutColours(car.look)} ${COLOURS_ARE_THE_CLIENTS}` : car.look}` : "", style ? `ILLUSTRATION STYLE (verbatim): ${style.text}` : "", car && (pal || refs.length) ? CLIENT_FIRST : "", NO_REALISTIC_WOMEN, extra, NO_TEXT_RULE].filter(Boolean).join("\n\n"), aspect: p.aspect, resolution: IMAGE_TIER, quality: IMAGE_QUALITY, ...gptOf(p), refs });
       let r = await paint("");
       // a picture that came out with a realistic adult woman is painted once more; a second one stops the slide
       if ((await showsRealWoman(r.bytes)).woman) {
