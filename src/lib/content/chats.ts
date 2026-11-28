@@ -61,6 +61,8 @@ export interface SlidesBlock {
   maker?: "code";
   /** with "code": GPT Image 2 paints every slide's picture and «حيدرا ماكس» only writes on it */
   mix?: boolean;
+  /** the pictures are painted by GPT Image 2.6 (Sunburst) instead of GPT Image 2 — the person's pick (lib/content/maker: «نسخة GPT Image») */
+  gpt26?: boolean;
   /** the style of the table of 50 this carousel follows */
   carouselId?: string;
   /** the font of the list of 50 the carousel is written in */
@@ -179,6 +181,8 @@ export interface PendingProduce {
   maker?: "code";
   /** with "code": GPT Image 2 paints every slide's picture and «حيدرا ماكس» only writes on it */
   mix?: boolean;
+  /** the pictures are painted by GPT Image 2.6 (Sunburst) instead of GPT Image 2 — the person's pick (lib/content/maker: «نسخة GPT Image») */
+  gpt26?: boolean;
   /** the style of the table of 50 this carousel follows */
   carouselId?: string;
   /** the font of the list of 50 the carousel is written in */
@@ -337,6 +341,7 @@ export function cleanHistory(raw: unknown): Turn[] {
         styleId: str(s.styleId, 60),
         ...(s.maker === "code" ? { maker: "code" as const } : {}),
         ...(s.mix === true ? { mix: true } : {}),
+        ...(s.gpt26 === true ? { gpt26: true } : {}),
         ...(s.approved === true ? { approved: true } : {}),
         ...(s.split === true ? { split: true } : {}),
         ...(typeof s.carouselId === "string" && findCarouselStyle(s.carouselId) ? { carouselId: s.carouselId } : {}),
@@ -378,6 +383,7 @@ export function readPending(v: unknown): PendingProduce | null {
     mode: p.mode === "fix" ? "fix" : "all",
     ...(p.maker === "code" ? { maker: "code" as const } : {}),
     ...(p.mix === true ? { mix: true } : {}),
+    ...(p.gpt26 === true ? { gpt26: true } : {}),
     ...(typeof p.carouselId === "string" && findCarouselStyle(p.carouselId) ? { carouselId: p.carouselId } : {}),
     ...(typeof p.fontId === "string" && findContentFont(p.fontId) ? { fontId: p.fontId } : {}),
     ...(typeof p.paletteId === "string" && findPalette(p.paletteId) ? { paletteId: p.paletteId } : {}),

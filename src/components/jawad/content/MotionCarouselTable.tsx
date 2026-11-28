@@ -9,7 +9,7 @@ import { MOTION_CAROUSEL_STYLES, routeById, type MotionCarouselStyle } from "@co
 
 const WORD: Record<string, string> = { counter: "٨٧٪", breaking: "عاجل", "text-behind": "جديد", quiz: "سؤال؟", "pixar-story": "الحكاية" };
 
-const COST = { code: "الأرخص: بالكود فقط", picture: "+ صورة GPT Image 2", elements: "+ عناصر مفرّغة" } as const;
+const COST = { code: "الأرخص: بالكود فقط", picture: "+ صورة GPT Image", elements: "+ عناصر مفرّغة" } as const;
 
 function Preview({ s }: { s: MotionCarouselStyle }) {
   return (

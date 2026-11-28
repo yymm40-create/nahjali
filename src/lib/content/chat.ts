@@ -27,7 +27,7 @@ import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, n
 import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
-import { askedSlides, attachedPictures, CAROUSEL_QUESTION, carouselHold, pathOf, pickedCarousel, pureGatePick, siteStep, pickedFont, pickedKind, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "./maker";
+import { askedSlides, attachedPictures, CAROUSEL_QUESTION, carouselHold, pathOf, pickedCarousel, pureGatePick, siteStep, pickedFont, pickedGptVersion, pickedKind, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "./maker";
 import { chatEditPatch, lastSlidesAt, planPictureRedo, planRetryWords, planSoundTime } from "./produce";
 import { addToStore, getStore, handOff, hasDesign, lookLines, saveStore, storeNote, threadTurns, twoChats, type Thread } from "./project";
 import { slidePicture } from "./files";
@@ -618,7 +618,11 @@ export async function say(userId: string, chatId: string | null, message: string
       // his own pictures, or a motion he did not pick (left to us): the fitting one, over the pictures, nothing asked
       : (allOwn || wordMotion) && wantsMotion ? { styleId: (wordMotion ?? motionPick?.style ?? findMotionCarouselStyle("kinetic-word"))!.id, route: allOwn ? "picture" : (route ?? "picture"), seconds: slideSeconds(wordMotion ?? motionPick?.style ?? findMotionCarouselStyle("kinetic-word")) }
       : null;
-    const code = motion || picked === "code" ? { maker: "code" as const } : picked === "mix" ? { maker: "code" as const, mix: true } : {};
+    // «نسخة GPT Image»: GPT Image 2.6 paints the pictures when the person picked it (pressed since the last carousel); else
+    // the carousel being fixed or carried on keeps its own; else GPT Image 2
+    const version = pickedGptVersion(history);
+    const gpt26 = version ? version === "2.6" : fixed?.gpt26 === true;
+    const code = { ...(motion || picked === "code" ? { maker: "code" as const } : picked === "mix" ? { maker: "code" as const, mix: true } : {}), ...(gpt26 ? { gpt26: true as const } : {}) };
     const moving = motion ? { motion } : {};
     // his own pictures: the steps he skipped are not asked (the style, the colours, the font are the picked ones or his)
     const hold = fixed || (allOwn && motion) ? null : carouselHold(history, slides.length);
