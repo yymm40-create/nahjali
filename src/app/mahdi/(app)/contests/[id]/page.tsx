@@ -127,7 +127,7 @@ function OwnerView({ data, reload }: { data: Data; reload: () => void }) {
     }
   };
   const share = () => {
-    const text = `«${c.title}»\n${c.prize ? `الجائزة: ${c.prize}\n` : ""}من ${day(c.startsOn)} إلى ${day(c.endsOn)}، والفوز لمن يوصل ${c.threshold}٪ في عباداته.\nادخل من تطبيق «لأجل المهدي» واختر مشاريعك العبادية:\n${link}`;
+    const text = `«${c.title}»\n${c.prize ? `الجائزة: ${c.prize}\n` : ""}من ${day(c.startsOn)} إلى ${day(c.endsOn)}، والفوز لمن يوصل ${c.threshold}٪ في عباداته.\nادخل من تطبيق «لأجل المهدي» واختر مشاريعك العبادية:\n${link}\nأو اكتب الكود ${data.code} في «مسابقة الثبات» ← «عندي كود».`;
     if (navigator.share) navigator.share({ title: c.title, text }).catch(() => {});
     else navigator.clipboard?.writeText(text).then(() => toast("انتسخ الإعلان مع الرابط"), () => {});
   };
@@ -135,8 +135,9 @@ function OwnerView({ data, reload }: { data: Data; reload: () => void }) {
   return (
     <div className="space-y-4">
       <section className="m-card space-y-3 p-5">
-        <p className="font-semibold">رابط المسابقة</p>
-        <p className="m-muted text-sm">أرسله في قروب الواتساب: اللي يفتحه يسجّل في التطبيق (أو يدخل) ويوصل للمسابقة على طول.</p>
+        <p className="font-semibold">الرابط والكود الخاص</p>
+        <p className="m-muted text-sm">أرسل الرابط في قروب الواتساب: اللي يفتحه يسجّل في التطبيق (أو يدخل) ويوصل للمسابقة على طول. أو أعطهم الكود: يكتبونه في «مسابقة الثبات» ← «عندي كود».</p>
+        <p className="m-num text-center text-3xl font-bold tracking-[0.3em]" dir="ltr">{data.code}</p>
         <p className="m-field m-num select-all break-all text-sm" dir="ltr">{link}</p>
         <div className="flex flex-wrap gap-2">
           <button type="button" className="m-btn m-btn-primary m-btn-sm" onClick={share}>
@@ -144,6 +145,9 @@ function OwnerView({ data, reload }: { data: Data; reload: () => void }) {
           </button>
           <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => navigator.clipboard?.writeText(link).then(() => toast("انتسخ الرابط"), () => {})}>
             انسخ الرابط
+          </button>
+          <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => navigator.clipboard?.writeText(data.code ?? "").then(() => toast("انتسخ الكود"), () => {})}>
+            انسخ الكود
           </button>
         </div>
       </section>
@@ -154,7 +158,7 @@ function OwnerView({ data, reload }: { data: Data; reload: () => void }) {
           <h2 className="font-semibold">المشاركين ({rows.length})</h2>
           <p className="m-muted m-num text-sm">{qualified} واصلين {c.threshold}٪</p>
         </div>
-        {!rows.length && <p className="m-muted text-sm">ما انضم أحد للحين. أرسل الرابط.</p>}
+        {!rows.length && <p className="m-muted text-sm">ما انضم أحد للحين. أرسل الرابط أو الكود.</p>}
         {rows.map((r) => (
           <article key={r.key} className="m-card space-y-3 p-4" style={r.excluded ? { opacity: 0.6 } : undefined}>
             <button type="button" className="flex w-full items-center gap-3 text-start" onClick={() => setOpen(open === r.key ? null : r.key)} aria-expanded={open === r.key}>
