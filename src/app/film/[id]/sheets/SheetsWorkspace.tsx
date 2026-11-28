@@ -1,5 +1,6 @@
 "use client";
 
+import GptImagePicker from "@/components/jawad/GptImagePicker";
 import { credits, creditsRange } from "@/lib/film/credits";
 import Coined from "@/components/Coined";
 import Link from "next/link";
@@ -224,6 +225,10 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
   return (
     <EditsLeftContext value={editsLeft}>
     <div className="space-y-4">
+      {/* «نسخة GPT Image»: the style tests, the master and every sheet are painted by the version picked here */}
+      <section className="card p-4">
+        <GptImagePicker />
+      </section>
       {library.length > 0 && (
         <section className="card space-y-3 p-4">
           <h2 className="text-lg font-extrabold">مكتبة المراجع ({library.length})</h2>

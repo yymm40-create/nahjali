@@ -4,6 +4,8 @@
 // picture the person gave. The motion and its whole foundation (backgrounds, worlds, type, shapes, transitions) are
 // always code (the owner's order): GPT Image 2 only paints those pictures.
 
+import { gptImageGenerator } from "@config/jawad/gpt-image";
+import { gptImagePickOf } from "@/lib/jawad/server/gpt-image-pick";
 import { randomUUID } from "node:crypto";
 import { UserError } from "@/lib/api";
 import { unlimitedFor } from "@/lib/access";
@@ -27,7 +29,9 @@ export async function labPicture(p: EditorProject, who: Who, b: Record<string, u
   // the same request (the page sends it again after a cut line) is the same job: never paid twice
   const key = `lab-${text(b.key, 60).replace(/[^A-Za-z0-9_-]/g, "") || randomUUID().replace(/-/g, "").slice(0, 24)}`;
   try {
-    const r = await deskImage(desk, { key, kind: "image", generatorId: "openai-gpt-image-2", prompt: `${prompt}\n\n${NO_TEXT_RULE}`, aspect, quality: "high", resolution: "std" });
+    // «نسخة GPT Image»: the person's pick (GPT Image 2, or 2.6 Sunburst / Flare)
+    const pick = await gptImagePickOf(who.id).catch(() => "2" as const);
+    const r = await deskImage(desk, { key, kind: "image", generatorId: gptImageGenerator(pick), ...(pick !== "2" ? { variant: pick } : {}), prompt: `${prompt}\n\n${NO_TEXT_RULE}`, aspect, quality: "high", resolution: "std" });
     const ext = r.out.mime.includes("png") ? "png" : r.out.mime.includes("webp") ? "webp" : "jpg";
     const asset = await addFile(p, { bytes: r.bytes, mime: r.out.mime, ext, kind: "image", name, width: r.out.width, height: r.out.height, meta: { fromLab: true, prompt: prompt.slice(0, 600) } });
     return { asset, coins: r.receipt.coins ?? 0, free: Boolean(r.receipt.free) };

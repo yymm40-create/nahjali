@@ -1,10 +1,12 @@
 import { after } from "next/server";
+import { gptImageGenerator, gptImageModel, type GptImagePick } from "@config/jawad/gpt-image";
+import { gptImagePickOf } from "@/lib/jawad/server/gpt-image-pick";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, totalTokens, type ClaudeTurn } from "./anthropic";
 import { forTask, keepClaude } from "./claude-model";
 import { addMessage, stageTurns } from "./conversation";
-import { generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
+import { FILM_IMAGE_MODEL, generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
 import { failJob, JOB_STALE_MS, logReplyTokens, replyTokens, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
 import { GENERATOR_FACTS, SHEET_APP_INTEGRATION, SHEET_MAKER_PROMPT, SHEET_MAKER_SCHEMA, STYLE_PLACEHOLDER } from "@config/film-prompts/sheet-maker";
@@ -1004,7 +1006,7 @@ async function userMessages(projectId: string, head: string): Promise<string[]> 
   return (data ?? []).map((m) => String(m.content ?? ""));
 }
 
-type ImageJob = { sheetId: string; prompt: string; refs: FilmAsset[]; kind: "test" | "sheet" | "portrait"; quality?: "medium" | "high"; versionId: string | null; meta: Record<string, unknown> };
+type ImageJob = { sheetId: string; prompt: string; refs: FilmAsset[]; kind: "test" | "sheet" | "portrait"; quality?: "medium" | "high"; versionId: string | null; meta: Record<string, unknown>; /** «نسخة GPT Image»: the person's pick, read when the job is made */ gpt?: GptImagePick };
 
 /** Creates the asset + paid job for one picture and generates it in the background. */
 async function startImage(project: FilmProject, user: { id: string; email?: string | null }, o: ImageJob) {
@@ -1016,6 +1018,8 @@ async function startImage(project: FilmProject, user: { id: string; email?: stri
 async function prepareImage(project: FilmProject, user: { id: string; email?: string | null }, o: ImageJob) {
   const running = await runningImageJobs(project.id);
   if (running.length >= MAX_IMAGES_AT_ONCE) throw new UserError("فيه صور تتولد الحين، انتظرها تخلص.", 409);
+  // «نسخة GPT Image»: the picture is painted by the version the person picked (GPT Image 2, or 2.6 Sunburst / Flare)
+  o.gpt = await gptImagePickOf(user.id).catch(() => "2" as const);
   const { data: asset, error } = await db()
     .from("film_assets")
     .insert({ project_id: project.id, kind: "image", ref_key: o.sheetId, version_id: o.versionId, status: "generating", meta: o.meta })
@@ -1032,8 +1036,9 @@ async function prepareImage(project: FilmProject, user: { id: string; email?: st
     units: 1,
     unit: "images",
     assetId: asset.id,
-    // «لامحدود» GPT Image 2: the standard-size pictures (a style test, a real photo's single image); a 2K sheet is outside the pass
-    ...(o.kind !== "sheet" ? { unlimited: { generatorId: "openai-gpt-image-2", settings: { quality: o.quality ?? "medium", resolution: "std", count: 1 } } } : {}),
+    // «لامحدود» on the version picked: GPT Image 2's pass covers the standard-size pictures (a style test, a real photo's single
+    // image) — a 2K sheet is outside it —; GPT Image 2.6's pass (Sunburst and Flare) covers what its pass says (lib/…/unlimited)
+    unlimited: { generatorId: gptImageGenerator(o.gpt), settings: { quality: o.quality ?? "medium", resolution: o.kind === "sheet" ? "hi" : "std", count: 1 } },
   }).catch(async (e) => {
     await db().from("film_assets").delete().eq("id", asset.id);
     throw e;
@@ -1056,6 +1061,7 @@ async function runImage(project: FilmProject, jobId: string, assetId: string, o:
       size: IMAGE_SIZES[o.kind],
       // every picture of the film maker in balanced (medium) quality — the owner, 23 Nov 2026: «دايم الصور تجي بجودة متوازنة متوسطة»
       quality: o.quality ?? "medium",
+      model: gptImageModel(o.gpt, FILM_IMAGE_MODEL),
     });
     const path = `${projectDir(project)}/sheets/${assetId}.png`;
     const up = await storage.from(FILM_BUCKET).upload(path, png, { contentType: "image/png", upsert: true });

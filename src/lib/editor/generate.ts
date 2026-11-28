@@ -2,6 +2,8 @@
 // picture (GPT Image 2, its background taken out), music (ElevenLabs), and a clip's sound split into its talking,
 // music and sound effects. Every result is a new file in the project's library. Server only.
 
+import { gptImageGenerator, gptImageModel } from "@config/jawad/gpt-image";
+import { gptImagePickOf } from "@/lib/jawad/server/gpt-image-pick";
 import { giveBackUnlimitedFast, takeUnlimitedFast } from "@/lib/jawad/server/unlimited";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
@@ -120,8 +122,10 @@ export async function makeHook(p: EditorProject, who: Who, b: { text?: unknown; 
       b.prompt.trim().slice(0, 3800),
       scene ? "" : "Background: one flat solid pure green colour (#00FF00) filling the whole image around the lettering and its element, perfectly even, no gradient, no texture, no shadow cast on the background, and no green anywhere in the lettering or the element.",
     ].filter(Boolean).join("\n");
+    // «نسخة GPT Image»: the person's pick
+    const model = gptImageModel(await gptImagePickOf(who.id).catch(() => "2" as const));
     const out = await charged(who, "editor_price_hook", 1, "نص الهوك بالصورة في حيدرة كت", () =>
-      openaiImage({ model: "gpt-image-2-2026-04-21", prompt: designed, aspect, resolution: "std", quality: "high", count: 1, references: [], user: providerUserId(p.user_id) }).catch(providerError),
+      openaiImage({ model, prompt: designed, aspect, resolution: "std", quality: "high", count: 1, references: [], user: providerUserId(p.user_id) }).catch(providerError),
     );
     const png = scene ? await sharp(out.images[0]).png().toBuffer({ resolveWithObject: true }).then((r) => ({ bytes: r.data, width: r.info.width, height: r.info.height })) : await keyOutGreen(out.images[0]);
     return addFile(p, { bytes: png.bytes, mime: "image/png", ext: "png", kind: "image", name: `هوك: ${text}`, width: png.width, height: png.height, meta: { made: "hook", text, designed: true } });
@@ -132,10 +136,12 @@ export async function makeHook(p: EditorProject, who: Who, b: { text?: unknown; 
     `Style: ${style}. Big, punchy, eye-catching, centred, fills most of the width.`,
     "Background: one flat solid pure green colour (#00FF00) filling the whole image, perfectly even, no gradient, no texture, no shadow or glow on the background, and no green anywhere in the lettering.",
   ].join("\n");
-  const draw = () => openaiImage({ model: "gpt-image-2-2026-04-21", prompt, aspect: "3:2", resolution: "std", quality: "medium", count: 1, references: [], user: providerUserId(p.user_id) }).catch(providerError);
-  // «لامحدود» GPT Image 2: while the person's fast balance lasts this picture is free (given back if it fails)
+  // «نسخة GPT Image»: the person's pick, and «لامحدود» on that version
+  const pick = await gptImagePickOf(who.id).catch(() => "2" as const);
+  const draw = () => openaiImage({ model: gptImageModel(pick), prompt, aspect: "3:2", resolution: "std", quality: "medium", count: 1, references: [], user: providerUserId(p.user_id) }).catch(providerError);
+  // «لامحدود» on the version picked: while the person's fast balance lasts this picture is free (given back if it fails)
   const passRef = `editor-hook:${crypto.randomUUID()}`;
-  const passFree = !who.team && (await takeUnlimitedFast(who.id, "openai-gpt-image-2", { quality: "medium", resolution: "std", count: 1 }, passRef));
+  const passFree = !who.team && (await takeUnlimitedFast(who.id, gptImageGenerator(pick), { quality: "medium", resolution: "std", count: 1 }, passRef));
   const img = passFree
     ? await draw().catch(async (e) => {
         await giveBackUnlimitedFast(who.id, passRef);

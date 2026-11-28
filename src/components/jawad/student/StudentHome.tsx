@@ -1,5 +1,6 @@
 "use client";
 
+import GptImagePicker from "@/components/jawad/GptImagePicker";
 import { useBranch } from "./branch";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -208,6 +209,8 @@ export default function StudentHome({
           </h2>
           <p className="text-sm text-jw-muted">اكتب اسم المادة واختر من وين المحتوى، وبعدها تحط ملفاتك.</p>
         </div>
+        {/* «نسخة GPT Image»: the pictures of the student's outputs (pages, slides, maps, illustrations) follow this pick */}
+        <GptImagePicker />
         <div>
           <label className="jw-label" htmlFor="st-title">اسم المادة</label>
           <input id="st-title" className="jw-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مثال: علوم — الفصل الثالث: الخلية" />

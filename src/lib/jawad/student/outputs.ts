@@ -2,6 +2,8 @@
 // Each handler does one step per call (a chapter, a few questions, one audio part, one image, one render) and keeps
 // what it made, so a stopped run continues where it was and a failed part is made again alone.
 
+import { gptImageGenerator, gptImageModel } from "@config/jawad/gpt-image";
+import { gptImagePickOf } from "@/lib/jawad/server/gpt-image-pick";
 import { takeUnlimitedFast } from "@/lib/jawad/server/unlimited";
 import { readSermonLength, SERMON_PARTS } from "@config/jawad/khateeb";
 import { poemsCeilingUsd, sermonBrief, sermonPlanStep, tafsirCeilingUsd } from "./sermon";
@@ -578,8 +580,10 @@ async function writeChapter(c: Ctx, o: Output, plan: DocPlan, i: number, revise?
 // ───────────────────────────── images ─────────────────────────────
 
 async function makeImage(o: Output, c: Ctx, prompt: string, n: number) {
+  // «نسخة GPT Image»: the student's pick (GPT Image 2, or 2.6 Sunburst / Flare)
+  const pick = await gptImagePickOf(o.user_id).catch(() => "2" as const);
   const res = await openaiImage({
-    model: IMAGE_MODEL,
+    model: gptImageModel(pick, IMAGE_MODEL),
     prompt: `An illustration for a study ${o.kind === "slides" ? "presentation slide" : "book"} (level: ${c.project.level || "general"}). ${prompt}. No text or letters in the picture. It is illustrative, not documentary.`,
     aspect: "3:2",
     resolution: "std",
@@ -590,8 +594,8 @@ async function makeImage(o: Output, c: Ctx, prompt: string, n: number) {
   });
   const path = `${o.user_id}/${o.project_id}/img/${o.id}-${n}-${Date.now()}.png`;
   await putFile(path, res.images[0], "image/png");
-  // «لامحدود» GPT Image 2: while the person's fast balance lasts, a made illustration is free (counted once per picture)
-  const free = await takeUnlimitedFast(o.user_id, "openai-gpt-image-2", { quality: "medium", resolution: "std", count: 1 }, `student:${o.id}:${n}`);
+  // «لامحدود» on the version picked: while the person's fast balance lasts, a made illustration is free (counted once per picture)
+  const free = await takeUnlimitedFast(o.user_id, gptImageGenerator(pick), { quality: "medium", resolution: "std", count: 1 }, `student:${o.id}:${n}`);
   return { path, usd: free ? 0 : res.costUsd ?? IMAGE_USD };
 }
 
