@@ -43,13 +43,16 @@ export async function generateFilmImage({
   references,
   size,
   quality,
+  model,
 }: {
   prompt: string;
   references: Buffer[];
   size: string;
   quality: "medium" | "high";
+  /** «نسخة GPT Image»: the person's pick (GPT Image 2 when missing) — same sizes, same token prices */
+  model?: string;
 }): Promise<{ png: Buffer; costUsd: number | null; tokens: number }> {
-  const common = { model: FILM_IMAGE_MODEL, prompt, size: size as "1536x1024", quality, output_format: "png" as const };
+  const common = { model: model ?? FILM_IMAGE_MODEL, prompt, size: size as "1536x1024", quality, output_format: "png" as const };
   const res = references.length
     ? await openai().images.edit({
         ...common,

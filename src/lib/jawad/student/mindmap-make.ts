@@ -3,6 +3,8 @@
 // free) with its blank recall copy, and — when the student chose it — redrawn by GPT Image 2 as an illustrated map, with
 // صادق's picture as its reference (the structure and the words stay, the art is GPT Image 2's). Server only.
 
+import { gptImageModel } from "@config/jawad/gpt-image";
+import { gptImagePickOf } from "@/lib/jawad/server/gpt-image-pick";
 import { createHash } from "node:crypto";
 import { defaultDesign, fontById, type Design } from "@config/jawad/student";
 import { GPT_IMAGE_2_SIZES, gptImage2OutputTokens } from "@config/jawad/generators";
@@ -178,7 +180,7 @@ async function drawMap(o: Output, c: Ctx, plan: MindPlan, i: number, note = "") 
   ]
     .filter(Boolean)
     .join("\n");
-  const res = await openaiImage({ model: MODEL, prompt, aspect, resolution: "hi", quality: s.imageQuality, count: 1, references: [{ bytes: ref, mime: "image/png" }], user: providerUserId(o.user_id) });
+  const res = await openaiImage({ model: gptImageModel(await gptImagePickOf(o.user_id).catch(() => "2" as const), MODEL), prompt, aspect, resolution: "hi", quality: s.imageQuality, count: 1, references: [{ bytes: ref, mime: "image/png" }], user: providerUserId(o.user_id) });
   const path = outPath(o, `art-${i + 1}.png`);
   await putFile(path, res.images[0], "image/png");
   return { path, usd: res.costUsd ?? mapImageUsd(s.imageQuality) };

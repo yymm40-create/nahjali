@@ -9,7 +9,9 @@ import { storage } from "@/lib/storage";
 import { MASTER_STYLE_ONLY } from "@config/film-prompts/sheet-maker";
 import { CHARACTER_LOOK_RULE, hasCharacterLayout, withCharacterLayout } from "@config/film-prompts/character-sheet";
 import { callClaudeJson, claudeCost } from "./anthropic";
-import { generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
+import { FILM_IMAGE_MODEL, generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
+import { gptImageModel } from "@config/jawad/gpt-image";
+import { gptImagePickOf } from "@/lib/jawad/server/gpt-image-pick";
 import { refundSeries, reserveSeries, settleSeries } from "./series-pay";
 import { FILM_BUCKET } from "./types";
 import type { FilmSeries } from "./series";
@@ -177,7 +179,9 @@ export async function generateCast(series: FilmSeries, who: { id: string; email?
         refs.push(Buffer.from(await f.data.arrayBuffer()));
         prompt += `\n\n${MASTER_STYLE_ONLY}`;
       }
-      const img = await generateFilmImage({ prompt, references: refs, size: IMAGE_SIZES.sheet, quality: "medium" });
+      // «نسخة GPT Image»: the series owner's pick
+      const model = gptImageModel(await gptImagePickOf(series.user_id).catch(() => "2" as const), FILM_IMAGE_MODEL);
+      const img = await generateFilmImage({ prompt, references: refs, size: IMAGE_SIZES.sheet, quality: "medium", model });
       usd += img.costUsd ?? IMAGE_ESTIMATE_USD.sheet;
       const path = `${series.user_id}/series/${series.id}/cast/${row.id}-${Date.now()}.png`;
       const up = await storage.from(FILM_BUCKET).upload(path, img.png, { contentType: "image/png", upsert: true });

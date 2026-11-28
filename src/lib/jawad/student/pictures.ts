@@ -2,6 +2,8 @@
 // drawn by GPT Image 2, then put together as a PDF. The pages are cut from the approved content (nothing is rewritten),
 // a page is drawn again only when it changed, and the student can have one page drawn again with a note.
 
+import { gptImageModel } from "@config/jawad/gpt-image";
+import { gptImagePickOf } from "@/lib/jawad/server/gpt-image-pick";
 import { createHash } from "node:crypto";
 import { PDFDocument } from "pdf-lib";
 import { defaultDesign, fontById, pagesOf as askedPages, styleById, type Design } from "@config/jawad/student";
@@ -147,7 +149,8 @@ async function draw(o: Output, pics: Pictures, i: number, note = "") {
   const design = designOf(o);
   const ref = pics.pages.find((x, k) => k !== i && x.rendered?.path);
   const res = await openaiImage({
-    model: "gpt-image-2-2026-04-21",
+    // «نسخة GPT Image»: the student's pick
+    model: gptImageModel(await gptImagePickOf(o.user_id).catch(() => "2" as const)),
     prompt: prompt(o, pics.pages[i], i, pics.pages.length, design, Boolean(ref), note),
     aspect: ASPECT,
     resolution: "hi",

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import GptImagePicker from "@/components/jawad/GptImagePicker";
 import { contactOf } from "@/lib/contact";
 import { requireJawadUser } from "@/lib/jawad/server/access";
 import { createClient } from "@/lib/supabase/server";
@@ -41,6 +42,8 @@ export default async function AccountPage({ searchParams }: PageProps<"/jawad-ai
           )}
         </dl>
         <ContactForm name={c.name} phone={c.phone} next={next} first={first} />
+        {/* «نسخة GPT Image»: the version every picture the person paints follows (the film maker, the smart student, حيدرة كت) */}
+        {!first && <GptImagePicker className="border-t border-jw-line pt-4" />}
         <p className="text-xs text-jw-faint">ما ننشر شي باسمك ولا نشارك بياناتك.</p>
       </div>
     </div>

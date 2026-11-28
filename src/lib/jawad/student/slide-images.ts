@@ -3,6 +3,8 @@
 // full-slide pictures). The text in a picture cannot be edited, and the model can misspell Arabic: the student is told
 // before choosing, and can have any one slide drawn again.
 
+import { gptImageModel } from "@config/jawad/gpt-image";
+import { gptImagePickOf } from "@/lib/jawad/server/gpt-image-pick";
 import { createHash } from "node:crypto";
 import { PDFDocument } from "pdf-lib";
 import { fontById, styleById } from "@config/jawad/student";
@@ -77,7 +79,8 @@ export async function drawSlide(o: Output, plan: SlidePlan, i: number, design: D
     if (src?.path) refs.push({ bytes: await getFile(src.path), mime: src.mime || "image/png" });
   }
   const res = await openaiImage({
-    model: MODEL,
+    // «نسخة GPT Image»: the student's pick
+    model: gptImageModel(await gptImagePickOf(o.user_id).catch(() => "2" as const), MODEL),
     prompt: prompt(s, i, plan.slides.length, plan.title, design, note, Boolean(styleRef)) + (s.image.mode === "own" ? "\nUse the student's own photo (the last reference image) as the slide's picture." : ""),
     aspect: ASPECT,
     resolution: "hi",
