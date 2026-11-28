@@ -31,7 +31,7 @@ export const COMMUNITY: NavItem = {
   href: "/mahdi/community",
   label: "المجتمع",
   icon: "globe",
-  match: starts("/mahdi/community", "/mahdi/challenges", "/mahdi/share", "/mahdi/stories", "/mahdi/groups", "/mahdi/race", "/mahdi/p", "/mahdi/post", "/mahdi/u"),
+  match: starts("/mahdi/community", "/mahdi/challenges", "/mahdi/share", "/mahdi/stories", "/mahdi/groups", "/mahdi/race", "/mahdi/contests", "/mahdi/p", "/mahdi/post", "/mahdi/u"),
 };
 export const ME: NavItem = { href: "/mahdi/more", label: "أنا", icon: "user", match: starts("/mahdi/more", "/mahdi/inbox", "/mahdi/sheikh", "/mahdi/support") };
 /** kept for older imports */
@@ -76,6 +76,7 @@ const TITLES: [string, string][] = [
   ["/mahdi/stories", "القصص"],
   ["/mahdi/groups", "المجموعات"],
   ["/mahdi/race", "المسابقة"],
+  ["/mahdi/contests", "مسابقة الثبات"],
   ["/mahdi/p", "المنشور"],
   ["/mahdi/post/new", "منشور جديد"],
   ["/mahdi/u", "الصفحة"],
@@ -145,6 +146,7 @@ export const DOORS = {
     { href: "/mahdi?view=following", label: "المتابَعون", icon: "users" },
     { href: "/mahdi/stories", label: "القصص", icon: "camera" },
     { href: "/mahdi/groups", label: "المجموعات", icon: "users" },
+    { href: "/mahdi/contests", label: "مسابقة الثبات", icon: "trophy" },
     { href: "/mahdi/challenges", label: "التحديات", icon: "flag" },
     { href: "/mahdi/race", label: "المسابقة", icon: "sparkle" },
   ],

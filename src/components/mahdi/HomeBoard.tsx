@@ -17,6 +17,7 @@ import type { Profile, Project } from "@/lib/mahdi/types";
 import BookletCard from "./BookletCard";
 import DailyCard from "./DailyCard";
 import ReviewHints from "./ReviewHints";
+import ContestHome from "./contests/ContestHome";
 import { DayMarkSheet, QadaCard, TodayExcuseCard } from "./DayMarks";
 import DayBars from "./DayBars";
 import DayPriorities from "./DayPriorities";
@@ -153,6 +154,7 @@ export default function HomeBoard() {
       <div className="m-one">
         <TodayExcuseCard />
         <ReviewHints />
+      <ContestHome />
         {/* «ملاحظاتي على أسبوعي»: once a week, on the day the person picked */}
         <WeekNoteHome />
         <QadaCard />
