@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { dispatchContests } from "@/lib/mahdi/server/contests";
 import { dispatchEngagement } from "@/lib/mahdi/server/engage";
 import { dispatchHabitAlerts, dispatchPlanAlerts, dispatchReminders, dispatchTaskReminders, pushConfigured } from "@/lib/mahdi/server/notify";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -36,12 +37,14 @@ export async function POST(req: Request) {
     const plan = minuteJob ? null : await dispatchPlanAlerts(db).catch((e) => (console.error("[mahdi dispatch plan alerts]", e), null));
     // «تنبيهات تجيبك للتطبيق» (the morning verse, the review notes, the streak, the comeback): never stops what is above
     const engage = await dispatchEngagement(db).catch((e) => (console.error("[mahdi dispatch engage]", e), null));
+    // «مسابقة الثبات»: the organiser's weekly summary and the end of a contest (SQL 0137; nothing before it)
+    const contests = await dispatchContests(db).catch((e) => (console.error("[mahdi dispatch contests]", e), null));
     // the heartbeat (migration 0102): the app can say when the dispatcher last ran
     await db.from("mahdi_dispatch_runs").insert({ checked: habits.checked, sent: habits.sent, engage_sent: engage?.sent ?? 0 }).then(
       () => db.from("mahdi_dispatch_runs").delete().lt("ran_at", new Date(Date.now() - 7 * 86_400_000).toISOString()),
       () => undefined,
     );
-    return NextResponse.json({ ...habits, tasks, habitAlerts, plan, engage });
+    return NextResponse.json({ ...habits, tasks, habitAlerts, plan, engage, contests });
   } catch (err) {
     console.error("[mahdi dispatch]", err);
     return NextResponse.json({ error: "dispatch failed" }, { status: 500 });
