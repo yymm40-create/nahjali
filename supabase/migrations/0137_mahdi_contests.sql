@@ -20,6 +20,7 @@ create table if not exists public.mahdi_contests (
   ends_on date not null,
   threshold smallint not null default 95 check (threshold between 50 and 100),
   min_habits smallint not null default 3 check (min_habits between 1 and 30),
+  -- unused: contests are reached by their link only (kept so a database that already ran this file matches)
   listed boolean not null default false,
   -- the dispatcher's memory: how many weekly summaries went to the organiser, and whether the end was announced
   digest_weeks smallint not null default 0,

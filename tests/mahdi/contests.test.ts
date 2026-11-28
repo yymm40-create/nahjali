@@ -104,3 +104,15 @@ describe("«مسابقة الثبات»", () => {
     expect(newCode(() => k++ % 32)).toMatch(CODE_RE);
   });
 });
+
+describe("a contest is reached by its link only", () => {
+  it("is seen by its organiser, a participant, or whoever has its code — nobody else", async () => {
+    const { canSee } = await import("@/lib/mahdi/server/contests");
+    const contest = { ownerId: "owner", code: "ABCDEFGH" } as Parameters<typeof canSee>[0];
+    expect(canSee(contest, { id: "owner" }, null, null)).toBe(true);
+    expect(canSee(contest, { id: "x" }, { id: "e" } as Parameters<typeof canSee>[2], null)).toBe(true);
+    expect(canSee(contest, { id: "x" }, null, "ABCDEFGH")).toBe(true);
+    expect(canSee(contest, { id: "x" }, null, null)).toBe(false);
+    expect(canSee(contest, { id: "x" }, null, "WRONGCOD")).toBe(false);
+  });
+});

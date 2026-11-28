@@ -23,11 +23,8 @@ interface Card {
   unread: boolean;
 }
 interface Lists {
-  /** only for the site's owner: every contest that is not over */
-  all: (Card & { listed: boolean })[];
   owned: Card[];
   joined: Card[];
-  open: Card[];
 }
 
 const PHASE: Record<ContestPhase, string> = { upcoming: "تبدأ قريب", live: "شغّالة الحين", over: "خلصت" };
@@ -128,7 +125,7 @@ function NewContest({ today, onDone }: { today: ISODate; onDone: (id: string) =>
   );
 }
 
-/** «مسابقة الثبات»: the contests I run or joined, the open ones, and a new one. */
+/** «مسابقة الثبات»: the contests I run or joined, and a new one (others are reached by their link only). */
 export default function ContestsPage() {
   const { state } = useMahdi();
   const router = useRouter();
@@ -172,25 +169,13 @@ export default function ContestsPage() {
               {data.joined.map((c) => <ContestRow key={c.id} c={c} />)}
             </section>
           )}
-          {data.open.length > 0 && (
-            <section className="space-y-2">
-              <h2 className="m-eyebrow">مسابقات مفتوحة للكل</h2>
-              {data.open.map((c) => <ContestRow key={c.id} c={c} />)}
-            </section>
-          )}
           {data.owned.length > 0 && (
             <section className="space-y-2">
               <h2 className="m-eyebrow">مسابقات تنظّمها</h2>
               {data.owned.map((c) => <ContestRow key={c.id} c={c} />)}
             </section>
           )}
-          {data.all.length > 0 && (
-            <section className="space-y-2">
-              <h2 className="m-eyebrow">كل المسابقات (لصاحب التطبيق: افتحها واعرضها للكل)</h2>
-              {data.all.map((c) => <ContestRow key={c.id} c={{ ...c, title: `${c.listed ? "✓ معروضة · " : ""}${c.title}` }} />)}
-            </section>
-          )}
-          {!data.joined.length && !data.open.length && !data.owned.length && !data.all.length && !creating && (
+          {!data.joined.length && !data.owned.length && !creating && (
             <Empty icon="trophy" title="ما في مسابقات للحين" body="لو عندك رابط مسابقة افتحه، أو أنشئ مسابقة لأهلك وجماعتك.">
               <button type="button" className="m-btn m-btn-primary" onClick={() => setCreating(true)}>أنشئ مسابقة</button>
             </Empty>

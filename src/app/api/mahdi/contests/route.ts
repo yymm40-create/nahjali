@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { isAdmin } from "@config/site";
 import { cleanContest } from "@/lib/mahdi/contests";
 import { todayFor } from "@/lib/mahdi/engine";
 import { mahdiRoute, readJson, requireProfile, UserError } from "@/lib/mahdi/server/api";
@@ -8,10 +7,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
-/** «مسابقة الثبات»: the contests I run, the ones I joined, and the open ones for everyone. */
+/** «مسابقة الثبات»: the contests I run and the ones I joined. */
 export const GET = mahdiRoute(async (req: Request) => {
   const { user, profile } = await requireProfile(req);
-  return NextResponse.json(await listContests(createAdminClient(), user.id, todayFor(profile), isAdmin(user.email)), { headers: NO_STORE });
+  return NextResponse.json(await listContests(createAdminClient(), user.id, todayFor(profile)), { headers: NO_STORE });
 });
 
 /** A new contest (anyone may run one; the organiser shares its link). */
