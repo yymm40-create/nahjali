@@ -125,6 +125,45 @@ function NewContest({ today, onDone }: { today: ISODate; onDone: (id: string) =>
   );
 }
 
+/** A contest's private code, from its organiser: opens the contest to join it. */
+function CodeEntry() {
+  const router = useRouter();
+  const { toast } = useMahdi();
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function go() {
+    setBusy(true);
+    try {
+      const r = await mahdiFetch<{ id: string; code: string }>(`/api/mahdi/contests?code=${encodeURIComponent(code)}`);
+      router.push(`/mahdi/contests/${r.id}?c=${r.code}`);
+    } catch (e) {
+      toast((e as Error).message);
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="m-card space-y-2 p-4" aria-labelledby="code-entry">
+      <p id="code-entry" className="font-semibold">عندي كود</p>
+      <div className="flex gap-2">
+        <input
+          className="m-field m-num flex-1 text-center tracking-[0.2em]"
+          dir="ltr"
+          value={code}
+          maxLength={12}
+          placeholder="ABCD2345"
+          autoCapitalize="characters"
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          onKeyDown={(e) => e.key === "Enter" && code.trim().length >= 8 && go()}
+          aria-label="كود المسابقة"
+        />
+        <button type="button" className="m-btn m-btn-primary" disabled={busy || code.replace(/[\s-]/g, "").length < 8} onClick={go}>
+          ادخل
+        </button>
+      </div>
+    </section>
+  );
+}
+
 /** «مسابقة الثبات»: the contests I run or joined, and a new one (others are reached by their link only). */
 export default function ContestsPage() {
   const { state } = useMahdi();
@@ -156,6 +195,7 @@ export default function ContestsPage() {
           </button>
         )}
       </PageHead>
+      <CodeEntry />
       {creating && <NewContest today={state.today} onDone={(id) => router.push(`/mahdi/contests/${id}`)} />}
       {error ? (
         <ErrorState message={error} onRetry={load} />
@@ -176,7 +216,7 @@ export default function ContestsPage() {
             </section>
           )}
           {!data.joined.length && !data.owned.length && !creating && (
-            <Empty icon="trophy" title="ما في مسابقات للحين" body="لو عندك رابط مسابقة افتحه، أو أنشئ مسابقة لأهلك وجماعتك.">
+            <Empty icon="trophy" title="ما في مسابقات للحين" body="لو عندك رابط مسابقة افتحه أو اكتب كودها فوق، أو أنشئ مسابقة لأهلك وجماعتك.">
               <button type="button" className="m-btn m-btn-primary" onClick={() => setCreating(true)}>أنشئ مسابقة</button>
             </Empty>
           )}
