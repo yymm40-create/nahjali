@@ -154,6 +154,9 @@ export function addToStore(store: ProjectStore, adds: unknown): { store: Project
 }
 
 /** What the site fixed by itself from the choices (the look), shown in the store and handed on. */
+/** The GPT Image a carousel's pictures are painted by, as the person reads it. */
+export const gptName = (v: "sunburst" | "flare" | undefined) => (v ? `GPT Image 2.6 ${v === "flare" ? "Flare" : "Sunburst"}` : "GPT Image 2");
+
 export function lookLines(b: Pick<SlidesBlock, "carouselId" | "paletteId" | "fontId" | "motion" | "maker" | "mix" | "gpt26"> | null): string[] {
   if (!b) return [];
   const car = b.carouselId ? findCarouselStyle(b.carouselId) : null;
@@ -166,7 +169,7 @@ export function lookLines(b: Pick<SlidesBlock, "carouselId" | "paletteId" | "fon
     car ? `الألوان: ${pal ? pal.name : "ألوان الستايل نفسه"}` : "",
     font ? `الخط: ${font.name}` : "",
     b.motion ? `موشن كاروسيل: ${ms ? ms.name : "حركة خاصة"}${route ? ` · ${route.label}` : ""}` : car ? "كاروسيل ثابت" : "",
-    b.maker === "code" ? (b.mix ? `التصميم: GPT Image ${b.gpt26 ? "2.6" : "2"} للصور + حيدرا ماكس للكتابة` : b.motion ? (b.motion.route !== "code" ? `الصور: GPT Image ${b.gpt26 ? "2.6" : "2"}` : "") : "التصميم: حيدرا ماكس بالكود") : car ? `التصميم: GPT Image ${b.gpt26 ? "2.6" : "2"} يرسم الشريحة كاملة` : "",
+    b.maker === "code" ? (b.mix ? `التصميم: ${gptName(b.gpt26)} للصور + حيدرا ماكس للكتابة` : b.motion ? (b.motion.route !== "code" ? `الصور: ${gptName(b.gpt26)}` : "") : "التصميم: حيدرا ماكس بالكود") : car ? `التصميم: ${gptName(b.gpt26)} يرسم الشريحة كاملة` : "",
   ].filter(Boolean);
 }
 
