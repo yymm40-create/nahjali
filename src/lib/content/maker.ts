@@ -11,10 +11,24 @@ import { PALETTE_LABEL } from "./marks";
 /** The last step before a new carousel is made: the person picks who makes the slides (the owner's order: no default). */
 export const MAKER_LABEL = "من يصمم الشرائح؟";
 export const MAKER_CODE = "حيدرا ماكس (كتابة عربية دقيقة بالكود)";
-export const MAKER_GPT = "GPT Image 2 (رسم كامل بالذكاء الاصطناعي)";
-export const MAKER_MIX = "GPT Image 2 للصور + حيدرا ماكس للكتابة";
+export const MAKER_GPT = "GPT Image (رسم كامل بالذكاء الاصطناعي)";
+export const MAKER_MIX = "GPT Image للصور + حيدرا ماكس للكتابة";
+/** The same answers as they were written before the version became a choice (a conversation from then still reads). */
+const MAKER_GPT_OLD = "GPT Image 2 (رسم كامل بالذكاء الاصطناعي)";
+const MAKER_MIX_OLD = "GPT Image 2 للصور + حيدرا ماكس للكتابة";
 
 export const MAKER_QUESTION = { label: MAKER_LABEL, kind: "choice" as const, options: [MAKER_CODE, MAKER_GPT, MAKER_MIX], multi: false };
+
+/**
+ * «نسخة GPT Image» (the owner, 28 November 2026): whenever GPT Image paints the carousel's pictures (it draws the whole
+ * slides, or the pictures «حيدرا ماكس» writes on, or a motion carousel's pictures or elements), the person picks GPT
+ * Image 2 or GPT Image 2.6 — the newer, more developed one, at about the same price (Sunburst: the finer and steadier of
+ * its two). Asked right after who makes the slides / the way of making the motion.
+ */
+export const VERSION_LABEL = "نسخة GPT Image";
+export const VERSION_2 = "GPT Image 2";
+export const VERSION_26 = "GPT Image 2.6 (الأحدث والأدق، بنفس السعر تقريبًا)";
+export const VERSION_QUESTION: Question = { label: VERSION_LABEL, kind: "choice", options: [VERSION_2, VERSION_26], multi: false };
 
 /** The first step of a carousel: the table of 104 styles, in place of questions about colours and margins. */
 export const CAROUSEL_LABEL = "اختر ستايل الكاروسيل";
@@ -121,8 +135,36 @@ function lastPressed<T extends string>(history: Turn[], label: string, answers: 
 
 /** What the person picked for the carousel about to be made: their pressed answer after the last carousel, or null if they did not pick yet. */
 export function pickedMaker(history: Turn[]): "code" | "gpt" | "mix" | null {
-  const hit = lastPressed(history, MAKER_LABEL, [MAKER_CODE, MAKER_GPT, MAKER_MIX]);
-  return hit === MAKER_CODE ? "code" : hit === MAKER_GPT ? "gpt" : hit === MAKER_MIX ? "mix" : null;
+  const hit = lastPressed(history, MAKER_LABEL, [MAKER_CODE, MAKER_GPT, MAKER_MIX, MAKER_GPT_OLD, MAKER_MIX_OLD]);
+  return hit === MAKER_CODE ? "code" : hit === MAKER_GPT || hit === MAKER_GPT_OLD ? "gpt" : hit === MAKER_MIX || hit === MAKER_MIX_OLD ? "mix" : null;
+}
+
+/** The version one turn of the person's picked: a pressed answer, or «2.6» written with GPT / «جي بي تي» (a bare «2» is too vague to read). */
+function versionIn(t: Turn): "2" | "2.6" | null {
+  if (t.role !== "user") return null;
+  const said = pressed(t, VERSION_LABEL);
+  if (said.includes(VERSION_26)) return "2.6";
+  if (said.includes(VERSION_2)) return "2";
+  return /(gpt|جي\s*بي\s*تي)[^\n]{0,24}2\s*[.٫,]\s*6/i.test(t.text) ? "2.6" : null;
+}
+
+/** The GPT Image version picked for the carousel about to be made ("2.6" or "2"), or null if not asked/answered yet. */
+export function pickedGptVersion(history: Turn[]): "2" | "2.6" | null {
+  const turns = sinceLastCarousel(history);
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const v = versionIn(turns[i]);
+    if (v) return v;
+  }
+  return null;
+}
+
+/** The latest GPT Image version picked anywhere in the conversation (for the pictures جواد makes outside a carousel). */
+export function lastGptVersion(history: Turn[]): "2" | "2.6" | null {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const v = versionIn(history[i]);
+    if (v) return v;
+  }
+  return null;
 }
 
 const PATH_MARK = /\[مسار:([a-z0-9-]+)\]/g;
@@ -296,12 +338,18 @@ export function carouselHold(history: Turn[], slides = 6): CarouselHold | null {
   if (kind === "motion") {
     const motion = pickedMotionStyle(history);
     if (!motion || motion.id === "help") return { question: MOTION_CAROUSEL_QUESTION, note: "⏸️ اختر ستايل الحركة من الجدول (٢٢ ستايل جاهز)، أو ابنِه معي من الصفر." };
-    if (!pickedRoute(history)) return { question: ROUTE_QUESTION, note: routeNote(slides) };
+    const route = pickedRoute(history);
+    if (!route) return { question: ROUTE_QUESTION, note: routeNote(slides) };
+    if (route !== "code" && !pickedGptVersion(history)) return { question: VERSION_QUESTION, note: VERSION_NOTE };
     return null;
   }
-  if (!pickedMaker(history)) return { question: MAKER_QUESTION, note: "⏸️ آخر خطوة قبل التصنيع: اختر من يصمم الشرائح، وبعدها أبدأ." };
+  const maker = pickedMaker(history);
+  if (!maker) return { question: MAKER_QUESTION, note: "⏸️ آخر خطوة قبل التصنيع: اختر من يصمم الشرائح، وبعدها أبدأ." };
+  if (maker !== "code" && !pickedGptVersion(history)) return { question: VERSION_QUESTION, note: VERSION_NOTE };
   return null;
 }
+
+const VERSION_NOTE = "⏸️ آخر خطوة: أي نسخة من GPT Image ترسم الصور؟ GPT Image 2، أو GPT Image 2.6 الأحدث والأدق (بنفس السعر تقريبًا).";
 
 // ───────── the site's own steps, answered without a model call ─────────
 
@@ -310,6 +358,7 @@ const GATE_CHOICES: Record<string, readonly string[]> = {
   [KIND_LABEL]: [KIND_STILL, KIND_MOTION],
   [ROUTE_LABEL]: MOTION_ROUTES.map((r) => r.label),
   [MAKER_LABEL]: [MAKER_CODE, MAKER_GPT, MAKER_MIX],
+  [VERSION_LABEL]: [VERSION_2, VERSION_26],
   [PHOTOS_LABEL]: [PHOTOS_MINE, PHOTOS_MAKE],
 };
 

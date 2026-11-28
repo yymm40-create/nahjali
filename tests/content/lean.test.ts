@@ -42,7 +42,7 @@ vi.mock("@/lib/content/persona", async (orig) => ({ ...(await orig<typeof import
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: () => ({ upsert: async () => ({ error: null }), insert: async () => ({ error: null }), select: () => ({ in: () => ({ eq: () => ({ eq: async () => ({ data: [] }) }) }) }) }) }) }));
 
 import { say } from "@/lib/content/chat";
-import { askedSlides, FONT_LABEL, MOTION_CAROUSEL_LABEL, pureGatePick, ROUTE_LABEL, siteStep } from "@/lib/content/maker";
+import { askedSlides, FONT_LABEL, MOTION_CAROUSEL_LABEL, pureGatePick, ROUTE_LABEL, siteStep, VERSION_2, VERSION_LABEL } from "@/lib/content/maker";
 import { answerLine, CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, FONT_AUTO_LINE, fontLine, MOTION_CAROUSEL_HELP_LINE, motionCarouselLine, PALETTE_LABEL, PALETTE_STYLE_LINE, pathLine } from "@/lib/content/marks";
 import { needsCatalog, chosenIds } from "@/lib/content/persona";
 import { MOTION_CAROUSEL_GUIDE, MOTION_ROUTES } from "@config/content-motion-carousel";
@@ -88,13 +88,17 @@ describe("the site's own steps cost nothing", () => {
     // four presses, not one answer of his
     expect(claude.calls).toHaveLength(1);
     expect(chat().usd).toBeCloseTo(claude.calls.length * (1000 * 4 + 500 * 20) / 1e6, 6);
+    // a way that paints pictures: the site asks which GPT Image (2 or 2.6), still without him
+    const version = await say("u", "chat-1", MOTION_ROUTES[1].label, []);
+    expect(version.questions![0]).toMatchObject({ label: VERSION_LABEL });
+    expect(claude.calls).toHaveLength(1);
     // the last press goes to him, told that every step is answered and what comes next
     answer();
-    await say("u", "chat-1", MOTION_ROUTES[1].label, []);
+    await say("u", "chat-1", answerLine(VERSION_LABEL, [VERSION_2]), []);
     expect(claude.calls).toHaveLength(2);
     expect(claude.calls[1].turnNote).toContain("اكتملت خطوات الشكل كلها");
-    // the talk reads in order: his answer, then the site's four questions
-    expect(chat().messages.filter((m) => m.role === "assistant").map((m) => m.questions?.[0]?.label)).toEqual([TABLE.label, PALETTE_LABEL, FONT_LABEL, MOTION_CAROUSEL_LABEL, ROUTE_LABEL, undefined]);
+    // the talk reads in order: his answer, then the site's five questions
+    expect(chat().messages.filter((m) => m.role === "assistant").map((m) => m.questions?.[0]?.label)).toEqual([TABLE.label, PALETTE_LABEL, FONT_LABEL, MOTION_CAROUSEL_LABEL, ROUTE_LABEL, VERSION_LABEL, undefined]);
   });
 
   it("a press with words beside it, or with nothing left to ask, goes to him", async () => {

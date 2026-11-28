@@ -165,8 +165,8 @@ export const findMotionCarouselStyle = (id: string | null | undefined) => MOTION
 /** The three ways, cheapest first: what each adds, and what it costs beyond «حيدرا ماكس»'s own work. */
 export const MOTION_ROUTES: { id: MotionRoute; label: string; what: string }[] = [
   { id: "code", label: "حيدرا ماكس بالكود فقط (الأرخص)", what: "حيدرا ماكس يرسم كل شيء بالكود: الكلام والأشكال والأيقونات والخلفيات والحركة والصوت. تدفع شغل حيدرا ماكس فقط." },
-  { id: "picture", label: "حيدرا ماكس + صورة GPT Image 2 لكل شريحة", what: "جواد يرسم صورة كاملة لكل شريحة بـ GPT Image 2 (بدون كتابة)، وحيدرا ماكس يحرّكها ويكتب عليها. فوق شغل حيدرا ماكس سعر صورة لكل شريحة." },
-  { id: "elements", label: "حيدرا ماكس + عناصر GPT Image 2 مفرّغة (الأغلى)", what: "جواد يرسم عنصر كل شريحة بـ GPT Image 2 (منتج، شخصية، أيقونة)، ويُفرَّغ من خلفيته، وحيدرا ماكس يحرّكه فوق خلفية يرسمها بالكود. فوق شغل حيدرا ماكس سعر صورة لكل شريحة، والتفريغ بدون رسوم إضافية." },
+  { id: "picture", label: "حيدرا ماكس + صورة GPT Image 2 لكل شريحة", what: "جواد يرسم صورة كاملة لكل شريحة بـ GPT Image 2 أو 2.6 (تختار النسخة بعدها؛ بدون كتابة)، وحيدرا ماكس يحرّكها ويكتب عليها. فوق شغل حيدرا ماكس سعر صورة لكل شريحة." },
+  { id: "elements", label: "حيدرا ماكس + عناصر GPT Image 2 مفرّغة (الأغلى)", what: "جواد يرسم عنصر كل شريحة بـ GPT Image 2 أو 2.6 (تختار النسخة بعدها؛ منتج، شخصية، أيقونة)، ويُفرَّغ من خلفيته، وحيدرا ماكس يحرّكه فوق خلفية يرسمها بالكود. فوق شغل حيدرا ماكس سعر صورة لكل شريحة، والتفريغ بدون رسوم إضافية." },
 ];
 export const routeById = (id: string | null | undefined) => MOTION_ROUTES.find((r) => r.id === id) ?? null;
 

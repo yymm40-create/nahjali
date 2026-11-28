@@ -256,7 +256,10 @@ export async function createJob(user: { id: string; email?: string | null }, own
   const rt = await loadRuntime();
   if (!rt.migrated) throw new UserError("منصة JAWAD AI قيد التجهيز (قاعدة البيانات).", 503);
   const rg = rt.generators.find((g) => g.id === def.id)!;
-  if (!(rg.live || (owner && rg.keyConfigured))) throw new UserError("هذا المولد غير متاح حاليًا.", 403);
+  // GPT Image 2.6 is the person's own pick in «صانع المحتوى» and the designer (the owner, 28 November 2026): open there
+  // whenever its key is set, even while it is still hidden from the studio's list
+  const deskPick = server.via === "content" && def.id === GPT_IMAGE_26_ID && rg.keyConfigured;
+  if (!(rg.live || deskPick || (owner && rg.keyConfigured))) throw new UserError("هذا المولد غير متاح حاليًا.", 403);
   const section = rt.sections.find((s) => s.id === b.sectionId && s.output === def.output && (s.enabled || owner));
   if (!section || rg.sectionId !== section.id) throw new UserError("هذا المولد لا يتبع هذا القسم.", 400);
 

@@ -48,7 +48,7 @@ const SAVING_TIPS = [
   "إذا عندك صوت المقطع ارفعه ملف صوت (MP3/M4A) بدل فيديو طويل.",
 ];
 
-interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code"; mix?: boolean; motion?: unknown; phase?: "pictures" | "approve"; deferred?: number[] ; approved?: boolean; split?: boolean }
+interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code"; mix?: boolean; gpt26?: boolean; motion?: unknown; phase?: "pictures" | "approve"; deferred?: number[] ; approved?: boolean; split?: boolean }
 interface MediaView {
   id: string; kind: "image" | "video"; name: string; aspect: string; refs?: string[]; state: "todo" | "running" | "done" | "failed";
   url?: string | null; download?: string | null; error?: string; detail?: string; transient?: boolean; tries?: number;
@@ -630,7 +630,7 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
               </>
             ) : s.maker === "code" && s.mix ? (
               <>
-                <b>🖼️ GPT Image 2 يرسم الصور وحيدرا ماكس يكتب عليها… ({done} من {s.total})</b>
+                <b>🖼️ GPT Image {s.gpt26 ? "2.6" : "2"} يرسم الصور وحيدرا ماكس يكتب عليها… ({done} من {s.total})</b>
                 <small>{step ? `${step} — ` : ""}جواد يولّد صورة كل شريحة بدون كتابة، وحيدرا ماكس يكتب عليها الكلام العربي بالكود ويراجعه. لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
               </>
             ) : s.maker === "code" ? (
@@ -640,7 +640,7 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, onResume, on
               </>
             ) : (
               <>
-                <b>جواد يولّد الشرائح بـ GPT Image 2… ({done} من {s.total})</b>
+                <b>جواد يولّد الشرائح بـ GPT Image {s.gpt26 ? "2.6" : "2"}… ({done} من {s.total})</b>
                 <small>محمد باقر سلّم الطلب لجواد، وكل شريحة يولّدها جواد ثم يفحص باقر كتابتها العربية، وتأخذ نحو دقيقة. لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
               </>
             )}
