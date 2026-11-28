@@ -8,7 +8,7 @@ import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 import { readQuestions, type Turn } from "@/lib/content/chats";
 import { CAROUSEL_HELP_LINE, carouselLine, carouselOwnLine, FONT_AUTO_LINE, fontLine, fontStyleLine, PALETTE_LABEL, PALETTE_STYLE_LINE, paletteLine, stripMarks } from "@/lib/content/marks";
 import { answerLine } from "@/lib/content/marks";
-import { attachedPictures, carouselHold, CAROUSEL_LABEL, FONT_LABEL, KIND_LABEL, KIND_STILL, MAKER_CODE, MAKER_GPT, MAKER_LABEL, MAKER_MIX, VERSION_2, VERSION_26, VERSION_LABEL, pickedGptVersion, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE, pickedCarousel, pickedFont, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "@/lib/content/maker";
+import { attachedPictures, carouselHold, CAROUSEL_LABEL, FONT_LABEL, KIND_LABEL, KIND_STILL, MAKER_CODE, MAKER_GPT, MAKER_LABEL, MAKER_MIX, VERSION_2, VERSION_26_FLARE, VERSION_26_SUNBURST, VERSION_LABEL, pickedGptVersion, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE, pickedCarousel, pickedFont, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "@/lib/content/maker";
 import { slidePrompt } from "@/lib/content/produce";
 import { catalogBlock, chosenBlock, chosenIds, systemText } from "@/lib/content/persona";
 
@@ -159,7 +159,7 @@ describe("what stops a new carousel", () => {
     expect(carouselHold([user(REAL), user(PHOTOS_MAKE), user(FONT), user(KIND_STILL)])?.question.label).toBe(MAKER_LABEL);
     // GPT Image paints: the version is asked last, then nothing stops it
     expect(carouselHold([user(REAL), user(PHOTOS_MAKE), user(FONT), user(KIND_STILL), user(MAKER_MIX)])?.question.label).toBe(VERSION_LABEL);
-    expect(carouselHold([user(REAL), user(PHOTOS_MAKE), user(FONT), user(KIND_STILL), user(MAKER_MIX), user(VERSION_26)])).toBeNull();
+    expect(carouselHold([user(REAL), user(PHOTOS_MAKE), user(FONT), user(KIND_STILL), user(MAKER_MIX), user(VERSION_26_SUNBURST)])).toBeNull();
     expect(carouselHold([user(FLAT)])?.question.label).toBe(PALETTE_LABEL);
     expect(carouselHold([user(FLAT), COLOURS])?.question.label).toBe(FONT_LABEL);
     expect(carouselHold([user(FLAT), COLOURS, user(FONT_AUTO_LINE)])?.question.label).toBe(KIND_LABEL);
@@ -241,10 +241,14 @@ describe("what stops a new carousel", () => {
     expect(carouselHold([user("• القالب: «دفتر قصاصات» [قالب:scrapbook]"), user(MAKER_GPT), user(VERSION_2)])).toBeNull();
   });
 
-  it("«نسخة GPT Image»: 2 or 2.6, pressed or written; «حيدرا ماكس» alone is never asked", () => {
-    expect(pickedGptVersion([user(VERSION_26)])).toBe("2.6");
+  it("«نسخة GPT Image»: 2, or 2.6 Sunburst or Flare — pressed or written; «2.6» alone is asked; «حيدرا ماكس» alone is never asked", () => {
+    expect(pickedGptVersion([user(VERSION_26_SUNBURST)])).toBe("sunburst");
+    expect(pickedGptVersion([user(answerLine(VERSION_LABEL, [VERSION_26_FLARE]))])).toBe("flare");
     expect(pickedGptVersion([user(answerLine(VERSION_LABEL, [VERSION_2]))])).toBe("2");
-    expect(pickedGptVersion([user("سوها بجي بي تي 2.6 لو سمحت")])).toBe("2.6");
+    expect(pickedGptVersion([user("سوها بالفلير لو سمحت")])).toBe("flare");
+    expect(pickedGptVersion([user("أبيها Sunburst")])).toBe("sunburst");
+    // which of 2.6's two is the person's to say, not ours
+    expect(pickedGptVersion([user("سوها بجي بي تي 2.6 لو سمحت")])).toBeNull();
     expect(pickedGptVersion([user("كاروسيل عن الصبر")])).toBeNull();
     expect(carouselHold([user(FLAT), COLOURS, user(FONT_AUTO_LINE), user(KIND_STILL), user(MAKER_CODE)])).toBeNull();
   });

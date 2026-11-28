@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Chat, Turn } from "@/lib/content/chats";
-import { CAROUSEL_LABEL, FONT_LABEL, KIND_LABEL, KIND_MOTION, KIND_STILL, MAKER_CODE, MOTION_CAROUSEL_LABEL, ROUTE_LABEL, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE, VERSION_2, VERSION_26, VERSION_LABEL } from "@/lib/content/maker";
+import { CAROUSEL_LABEL, FONT_LABEL, KIND_LABEL, KIND_MOTION, KIND_STILL, MAKER_CODE, MOTION_CAROUSEL_LABEL, ROUTE_LABEL, MAKER_GPT, MAKER_LABEL, MAKER_MIX, PHOTOS_LABEL, PHOTOS_MAKE, PHOTOS_MINE, VERSION_2, VERSION_26_FLARE, VERSION_26_SUNBURST, VERSION_LABEL } from "@/lib/content/maker";
 
 // One message to «محمد باقر» end to end, with Claude, the database and the editor replaced by stand-ins: what he is
 // given (the catalogues, what the person picked, the state of an earlier carousel) and what the site does with his
@@ -189,10 +189,12 @@ describe("his answer", () => {
     expect(chat().pending).toMatchObject({ maker: "code", mix: true, carouselId: "white-text", fontId: "cairo" });
     expect(chat().messages.at(-1)!.slides).toMatchObject({ maker: "code", mix: true, carouselId: "white-text", fontId: "cairo" });
     expect(chat().pending!.gpt26).toBeUndefined();
-    // «نسخة GPT Image»: GPT Image 2.6 is the person's pick too, kept with the carousel
-    await chosen(`${answerLine(MAKER_LABEL, [MAKER_MIX])}\n${answerLine(VERSION_LABEL, [VERSION_26])}`, "gpt");
-    expect(chat().pending).toMatchObject({ maker: "code", mix: true, gpt26: true });
-    expect(chat().messages.at(-1)!.slides).toMatchObject({ gpt26: true });
+    // «نسخة GPT Image»: GPT Image 2.6 in the model the person pressed (Sunburst or Flare), kept with the carousel
+    await chosen(`${answerLine(MAKER_LABEL, [MAKER_MIX])}\n${answerLine(VERSION_LABEL, [VERSION_26_SUNBURST])}`, "gpt");
+    expect(chat().pending).toMatchObject({ maker: "code", mix: true, gpt26: "sunburst" });
+    expect(chat().messages.at(-1)!.slides).toMatchObject({ gpt26: "sunburst" });
+    await chosen(`${answerLine(MAKER_LABEL, [MAKER_GPT])}\n${answerLine(VERSION_LABEL, [VERSION_26_FLARE])}`, "code");
+    expect(chat().pending).toMatchObject({ gpt26: "flare" });
     // a pick of GPT Image without the version: nothing is made, the version is asked (with both choices)
     answer({});
     db.chat = null;
@@ -200,7 +202,7 @@ describe("his answer", () => {
     answer({ produce: { on: true, mode: "all", maker: "gpt", aspect: "1:1", template_id: "", style_id: "", slides: slides() } });
     const ask = await say("u", "chat-1", MAKER_GPT, []);
     expect(chat().pending).toBeNull();
-    expect(ask.questions!.at(-1)).toMatchObject({ label: VERSION_LABEL, kind: "choice", options: [VERSION_2, VERSION_26] });
+    expect(ask.questions!.at(-1)).toMatchObject({ label: VERSION_LABEL, kind: "choice", options: [VERSION_2, VERSION_26_SUNBURST, VERSION_26_FLARE] });
   });
 
   it("a carousel opens the table of styles, and nothing is made until a style is picked", async () => {
@@ -289,10 +291,10 @@ describe("his answer", () => {
     // built from zero with him: the person's words go with the plan
     db.chat = null;
     order();
-    await say("u", null, `${LOOK}\n${answerLine(KIND_LABEL, [KIND_MOTION])}\n${motionCarouselOwnLine("الكلام ينكتب بالطباشير")}\n${answerLine(ROUTE_LABEL, [MOTION_ROUTES[2].label])}\n${answerLine(VERSION_LABEL, [VERSION_26])}`, []);
+    await say("u", null, `${LOOK}\n${answerLine(KIND_LABEL, [KIND_MOTION])}\n${motionCarouselOwnLine("الكلام ينكتب بالطباشير")}\n${answerLine(ROUTE_LABEL, [MOTION_ROUTES[2].label])}\n${answerLine(VERSION_LABEL, [VERSION_26_FLARE])}`, []);
     expect(chat().pending!.motion).toMatchObject({ styleId: "own", own: "الكلام ينكتب بالطباشير", route: "elements" });
-    // its elements by GPT Image 2.6, as picked
-    expect(chat().pending!.gpt26).toBe(true);
+    // its elements by GPT Image 2.6 Flare, as picked
+    expect(chat().pending!.gpt26).toBe("flare");
   });
 
   it("a realistic style asks: their own pictures, or made from zero, with the idea of what to add", async () => {

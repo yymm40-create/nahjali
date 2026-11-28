@@ -4,6 +4,8 @@
 // (made by GPT Image 2 in the produce step) or a package handed to «حيدرا ماكس» (an edit room opened in «حيدرة كت»).
 // Server only.
 
+import { unlimitedStatus } from "@/lib/jawad/server/unlimited";
+import { GPT_IMAGE_2_ID, GPT_IMAGE_26_ID } from "@config/jawad/generators";
 import { remember, withNote } from "@/lib/robot-handoff";
 import { isSalesAsk, nearestSalesExamples, SALES_METHOD, salesExamplesBrief } from "@config/content-sales";
 import { findMotionCarouselStyle, isMotionCarouselAsk, MOTION_CAROUSEL_GUIDE, slideSeconds } from "@config/content-motion-carousel";
@@ -21,13 +23,13 @@ import { findTemplate } from "@config/content-templates";
 import { findCarouselStyle } from "@config/content-carousel-styles";
 import { findContentFont } from "@config/content-fonts";
 import { findStyle } from "@config/film-styles";
-import { cleanHistory, getChat, readMedia, readQuestions, saveChat, type Attachment, type MediaItem, type MotionPlan, type PendingProduce, type Turn } from "./chats";
+import { cleanHistory, getChat, readMedia, readQuestions, saveChat, type Attachment, type MediaItem, type MotionPlan, type PendingProduce, type Question, type Turn } from "./chats";
 import { attachmentsOf, deleteProduced, pictureFromUpload, producedRow, uploadLinks } from "./files";
 import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, needsCatalog, pathBlock, systemText, turnText } from "./persona";
 import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
 import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
-import { askedSlides, attachedPictures, CAROUSEL_QUESTION, carouselHold, pathOf, pickedCarousel, pureGatePick, siteStep, pickedFont, pickedGptVersion, pickedKind, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "./maker";
+import { askedSlides, attachedPictures, CAROUSEL_QUESTION, carouselHold, pathOf, pickedCarousel, pureGatePick, siteStep, pickedFont, pickedGptVersion, pickedKind, VERSION_LABEL, pickedMaker, pickedMotionStyle, pickedPalette, pickedPhotos, pickedRoute } from "./maker";
 import { chatEditPatch, lastSlidesAt, planPictureRedo, planRetryWords, planSoundTime } from "./produce";
 import { addToStore, getStore, handOff, hasDesign, lookLines, saveStore, storeNote, threadTurns, twoChats, type Thread } from "./project";
 import { slidePicture } from "./files";
@@ -297,6 +299,21 @@ export const isContinue = (t: string) => /^(يلا\s+)?(كمل|كمّل|كملي
 export const madePictures = (turns: Turn[]) => turns.flatMap((t) => (t.media?.items ?? []).filter((x) => x.kind === "image" && x.state === "done" && x.fileId).map((x) => x.fileId!));
 
 /** The person says something in a conversation (a new one when `chatId` is null). */
+/**
+ * «لامحدود» (the owner, 28 November 2026: whoever subscribed to GPT Image unlimited stays unlimited): under the GPT Image
+ * version question, which of the versions this person's running pass makes free — the pass is per generator (GPT Image 2,
+ * or GPT Image 2.6 with both its models), so the person picks knowingly. Nothing when they have no such pass.
+ */
+async function versionPassNote(userId: string, q: Question): Promise<string> {
+  if (q.label !== VERSION_LABEL) return "";
+  const passes = await unlimitedStatus(userId).catch(() => []);
+  const has2 = passes.some((p) => p.generatorId === GPT_IMAGE_2_ID);
+  const has26 = passes.some((p) => p.generatorId === GPT_IMAGE_26_ID);
+  if (!has2 && !has26) return "";
+  const covered = has2 && has26 ? "«GPT Image 2» و«GPT Image 2.6» (Sunburst وFlare)" : has2 ? "«GPT Image 2»" : "«GPT Image 2.6» بموديليه (Sunburst وFlare)";
+  return `\n\n♾️ اشتراكك «لامحدود» يشمل ${covered}: اختر${has2 && has26 ? " أيها تبي" : "ه"} وتبقى الصور ضمن اشتراكك بدون خصم.${has2 && has26 ? "" : " والنسخة الثانية تنخصم بسعرها العادي."}`;
+}
+
 export async function say(userId: string, chatId: string | null, message: string, attachmentIds: unknown, email: string | null = null, opts: { verbose?: boolean; from?: number; thread?: Thread } = {}): Promise<Reply> {
   const said = message.trim().slice(0, CONTENT.messageMax);
   const { list: files } = await attachmentsOf(userId, attachmentIds);
@@ -314,7 +331,7 @@ export async function say(userId: string, chatId: string | null, message: string
   // press was a whole paid answer of «محمد باقر» that re-wrote every slide only for the site to hold it)
   const step = chatId && !before?.pending ? siteStep(history) : null;
   if (step) {
-    const reply: Turn = { role: "assistant", text: step.note, questions: [step.question], ...(thread === "design" ? { thread: "design" as const } : {}) };
+    const reply: Turn = { role: "assistant", text: step.note + (await versionPassNote(userId, step.question)), questions: [step.question], ...(thread === "design" ? { thread: "design" as const } : {}) };
     const id = await saveChat(userId, chatId, { messages: [...history, reply], ...(cut >= 0 ? { record: "", pending: null } : {}) });
     return { chatId: id, text: reply.text, questions: reply.questions!, usd: 0, pending: null, editor: null, media: null, spentHalalas: full?.spentHalalas ?? 0 };
   }
@@ -621,8 +638,8 @@ export async function say(userId: string, chatId: string | null, message: string
     // «نسخة GPT Image»: GPT Image 2.6 paints the pictures when the person picked it (pressed since the last carousel); else
     // the carousel being fixed or carried on keeps its own; else GPT Image 2
     const version = pickedGptVersion(history);
-    const gpt26 = version ? version === "2.6" : fixed?.gpt26 === true;
-    const code = { ...(motion || picked === "code" ? { maker: "code" as const } : picked === "mix" ? { maker: "code" as const, mix: true } : {}), ...(gpt26 ? { gpt26: true as const } : {}) };
+    const gpt26 = version ? (version === "2" ? undefined : version) : fixed?.gpt26;
+    const code = { ...(motion || picked === "code" ? { maker: "code" as const } : picked === "mix" ? { maker: "code" as const, mix: true } : {}), ...(gpt26 ? { gpt26 } : {}) };
     const moving = motion ? { motion } : {};
     // his own pictures: the steps he skipped are not asked (the style, the colours, the font are the picked ones or his)
     const hold = fixed || (allOwn && motion) ? null : carouselHold(history, slides.length);
@@ -701,7 +718,8 @@ export async function say(userId: string, chatId: string | null, message: string
       // the colour step is always the site's own (its first button keeps the style's colours)
       const theirs = (questions ?? []).filter((q) => q.label !== hold.question.label && !(hold.question.kind === "palettes" && q.kind === "palettes"));
       reply.questions = own ? questions : [...theirs, hold.question].slice(-6);
-      reply.text = isEmptyReply(reply.text) ? hold.note : `${reply.text}\n\n${hold.note}`;
+      const note = hold.note + (await versionPassNote(userId, hold.question));
+      reply.text = isEmptyReply(reply.text) ? note : `${reply.text}\n\n${note}`;
     } else if (slides.length) {
       const pick = pickedCarousel(history);
       const carouselId = pick?.style?.id ?? reuse?.carouselId ?? (a.produce.carousel_id && findCarouselStyle(a.produce.carousel_id) ? a.produce.carousel_id : "");
@@ -741,7 +759,8 @@ export async function say(userId: string, chatId: string | null, message: string
       const own = (hold.question.kind === "carousels" || hold.question.kind === "fonts" || hold.question.kind === "motioncarousels") && questions?.some((q) => q.kind === hold.question.kind);
       const theirs = (questions ?? []).filter((q) => q.label !== hold.question.label && !(hold.question.kind === "palettes" && q.kind === "palettes"));
       reply.questions = own ? questions! : [...theirs, hold.question].slice(-6);
-      reply.text = isEmptyReply(reply.text) ? hold.note : `${reply.text}\n\n${hold.note}`;
+      const note = hold.note + (await versionPassNote(userId, hold.question));
+      reply.text = isEmptyReply(reply.text) ? note : `${reply.text}\n\n${note}`;
     }
   }
 

@@ -41,10 +41,10 @@ import { checkSlide, fixNote, showsRealWoman, WOMAN_PROBLEM, type SlideCheck } f
 export const IMAGE_MODEL = "gpt-image-2-2026-04-21";
 export const IMAGE_TIER = "std" as const;
 /**
- * «نسخة GPT Image»: the carousel's pictures by GPT Image 2.6 (Sunburst, the finer and steadier of its two: Arabic
- * lettering, the same look slide after slide) when the person picked it; GPT Image 2 (جواد's default) otherwise.
+ * «نسخة GPT Image»: the carousel's pictures by GPT Image 2.6 in the model the person picked (Sunburst or Flare); GPT
+ * Image 2 (جواد's default) otherwise.
  */
-export const gptOf = (p: { gpt26?: boolean }) => (p.gpt26 ? { generatorId: GPT_IMAGE_26_ID, variant: "sunburst" } : {});
+export const gptOf = (p: { gpt26?: "sunburst" | "flare" }) => (p.gpt26 ? { generatorId: GPT_IMAGE_26_ID, variant: p.gpt26 } : {});
 /** GPT Image 2 at its medium quality and standard size by default (the owner, 17 Nov 2026: «التلقائي الجودة المتوسطة والعادية») */
 export const IMAGE_QUALITY = "medium" as const;
 /** Slides asked of جواد at once in one call (after the first): his desk keeps three jobs going at most. */
@@ -359,7 +359,7 @@ export async function planPictureRedo(userId: string, chat: Chat, asks: { n: num
     mode: "fix",
     maker: "code",
     ...(design.mix ? { mix: true } : {}),
-    ...(design.gpt26 ? { gpt26: true } : {}),
+    ...(design.gpt26 ? { gpt26: design.gpt26 } : {}),
     split: true,
     ...(design.carouselId ? { carouselId: design.carouselId } : {}),
     ...(design.fontId ? { fontId: design.fontId } : {}),
@@ -456,7 +456,7 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed", ti
     mode: "fix",
     ...(block.maker === "code" ? { maker: "code" as const } : {}),
     ...(block.mix ? { mix: true } : {}),
-    ...(block.gpt26 ? { gpt26: true } : {}),
+    ...(block.gpt26 ? { gpt26: block.gpt26 } : {}),
     ...(block.split ? { split: true } : {}),
     ...(block.carouselId ? { carouselId: block.carouselId } : {}),
     ...(block.fontId ? { fontId: block.fontId } : {}),
@@ -666,7 +666,7 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
     templateId: p.templateId,
     ...(p.maker === "code" ? { maker: "code" as const } : {}),
     ...(p.mix ? { mix: true } : {}),
-    ...(p.gpt26 ? { gpt26: true } : {}),
+    ...(p.gpt26 ? { gpt26: p.gpt26 } : {}),
     ...(p.split ? { split: true } : {}),
     ...(old?.approved && messages[at]?.thread !== "design" ? { approved: true } : {}),
     ...(p.carouselId ? { carouselId: p.carouselId } : {}),

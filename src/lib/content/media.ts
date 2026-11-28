@@ -59,13 +59,13 @@ function fail(item: MediaItem, e: unknown, owner: boolean) {
   else delete item.detail;
 }
 
-async function makeImage(c: { userId: string; chatId: string; who: DeskWho; owner: boolean; gpt26?: boolean }, item: MediaItem): Promise<number> {
+async function makeImage(c: { userId: string; chatId: string; who: DeskWho; owner: boolean; gpt26?: "sunburst" | "flare" }, item: MediaItem): Promise<number> {
   const usd = 0;
   item.state = "running";
   item.tries = (item.tries ?? 0) + 1;
   try {
     // a single picture is painted with no writing in it (the owner's order: any words are «حيدرا ماكس»'s, in code)
-    const r = await deskImage(c.who, { key: key(), kind: "image", prompt: `${item.prompt}\n\n${NO_TEXT_RULE}`, aspect: item.aspect, quality: item.quality, resolution: item.resolution, ...(c.gpt26 ? { generatorId: GPT_IMAGE_26_ID, variant: "sunburst" } : {}), refs: await refsOf(c.userId, item) });
+    const r = await deskImage(c.who, { key: key(), kind: "image", prompt: `${item.prompt}\n\n${NO_TEXT_RULE}`, aspect: item.aspect, quality: item.quality, resolution: item.resolution, ...(c.gpt26 ? { generatorId: GPT_IMAGE_26_ID, variant: c.gpt26 } : {}), refs: await refsOf(c.userId, item) });
     item.desk = deskOf(r.receipt);
     item.jobId = r.receipt.jobId;
     const file = await addProducedFromOutput({ userId: c.userId, chatId: c.chatId, out: r.out, name: item.name || "image", meta: { media: item.id, prompt: item.prompt, desk: r.receipt } });
@@ -134,8 +134,9 @@ export async function stepMedia(userId: string, chatId: string, o: { retry?: str
       }
     }
   }
-  // «نسخة GPT Image»: the pictures are GPT Image 2.6's when that is the version the person picked last in the conversation
-  const gpt26 = lastGptVersion(chat.messages) === "2.6";
+  // «نسخة GPT Image»: the pictures are GPT Image 2.6's (in its model) when that is the version the person picked last
+  const last = lastGptVersion(chat.messages);
+  const gpt26 = last && last !== "2" ? last : undefined;
   const c = { userId, chatId, owner: !!o.owner, gpt26, who: { id: userId, email: o.email, owner: await unlimitedFor(o.email), origin: o.origin ?? "" } as DeskWho };
   let usd = 0;
 
