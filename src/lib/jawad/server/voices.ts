@@ -115,8 +115,14 @@ export async function resolveVoice(userId: string, value: string): Promise<{ ok:
   if (value.startsWith("v:")) {
     const id = value.slice(2);
     if (!isUuid(id)) return { ok: false, reason: "الصوت غير صحيح." };
-    const { data, error } = await db().from("jawad_voices").select("provider,provider_voice_id,reference_text").eq("id", id).eq("user_id", userId).maybeSingle();
+    // reference_text (ملف 0039) is read only for «صوت الجواد»: an ElevenLabs voice never needs it, and asking for it
+    // where 0039 hasn't run failed every saved ElevenLabs voice with «قيد التجهيز» (the owner, 28 November 2026)
+    const { data, error } = await db().from("jawad_voices").select("provider,provider_voice_id").eq("id", id).eq("user_id", userId).maybeSingle();
     if (missing(error)) return { ok: false, reason: "مكتبة الأصوات قيد التجهيز." };
+    if (data && data.provider === "jawad") {
+      const r = await db().from("jawad_voices").select("reference_text").eq("id", id).maybeSingle();
+      (data as { reference_text?: string | null }).reference_text = r.error ? "" : ((r.data as { reference_text?: string | null } | null)?.reference_text ?? "");
+    }
     // A saved voice is part of «المكتبة»: used while the add-on runs (the owner always)
     if (data && !(await libraryOpenFor(userId))) return { ok: false, reason: "صوتك محفوظ في «المكتبة»، وهي مقفلة الآن. فعّل اشتراك المكتبة لتستخدمه، أو اختر صوتًا جاهزًا." };
     if (data && data.provider === "minimax") return { ok: false, reason: "أصوات MiniMax انشالت من الموقع؛ اختر صوتًا آخر." };
