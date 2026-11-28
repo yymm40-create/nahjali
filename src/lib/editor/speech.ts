@@ -198,8 +198,14 @@ export async function voiceOut(p: EditorProject, who: Who, b: { text?: unknown; 
   // the person's own voice (a voiceprint or a designed one): spoken where it lives
   let own: { provider: string; id: string; refText?: string } | null = null;
   if (/^v:/.test(want) && isUuid(want.slice(2))) {
-    const { data } = await createAdminClient().from("jawad_voices").select("provider,provider_voice_id,reference_text").eq("id", want.slice(2)).eq("user_id", p.user_id).maybeSingle();
-    if (data) own = { provider: String(data.provider ?? "elevenlabs"), id: String(data.provider_voice_id), refText: String((data as { reference_text?: string | null }).reference_text ?? "") };
+    // reference_text only for «صوت الجواد» (ملف 0039 may not have run; an ElevenLabs voice never needs it)
+    const { data } = await createAdminClient().from("jawad_voices").select("provider,provider_voice_id").eq("id", want.slice(2)).eq("user_id", p.user_id).maybeSingle();
+    let refText = "";
+    if (data && data.provider === "jawad") {
+      const r = await createAdminClient().from("jawad_voices").select("reference_text").eq("id", want.slice(2)).maybeSingle();
+      refText = r.error ? "" : String((r.data as { reference_text?: string | null } | null)?.reference_text ?? "");
+    }
+    if (data) own = { provider: String(data.provider ?? "elevenlabs"), id: String(data.provider_voice_id), refText };
   }
   // «صوت الجواد» without a chosen voice: the person's newest voiceprint in the site's own engine
   if (!own && want === "jawad") {
