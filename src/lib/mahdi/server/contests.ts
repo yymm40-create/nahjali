@@ -3,7 +3,6 @@
 // role; the routes check who is asking (the organiser, a participant, or someone holding the join code).
 import { randomInt } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isAdmin } from "@config/site";
 import {
   CODE_RE,
   CONTEST_MAX_ENTRIES,
@@ -49,7 +48,6 @@ interface ContestRow {
   ends_on: string;
   threshold: number;
   min_habits: number;
-  listed: boolean;
   digest_weeks: number;
   end_notified: boolean;
   drawn_at: string | null;
@@ -87,7 +85,6 @@ const view = (r: ContestRow): Contest => ({
   endsOn: r.ends_on,
   threshold: Number(r.threshold),
   minHabits: Number(r.min_habits),
-  listed: r.listed,
   drawnAt: r.drawn_at,
   digestWeeks: Number(r.digest_weeks),
   endNotified: r.end_notified,
@@ -117,17 +114,16 @@ export async function myEntry(db: SupabaseClient, contestId: string, me: string)
   return (data as EntryRow | null) ?? null;
 }
 
-/** The contests I run, the ones I joined, and the open ones shown to everyone (that I can still join). */
-export async function listContests(db: SupabaseClient, me: string, today: ISODate, siteOwner = false) {
-  const [owned, entries, listed] = await Promise.all([
+/** The contests I run and the ones I joined (a contest is reached only through its link: none is shown to everyone). */
+export async function listContests(db: SupabaseClient, me: string, today: ISODate) {
+  const [owned, entries] = await Promise.all([
     db.from(CT).select("*").eq("owner_id", me).order("starts_on", { ascending: false }).limit(20),
     db.from(ET).select("contest_id, last_message_at, member_read_at").eq("user_id", me).limit(50),
-    db.from(CT).select("*").eq("listed", true).gte("ends_on", addDays(today, -1)).order("starts_on").limit(20),
   ]);
-  for (const r of [owned, entries, listed]) if (r.error) fail(r.error);
+  for (const r of [owned, entries]) if (r.error) fail(r.error);
   const joinedIds = (entries.data ?? []).map((e) => e.contest_id as string);
   const joined = joinedIds.length ? ((await db.from(CT).select("*").in("id", joinedIds)).data ?? []) : [];
-  const counts = await entryCounts(db, [...(owned.data ?? []), ...joined, ...(listed.data ?? [])].map((r) => r.id as string));
+  const counts = await entryCounts(db, [...(owned.data ?? []), ...joined].map((r) => r.id as string));
   const card = (r: ContestRow) => {
     const c = view(r);
     const e = (entries.data ?? []).find((x) => x.contest_id === c.id);
@@ -143,14 +139,9 @@ export async function listContests(db: SupabaseClient, me: string, today: ISODat
       unread: Boolean(e?.last_message_at && (!e.member_read_at || e.last_message_at > e.member_read_at)),
     };
   };
-  // the site's owner sees every contest that is not over, to choose which ones everyone sees
-  const every = siteOwner ? ((await db.from(CT).select("*").gte("ends_on", today).neq("owner_id", me).order("starts_on").limit(50)).data ?? []) as ContestRow[] : [];
-  if (every.length) for (const [k, v] of await entryCounts(db, every.map((r) => r.id))) counts.set(k, v);
   return {
-    all: every.map((r) => ({ ...card(r), listed: r.listed })),
     owned: ((owned.data ?? []) as ContestRow[]).map(card),
     joined: (joined as ContestRow[]).map(card),
-    open: ((listed.data ?? []) as ContestRow[]).filter((r) => !joinedIds.includes(r.id) && r.owner_id !== me && canJoin(view(r), today)).map(card),
   };
 }
 
@@ -163,7 +154,7 @@ async function entryCounts(db: SupabaseClient, ids: string[]) {
   return out;
 }
 
-export async function createContest(db: SupabaseClient, me: string, v: Omit<ContestDef, "id" | "listed">, today: ISODate): Promise<string> {
+export async function createContest(db: SupabaseClient, me: string, v: Omit<ContestDef, "id">, today: ISODate): Promise<string> {
   const { data: mine, error } = await db.from(CT).select("id").eq("owner_id", me).gte("ends_on", today);
   if (error) fail(error);
   if ((mine ?? []).length >= CONTEST_MAX_OWNED) throw new UserError(`عندك ${CONTEST_MAX_OWNED} مسابقات ما خلصت. انتظر وحدة تخلص أو احذفها.`, 400);
@@ -177,7 +168,7 @@ export async function createContest(db: SupabaseClient, me: string, v: Omit<Cont
 }
 
 /** The organiser edits: the words any time; the days and the bar only before the start. */
-export async function updateContest(db: SupabaseClient, c: Contest, v: Omit<ContestDef, "id" | "listed">, today: ISODate) {
+export async function updateContest(db: SupabaseClient, c: Contest, v: Omit<ContestDef, "id">, today: ISODate) {
   const started = today >= c.startsOn;
   const words = { title: v.title, details: v.details, prize: v.prize };
   const rules = started ? {} : { starts_on: v.startsOn, ends_on: v.endsOn, threshold: v.threshold, min_habits: v.minHabits };
@@ -188,11 +179,6 @@ export async function updateContest(db: SupabaseClient, c: Contest, v: Omit<Cont
 
 export async function deleteContest(db: SupabaseClient, c: Contest) {
   const { error } = await db.from(CT).delete().eq("id", c.id);
-  if (error) fail(error);
-}
-
-export async function setListed(db: SupabaseClient, c: Contest, listed: boolean) {
-  const { error } = await db.from(CT).update({ listed }).eq("id", c.id);
   if (error) fail(error);
 }
 
@@ -325,9 +311,9 @@ export async function sendMessage(db: SupabaseClient, c: Contest, entry: EntryRo
 /** Whether the organiser has messages they have not read, per entry. */
 export const ownerUnread = (e: EntryRow) => Boolean(e.last_message_at && (!e.owner_read_at || e.last_message_at > e.owner_read_at));
 
-/** Who may see a contest: its organiser, the site's owner, a participant, anyone when it is listed, or whoever has its code. */
-export function canSee(c: Contest, me: { id: string; email?: string | null }, entry: EntryRow | null, code: string | null) {
-  return c.ownerId === me.id || isAdmin(me.email) || Boolean(entry) || c.listed || (code !== null && code === c.code);
+/** Who may see a contest: its organiser, a participant, or whoever has its code (from its link). Nobody else, the site's owner included. */
+export function canSee(c: Contest, me: { id: string }, entry: EntryRow | null, code: string | null) {
+  return c.ownerId === me.id || Boolean(entry) || (code !== null && code === c.code);
 }
 
 /**

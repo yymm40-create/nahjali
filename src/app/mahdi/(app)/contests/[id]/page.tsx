@@ -25,7 +25,6 @@ interface ContestView {
   endsOn: ISODate;
   threshold: number;
   minHabits: number;
-  listed: boolean;
   days: number;
   weeks: number;
   phase: ContestPhase;
@@ -48,7 +47,6 @@ interface Row extends EntryResult {
 interface Data {
   contest: ContestView;
   role: "owner" | "member" | "visitor";
-  siteOwner: boolean;
   organizer: string;
   code?: string;
   rows?: Row[];
@@ -358,28 +356,6 @@ function SelectedProjects({ ids }: { ids: string[] }) {
   );
 }
 
-/** The site's owner: show this contest to every user of the app (the home and the contests page), or stop. */
-function ListedToggle({ c, reload }: { c: ContestView; reload: () => void }) {
-  const { toast } = useMahdi();
-  const flip = async () => {
-    try {
-      await mahdiFetch(`/api/mahdi/contests/${c.id}`, { method: "POST", json: { action: "listed", listed: !c.listed } });
-      toast(c.listed ? "ما عادت معروضة للكل" : "صارت معروضة لكل مستخدمي التطبيق");
-      reload();
-    } catch (e) {
-      toast((e as Error).message);
-    }
-  };
-  return (
-    <section className="m-card flex items-center justify-between gap-3 p-4">
-      <span className="text-sm">لصاحب التطبيق: اعرضها لكل المستخدمين (في الرئيسية وصفحة المسابقات)</span>
-      <button type="button" className={`m-btn m-btn-sm ${c.listed ? "m-btn-primary" : "m-btn-ghost"}`} onClick={flip}>
-        {c.listed ? "معروضة ✓" : "اعرضها"}
-      </button>
-    </section>
-  );
-}
-
 function ContestPage() {
   const { id } = useParams<{ id: string }>();
   const search = useSearchParams();
@@ -408,7 +384,6 @@ function ContestPage() {
     <div className="mx-auto max-w-2xl space-y-4 pb-10">
       <PageHead title={c.title} eyebrow="مسابقة الثبات" sub={data.role === "owner" ? "أنت المنظم" : data.participants ? `${data.participants} مشارك` : undefined} />
       <Rules c={c} organizer={data.role === "owner" ? "" : data.organizer} />
-      {data.siteOwner && <ListedToggle c={c} reload={load} />}
       {data.role === "owner" ? <OwnerView data={data} reload={load} /> : <MemberView data={data} code={code} reload={load} />}
     </div>
   );

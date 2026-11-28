@@ -25,8 +25,6 @@ export interface ContestDef {
   threshold: number;
   /** a participant needs at least this many habits in the projects they picked */
   minHabits: number;
-  /** shown to every user of the app (only the site's owner turns this on) */
-  listed: boolean;
 }
 
 export type ContestPhase = "upcoming" | "live" | "over";
@@ -59,7 +57,7 @@ export function weeksDone(c: Pick<ContestDef, "startsOn" | "endsOn">, today: ISO
 }
 
 /** The organiser's form, checked. Returns the clean contest or the reason it is refused (in Arabic). */
-export function cleanContest(b: Record<string, unknown>, today: ISODate): { ok: true; value: Omit<ContestDef, "id" | "listed"> } | { ok: false; error: string } {
+export function cleanContest(b: Record<string, unknown>, today: ISODate): { ok: true; value: Omit<ContestDef, "id"> } | { ok: false; error: string } {
   const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().replace(/\s+\n/g, "\n").slice(0, max) : "");
   const title = text(b.title, 60);
   if (!title) return { ok: false, error: "اكتب اسم المسابقة" };

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { isAdmin } from "@config/site";
 import { canJoin, cleanContest, contestDays, contestPhase, contestWeeks, CONTEST_MAX_WINNERS, projectsLocked } from "@/lib/mahdi/contests";
 import { todayFor } from "@/lib/mahdi/engine";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError, UUID_RE } from "@/lib/mahdi/server/api";
@@ -18,7 +17,6 @@ import {
   sendMessage,
   setEntryProjects,
   setExcluded,
-  setListed,
   setPrizeSent,
   updateContest,
   type Contest,
@@ -50,7 +48,6 @@ const publicView = (c: Contest, today: string) => ({
   endsOn: c.endsOn,
   threshold: c.threshold,
   minHabits: c.minHabits,
-  listed: c.listed,
   days: contestDays(c),
   weeks: contestWeeks(c).length,
   phase: contestPhase(c, today),
@@ -60,8 +57,8 @@ const publicView = (c: Contest, today: string) => ({
 });
 
 /**
- * One contest, as the person asking may see it: the rules for anyone allowed (organiser, participant, a listed contest,
- * or the code from its link); my own result and projects for a participant; everyone's results for the organiser.
+ * One contest, as the person asking may see it: the rules for anyone allowed (organiser, participant, or the code from its
+ * link); my own result and projects for a participant; everyone's results for the organiser.
  * `?chat=me` (a participant) or `?chat=<entry id>` (the organiser): that conversation.
  */
 export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
@@ -81,7 +78,6 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const base = {
     contest: publicView(c, today),
     role: owner ? "owner" : entry ? "member" : "visitor",
-    siteOwner: isAdmin(user.email),
     organizer: people.get(c.ownerId)?.displayName ?? "",
   };
 
@@ -194,11 +190,6 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
     case "prize":
       ownerOnly();
       await setPrizeSent(db, c, (await theirEntry()).id, b.sent === true);
-      break;
-    case "listed":
-      // shown to every user of the app: only the site's owner decides
-      if (!isAdmin(user.email)) throw notFound();
-      await setListed(db, c, b.listed === true);
       break;
     default:
       throw new UserError("طلب غير معروف", 400);
