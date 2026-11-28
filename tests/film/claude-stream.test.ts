@@ -37,6 +37,31 @@ describe("Claude's reply as a stream (a long reply is never cut by a clock on th
     expect(m.usage).toMatchObject({ input_tokens: 1200, cache_read_input_tokens: 800, output_tokens: 5400 });
   });
 
+  it("keeps the thinking whole (words + signature), so a turn sent back with its tool call is accepted", async () => {
+    const m = await readStream(sse([
+      { type: "message_start", message: { model: "claude-haiku-5-5", usage: { input_tokens: 10 } } },
+      { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } },
+      { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "أبحث في " } },
+      { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "الكافي" } },
+      { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "sig-abc" } },
+      { type: "content_block_stop", index: 0 },
+      { type: "content_block_start", index: 1, content_block: { type: "redacted_thinking", data: "enc-xyz" } },
+      { type: "content_block_stop", index: 1 },
+      { type: "content_block_start", index: 2, content_block: { type: "tool_use", id: "tu_1", name: "search_hadith", input: {} } },
+      { type: "content_block_delta", index: 2, delta: { type: "input_json_delta", partial_json: '{"q":"تسبيح' } },
+      { type: "content_block_delta", index: 2, delta: { type: "input_json_delta", partial_json: ' الزهراء"}' } },
+      { type: "content_block_stop", index: 2 },
+      { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 40 } },
+      { type: "message_stop" },
+    ]));
+    expect(m.stop_reason).toBe("tool_use");
+    expect(m.content).toEqual([
+      { type: "thinking", thinking: "أبحث في الكافي", signature: "sig-abc" },
+      { type: "redacted_thinking", data: "enc-xyz" },
+      { type: "tool_use", id: "tu_1", name: "search_hadith", input: { q: "تسبيح الزهراء" } },
+    ]);
+  });
+
   it("a stream that stops early is an error, not half an answer", async () => {
     await expect(readStream(sse(reply.slice(0, 6)))).rejects.toThrow(/terminated/);
   });

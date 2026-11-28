@@ -213,7 +213,9 @@ export type OnText = (piece: string) => void;
 
 export async function readStream(stream: ReadableStream<Uint8Array>, alive: () => void = () => {}, resume?: ResumeOpts, onText?: OnText): Promise<StreamBody> {
   // a tool call («الشيخ الذكي» searching the library) comes back whole too: its id, name and input (sent in JSON pieces)
-  const blocks: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[] = [];
+  // and the model's thinking whole (its words and signature): a turn sent back with an empty thinking block is refused
+  // («thinking: Field required» — the sheikh failed on every search from 26 to 28 November 2026)
+  const blocks: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown>; thinking?: string; signature?: string; data?: string }[] = [];
   const toolJson = new Map<number, string>();
   const msg: StreamBody = { content: blocks };
   let usage: Record<string, unknown> = {};
@@ -237,8 +239,14 @@ export async function readStream(stream: ReadableStream<Uint8Array>, alive: () =
         break;
       }
       case "content_block_start": {
-        const b = (ev.content_block ?? {}) as { type: string; text?: string; id?: string; name?: string };
-        blocks[Number(ev.index)] = { type: b.type, ...(b.type === "text" ? { text: b.text ?? "" } : {}), ...(b.type === "tool_use" ? { id: b.id, name: b.name, input: {} } : {}) };
+        const b = (ev.content_block ?? {}) as { type: string; text?: string; id?: string; name?: string; thinking?: string; signature?: string; data?: string };
+        blocks[Number(ev.index)] = {
+          type: b.type,
+          ...(b.type === "text" ? { text: b.text ?? "" } : {}),
+          ...(b.type === "tool_use" ? { id: b.id, name: b.name, input: {} } : {}),
+          ...(b.type === "thinking" ? { thinking: b.thinking ?? "", signature: b.signature ?? "" } : {}),
+          ...(b.type === "redacted_thinking" ? { data: b.data ?? "" } : {}),
+        };
         break;
       }
       case "content_block_stop": {
@@ -254,8 +262,10 @@ export async function readStream(stream: ReadableStream<Uint8Array>, alive: () =
         break;
       }
       case "content_block_delta": {
-        const d = (ev.delta ?? {}) as { type?: string; text?: string; partial_json?: string };
+        const d = (ev.delta ?? {}) as { type?: string; text?: string; partial_json?: string; thinking?: string; signature?: string };
         const b = blocks[Number(ev.index)];
+        if (d.type === "thinking_delta" && b?.type === "thinking") b.thinking = (b.thinking ?? "") + (d.thinking ?? "");
+        if (d.type === "signature_delta" && b?.type === "thinking") b.signature = (b.signature ?? "") + (d.signature ?? "");
         if (d.type === "input_json_delta" && b?.type === "tool_use") toolJson.set(Number(ev.index), (toolJson.get(Number(ev.index)) ?? "") + (d.partial_json ?? ""));
         if (d.type === "text_delta" && b) {
           b.text = (b.text ?? "") + (d.text ?? "");
